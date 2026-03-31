@@ -3559,7 +3559,7 @@ function renderHomeHtml() {
             <div class="home-ai-gpt__context">
               <div class="home-ai-gpt__thumb-wrap" id="home-ai-thumb-wrap">
                 <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Valgt bilde" width="72" height="72" hidden />
-                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Ingen bilde ennå – bruk «Ta bilde» eller «Filer».</p>
+                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Du kan skrive med en gang, eller legge ved bilde med «Ta bilde» / «Filer».</p>
               </div>
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
@@ -5412,6 +5412,17 @@ function bindHomeListeners() {
   startHomeVegrefTracking()
 }
 
+function mountHomeAiFullscreenToBody(mount) {
+  const fs = document.getElementById('home-ai-fullscreen')
+  const panel = document.getElementById('panel-home-bilde-ai')
+  if (!fs || !panel) return
+  if (mount) {
+    if (fs.parentElement !== document.body) document.body.appendChild(fs)
+  } else if (fs.parentElement === document.body) {
+    panel.appendChild(fs)
+  }
+}
+
 function setHomeBildeSubTab(which) {
   const tabCam = document.getElementById('tab-home-bilde-camera')
   const tabAi = document.getElementById('tab-home-bilde-ai')
@@ -5425,6 +5436,7 @@ function setHomeBildeSubTab(which) {
   tabAi.classList.toggle('home-bilde-tabs__tab--active', !isCam)
   panelCam.hidden = !isCam
   panelAi.hidden = isCam
+  mountHomeAiFullscreenToBody(!isCam)
   if (isCam) {
     stopHomeAiCamera()
   } else {
@@ -5563,6 +5575,9 @@ function renderHomeAiStructuredHtml(data) {
 const HOME_AI_DEFAULT_FIRST_TEXT =
   'Se bildet og gi en kort veivokter-vurdering (sikkerhet, føre, praktiske tiltak).'
 
+const HOME_AI_DEFAULT_NO_IMAGE_TEXT =
+  'Gi en kort veivokter-vurdering ut fra beskrivelsen (ingen bilde vedlagt).'
+
 function buildHomeAiUserText(text) {
   return `Brukerens beskrivelse:\n${String(text).trim()}`
 }
@@ -5615,17 +5630,11 @@ async function sendHomeAiChatMessage() {
   const statusEl = document.getElementById('home-ai-status')
   const input = document.getElementById('home-ai-chat-input')
   const sendBtn = document.getElementById('btn-home-ai-send')
-  if (!homeAiCapturedDataUrl) {
-    if (statusEl) statusEl.textContent = 'Mangler bilde. Ta bilde på nytt.'
-    return
-  }
-
   const textRaw = input?.value?.trim() ?? ''
-  /** API krever ikke-tom «beskrivelse» – bruk standard hvis bruker kun sender bilde. */
-  const textForApi =
-    textRaw.length > 0 ? textRaw : HOME_AI_DEFAULT_FIRST_TEXT
+  const hasImage = Boolean(
+    homeAiCapturedDataUrl && String(homeAiCapturedDataUrl).trim().length > 0,
+  )
 
-  /** Første runde (bilde) er ikke «oppfølging» før det finnes et assistentsvar i tråden. */
   const hadAssistantInThread = homeAiApiMessages.some(
     (m) => m.role === 'assistant',
   )
@@ -5634,31 +5643,44 @@ async function sendHomeAiChatMessage() {
     return
   }
 
+  let textForApi
+  if (hadAssistantInThread) {
+    textForApi = textRaw
+  } else if (textRaw.length > 0) {
+    textForApi = textRaw
+  } else if (hasImage) {
+    textForApi = HOME_AI_DEFAULT_FIRST_TEXT
+  } else {
+    textForApi = HOME_AI_DEFAULT_NO_IMAGE_TEXT
+  }
+
   const bubbleHtml =
     textRaw.length > 0
       ? escapeHtml(textRaw).replace(/\n/g, '<br />')
-      : '<em class="home-ai-gpt__em">(Ingen egen tekst – analyse av bildet)</em>'
+      : hasImage
+        ? '<em class="home-ai-gpt__em">(Ingen egen tekst – analyse av bildet)</em>'
+        : '<em class="home-ai-gpt__em">(Tekstbasert – ingen bilde vedlagt)</em>'
   appendHomeAiChatBubble('user', `<p class="home-ai-gpt__user-p">${bubbleHtml}</p>`)
   if (input) input.value = ''
 
-  const multimodalUser = {
-    role: 'user',
-    content: [
-      {
-        type: 'text',
-        text: buildHomeAiUserText(String(textForApi)),
-      },
-      {
-        type: 'image_url',
-        image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
-      },
-    ],
-  }
+  const userBlock = buildHomeAiUserText(String(textForApi))
+  const firstUserMessage = hasImage
+    ? {
+        role: 'user',
+        content: [
+          { type: 'text', text: userBlock },
+          {
+            type: 'image_url',
+            image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
+          },
+        ],
+      }
+    : { role: 'user', content: userBlock }
 
   if (hadAssistantInThread) {
     homeAiApiMessages.push({ role: 'user', content: textRaw })
   } else {
-    homeAiApiMessages = [multimodalUser]
+    homeAiApiMessages = [firstUserMessage]
   }
 
   /** Server: én user-melding = JSON-rapport; flere = { reply } */
@@ -5682,10 +5704,9 @@ async function sendHomeAiChatMessage() {
 
     if (!r.ok && requestWasFirstShot) {
       homeAiApiMessages = []
-      const legacyBody = {
-        image: homeAiCapturedDataUrl,
-        text: String(textForApi),
-      }
+      const legacyBody = hasImage
+        ? { image: homeAiCapturedDataUrl, text: String(textForApi) }
+        : { text: String(textForApi) }
       r = await fetch(apiUrl('/api/analyze'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5709,7 +5730,7 @@ async function sendHomeAiChatMessage() {
         )
       }
       homeAiApiMessages = [
-        multimodalUser,
+        firstUserMessage,
         { role: 'assistant', content: JSON.stringify(data) },
       ]
       appendHomeAiChatBubble(
@@ -5734,10 +5755,12 @@ async function sendHomeAiChatMessage() {
       )
       if (!r.ok || !extracted.trim()) {
         homeAiApiMessages.pop()
-        const legacyFollowBody = {
-          image: homeAiCapturedDataUrl,
-          text: `[Oppfølging] ${textRaw}`,
-        }
+        const legacyFollowBody = hasImage
+          ? {
+              image: homeAiCapturedDataUrl,
+              text: `[Oppfølging] ${textRaw}`,
+            }
+          : { text: `[Oppfølging] ${textRaw}` }
         r = await fetch(apiUrl('/api/analyze'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

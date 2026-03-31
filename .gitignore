@@ -5,5 +5,7 @@ dist/
 .env.*
 !.env.example
 !.env.production.example
+# Konfidensiell kontrakt til AI-kontekst (kopiér fra contract-context.example.txt)
+server/contract-context.txt
 .DS_Store
 *.log

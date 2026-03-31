@@ -1,13 +1,57 @@
  /**
  * POST /api/analyze — OpenAI vision + tekst (veivokter-rapport).
  * Krever OPENAI_API_KEY. Modell: OPENAI_MODEL (standard gpt-4.1).
+ *
+ * Valgfri kontrakt/avtale: legg tekst i fil (se loadContractContext nedenfor)
+ * eller sett miljøvariabel CONTRACT_CONTEXT_PATH. Teksten legges til systemprompt
+ * (ikke «trening» – modellen følger den som instruksjon per forespørsel).
  */
+
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 import OpenAI from 'openai'
 
 const DEFAULT_MODEL = 'gpt-4.1'
 
-const SYSTEM_PROMPT = `Du er en erfaren veivokter i Norge.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Leser kontrakts-/avtaletekst fra disk (én gang ved oppstart).
+ * Standardfil: server/contract-context.txt (ikke i git – bruk .example som mal).
+ * @returns {string} suffiks til systemprompt, eller tom streng
+ */
+function loadContractContext() {
+  const fromEnv = process.env.CONTRACT_CONTEXT_PATH
+  const defaultPath = path.join(__dirname, 'contract-context.txt')
+  const p = (fromEnv && String(fromEnv).trim()) || defaultPath
+  try {
+    const raw = fs.readFileSync(p, 'utf8')
+    const t = raw.trim()
+    if (!t) return ''
+    if (t.length > 120_000) {
+      console.warn(
+        'analyze: CONTRACT_CONTEXT er veldig lang (' +
+          t.length +
+          ' tegn). Vurder å korte ned eller bruk RAG for store dokumenter.',
+      )
+    }
+    return (
+      '\n\n--- Kontrakt / avtale / regelverk du skal respektere når det er relevant ---\n' +
+      t
+    )
+  } catch (e) {
+    if (fromEnv && String(fromEnv).trim()) {
+      console.warn('analyze: Kunne ikke lese CONTRACT_CONTEXT_PATH:', p, e)
+    }
+    return ''
+  }
+}
+
+const CONTRACT_CONTEXT = loadContractContext()
+
+const SYSTEM_PROMPT_BASE = `Du er en erfaren veivokter i Norge.
 Analyser bildet og teksten fra brukeren.
 
 Fokuser på:
@@ -26,10 +70,34 @@ Returner JSON med:
 
 Svar ALLTID med gyldig JSON-objekt med nøklene problem, risk, action, explanation, report. Bruk norsk.`
 
-const SYSTEM_PROMPT_FOLLOWUP = `Du er en erfaren veivokter i Norge.
+const SYSTEM_PROMPT_FOLLOWUP_BASE = `Du er en erfaren veivokter i Norge.
 Brukeren har et bilde og en tidligere analyse (JSON eller tekst) i samtalen.
 Svar kort og konkret på norsk på oppfølgingsspørsmålet, med utgangspunkt i bildet og analysen.
 Ikke gjenta hele JSON-analysen med mindre brukeren ber om det.`
+
+/** Første runde uten bilde (kun tekst). */
+const SYSTEM_PROMPT_TEXT_ONLY_BASE = `Du er en erfaren veivokter i Norge.
+Brukeren har ikke vedlagt bilde – svar ut fra tekstbeskrivelsen og generell veivokter-kunnskap.
+
+Fokuser på:
+- raske og praktiske løsninger
+- vinterforhold
+- sikkerhet
+
+Svar kort og konkret.
+
+Returner JSON med:
+- problem
+- risk
+- action
+- explanation
+- report (ferdig skrevet rapport klar til bruk)
+
+Svar ALLTID med gyldig JSON-objekt med nøklene problem, risk, action, explanation, report. Bruk norsk.`
+
+const SYSTEM_PROMPT = SYSTEM_PROMPT_BASE + CONTRACT_CONTEXT
+const SYSTEM_PROMPT_FOLLOWUP = SYSTEM_PROMPT_FOLLOWUP_BASE + CONTRACT_CONTEXT
+const SYSTEM_PROMPT_TEXT_ONLY = SYSTEM_PROMPT_TEXT_ONLY_BASE + CONTRACT_CONTEXT
 
 /**
  * @param {string} image
@@ -190,8 +258,39 @@ export async function handleAnalyze(req, res) {
       res.status(400).json({ error: 'Mangler tekst (beskrivelse).' })
       return
     }
-    if (image == null || typeof image !== 'string' || !String(image).trim()) {
-      res.status(400).json({ error: 'Mangler bilde (URL eller base64).' })
+
+    const hasImage =
+      image != null && typeof image === 'string' && String(image).trim().length > 0
+
+    /** Legacy uten bilde: ren tekst (første analyse eller oppfølging som ren tekst). */
+    if (!hasImage) {
+      const userText = buildUserText(text, vehicle, temperature)
+      const completion = await openai.chat.completions.create({
+        model,
+        response_format: { type: 'json_object' },
+        max_tokens: 2500,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT_TEXT_ONLY },
+          { role: 'user', content: userText },
+        ],
+      })
+
+      const raw = textFromAssistantMessage(completion.choices[0]?.message)
+      if (!raw || !String(raw).trim()) {
+        res.status(502).json({ error: 'Tomt svar fra modellen.' })
+        return
+      }
+
+      let parsed
+      try {
+        parsed = JSON.parse(raw.trim())
+      } catch {
+        res.status(502).json({ error: 'Kunne ikke tolke JSON fra modellen.' })
+        return
+      }
+
+      const result = coerceResult(parsed)
+      res.json(result)
       return
     }
 
