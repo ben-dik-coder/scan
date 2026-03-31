@@ -14,6 +14,7 @@ import { dirname, join } from 'path'
 import puppeteer from 'puppeteer'
 import { fileURLToPath } from 'url'
 import { buildReportHtml } from './reportHtml.js'
+import { buildAiChatPdfHtml } from './aiChatPdfHtml.js'
 import { fetchStaticMapAsDataUrl } from './staticMap.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -100,7 +101,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'scanix-server',
     version: readAppVersion(),
-    endpoints: ['/api/generate-report', '/api/analyze'],
+    endpoints: ['/api/generate-report', '/api/generate-ai-chat-pdf', '/api/analyze'],
   })
 })
 
@@ -166,6 +167,72 @@ app.post('/api/generate-report', async (req, res) => {
     res.send(Buffer.from(pdfBuf))
   } catch (err) {
     console.error('generate-report:', err)
+    resetBrowserInstance()
+    res.status(500).json({
+      error:
+        err && typeof err === 'object' && 'message' in err
+          ? String(/** @type {{ message: string }} */ (err).message)
+          : 'Kunne ikke generere PDF.',
+    })
+  } finally {
+    if (page) {
+      try {
+        await page.close()
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+})
+
+app.post('/api/generate-ai-chat-pdf', async (req, res) => {
+  let page = null
+  try {
+    const body = req.body
+    if (!body || typeof body !== 'object') {
+      res.status(400).json({ error: 'Ugyldig JSON.' })
+      return
+    }
+
+    const html = buildAiChatPdfHtml(body)
+
+    let browser
+    try {
+      browser = await getBrowser()
+    } catch (launchErr) {
+      console.error('generate-ai-chat-pdf browser launch:', launchErr)
+      resetBrowserInstance()
+      browser = await getBrowser()
+    }
+
+    page = await browser.newPage()
+    await page.setContent(html, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120_000,
+    })
+    await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
+
+    const pdfBuf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: '14mm',
+        right: '12mm',
+        bottom: '16mm',
+        left: '12mm',
+      },
+    })
+
+    const filename = `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+    res.setHeader('Content-Type', 'application/pdf; charset=utf-8')
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    )
+    res.send(Buffer.from(pdfBuf))
+  } catch (err) {
+    console.error('generate-ai-chat-pdf:', err)
     resetBrowserInstance()
     res.status(500).json({
       error:

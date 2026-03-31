@@ -3553,7 +3553,7 @@ function renderHomeHtml() {
               <div class="home-ai-gpt__header-actions">
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-open-camera">Ta bilde</button>
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pick-file-chat">Filer</button>
-                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-retake">Nytt bilde</button>
+                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pdf">PDF</button>
               </div>
             </header>
             <div class="home-ai-gpt__context">
@@ -3565,15 +3565,26 @@ function renderHomeHtml() {
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
             <div class="home-ai-gpt__composer">
               <div class="home-ai-gpt__input-shell">
-                <label class="visually-hidden" for="home-ai-chat-input">Melding til AI</label>
-                <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Melding til AI …"></textarea>
-                <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding">
+                <label class="visually-hidden" for="home-ai-chat-input">Send melding til VeiAi</label>
+                <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Send melding til VeiAi"></textarea>
+                <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding til VeiAi">
                   <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
               </div>
             </div>
           </div>
         </div>
+        <dialog id="home-ai-pdf-dialog" class="home-ai-pdf-dialog" aria-labelledby="home-ai-pdf-dialog-title">
+          <div class="home-ai-pdf-dialog__box">
+            <h2 id="home-ai-pdf-dialog-title" class="home-ai-pdf-dialog__title">Oppsummert samtale</h2>
+            <div id="home-ai-pdf-preview" class="home-ai-pdf-dialog__preview" tabindex="0"></div>
+            <p id="home-ai-pdf-dialog-status" class="home-ai-pdf-dialog__status" role="status" aria-live="polite"></p>
+            <div class="home-ai-pdf-dialog__actions">
+              <button type="button" class="btn btn-secondary" id="btn-home-ai-pdf-exit">Avslutt</button>
+              <button type="button" class="btn btn-home btn-home--primary" id="btn-home-ai-pdf-save">Lagre på enheten</button>
+            </div>
+          </div>
+        </dialog>
       </div>
     </div>
     <div class="home-drawer-backdrop" id="home-drawer-backdrop" hidden aria-hidden="true"></div>
@@ -5676,7 +5687,7 @@ async function sendHomeAiChatMessage() {
   /** Server: én user-melding = JSON-rapport; flere = { reply } */
   const requestWasFirstShot = homeAiApiMessages.length === 1
 
-  if (statusEl) statusEl.textContent = 'Tenker …'
+  if (statusEl) statusEl.textContent = 'VeiAi tenker …'
   if (sendBtn) sendBtn.disabled = true
   try {
     let r = await fetch(apiUrl('/api/analyze'), {
@@ -5935,9 +5946,21 @@ function bindHomeAiDocumentationListeners(signal) {
     { signal },
   )
 
-  document.getElementById('btn-home-ai-retake')?.addEventListener(
+  document.getElementById('btn-home-ai-pdf')?.addEventListener(
     'click',
-    () => retakeHomeAiDoc(),
+    () => openHomeAiPdfDialog(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-pdf-exit')?.addEventListener(
+    'click',
+    () => exitHomeAiFromPdfDialog(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-pdf-save')?.addEventListener(
+    'click',
+    () => void saveHomeAiPdfToDevice(),
     { signal },
   )
 
@@ -7511,6 +7534,127 @@ function setSessionEndDialogTab(tab) {
   }
 }
 
+/**
+ * Lagrer PDF på enheten (iOS: delingsark → Lagre i Filer). Fallback: nedlasting.
+ * @param {Blob} blob
+ * @param {string} filename
+ */
+async function shareOrDownloadPdfBlob(blob, filename) {
+  const file = new File([blob], filename, { type: 'application/pdf' })
+  let canShareFiles = false
+  try {
+    canShareFiles = Boolean(
+      navigator.canShare && navigator.canShare({ files: [file] }),
+    )
+  } catch {
+    canShareFiles = false
+  }
+  if (canShareFiles) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: filename,
+      })
+      return
+    } catch (e) {
+      if (e && /** @type {{ name?: string }} */ (e).name === 'AbortError') return
+    }
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function collectHomeAiChatLinesForPdf() {
+  const log = document.getElementById('home-ai-chat-log')
+  if (!log) return []
+  const out = []
+  log.querySelectorAll('.home-ai-gpt__row').forEach((row) => {
+    const user = row.classList.contains('home-ai-gpt__row--user')
+    const text = row.innerText.replace(/\s*\n\s*/g, '\n').trim()
+    if (text) out.push({ role: user ? 'user' : 'assistant', text })
+  })
+  return out
+}
+
+function formatHomeAiPdfPreviewText(lines) {
+  if (!lines.length) return 'Ingen meldinger i samtalen ennå.'
+  return lines
+    .map((l) => {
+      const who = l.role === 'user' ? 'Bruker' : 'VeiAi'
+      return `${who}\n${l.text}`
+    })
+    .join('\n\n')
+}
+
+function openHomeAiPdfDialog() {
+  const dlg = document.getElementById('home-ai-pdf-dialog')
+  const preview = document.getElementById('home-ai-pdf-preview')
+  const statusEl = document.getElementById('home-ai-pdf-dialog-status')
+  if (statusEl) statusEl.textContent = ''
+  const lines = collectHomeAiChatLinesForPdf()
+  if (preview) preview.textContent = formatHomeAiPdfPreviewText(lines)
+  if (dlg instanceof HTMLDialogElement) dlg.showModal()
+}
+
+function exitHomeAiFromPdfDialog() {
+  const dlg = document.getElementById('home-ai-pdf-dialog')
+  if (dlg instanceof HTMLDialogElement) dlg.close()
+  stopHomeAiCamera()
+  setHomeBildeSubTab('camera')
+}
+
+async function saveHomeAiPdfToDevice() {
+  const statusEl = document.getElementById('home-ai-pdf-dialog-status')
+  const lines = collectHomeAiChatLinesForPdf()
+  if (!lines.length) {
+    if (statusEl) statusEl.textContent = 'Ingen samtale å lagre.'
+    return
+  }
+  if (statusEl) statusEl.textContent = 'Genererer PDF …'
+  try {
+    const res = await fetch(apiUrl('/api/generate-ai-chat-pdf'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'VeiAi – dokumentering',
+        generatedAtLabel: new Date().toLocaleString('nb-NO', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        }),
+        lines,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(
+        typeof err.error === 'string' ? err.error : `HTTP ${res.status}`,
+      )
+    }
+    const blob = await res.blob()
+    const filename = `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+    await shareOrDownloadPdfBlob(blob, filename)
+    if (statusEl) {
+      statusEl.textContent =
+        'PDF er klar. På iPhone: velg «Lagre i Filer» i delingsarket om du blir spurt.'
+    }
+  } catch (e) {
+    const msg =
+      e && typeof e === 'object' && 'message' in e
+        ? String(/** @type {{ message: string }} */ (e).message)
+        : 'Ukjent feil'
+    if (statusEl) {
+      statusEl.textContent =
+        msg === 'Failed to fetch' || msg.includes('NetworkError')
+          ? 'Kunne ikke nå serveren. Start API (cd server, npm start, port 8787) og prøv igjen.'
+          : msg
+    }
+  }
+}
+
 async function exportSessionReportPdf() {
   const statusEl = document.getElementById('session-end-pdf-status')
   const commentsEl = document.getElementById('session-end-pdf-comments')
@@ -7572,12 +7716,10 @@ async function exportSessionReportPdf() {
       )
     }
     const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `scanix-rapport-${new Date().toISOString().slice(0, 10)}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
+    await shareOrDownloadPdfBlob(
+      blob,
+      `scanix-rapport-${new Date().toISOString().slice(0, 10)}.pdf`,
+    )
     if (statusEl) statusEl.textContent = 'PDF er lastet ned.'
   } catch (e) {
     const msg =
