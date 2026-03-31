@@ -5586,6 +5586,18 @@ function renderHomeAiFollowupReplyHtml(text) {
   return `<div class="home-ai-gpt__reply"><p class="home-ai-gpt__reply-p">${escaped}</p></div>`
 }
 
+/** Oppfølging: API skal sende { reply }, men håndter JSON-lignende svar og tomme felt. */
+function extractHomeAiFollowupReply(data) {
+  if (!data || typeof data !== 'object') return ''
+  if (typeof data.reply === 'string' && data.reply.trim()) return data.reply.trim()
+  if (data.reply != null && String(data.reply).trim()) return String(data.reply).trim()
+  const parts = ['problem', 'risk', 'action', 'explanation', 'report']
+    .map((k) => data[k])
+    .filter((x) => x != null && String(x).trim())
+  if (parts.length) return parts.map((x) => String(x)).join('\n\n')
+  return ''
+}
+
 async function sendHomeAiChatMessage() {
   const statusEl = document.getElementById('home-ai-status')
   const input = document.getElementById('home-ai-chat-input')
@@ -5718,6 +5730,17 @@ async function sendHomeAiChatMessage() {
       )
     }
 
+    if (
+      data &&
+      typeof data === 'object' &&
+      typeof data.error === 'string' &&
+      data.error.trim() &&
+      data.reply == null &&
+      data.problem == null
+    ) {
+      throw new Error(data.error)
+    }
+
     if (requestWasFirstShot) {
       homeAiApiMessages.push({
         role: 'assistant',
@@ -5732,23 +5755,12 @@ async function sendHomeAiChatMessage() {
         ),
       )
     } else {
-      let reply =
-        typeof data.reply === 'string'
-          ? data.reply
-          : data.reply != null
-            ? String(data.reply)
-            : ''
-      if (!reply.trim() && data.problem != null) {
-        reply = [
-          data.problem,
-          data.risk,
-          data.action,
-          data.explanation,
-          data.report,
-        ]
-          .filter((x) => x != null && String(x).trim())
-          .map((x) => String(x))
-          .join('\n\n')
+      let reply = extractHomeAiFollowupReply(
+        /** @type {Record<string, unknown>} */ (data),
+      )
+      if (!reply.trim()) {
+        reply =
+          'Ingen tekst i AI-svaret. Prøv å omformulere spørsmålet, eller send på nytt.'
       }
       homeAiApiMessages.push({ role: 'assistant', content: reply })
       appendHomeAiChatBubble('assistant', renderHomeAiFollowupReplyHtml(reply))

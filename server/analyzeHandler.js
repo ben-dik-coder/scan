@@ -82,6 +82,33 @@ function coerceResult(obj) {
   return out
 }
 
+/**
+ * OpenAI kan returnere assistant.content som streng eller som liste med tekst-deler.
+ * @param {unknown} message
+ * @returns {string}
+ */
+function textFromAssistantMessage(message) {
+  if (!message || typeof message !== 'object') return ''
+  const m = /** @type {Record<string, unknown>} */ (message)
+  if (typeof m.refusal === 'string' && m.refusal.trim()) {
+    return m.refusal.trim()
+  }
+  const c = m.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c)) {
+    return c
+      .map((part) => {
+        if (!part || typeof part !== 'object') return ''
+        const p = /** @type {Record<string, unknown>} */ (part)
+        if (typeof p.text === 'string') return p.text
+        return ''
+      })
+      .join('')
+  }
+  if (c == null) return ''
+  return String(c)
+}
+
 /** @type {OpenAI | null} */
 let client = null
 
@@ -135,8 +162,8 @@ export async function handleAnalyze(req, res) {
         messages: [{ role: 'system', content: sys }, ...msgs],
       })
 
-      const raw = completion.choices[0]?.message?.content
-      if (!raw || typeof raw !== 'string') {
+      const raw = textFromAssistantMessage(completion.choices[0]?.message)
+      if (!raw || !String(raw).trim()) {
         res.status(502).json({ error: 'Tomt svar fra modellen.' })
         return
       }
@@ -144,7 +171,7 @@ export async function handleAnalyze(req, res) {
       if (isFirstShot) {
         let parsed
         try {
-          parsed = JSON.parse(raw)
+          parsed = JSON.parse(raw.trim())
         } catch {
           res.status(502).json({ error: 'Kunne ikke tolke JSON fra modellen.' })
           return
@@ -153,7 +180,7 @@ export async function handleAnalyze(req, res) {
         return
       }
 
-      res.json({ reply: raw })
+      res.json({ reply: raw.trim() })
       return
     }
 
@@ -190,15 +217,15 @@ export async function handleAnalyze(req, res) {
       ],
     })
 
-    const raw = completion.choices[0]?.message?.content
-    if (!raw || typeof raw !== 'string') {
+    const raw = textFromAssistantMessage(completion.choices[0]?.message)
+    if (!raw || !String(raw).trim()) {
       res.status(502).json({ error: 'Tomt svar fra modellen.' })
       return
     }
 
     let parsed
     try {
-      parsed = JSON.parse(raw)
+      parsed = JSON.parse(raw.trim())
     } catch {
       res.status(502).json({ error: 'Kunne ikke tolke JSON fra modellen.' })
       return
