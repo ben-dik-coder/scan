@@ -1480,6 +1480,25 @@ form.auth-form[hidden] {
   text-align: left;
 }
 
+/* AI: ekte fullskjerm (fixed på panelet – ikke flytt DOM til body; unngår duplikat-ID / spøkelseslag) */
+#panel-home-bilde-ai:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  z-index: 10000;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  background: #0e1422;
+}
+
 .home-bilde-panel__hint {
   margin: 0;
   font-size: 0.82rem;
@@ -1611,21 +1630,18 @@ form.auth-form[hidden] {
   font-size: 0.82rem;
 }
 
-/* AI dokumentering – fullskjerm + ChatGPT-lignende chat */
+/* AI dokumentering – fyller fixed-panelet over */
 .home-ai-fullscreen {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  max-width: 100vw;
-  min-height: 100vh;
-  min-height: 100dvh;
-  z-index: 88;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #0e1422;
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
   padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
     env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  pointer-events: auto;
 }
 
 .home-ai-fs-status {

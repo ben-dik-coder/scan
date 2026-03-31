@@ -4830,6 +4830,8 @@ function renderApp() {
     console.warn('renderApp: fant ikke #app')
     return
   }
+  /** Fjern ev. gammelt AI-overlay lagt på body (unngå usynlig lag som blokkerer klikk). */
+  document.querySelector('body > #home-ai-fullscreen')?.remove()
   const banner = insecureContextBannerHtml()
   let main = ''
   if (!currentUser) {
@@ -5412,17 +5414,6 @@ function bindHomeListeners() {
   startHomeVegrefTracking()
 }
 
-function mountHomeAiFullscreenToBody(mount) {
-  const fs = document.getElementById('home-ai-fullscreen')
-  const panel = document.getElementById('panel-home-bilde-ai')
-  if (!fs || !panel) return
-  if (mount) {
-    if (fs.parentElement !== document.body) document.body.appendChild(fs)
-  } else if (fs.parentElement === document.body) {
-    panel.appendChild(fs)
-  }
-}
-
 function setHomeBildeSubTab(which) {
   const tabCam = document.getElementById('tab-home-bilde-camera')
   const tabAi = document.getElementById('tab-home-bilde-ai')
@@ -5436,7 +5427,6 @@ function setHomeBildeSubTab(which) {
   tabAi.classList.toggle('home-bilde-tabs__tab--active', !isCam)
   panelCam.hidden = !isCam
   panelAi.hidden = isCam
-  mountHomeAiFullscreenToBody(!isCam)
   if (isCam) {
     stopHomeAiCamera()
   } else {
