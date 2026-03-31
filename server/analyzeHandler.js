@@ -158,7 +158,7 @@ export async function handleAnalyze(req, res) {
       const completion = await openai.chat.completions.create({
         model,
         response_format: isFirstShot ? { type: 'json_object' } : undefined,
-        max_tokens: isFirstShot ? 2500 : 1800,
+        max_tokens: isFirstShot ? 2500 : 4096,
         messages: [{ role: 'system', content: sys }, ...msgs],
       })
 

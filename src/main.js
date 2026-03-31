@@ -5718,6 +5718,62 @@ async function sendHomeAiChatMessage() {
       return
     }
 
+    /**
+     * Oppfølging via { messages } feiler ofte på eldre deploy / modellgrenser.
+     * Fallback: samme legacy-endepunkt som første analyse, med [Oppfølging] + bilde.
+     */
+    if (!requestWasFirstShot) {
+      const extracted = extractHomeAiFollowupReply(
+        /** @type {Record<string, unknown>} */ (data),
+      )
+      if (!r.ok || !extracted.trim()) {
+        homeAiApiMessages.pop()
+        const legacyFollowBody = {
+          image: homeAiCapturedDataUrl,
+          text: `[Oppfølging] ${textRaw}`,
+          ...(vehicle ? { vehicle } : {}),
+          ...(temperature ? { temperature } : {}),
+        }
+        r = await fetch(apiUrl('/api/analyze'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(legacyFollowBody),
+        })
+        const ctF = r.headers.get('content-type') || ''
+        if (ctF.includes('application/json')) {
+          data = await r.json().catch(() => ({}))
+        } else {
+          await r.text().catch(() => '')
+        }
+        if (!r.ok) {
+          const fromApi =
+            data && typeof data.error === 'string' ? data.error : null
+          const hint404 = r.status === 404 ? hintApiNotFound() : ''
+          throw new Error(
+            fromApi ||
+              (r.status === 404
+                ? `Fant ikke API (404).${hint404}`
+                : `Feil ${r.status}`),
+          )
+        }
+        homeAiApiMessages.push({ role: 'user', content: textRaw })
+        homeAiApiMessages.push({
+          role: 'assistant',
+          content: JSON.stringify(data),
+        })
+        appendHomeAiChatBubble(
+          'assistant',
+          renderHomeAiStructuredHtml(
+            /** @type {{ problem?: unknown, risk?: unknown, action?: unknown, explanation?: unknown, report?: unknown }} */ (
+              data
+            ),
+          ),
+        )
+        if (statusEl) statusEl.textContent = 'Ferdig.'
+        return
+      }
+    }
+
     if (!r.ok) {
       const fromApi =
         data && typeof data.error === 'string' ? data.error : null
@@ -5767,7 +5823,10 @@ async function sendHomeAiChatMessage() {
     }
     if (statusEl) statusEl.textContent = 'Ferdig.'
   } catch (e) {
-    homeAiApiMessages.pop()
+    const last = homeAiApiMessages[homeAiApiMessages.length - 1]
+    if (last && last.role === 'user') {
+      homeAiApiMessages.pop()
+    }
     if (statusEl) {
       statusEl.textContent =
         e && typeof e === 'object' && 'message' in e
