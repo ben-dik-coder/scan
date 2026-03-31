@@ -5605,8 +5605,11 @@ async function sendHomeAiChatMessage() {
   const temperature =
     document.getElementById('home-ai-temp-chat')?.value?.trim() ?? ''
 
-  const isFirst = homeAiApiMessages.length === 0
-  if (!isFirst && !textRaw) {
+  /** Første runde (bilde) er ikke «oppfølging» før det finnes et assistentsvar i tråden. */
+  const hadAssistantInThread = homeAiApiMessages.some(
+    (m) => m.role === 'assistant',
+  )
+  if (hadAssistantInThread && !textRaw) {
     if (statusEl) statusEl.textContent = 'Skriv et oppfølgingsspørsmål.'
     return
   }
@@ -5632,11 +5635,14 @@ async function sendHomeAiChatMessage() {
     ],
   }
 
-  if (isFirst) {
-    homeAiApiMessages = [multimodalUser]
-  } else {
+  if (hadAssistantInThread) {
     homeAiApiMessages.push({ role: 'user', content: textRaw })
+  } else {
+    homeAiApiMessages = [multimodalUser]
   }
+
+  /** Server: én user-melding = JSON-rapport; flere = { reply } */
+  const requestWasFirstShot = homeAiApiMessages.length === 1
 
   if (statusEl) statusEl.textContent = 'Tenker …'
   if (sendBtn) sendBtn.disabled = true
@@ -5654,7 +5660,7 @@ async function sendHomeAiChatMessage() {
       await r.text().catch(() => '')
     }
 
-    if (!r.ok && isFirst && homeAiApiMessages.length === 1) {
+    if (!r.ok && requestWasFirstShot) {
       homeAiApiMessages = []
       const legacyBody = {
         image: homeAiCapturedDataUrl,
@@ -5712,7 +5718,7 @@ async function sendHomeAiChatMessage() {
       )
     }
 
-    if (isFirst) {
+    if (requestWasFirstShot) {
       homeAiApiMessages.push({
         role: 'assistant',
         content: JSON.stringify(data),
@@ -5726,12 +5732,24 @@ async function sendHomeAiChatMessage() {
         ),
       )
     } else {
-      const reply =
+      let reply =
         typeof data.reply === 'string'
           ? data.reply
           : data.reply != null
             ? String(data.reply)
             : ''
+      if (!reply.trim() && data.problem != null) {
+        reply = [
+          data.problem,
+          data.risk,
+          data.action,
+          data.explanation,
+          data.report,
+        ]
+          .filter((x) => x != null && String(x).trim())
+          .map((x) => String(x))
+          .join('\n\n')
+      }
       homeAiApiMessages.push({ role: 'assistant', content: reply })
       appendHomeAiChatBubble('assistant', renderHomeAiFollowupReplyHtml(reply))
     }
