@@ -1,0 +1,13 @@
+# Avhengigheter og bygg (tunge mapper)
+node_modules/
+dist/
+
+# Logger og miljø
+logg/
+*.log
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store

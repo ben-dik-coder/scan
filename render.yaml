@@ -1,0 +1,28 @@
+# Render Blueprint: https://render.com/docs/infrastructure-as-code
+# Koble repo i Render → New Blueprint Instance → velg denne filen.
+# Etter første deploy: sett OPENAI_API_KEY i Dashboard → Environment (Secret).
+
+services:
+  - type: web
+    name: scanix-api
+    runtime: node
+    # EU; fjern eller bytt om du vil ha annen region
+    region: frankfurt
+    # free = 0 kr; PDF/Chromium kan trenge mer RAM → oppgrader til Starter i Dashboard
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Bruker @sparticuz/chromium + puppeteer-core (se server/index.js)
+      - key: RENDER
+        value: "true"
+      - key: LISTEN_HOST
+        value: "0.0.0.0"
+      # Settes manuelt i Render Dashboard (ikke i git):
+      - key: OPENAI_API_KEY
+        sync: false
+      # Valgfritt i Dashboard: OPENAI_MODEL (standard i kode: gpt-4.1)

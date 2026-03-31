@@ -1,0 +1,22 @@
+{
+  "name": "scanix",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:http": "USE_HTTP=1 vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "pdf-server": "npm run start --prefix server"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "vite": "^8.0.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
+    "exifr": "^7.1.3",
+    "leaflet": "^1.9.4"
+  }
+}
