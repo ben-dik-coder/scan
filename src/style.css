@@ -1496,6 +1496,11 @@ form.auth-form[hidden] {
   flex-direction: column;
   overflow: hidden;
   pointer-events: auto;
+  /* Chat fyller hele skjermen i grått; kamera-scene overstyrer med mørkere blå */
+  background: #343541;
+}
+
+#panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-camera:not([hidden])) {
   background: #0e1422;
 }
 
@@ -1669,6 +1674,17 @@ form.auth-form[hidden] {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+/* Kun én scene synlig: skjult scene må ikke ta flex-plass (unngår delt visning i WebKit/Flex) */
+#home-ai-stage-camera[hidden],
+#home-ai-stage-chat[hidden] {
+  display: none !important;
+}
+
+/* Synlig chat-scene: fyll resten av kolonnen uten ekstra ytre scroll */
+#home-ai-stage-chat:not([hidden]) {
+  overflow: hidden;
 }
 
 .home-ai-gpt {
