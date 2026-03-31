@@ -3532,41 +3532,45 @@ function renderHomeHtml() {
         <p class="home-bilde-panel__hint">Trykk «Ta bilde» over for å åpne kamera og ta bilde til albumet.</p>
       </div>
       <div id="panel-home-bilde-ai" class="home-bilde-panel" role="tabpanel" aria-labelledby="tab-home-bilde-ai" hidden>
-        <p id="home-ai-status" class="home-ai-form__status home-ai-status--panel" role="status" aria-live="polite"></p>
-        <div id="home-ai-stage-camera" class="home-ai-stage home-ai-stage--camera">
-          <p class="home-bilde-panel__hint">Kamera åpnes – ta bilde for å chatte med AI om situasjonen.</p>
-          <div class="home-ai-video-stage" id="home-ai-video-stage">
-            <video id="home-ai-video" class="home-ai-video" playsinline muted autoplay></video>
-            <button type="button" class="home-ai-capture-fab" id="btn-home-ai-capture">Ta bilde</button>
+        <div id="home-ai-fullscreen" class="home-ai-fullscreen">
+          <p id="home-ai-status" class="home-ai-fs-status" role="status" aria-live="polite"></p>
+          <div id="home-ai-stage-camera" class="home-ai-stage home-ai-stage--camera home-ai-stage--fs" hidden>
+            <p class="home-bilde-panel__hint home-ai-camera-hint">Ta bilde, eller gå tilbake til chat.</p>
+            <div class="home-ai-video-stage" id="home-ai-video-stage">
+              <video id="home-ai-video" class="home-ai-video" playsinline muted autoplay></video>
+              <button type="button" class="home-ai-capture-fab" id="btn-home-ai-capture">Ta bilde</button>
+            </div>
+            <div class="home-ai-camera-actions">
+              <button type="button" class="btn btn-text home-ai-file-fallback" id="btn-home-ai-pick-file">Velg bilde fra filer</button>
+              <button type="button" class="btn btn-text" id="btn-home-ai-back-to-chat">Tilbake til chat</button>
+            </div>
+            <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
           </div>
-          <button type="button" class="btn btn-text home-ai-file-fallback" id="btn-home-ai-pick-file">Velg bilde fra filer</button>
-          <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
-        </div>
-        <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt" hidden>
-          <header class="home-ai-gpt__header">
-            <span class="home-ai-gpt__title">AI dokumentering</span>
-            <button type="button" class="home-ai-gpt__new-chat" id="btn-home-ai-retake">Nytt bilde</button>
-          </header>
-          <div class="home-ai-gpt__context">
-            <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Bilde i samtalen" width="72" height="72" />
-            <details class="home-ai-gpt__details">
-              <summary class="home-ai-gpt__details-sum">Valgfritt: kjøretøy og føre</summary>
-              <div class="home-ai-gpt__details-body">
-                <label class="home-ai-gpt__mini-label" for="home-ai-vehicle-chat">Kjøretøy / utstyr</label>
-                <input type="text" id="home-ai-vehicle-chat" class="home-ai-gpt__mini-input" autocomplete="off" />
-                <label class="home-ai-gpt__mini-label" for="home-ai-temp-chat">Temperatur / føre</label>
-                <input type="text" id="home-ai-temp-chat" class="home-ai-gpt__mini-input" placeholder="f.eks. −5 °C" autocomplete="off" />
+          <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs">
+            <header class="home-ai-gpt__header">
+              <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Lukk">← Lukk</button>
+              <span class="home-ai-gpt__title">AI dokumentering</span>
+              <div class="home-ai-gpt__header-actions">
+                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-open-camera">Ta bilde</button>
+                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pick-file-chat">Filer</button>
+                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-retake">Nytt bilde</button>
               </div>
-            </details>
-          </div>
-          <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
-          <div class="home-ai-gpt__composer">
-            <div class="home-ai-gpt__input-shell">
-              <label class="visually-hidden" for="home-ai-chat-input">Melding til AI</label>
-              <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Melding til AI …"></textarea>
-              <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding">
-                <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-              </button>
+            </header>
+            <div class="home-ai-gpt__context">
+              <div class="home-ai-gpt__thumb-wrap" id="home-ai-thumb-wrap">
+                <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Valgt bilde" width="72" height="72" hidden />
+                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Ingen bilde ennå – bruk «Ta bilde» eller «Filer».</p>
+              </div>
+            </div>
+            <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
+            <div class="home-ai-gpt__composer">
+              <div class="home-ai-gpt__input-shell">
+                <label class="visually-hidden" for="home-ai-chat-input">Melding til AI</label>
+                <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Melding til AI …"></textarea>
+                <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding">
+                  <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5424,10 +5428,8 @@ function setHomeBildeSubTab(which) {
   if (isCam) {
     stopHomeAiCamera()
   } else {
-    const chatEl = document.getElementById('home-ai-stage-chat')
-    if (chatEl?.hasAttribute('hidden')) {
-      void startHomeAiCameraForPanel()
-    }
+    document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
+    document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
   }
 }
 
@@ -5474,17 +5476,6 @@ async function startHomeAiCameraForPanel() {
   }
 }
 
-function buildHomeAiUserTextLine(text, vehicle, temperature) {
-  let s = `Brukerens beskrivelse:\n${String(text).trim()}`
-  if (vehicle != null && String(vehicle).trim()) {
-    s += `\n\nKjøretøy/utstyr (valgfritt): ${String(vehicle).trim()}`
-  }
-  if (temperature != null && String(temperature).trim()) {
-    s += `\n\nTemperatur / føreforhold (valgfritt): ${String(temperature).trim()}`
-  }
-  return s
-}
-
 function captureHomeAiFrameToDataUrl() {
   const video = document.getElementById('home-ai-video')
   if (!video || !video.videoWidth) return ''
@@ -5517,6 +5508,7 @@ function enterHomeAiChatWithImage(dataUrl) {
   stopHomeAiCamera()
   const img = document.getElementById('home-ai-preview-img')
   if (img) img.src = dataUrl
+  syncHomeAiPreviewThumb()
   document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
   document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
   const log = document.getElementById('home-ai-chat-log')
@@ -5531,11 +5523,12 @@ function retakeHomeAiDoc() {
   homeAiApiMessages = []
   const log = document.getElementById('home-ai-chat-log')
   if (log) log.innerHTML = ''
-  document.getElementById('home-ai-stage-chat')?.setAttribute('hidden', '')
-  document.getElementById('home-ai-stage-camera')?.removeAttribute('hidden')
+  stopHomeAiCamera()
+  syncHomeAiPreviewThumb()
+  document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
+  document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
   const st = document.getElementById('home-ai-status')
   if (st) st.textContent = ''
-  void startHomeAiCameraForPanel()
 }
 
 function appendHomeAiChatBubble(role, html) {
@@ -5570,15 +5563,35 @@ function renderHomeAiStructuredHtml(data) {
 const HOME_AI_DEFAULT_FIRST_TEXT =
   'Se bildet og gi en kort veivokter-vurdering (sikkerhet, føre, praktiske tiltak).'
 
-function buildHomeAiUserText(text, vehicle, temperature) {
-  let s = `Brukerens beskrivelse:\n${String(text).trim()}`
-  if (vehicle) {
-    s += `\n\nKjøretøy/utstyr (valgfritt): ${vehicle}`
+function buildHomeAiUserText(text) {
+  return `Brukerens beskrivelse:\n${String(text).trim()}`
+}
+
+function syncHomeAiPreviewThumb() {
+  const img = document.getElementById('home-ai-preview-img')
+  const ph = document.getElementById('home-ai-thumb-placeholder')
+  const has = Boolean(homeAiCapturedDataUrl && homeAiCapturedDataUrl.length > 32)
+  if (img) {
+    if (has) {
+      img.removeAttribute('hidden')
+    } else {
+      img.setAttribute('hidden', '')
+      img.removeAttribute('src')
+    }
   }
-  if (temperature) {
-    s += `\n\nTemperatur / føreforhold (valgfritt): ${temperature}`
-  }
-  return s
+  if (ph) ph.hidden = has
+}
+
+function openHomeAiCameraStage() {
+  document.getElementById('home-ai-stage-chat')?.setAttribute('hidden', '')
+  document.getElementById('home-ai-stage-camera')?.removeAttribute('hidden')
+  void startHomeAiCameraForPanel()
+}
+
+function backHomeAiChatFromCamera() {
+  stopHomeAiCamera()
+  document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
+  document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
 }
 
 function renderHomeAiFollowupReplyHtml(text) {
@@ -5612,11 +5625,6 @@ async function sendHomeAiChatMessage() {
   const textForApi =
     textRaw.length > 0 ? textRaw : HOME_AI_DEFAULT_FIRST_TEXT
 
-  const vehicle =
-    document.getElementById('home-ai-vehicle-chat')?.value?.trim() ?? ''
-  const temperature =
-    document.getElementById('home-ai-temp-chat')?.value?.trim() ?? ''
-
   /** Første runde (bilde) er ikke «oppfølging» før det finnes et assistentsvar i tråden. */
   const hadAssistantInThread = homeAiApiMessages.some(
     (m) => m.role === 'assistant',
@@ -5638,7 +5646,7 @@ async function sendHomeAiChatMessage() {
     content: [
       {
         type: 'text',
-        text: buildHomeAiUserText(String(textForApi), vehicle, temperature),
+        text: buildHomeAiUserText(String(textForApi)),
       },
       {
         type: 'image_url',
@@ -5677,8 +5685,6 @@ async function sendHomeAiChatMessage() {
       const legacyBody = {
         image: homeAiCapturedDataUrl,
         text: String(textForApi),
-        ...(vehicle ? { vehicle } : {}),
-        ...(temperature ? { temperature } : {}),
       }
       r = await fetch(apiUrl('/api/analyze'), {
         method: 'POST',
@@ -5731,8 +5737,6 @@ async function sendHomeAiChatMessage() {
         const legacyFollowBody = {
           image: homeAiCapturedDataUrl,
           text: `[Oppfølging] ${textRaw}`,
-          ...(vehicle ? { vehicle } : {}),
-          ...(temperature ? { temperature } : {}),
         }
         r = await fetch(apiUrl('/api/analyze'), {
           method: 'POST',
@@ -5870,6 +5874,33 @@ function bindHomeAiDocumentationListeners(signal) {
   document.getElementById('btn-home-ai-pick-file')?.addEventListener(
     'click',
     () => document.getElementById('home-ai-image-fallback')?.click(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-pick-file-chat')?.addEventListener(
+    'click',
+    () => document.getElementById('home-ai-image-fallback')?.click(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-open-camera')?.addEventListener(
+    'click',
+    () => openHomeAiCameraStage(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-back-to-chat')?.addEventListener(
+    'click',
+    () => backHomeAiChatFromCamera(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-close-fs')?.addEventListener(
+    'click',
+    () => {
+      stopHomeAiCamera()
+      setHomeBildeSubTab('camera')
+    },
     { signal },
   )
 
