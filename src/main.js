@@ -5578,33 +5578,38 @@ async function sendHomeAiChatMessage() {
   )
   if (input) input.value = ''
 
-  const userContent =
-    isFirst
-      ? [
-          {
-            type: 'text',
-            text: buildHomeAiUserTextLine(textRaw, vehicle, temperature),
-          },
-          {
-            type: 'image_url',
-            image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
-          },
-        ]
-      : textRaw
+  const multimodalUser = [
+    {
+      type: 'text',
+      text: buildHomeAiUserTextLine(textRaw, vehicle, temperature),
+    },
+    {
+      type: 'image_url',
+      image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
+    },
+  ]
 
-  if (isFirst) {
-    homeAiOpenAiMessages = [{ role: 'user', content: userContent }]
-  } else {
-    homeAiOpenAiMessages.push({ role: 'user', content: userContent })
+  if (!isFirst) {
+    homeAiOpenAiMessages.push({ role: 'user', content: textRaw })
   }
 
   if (statusEl) statusEl.textContent = 'Tenker …'
   if (sendBtn) sendBtn.disabled = true
   try {
+    /** Første melding: bruk klassisk { image, text } så eldre Render uten `messages`-støtte fungerer. */
+    const body = isFirst
+      ? {
+          image: homeAiCapturedDataUrl,
+          text: textRaw,
+          ...(vehicle ? { vehicle } : {}),
+          ...(temperature ? { temperature } : {}),
+        }
+      : { messages: homeAiOpenAiMessages }
+
     const r = await fetch(apiUrl('/api/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: homeAiOpenAiMessages }),
+      body: JSON.stringify(body),
     })
     const ct = r.headers.get('content-type') || ''
     let data = /** @type {Record<string, unknown>} */ ({})
@@ -5626,10 +5631,10 @@ async function sendHomeAiChatMessage() {
     }
 
     if (isFirst) {
-      homeAiOpenAiMessages.push({
-        role: 'assistant',
-        content: JSON.stringify(data),
-      })
+      homeAiOpenAiMessages = [
+        { role: 'user', content: multimodalUser },
+        { role: 'assistant', content: JSON.stringify(data) },
+      ]
       appendHomeAiChatBubble(
         'assistant',
         renderHomeAiStructuredHtml(

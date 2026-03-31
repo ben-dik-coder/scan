@@ -1,0 +1,26 @@
+================================================================================
+  Lim inn i Terminal (Cursor eller Terminal.app) – én blokk om gangen
+  Katalog må være prosjektmappen count-clicker
+================================================================================
+
+1) Gå til prosjektmappen:
+
+cd "/Users/ben/Desktop/Skred beisfjord/count-clicker"
+
+
+2) Send endringer til GitHub (oppdaterer Cloudflare når du pusher til main):
+
+git add .
+git commit -m "Beskriv kort hva du endret"
+git push origin main
+
+
+3) Valgfritt – sjekk at alt er sendt:
+
+git status
+
+
+================================================================================
+  Merk: Første gang Git spør om passord på GitHub: bruk Personal Access Token
+  som passord (ikke vanlig GitHub-passord).
+================================================================================
