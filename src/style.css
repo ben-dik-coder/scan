@@ -1672,6 +1672,11 @@ form.auth-form[hidden] {
   margin: 0;
 }
 
+.home-ai-chat__em {
+  font-style: italic;
+  opacity: 0.88;
+}
+
 .home-ai-result--inchat {
   margin: 0;
   padding: 0.4rem 0;

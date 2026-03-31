@@ -5551,19 +5551,22 @@ function renderHomeAiStructuredHtml(data) {
     </div>`
 }
 
+const HOME_AI_DEFAULT_FIRST_TEXT =
+  'Se bildet og gi en kort veivokter-vurdering (sikkerhet, føre, praktiske tiltak).'
+
 async function sendHomeAiChatMessage() {
   const statusEl = document.getElementById('home-ai-status')
   const input = document.getElementById('home-ai-chat-input')
   const sendBtn = document.getElementById('btn-home-ai-send')
-  const textRaw = input?.value?.trim() ?? ''
-  if (!textRaw) {
-    if (statusEl) statusEl.textContent = 'Skriv en melding.'
-    return
-  }
   if (!homeAiCapturedDataUrl) {
     if (statusEl) statusEl.textContent = 'Mangler bilde. Ta bilde på nytt.'
     return
   }
+
+  const textRaw = input?.value?.trim() ?? ''
+  /** API krever ikke-tom «beskrivelse» – bruk standard hvis bruker kun sender bilde. */
+  const textForApi =
+    textRaw.length > 0 ? textRaw : HOME_AI_DEFAULT_FIRST_TEXT
 
   const vehicle =
     document.getElementById('home-ai-vehicle-chat')?.value?.trim() ?? ''
@@ -5571,17 +5574,22 @@ async function sendHomeAiChatMessage() {
     document.getElementById('home-ai-temp-chat')?.value?.trim() ?? ''
 
   const isFirst = homeAiOpenAiMessages.length === 0
-  const userBubbleText = escapeHtml(textRaw).replace(/\n/g, '<br />')
-  appendHomeAiChatBubble(
-    'user',
-    `<p class="home-ai-chat__p">${userBubbleText}</p>`,
-  )
+  if (!isFirst && !textRaw) {
+    if (statusEl) statusEl.textContent = 'Skriv et oppfølgingsspørsmål.'
+    return
+  }
+
+  const bubbleHtml =
+    textRaw.length > 0
+      ? escapeHtml(textRaw).replace(/\n/g, '<br />')
+      : '<em class="home-ai-chat__em">(Ingen egen tekst – analyse av bildet)</em>'
+  appendHomeAiChatBubble('user', `<p class="home-ai-chat__p">${bubbleHtml}</p>`)
   if (input) input.value = ''
 
   const multimodalUser = [
     {
       type: 'text',
-      text: buildHomeAiUserTextLine(textRaw, vehicle, temperature),
+      text: buildHomeAiUserTextLine(textForApi, vehicle, temperature),
     },
     {
       type: 'image_url',
@@ -5592,6 +5600,8 @@ async function sendHomeAiChatMessage() {
   if (!isFirst) {
     homeAiOpenAiMessages.push({ role: 'user', content: textRaw })
   }
+  /** Til første kall: alltid ikke-tom streng til server (klassisk body.text). */
+  const legacyText = isFirst ? textForApi : textRaw
 
   if (statusEl) statusEl.textContent = 'Tenker …'
   if (sendBtn) sendBtn.disabled = true
@@ -5600,7 +5610,7 @@ async function sendHomeAiChatMessage() {
     const body = isFirst
       ? {
           image: homeAiCapturedDataUrl,
-          text: textRaw,
+          text: String(legacyText),
           ...(vehicle ? { vehicle } : {}),
           ...(temperature ? { temperature } : {}),
         }
