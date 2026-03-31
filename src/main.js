@@ -1344,6 +1344,14 @@ const KMT_METER_SNAP_IF_DELTA = 280
 /** True når KMT er åpnet fra forsiden – bilder til album, tilbake → album (ikke økt). */
 let kmtStandaloneFlow = false
 
+/** Forsiden «AI dokumentering»: kamera + flertråds chat mot /api/analyze. */
+let homeAiMediaStream = null
+/** @type {string} */
+let homeAiCapturedDataUrl = ''
+/** @type {Array<{ role: string, content: unknown }>} */
+let homeAiOpenAiMessages = []
+const HOME_AI_CAPTURE_MAX = 1600
+
 /** Når true, hold kartutsnittet på den blå posisjonen (GPS). Slås av ved manuell panorering/zoom. */
 let followUserOnMap = true
 /** Siste kjente posisjon fra watchPosition (oppdateres hele tiden). */
@@ -3521,21 +3529,34 @@ function renderHomeHtml() {
         <p class="home-bilde-panel__hint">Trykk «Ta bilde» over for å åpne kamera og ta bilde til albumet.</p>
       </div>
       <div id="panel-home-bilde-ai" class="home-bilde-panel" role="tabpanel" aria-labelledby="tab-home-bilde-ai" hidden>
-        <form id="form-home-ai-doc" class="home-ai-form">
-          <label class="home-ai-form__label" for="home-ai-image">Bilde</label>
-          <input type="file" id="home-ai-image" class="home-ai-form__file" accept="image/*" />
-          <label class="home-ai-form__label" for="home-ai-image-url">Alternativt: bilde-URL</label>
-          <input type="url" id="home-ai-image-url" class="home-ai-form__input" placeholder="https://…" autocomplete="off" />
-          <label class="home-ai-form__label" for="home-ai-text">Beskrivelse</label>
-          <textarea id="home-ai-text" class="home-ai-form__textarea" rows="3" placeholder="Hva viser bildet? Hva trenger du hjelp til?" required></textarea>
-          <label class="home-ai-form__label" for="home-ai-vehicle">Kjøretøy / utstyr (valgfritt)</label>
-          <input type="text" id="home-ai-vehicle" class="home-ai-form__input" autocomplete="off" />
-          <label class="home-ai-form__label" for="home-ai-temp">Temperatur / føre (valgfritt)</label>
-          <input type="text" id="home-ai-temp" class="home-ai-form__input" placeholder="f.eks. −5 °C, snø" autocomplete="off" />
-          <button type="submit" class="btn home-ai-form__submit" id="btn-home-ai-submit">Analyser</button>
-          <p id="home-ai-status" class="home-ai-form__status" role="status" aria-live="polite"></p>
-          <div id="home-ai-result" class="home-ai-result" hidden></div>
-        </form>
+        <p id="home-ai-status" class="home-ai-form__status home-ai-status--panel" role="status" aria-live="polite"></p>
+        <div id="home-ai-stage-camera" class="home-ai-stage home-ai-stage--camera">
+          <p class="home-bilde-panel__hint">Kamera åpnes – ta bilde for å chatte med AI om situasjonen.</p>
+          <div class="home-ai-video-stage" id="home-ai-video-stage">
+            <video id="home-ai-video" class="home-ai-video" playsinline muted autoplay></video>
+            <button type="button" class="home-ai-capture-fab" id="btn-home-ai-capture">Ta bilde</button>
+          </div>
+          <button type="button" class="btn btn-text home-ai-file-fallback" id="btn-home-ai-pick-file">Velg bilde fra filer</button>
+          <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
+        </div>
+        <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat" hidden>
+          <div class="home-ai-preview-row">
+            <img id="home-ai-preview-img" class="home-ai-preview-img" alt="Valgt bilde" width="120" height="120" />
+            <button type="button" class="btn btn-text" id="btn-home-ai-retake">Nytt bilde</button>
+          </div>
+          <div class="home-ai-opt-row">
+            <label class="home-ai-form__label" for="home-ai-vehicle-chat">Kjøretøy / utstyr (valgfritt)</label>
+            <input type="text" id="home-ai-vehicle-chat" class="home-ai-form__input" autocomplete="off" />
+            <label class="home-ai-form__label" for="home-ai-temp-chat">Temperatur / føre (valgfritt)</label>
+            <input type="text" id="home-ai-temp-chat" class="home-ai-form__input" placeholder="f.eks. −5 °C" autocomplete="off" />
+          </div>
+          <div id="home-ai-chat-log" class="home-ai-chat-log"></div>
+          <div class="home-ai-composer">
+            <label class="visually-hidden" for="home-ai-chat-input">Melding til AI</label>
+            <textarea id="home-ai-chat-input" class="home-ai-form__textarea home-ai-composer__input" rows="2" placeholder="Beskriv situasjonen eller still et oppfølgingsspørsmål…"></textarea>
+            <button type="button" class="btn home-ai-form__submit" id="btn-home-ai-send">Send</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="home-drawer-backdrop" id="home-drawer-backdrop" hidden aria-hidden="true"></div>
@@ -5387,6 +5408,261 @@ function setHomeBildeSubTab(which) {
   tabAi.classList.toggle('home-bilde-tabs__tab--active', !isCam)
   panelCam.hidden = !isCam
   panelAi.hidden = isCam
+  if (isCam) {
+    stopHomeAiCamera()
+  } else {
+    const chatEl = document.getElementById('home-ai-stage-chat')
+    if (chatEl?.hasAttribute('hidden')) {
+      void startHomeAiCameraForPanel()
+    }
+  }
+}
+
+function stopHomeAiCamera() {
+  const video = document.getElementById('home-ai-video')
+  if (video) video.srcObject = null
+  if (homeAiMediaStream) {
+    for (const t of homeAiMediaStream.getTracks()) {
+      try {
+        t.stop()
+      } catch {
+        /* ignore */
+      }
+    }
+    homeAiMediaStream = null
+  }
+}
+
+async function startHomeAiCameraForPanel() {
+  const video = document.getElementById('home-ai-video')
+  if (!video || !navigator.mediaDevices?.getUserMedia) {
+    const st = document.getElementById('home-ai-status')
+    if (st) {
+      st.textContent =
+        'Kamera er ikke tilgjengelig. Bruk «Velg bilde fra filer».'
+    }
+    return
+  }
+  stopHomeAiCamera()
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    })
+    homeAiMediaStream = stream
+    video.srcObject = stream
+    await video.play()
+  } catch {
+    const st = document.getElementById('home-ai-status')
+    if (st) {
+      st.textContent =
+        'Kunne ikke starte kamera. Bruk «Velg bilde fra filer» eller sjekk tillatelser.'
+    }
+  }
+}
+
+function buildHomeAiUserTextLine(text, vehicle, temperature) {
+  let s = `Brukerens beskrivelse:\n${String(text).trim()}`
+  if (vehicle != null && String(vehicle).trim()) {
+    s += `\n\nKjøretøy/utstyr (valgfritt): ${String(vehicle).trim()}`
+  }
+  if (temperature != null && String(temperature).trim()) {
+    s += `\n\nTemperatur / føreforhold (valgfritt): ${String(temperature).trim()}`
+  }
+  return s
+}
+
+function captureHomeAiFrameToDataUrl() {
+  const video = document.getElementById('home-ai-video')
+  if (!video || !video.videoWidth) return ''
+  const w = video.videoWidth
+  const h = video.videoHeight
+  let tw = w
+  let th = h
+  const max = HOME_AI_CAPTURE_MAX
+  if (w > max || h > max) {
+    if (w >= h) {
+      tw = max
+      th = Math.round((h * max) / w)
+    } else {
+      th = max
+      tw = Math.round((w * max) / h)
+    }
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = tw
+  canvas.height = th
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  ctx.drawImage(video, 0, 0, tw, th)
+  return canvas.toDataURL('image/jpeg', 0.88)
+}
+
+function enterHomeAiChatWithImage(dataUrl) {
+  homeAiCapturedDataUrl = dataUrl
+  homeAiOpenAiMessages = []
+  stopHomeAiCamera()
+  const img = document.getElementById('home-ai-preview-img')
+  if (img) img.src = dataUrl
+  document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
+  document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
+  const log = document.getElementById('home-ai-chat-log')
+  if (log) log.innerHTML = ''
+  const st = document.getElementById('home-ai-status')
+  if (st) st.textContent = ''
+  document.getElementById('home-ai-chat-input')?.focus()
+}
+
+function retakeHomeAiDoc() {
+  homeAiCapturedDataUrl = ''
+  homeAiOpenAiMessages = []
+  const log = document.getElementById('home-ai-chat-log')
+  if (log) log.innerHTML = ''
+  document.getElementById('home-ai-stage-chat')?.setAttribute('hidden', '')
+  document.getElementById('home-ai-stage-camera')?.removeAttribute('hidden')
+  const st = document.getElementById('home-ai-status')
+  if (st) st.textContent = ''
+  void startHomeAiCameraForPanel()
+}
+
+function appendHomeAiChatBubble(role, html) {
+  const log = document.getElementById('home-ai-chat-log')
+  if (!log) return
+  const wrap = document.createElement('div')
+  wrap.className = `home-ai-chat__bubble home-ai-chat__bubble--${role}`
+  wrap.innerHTML = html
+  log.appendChild(wrap)
+  log.scrollTop = log.scrollHeight
+}
+
+function renderHomeAiStructuredHtml(data) {
+  const problem = escapeHtml(String(data.problem ?? ''))
+  const risk = escapeHtml(String(data.risk ?? ''))
+  const action = escapeHtml(String(data.action ?? ''))
+  const explanation = escapeHtml(String(data.explanation ?? ''))
+  const report = escapeHtml(String(data.report ?? '')).replace(/\n/g, '<br />')
+  return `
+    <div class="home-ai-result home-ai-result--inchat">
+      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Problem</h3><p class="home-ai-result__p">${problem}</p></div>
+      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Risiko</h3><p class="home-ai-result__p">${risk}</p></div>
+      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Tiltak</h3><p class="home-ai-result__p">${action}</p></div>
+      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Forklaring</h3><p class="home-ai-result__p">${explanation}</p></div>
+      <div class="home-ai-result__block home-ai-result__block--report"><h3 class="home-ai-result__h">Rapport</h3><p class="home-ai-result__p home-ai-result__report">${report}</p></div>
+    </div>`
+}
+
+async function sendHomeAiChatMessage() {
+  const statusEl = document.getElementById('home-ai-status')
+  const input = document.getElementById('home-ai-chat-input')
+  const sendBtn = document.getElementById('btn-home-ai-send')
+  const textRaw = input?.value?.trim() ?? ''
+  if (!textRaw) {
+    if (statusEl) statusEl.textContent = 'Skriv en melding.'
+    return
+  }
+  if (!homeAiCapturedDataUrl) {
+    if (statusEl) statusEl.textContent = 'Mangler bilde. Ta bilde på nytt.'
+    return
+  }
+
+  const vehicle =
+    document.getElementById('home-ai-vehicle-chat')?.value?.trim() ?? ''
+  const temperature =
+    document.getElementById('home-ai-temp-chat')?.value?.trim() ?? ''
+
+  const isFirst = homeAiOpenAiMessages.length === 0
+  const userBubbleText = escapeHtml(textRaw).replace(/\n/g, '<br />')
+  appendHomeAiChatBubble(
+    'user',
+    `<p class="home-ai-chat__p">${userBubbleText}</p>`,
+  )
+  if (input) input.value = ''
+
+  const userContent =
+    isFirst
+      ? [
+          {
+            type: 'text',
+            text: buildHomeAiUserTextLine(textRaw, vehicle, temperature),
+          },
+          {
+            type: 'image_url',
+            image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
+          },
+        ]
+      : textRaw
+
+  if (isFirst) {
+    homeAiOpenAiMessages = [{ role: 'user', content: userContent }]
+  } else {
+    homeAiOpenAiMessages.push({ role: 'user', content: userContent })
+  }
+
+  if (statusEl) statusEl.textContent = 'Tenker …'
+  if (sendBtn) sendBtn.disabled = true
+  try {
+    const r = await fetch(apiUrl('/api/analyze'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: homeAiOpenAiMessages }),
+    })
+    const ct = r.headers.get('content-type') || ''
+    let data = /** @type {Record<string, unknown>} */ ({})
+    if (ct.includes('application/json')) {
+      data = await r.json().catch(() => ({}))
+    } else {
+      await r.text().catch(() => '')
+    }
+    if (!r.ok) {
+      const fromApi =
+        data && typeof data.error === 'string' ? data.error : null
+      const hint404 = r.status === 404 ? hintApiNotFound() : ''
+      throw new Error(
+        fromApi ||
+          (r.status === 404
+            ? `Fant ikke API (404).${hint404}`
+            : `Feil ${r.status}`),
+      )
+    }
+
+    if (isFirst) {
+      homeAiOpenAiMessages.push({
+        role: 'assistant',
+        content: JSON.stringify(data),
+      })
+      appendHomeAiChatBubble(
+        'assistant',
+        renderHomeAiStructuredHtml(
+          /** @type {{ problem?: unknown, risk?: unknown, action?: unknown, explanation?: unknown, report?: unknown }} */ (
+            data
+          ),
+        ),
+      )
+    } else {
+      const reply =
+        typeof data.reply === 'string' ? data.reply : String(data.reply ?? '')
+      homeAiOpenAiMessages.push({ role: 'assistant', content: reply })
+      const safe = escapeHtml(reply).replace(/\n/g, '<br />')
+      appendHomeAiChatBubble(
+        'assistant',
+        `<div class="home-ai-chat__reply"><p class="home-ai-chat__p">${safe}</p></div>`,
+      )
+    }
+    if (statusEl) statusEl.textContent = 'Ferdig.'
+  } catch (e) {
+    if (statusEl) {
+      statusEl.textContent =
+        e && typeof e === 'object' && 'message' in e
+          ? String(/** @type {{ message: string }} */ (e).message)
+          : 'Noe gikk galt.'
+    }
+    homeAiOpenAiMessages.pop()
+    const log = document.getElementById('home-ai-chat-log')
+    if (log?.lastElementChild) log.removeChild(log.lastElementChild)
+    if (input) input.value = textRaw
+  } finally {
+    if (sendBtn) sendBtn.disabled = false
+  }
 }
 
 function bindHomeAiDocumentationListeners(signal) {
@@ -5401,118 +5677,62 @@ function bindHomeAiDocumentationListeners(signal) {
     { signal },
   )
 
-  document.getElementById('form-home-ai-doc')?.addEventListener(
-    'submit',
+  document.getElementById('btn-home-ai-capture')?.addEventListener(
+    'click',
+    () => {
+      const dataUrl = captureHomeAiFrameToDataUrl()
+      if (!dataUrl) {
+        const st = document.getElementById('home-ai-status')
+        if (st) st.textContent = 'Vent til kameraet viser bildet, og prøv igjen.'
+        return
+      }
+      enterHomeAiChatWithImage(dataUrl)
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-pick-file')?.addEventListener(
+    'click',
+    () => document.getElementById('home-ai-image-fallback')?.click(),
+    { signal },
+  )
+
+  document.getElementById('home-ai-image-fallback')?.addEventListener(
+    'change',
     async (ev) => {
+      const t = /** @type {HTMLInputElement} */ (ev.target)
+      const file = t.files?.[0]
+      if (!file || !file.type.startsWith('image/')) return
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader()
+        r.onload = () => resolve(typeof r.result === 'string' ? r.result : '')
+        r.onerror = () => reject(new Error('Fil'))
+        r.readAsDataURL(file)
+      }).catch(() => '')
+      if (dataUrl) enterHomeAiChatWithImage(dataUrl)
+      t.value = ''
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-retake')?.addEventListener(
+    'click',
+    () => retakeHomeAiDoc(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-send')?.addEventListener(
+    'click',
+    () => void sendHomeAiChatMessage(),
+    { signal },
+  )
+
+  document.getElementById('home-ai-chat-input')?.addEventListener(
+    'keydown',
+    (ev) => {
+      if (ev.key !== 'Enter' || ev.shiftKey) return
       ev.preventDefault()
-      const statusEl = document.getElementById('home-ai-status')
-      const resultEl = document.getElementById('home-ai-result')
-      const submitBtn = document.getElementById('btn-home-ai-submit')
-      const text = document.getElementById('home-ai-text')?.value?.trim() ?? ''
-      const vehicle =
-        document.getElementById('home-ai-vehicle')?.value?.trim() ?? ''
-      const temperature =
-        document.getElementById('home-ai-temp')?.value?.trim() ?? ''
-      const urlInput =
-        document.getElementById('home-ai-image-url')?.value?.trim() ?? ''
-      const fileInput = document.getElementById('home-ai-image')
-      const file = fileInput?.files?.[0] ?? null
-
-      let imagePayload = null
-      if (urlInput) {
-        try {
-          // eslint-disable-next-line no-new
-          new URL(urlInput)
-          imagePayload = urlInput
-        } catch {
-          if (statusEl) statusEl.textContent = 'Ugyldig bilde-URL.'
-          return
-        }
-      } else if (file) {
-        imagePayload = await new Promise((resolve, reject) => {
-          const r = new FileReader()
-          r.onload = () => resolve(typeof r.result === 'string' ? r.result : '')
-          r.onerror = () => reject(new Error('Kunne ikke lese filen.'))
-          r.readAsDataURL(file)
-        })
-      }
-
-      if (!imagePayload) {
-        if (statusEl) {
-          statusEl.textContent =
-            'Velg et bilde (fil) eller lim inn en gyldig bilde-URL.'
-        }
-        return
-      }
-      if (!text) {
-        if (statusEl) statusEl.textContent = 'Skriv en kort beskrivelse.'
-        return
-      }
-
-      if (statusEl) statusEl.textContent = 'Analyserer …'
-      if (resultEl) {
-        resultEl.hidden = true
-        resultEl.innerHTML = ''
-      }
-      if (submitBtn) submitBtn.disabled = true
-      try {
-        const body = {
-          image: imagePayload,
-          text,
-          ...(vehicle ? { vehicle } : {}),
-          ...(temperature ? { temperature } : {}),
-        }
-        const r = await fetch(apiUrl('/api/analyze'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const ct = r.headers.get('content-type') || ''
-        let data = {}
-        if (ct.includes('application/json')) {
-          data = await r.json().catch(() => ({}))
-        } else {
-          await r.text().catch(() => '')
-        }
-        if (!r.ok) {
-          const fromApi =
-            data && typeof data.error === 'string' ? data.error : null
-          const hint404 = r.status === 404 ? hintApiNotFound() : ''
-          const err =
-            fromApi ||
-            (r.status === 404
-              ? `Fant ikke API (404).${hint404}`
-              : `Feil ${r.status}`)
-          throw new Error(err)
-        }
-        const problem = escapeHtml(String(data.problem ?? ''))
-        const risk = escapeHtml(String(data.risk ?? ''))
-        const action = escapeHtml(String(data.action ?? ''))
-        const explanation = escapeHtml(String(data.explanation ?? ''))
-        const report = escapeHtml(String(data.report ?? '')).replace(
-          /\n/g,
-          '<br />',
-        )
-        if (resultEl) {
-          resultEl.innerHTML = `
-            <div class="home-ai-result__block"><h3 class="home-ai-result__h">Problem</h3><p class="home-ai-result__p">${problem}</p></div>
-            <div class="home-ai-result__block"><h3 class="home-ai-result__h">Risiko</h3><p class="home-ai-result__p">${risk}</p></div>
-            <div class="home-ai-result__block"><h3 class="home-ai-result__h">Tiltak</h3><p class="home-ai-result__p">${action}</p></div>
-            <div class="home-ai-result__block"><h3 class="home-ai-result__h">Forklaring</h3><p class="home-ai-result__p">${explanation}</p></div>
-            <div class="home-ai-result__block home-ai-result__block--report"><h3 class="home-ai-result__h">Rapport</h3><p class="home-ai-result__p home-ai-result__report">${report}</p></div>`
-          resultEl.hidden = false
-        }
-        if (statusEl) statusEl.textContent = 'Ferdig.'
-      } catch (e) {
-        if (statusEl) {
-          statusEl.textContent =
-            e && typeof e === 'object' && 'message' in e
-              ? String(/** @type {{ message: string }} */ (e).message)
-              : 'Noe gikk galt.'
-        }
-      } finally {
-        if (submitBtn) submitBtn.disabled = false
-      }
+      void sendHomeAiChatMessage()
     },
     { signal },
   )

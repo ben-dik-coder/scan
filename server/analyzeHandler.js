@@ -1,4 +1,4 @@
-/**
+ /**
  * POST /api/analyze — OpenAI vision + tekst (veivokter-rapport).
  * Krever OPENAI_API_KEY. Modell: OPENAI_MODEL (standard gpt-4.1).
  */
@@ -25,6 +25,11 @@ Returner JSON med:
 - report (ferdig skrevet rapport klar til bruk)
 
 Svar ALLTID med gyldig JSON-objekt med nøklene problem, risk, action, explanation, report. Bruk norsk.`
+
+const SYSTEM_PROMPT_FOLLOWUP = `Du er en erfaren veivokter i Norge.
+Brukeren har et bilde og en tidligere analyse (JSON eller tekst) i samtalen.
+Svar kort og konkret på norsk på oppfølgingsspørsmålet, med utgangspunkt i bildet og analysen.
+Ikke gjenta hele JSON-analysen med mindre brukeren ber om det.`
 
 /**
  * @param {string} image
@@ -93,11 +98,62 @@ function getClient() {
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
+function isOpenAiMessagesArray(v) {
+  return Array.isArray(v) && v.length > 0 && v.length <= 40
+}
+
 export async function handleAnalyze(req, res) {
   try {
     const body = req.body
     if (!body || typeof body !== 'object') {
       res.status(400).json({ error: 'Ugyldig JSON.' })
+      return
+    }
+
+    const openai = getClient()
+    if (!openai) {
+      res.status(503).json({
+        error:
+          'OPENAI_API_KEY er ikke satt. Legg til nøkkel i miljøvariabler for serveren.',
+      })
+      return
+    }
+
+    const model = (process.env.OPENAI_MODEL || DEFAULT_MODEL).trim()
+
+    /** Flertråds chat: klient sender OpenAI-format messages (første = user med bilde). */
+    if (isOpenAiMessagesArray(body.messages)) {
+      const msgs = /** @type {Array<{ role: string, content: unknown }>} */ (
+        body.messages
+      )
+      const isFirstShot = msgs.length === 1
+      const sys = isFirstShot ? SYSTEM_PROMPT : SYSTEM_PROMPT_FOLLOWUP
+      const completion = await openai.chat.completions.create({
+        model,
+        response_format: isFirstShot ? { type: 'json_object' } : undefined,
+        max_tokens: isFirstShot ? 2500 : 1800,
+        messages: [{ role: 'system', content: sys }, ...msgs],
+      })
+
+      const raw = completion.choices[0]?.message?.content
+      if (!raw || typeof raw !== 'string') {
+        res.status(502).json({ error: 'Tomt svar fra modellen.' })
+        return
+      }
+
+      if (isFirstShot) {
+        let parsed
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          res.status(502).json({ error: 'Kunne ikke tolke JSON fra modellen.' })
+          return
+        }
+        res.json(coerceResult(parsed))
+        return
+      }
+
+      res.json({ reply: raw })
       return
     }
 
@@ -112,18 +168,8 @@ export async function handleAnalyze(req, res) {
       return
     }
 
-    const openai = getClient()
-    if (!openai) {
-      res.status(503).json({
-        error:
-          'OPENAI_API_KEY er ikke satt. Legg til nøkkel i miljøvariabler for serveren.',
-      })
-      return
-    }
-
     const imageUrl = await normalizeImageForOpenAI(String(image))
     const userText = buildUserText(text, vehicle, temperature)
-    const model = (process.env.OPENAI_MODEL || DEFAULT_MODEL).trim()
 
     const completion = await openai.chat.completions.create({
       model,
