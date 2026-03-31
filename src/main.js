@@ -1348,8 +1348,11 @@ let kmtStandaloneFlow = false
 let homeAiMediaStream = null
 /** @type {string} */
 let homeAiCapturedDataUrl = ''
-/** @type {Array<{ role: string, content: unknown }>} */
-let homeAiOpenAiMessages = []
+/**
+ * OpenAI-format meldinger for /api/analyze med `messages` (første user = bilde + tekst, deretter tekst + svar).
+ * @type {Array<{ role: string, content: unknown }>}
+ */
+let homeAiApiMessages = []
 const HOME_AI_CAPTURE_MAX = 1600
 
 /** Når true, hold kartutsnittet på den blå posisjonen (GPS). Slås av ved manuell panorering/zoom. */
@@ -3539,22 +3542,32 @@ function renderHomeHtml() {
           <button type="button" class="btn btn-text home-ai-file-fallback" id="btn-home-ai-pick-file">Velg bilde fra filer</button>
           <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
         </div>
-        <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat" hidden>
-          <div class="home-ai-preview-row">
-            <img id="home-ai-preview-img" class="home-ai-preview-img" alt="Valgt bilde" width="120" height="120" />
-            <button type="button" class="btn btn-text" id="btn-home-ai-retake">Nytt bilde</button>
+        <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt" hidden>
+          <header class="home-ai-gpt__header">
+            <span class="home-ai-gpt__title">AI dokumentering</span>
+            <button type="button" class="home-ai-gpt__new-chat" id="btn-home-ai-retake">Nytt bilde</button>
+          </header>
+          <div class="home-ai-gpt__context">
+            <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Bilde i samtalen" width="72" height="72" />
+            <details class="home-ai-gpt__details">
+              <summary class="home-ai-gpt__details-sum">Valgfritt: kjøretøy og føre</summary>
+              <div class="home-ai-gpt__details-body">
+                <label class="home-ai-gpt__mini-label" for="home-ai-vehicle-chat">Kjøretøy / utstyr</label>
+                <input type="text" id="home-ai-vehicle-chat" class="home-ai-gpt__mini-input" autocomplete="off" />
+                <label class="home-ai-gpt__mini-label" for="home-ai-temp-chat">Temperatur / føre</label>
+                <input type="text" id="home-ai-temp-chat" class="home-ai-gpt__mini-input" placeholder="f.eks. −5 °C" autocomplete="off" />
+              </div>
+            </details>
           </div>
-          <div class="home-ai-opt-row">
-            <label class="home-ai-form__label" for="home-ai-vehicle-chat">Kjøretøy / utstyr (valgfritt)</label>
-            <input type="text" id="home-ai-vehicle-chat" class="home-ai-form__input" autocomplete="off" />
-            <label class="home-ai-form__label" for="home-ai-temp-chat">Temperatur / føre (valgfritt)</label>
-            <input type="text" id="home-ai-temp-chat" class="home-ai-form__input" placeholder="f.eks. −5 °C" autocomplete="off" />
-          </div>
-          <div id="home-ai-chat-log" class="home-ai-chat-log"></div>
-          <div class="home-ai-composer">
-            <label class="visually-hidden" for="home-ai-chat-input">Melding til AI</label>
-            <textarea id="home-ai-chat-input" class="home-ai-form__textarea home-ai-composer__input" rows="2" placeholder="Beskriv situasjonen eller still et oppfølgingsspørsmål…"></textarea>
-            <button type="button" class="btn home-ai-form__submit" id="btn-home-ai-send">Send</button>
+          <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
+          <div class="home-ai-gpt__composer">
+            <div class="home-ai-gpt__input-shell">
+              <label class="visually-hidden" for="home-ai-chat-input">Melding til AI</label>
+              <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Melding til AI …"></textarea>
+              <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding">
+                <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -5500,7 +5513,7 @@ function captureHomeAiFrameToDataUrl() {
 
 function enterHomeAiChatWithImage(dataUrl) {
   homeAiCapturedDataUrl = dataUrl
-  homeAiOpenAiMessages = []
+  homeAiApiMessages = []
   stopHomeAiCamera()
   const img = document.getElementById('home-ai-preview-img')
   if (img) img.src = dataUrl
@@ -5515,7 +5528,7 @@ function enterHomeAiChatWithImage(dataUrl) {
 
 function retakeHomeAiDoc() {
   homeAiCapturedDataUrl = ''
-  homeAiOpenAiMessages = []
+  homeAiApiMessages = []
   const log = document.getElementById('home-ai-chat-log')
   if (log) log.innerHTML = ''
   document.getElementById('home-ai-stage-chat')?.setAttribute('hidden', '')
@@ -5528,10 +5541,13 @@ function retakeHomeAiDoc() {
 function appendHomeAiChatBubble(role, html) {
   const log = document.getElementById('home-ai-chat-log')
   if (!log) return
-  const wrap = document.createElement('div')
-  wrap.className = `home-ai-chat__bubble home-ai-chat__bubble--${role}`
-  wrap.innerHTML = html
-  log.appendChild(wrap)
+  const row = document.createElement('div')
+  row.className = `home-ai-gpt__row home-ai-gpt__row--${role}`
+  const bubble = document.createElement('div')
+  bubble.className = `home-ai-gpt__bubble home-ai-gpt__bubble--${role}`
+  bubble.innerHTML = html
+  row.appendChild(bubble)
+  log.appendChild(row)
   log.scrollTop = log.scrollHeight
 }
 
@@ -5554,6 +5570,22 @@ function renderHomeAiStructuredHtml(data) {
 const HOME_AI_DEFAULT_FIRST_TEXT =
   'Se bildet og gi en kort veivokter-vurdering (sikkerhet, føre, praktiske tiltak).'
 
+function buildHomeAiUserText(text, vehicle, temperature) {
+  let s = `Brukerens beskrivelse:\n${String(text).trim()}`
+  if (vehicle) {
+    s += `\n\nKjøretøy/utstyr (valgfritt): ${vehicle}`
+  }
+  if (temperature) {
+    s += `\n\nTemperatur / føreforhold (valgfritt): ${temperature}`
+  }
+  return s
+}
+
+function renderHomeAiFollowupReplyHtml(text) {
+  const escaped = escapeHtml(String(text)).replace(/\n/g, '<br />')
+  return `<div class="home-ai-gpt__reply"><p class="home-ai-gpt__reply-p">${escaped}</p></div>`
+}
+
 async function sendHomeAiChatMessage() {
   const statusEl = document.getElementById('home-ai-status')
   const input = document.getElementById('home-ai-chat-input')
@@ -5573,7 +5605,7 @@ async function sendHomeAiChatMessage() {
   const temperature =
     document.getElementById('home-ai-temp-chat')?.value?.trim() ?? ''
 
-  const isFirst = homeAiOpenAiMessages.length === 0
+  const isFirst = homeAiApiMessages.length === 0
   if (!isFirst && !textRaw) {
     if (statusEl) statusEl.textContent = 'Skriv et oppfølgingsspørsmål.'
     return
@@ -5582,52 +5614,92 @@ async function sendHomeAiChatMessage() {
   const bubbleHtml =
     textRaw.length > 0
       ? escapeHtml(textRaw).replace(/\n/g, '<br />')
-      : '<em class="home-ai-chat__em">(Ingen egen tekst – analyse av bildet)</em>'
-  appendHomeAiChatBubble('user', `<p class="home-ai-chat__p">${bubbleHtml}</p>`)
+      : '<em class="home-ai-gpt__em">(Ingen egen tekst – analyse av bildet)</em>'
+  appendHomeAiChatBubble('user', `<p class="home-ai-gpt__user-p">${bubbleHtml}</p>`)
   if (input) input.value = ''
 
-  const multimodalUser = [
-    {
-      type: 'text',
-      text: buildHomeAiUserTextLine(textForApi, vehicle, temperature),
-    },
-    {
-      type: 'image_url',
-      image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
-    },
-  ]
-
-  if (!isFirst) {
-    homeAiOpenAiMessages.push({ role: 'user', content: textRaw })
+  const multimodalUser = {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: buildHomeAiUserText(String(textForApi), vehicle, temperature),
+      },
+      {
+        type: 'image_url',
+        image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
+      },
+    ],
   }
-  /** Til første kall: alltid ikke-tom streng til server (klassisk body.text). */
-  const legacyText = isFirst ? textForApi : textRaw
+
+  if (isFirst) {
+    homeAiApiMessages = [multimodalUser]
+  } else {
+    homeAiApiMessages.push({ role: 'user', content: textRaw })
+  }
 
   if (statusEl) statusEl.textContent = 'Tenker …'
   if (sendBtn) sendBtn.disabled = true
   try {
-    /** Første melding: bruk klassisk { image, text } så eldre Render uten `messages`-støtte fungerer. */
-    const body = isFirst
-      ? {
-          image: homeAiCapturedDataUrl,
-          text: String(legacyText),
-          ...(vehicle ? { vehicle } : {}),
-          ...(temperature ? { temperature } : {}),
-        }
-      : { messages: homeAiOpenAiMessages }
-
-    const r = await fetch(apiUrl('/api/analyze'), {
+    let r = await fetch(apiUrl('/api/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ messages: homeAiApiMessages }),
     })
-    const ct = r.headers.get('content-type') || ''
     let data = /** @type {Record<string, unknown>} */ ({})
+    const ct = r.headers.get('content-type') || ''
     if (ct.includes('application/json')) {
       data = await r.json().catch(() => ({}))
     } else {
       await r.text().catch(() => '')
     }
+
+    if (!r.ok && isFirst && homeAiApiMessages.length === 1) {
+      homeAiApiMessages = []
+      const legacyBody = {
+        image: homeAiCapturedDataUrl,
+        text: String(textForApi),
+        ...(vehicle ? { vehicle } : {}),
+        ...(temperature ? { temperature } : {}),
+      }
+      r = await fetch(apiUrl('/api/analyze'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(legacyBody),
+      })
+      const ct2 = r.headers.get('content-type') || ''
+      if (ct2.includes('application/json')) {
+        data = await r.json().catch(() => ({}))
+      } else {
+        await r.text().catch(() => '')
+      }
+      if (!r.ok) {
+        const fromApi =
+          data && typeof data.error === 'string' ? data.error : null
+        const hint404 = r.status === 404 ? hintApiNotFound() : ''
+        throw new Error(
+          fromApi ||
+            (r.status === 404
+              ? `Fant ikke API (404).${hint404}`
+              : `Feil ${r.status}`),
+        )
+      }
+      homeAiApiMessages = [
+        multimodalUser,
+        { role: 'assistant', content: JSON.stringify(data) },
+      ]
+      appendHomeAiChatBubble(
+        'assistant',
+        renderHomeAiStructuredHtml(
+          /** @type {{ problem?: unknown, risk?: unknown, action?: unknown, explanation?: unknown, report?: unknown }} */ (
+            data
+          ),
+        ),
+      )
+      if (statusEl) statusEl.textContent = 'Ferdig.'
+      return
+    }
+
     if (!r.ok) {
       const fromApi =
         data && typeof data.error === 'string' ? data.error : null
@@ -5641,10 +5713,10 @@ async function sendHomeAiChatMessage() {
     }
 
     if (isFirst) {
-      homeAiOpenAiMessages = [
-        { role: 'user', content: multimodalUser },
-        { role: 'assistant', content: JSON.stringify(data) },
-      ]
+      homeAiApiMessages.push({
+        role: 'assistant',
+        content: JSON.stringify(data),
+      })
       appendHomeAiChatBubble(
         'assistant',
         renderHomeAiStructuredHtml(
@@ -5655,23 +5727,23 @@ async function sendHomeAiChatMessage() {
       )
     } else {
       const reply =
-        typeof data.reply === 'string' ? data.reply : String(data.reply ?? '')
-      homeAiOpenAiMessages.push({ role: 'assistant', content: reply })
-      const safe = escapeHtml(reply).replace(/\n/g, '<br />')
-      appendHomeAiChatBubble(
-        'assistant',
-        `<div class="home-ai-chat__reply"><p class="home-ai-chat__p">${safe}</p></div>`,
-      )
+        typeof data.reply === 'string'
+          ? data.reply
+          : data.reply != null
+            ? String(data.reply)
+            : ''
+      homeAiApiMessages.push({ role: 'assistant', content: reply })
+      appendHomeAiChatBubble('assistant', renderHomeAiFollowupReplyHtml(reply))
     }
     if (statusEl) statusEl.textContent = 'Ferdig.'
   } catch (e) {
+    homeAiApiMessages.pop()
     if (statusEl) {
       statusEl.textContent =
         e && typeof e === 'object' && 'message' in e
           ? String(/** @type {{ message: string }} */ (e).message)
           : 'Noe gikk galt.'
     }
-    homeAiOpenAiMessages.pop()
     const log = document.getElementById('home-ai-chat-log')
     if (log?.lastElementChild) log.removeChild(log.lastElementChild)
     if (input) input.value = textRaw
