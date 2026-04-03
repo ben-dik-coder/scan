@@ -3519,19 +3519,12 @@ function renderHomeHtml() {
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
-    <div class="home-action-split" role="group" aria-label="Ny registrering eller bilde">
-      <button type="button" class="home-action-split__btn home-action-split__btn--primary" id="btn-new-session">Ny registrering</button>
-      <button type="button" class="home-action-split__btn" id="btn-home-ta-bilde">Ta bilde</button>
-    </div>
+    <div class="home-main">
     <div class="home-bilde-stack">
-      <div class="home-bilde-tabs" role="tablist" aria-label="Bilde og dokumentering">
-        <button type="button" class="home-bilde-tabs__tab home-bilde-tabs__tab--active" role="tab" id="tab-home-bilde-camera" aria-selected="true" aria-controls="panel-home-bilde-camera">Ta bilde</button>
-        <button type="button" class="home-bilde-tabs__tab" role="tab" id="tab-home-bilde-ai" aria-selected="false" aria-controls="panel-home-bilde-ai">AI dokumentering</button>
+      <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde">
+        <p class="home-bilde-panel__hint">Trykk kamera-ikonet nederst for å ta bilde til albumet.</p>
       </div>
-      <div id="panel-home-bilde-camera" class="home-bilde-panel" role="tabpanel" aria-labelledby="tab-home-bilde-camera">
-        <p class="home-bilde-panel__hint">Trykk «Ta bilde» over for å åpne kamera og ta bilde til albumet.</p>
-      </div>
-      <div id="panel-home-bilde-ai" class="home-bilde-panel" role="tabpanel" aria-labelledby="tab-home-bilde-ai" hidden>
+      <div id="panel-home-bilde-ai" class="home-bilde-panel" role="region" aria-label="AI dokumentering" hidden>
         <div id="home-ai-fullscreen" class="home-ai-fullscreen">
           <p id="home-ai-status" class="home-ai-fs-status" role="status" aria-live="polite"></p>
           <div id="home-ai-stage-camera" class="home-ai-stage home-ai-stage--camera home-ai-stage--fs" hidden>
@@ -3587,6 +3580,29 @@ function renderHomeHtml() {
         </dialog>
       </div>
     </div>
+    </div>
+    <nav class="home-bottom-nav" aria-label="Hurtigvalg">
+      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-new" aria-label="Ny registrering">
+        <span class="home-bottom-nav__icon home-bottom-nav__icon--primary" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </span>
+      </button>
+      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-camera" aria-label="Ta bilde">
+        <span class="home-bottom-nav__icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </span>
+      </button>
+      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="AI dokumentering">
+        <span class="home-bottom-nav__icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+        </span>
+      </button>
+      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-history" aria-label="Økter og historikk">
+        <span class="home-bottom-nav__icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+        </span>
+      </button>
+    </nav>
     <div class="home-drawer-backdrop" id="home-drawer-backdrop" hidden aria-hidden="true"></div>
     <aside class="home-drawer" id="home-drawer" hidden aria-hidden="true" aria-label="Meny">
       <div class="home-drawer__head">
@@ -5356,11 +5372,17 @@ function bindHomeListeners() {
     .getElementById('btn-logout')
     ?.addEventListener('click', () => logoutUser(), { signal })
   document
-    .getElementById('btn-new-session')
+    .getElementById('btn-home-nav-new')
     ?.addEventListener('click', () => startNewSessionFromHome(), { signal })
   document
-    .getElementById('btn-home-ta-bilde')
+    .getElementById('btn-home-nav-camera')
     ?.addEventListener('click', () => openTaBildeFromHome(), { signal })
+  document
+    .getElementById('btn-home-nav-ai')
+    ?.addEventListener('click', () => setHomeBildeSubTab('ai'), { signal })
+  document
+    .getElementById('btn-home-nav-history')
+    ?.addEventListener('click', () => openMenuSession('sessions'), { signal })
   document.getElementById('btn-home-drawer-open')?.addEventListener(
     'click',
     () => openHomeDrawer(),
@@ -5426,16 +5448,10 @@ function bindHomeListeners() {
 }
 
 function setHomeBildeSubTab(which) {
-  const tabCam = document.getElementById('tab-home-bilde-camera')
-  const tabAi = document.getElementById('tab-home-bilde-ai')
   const panelCam = document.getElementById('panel-home-bilde-camera')
   const panelAi = document.getElementById('panel-home-bilde-ai')
-  if (!tabCam || !tabAi || !panelCam || !panelAi) return
+  if (!panelCam || !panelAi) return
   const isCam = which === 'camera'
-  tabCam.setAttribute('aria-selected', isCam ? 'true' : 'false')
-  tabAi.setAttribute('aria-selected', isCam ? 'false' : 'true')
-  tabCam.classList.toggle('home-bilde-tabs__tab--active', isCam)
-  tabAi.classList.toggle('home-bilde-tabs__tab--active', !isCam)
   panelCam.hidden = !isCam
   panelAi.hidden = isCam
   if (isCam) {
@@ -5444,6 +5460,8 @@ function setHomeBildeSubTab(which) {
     document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
     document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
   }
+  const navAi = document.getElementById('btn-home-nav-ai')
+  navAi?.classList.toggle('home-bottom-nav__btn--active', !isCam)
 }
 
 function stopHomeAiCamera() {
@@ -5870,17 +5888,6 @@ async function sendHomeAiChatMessage() {
 }
 
 function bindHomeAiDocumentationListeners(signal) {
-  document.getElementById('tab-home-bilde-camera')?.addEventListener(
-    'click',
-    () => setHomeBildeSubTab('camera'),
-    { signal },
-  )
-  document.getElementById('tab-home-bilde-ai')?.addEventListener(
-    'click',
-    () => setHomeBildeSubTab('ai'),
-    { signal },
-  )
-
   document.getElementById('btn-home-ai-capture')?.addEventListener(
     'click',
     () => {
