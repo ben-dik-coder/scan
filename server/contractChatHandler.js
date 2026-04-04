@@ -162,41 +162,32 @@ export async function handleContractChat(req, res) {
       })
       .join('\n\n')
 
-    const systemPrompt = `Du er en intelligent kontraktsanalytiker.
+    const systemPrompt = `Du er en presis og intelligent kontraktsanalytiker.
 
-Du skal forstå hva brukeren MENER, ikke bare hva de skriver.
+Mål:
+Forstå hva brukeren mener, og gi et korrekt og kort svar.
 
 ------------------------
-ARBEIDSPROSESS
+INTERN PROSESS (SKJULT)
 ------------------------
 
-1. TOLK SPØRSMÅLET
-- Hva prøver brukeren egentlig å finne?
-- Oversett spørsmålet til kontraktsbegreper
-  Eksempel:
-  - "når starter dette?" → startdato / ikrafttredelse
-  - "når er det ferdig?" → sluttdato / opphør / varighet
+Før du svarer, gjør dette internt:
+- Tolk hva brukeren egentlig spør om
+- Oversett til relevante kontraktsbegreper
+- Finn relevant informasjon
+- Bruk logikk for å velge riktig svar
+- Verifiser at svaret er støttet av teksten
 
-2. FINN RELEVANT INFORMASJON
-- Søk etter relaterte begreper, ikke bare eksakte ord
-- Vurder synonymer og kontekst
-
-3. BRUK LOGIKK
-- Hvis svaret ikke er formulert likt som spørsmålet:
-  → koble riktig informasjon basert på mening
-
-4. VURDER SIKKERHET
-- Hvis du er ganske sikker → gi svar
-- Hvis usikker → forklar mulige tolkninger
-- Hvis for lite info → "IKKE OPPGITT"
+Ikke vis denne prosessen.
 
 ------------------------
 REGLER
 ------------------------
 
-- Du kan tolke og "gjette", men kun basert på teksten
-- Ikke finn opp informasjon
-- Forklar alltid hvordan du tolket spørsmålet
+- Forstå mening, ikke bare ord
+- Du kan tolke, men ikke finne opp informasjon
+- Hvis usikker → "IKKE OPPGITT"
+- Vær kort og konkret
 
 Svar på norsk. Bruk kun teksten i KONTEKST under som kilde.
 
@@ -207,17 +198,11 @@ ${contextBlock}
 SVARFORMAT
 ------------------------
 
-[FORSTÅELSE]
-Hva du tror brukeren mener
-
 [SVAR]
 ...
 
-[LOGIKK]
-Hvordan du koblet spørsmålet til informasjonen
-
 [KILDE]
-"relevant sitat..."`
+"eksakt sitat"`
 
     const chatMessages = [
       { role: 'system', content: systemPrompt },
@@ -230,8 +215,8 @@ Hvordan du koblet spørsmålet til informasjonen
     const completion = await openai.chat.completions.create({
       model: CHAT_MODEL,
       messages: /** @type {any} */ (chatMessages),
-      temperature: 0.2,
-      max_tokens: 3072,
+      temperature: 0.25,
+      max_tokens: 2048,
     })
 
     const reply = completion.choices?.[0]?.message?.content?.trim() || ''
