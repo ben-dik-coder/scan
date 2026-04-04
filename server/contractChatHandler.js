@@ -10,8 +10,19 @@ const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-4o-mini'
 const MATCH_COUNT = Math.min(
-  20,
-  Math.max(6, Number(process.env.CONTRACT_RAG_MATCH_COUNT || 12)),
+  24,
+  Math.max(6, Number(process.env.CONTRACT_RAG_MATCH_COUNT || 14)),
+)
+
+/** Maks antall utdrag sendt til modellen etter sammenslåing (vektor + nøkkelord). */
+const MAX_CONTEXT_CHUNKS = Math.min(
+  28,
+  Math.max(10, Number(process.env.CONTRACT_RAG_MAX_CONTEXT_CHUNKS || 22)),
+)
+
+const KEYWORD_SUPPLEMENT = Math.min(
+  16,
+  Math.max(0, Number(process.env.CONTRACT_RAG_KEYWORD_SUPPLEMENT || 12)),
 )
 
 /** Cosinus-likhet 0–1; filtrerer svake treff (mindre støy → mindre hallusinasjon). Tomt treff → retry med 0. */
@@ -113,6 +124,123 @@ function extractContractUserReply(raw) {
   return noTags || ''
 }
 
+const NO_STOP = new Set(
+  `alle andre bare ble bli blir brukt bør da de deg den der det din disse du eller en er et ett fra før får har her hva hvem hvilke hvilken hvis hvor hvordan ikke inn jeg kan kom kun litt man med meg men mer min mot mye nei noe noen nå og også om opp oss over på samme seg selv si sin sine sitt skal slik som så tid til under ut være vært var ved vi vil vår år`.split(
+    /\s+/,
+  ),
+)
+
+/**
+ * @param {string} text
+ * @returns {string[]}
+ */
+function extractKeywordTerms(text) {
+  const raw = String(text).toLowerCase()
+  const tokens = raw.match(/[0-9]+(?:[,.][0-9]+)?|[a-zæøå]+/gi) || []
+  const out = []
+  for (const tok of tokens) {
+    const t = tok.trim()
+    if (t.length < 2) continue
+    if (t.length < 4 && /^\d+$/.test(t)) {
+      out.push(t)
+      continue
+    }
+    if (t.length < 4) continue
+    if (NO_STOP.has(t)) continue
+    out.push(t)
+  }
+  const seen = new Set()
+  const uniq = []
+  for (const t of out.sort((a, b) => b.length - a.length)) {
+    if (seen.has(t)) continue
+    seen.add(t)
+    uniq.push(t)
+  }
+  return uniq.slice(0, 10)
+}
+
+/**
+ * @param {string} s
+ */
+function escapeIlike(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
+
+/**
+ * Kombiner siste brukermeldinger til bedre semantisk treff (oppfølgingsspørsmål).
+ * @param {Array<{ role?: string, content?: unknown }>} messages
+ * @param {string} lastUserText
+ */
+function buildRetrievalQuery(messages, lastUserText) {
+  const users = []
+  for (let i = messages.length - 1; i >= 0 && users.length < 4; i--) {
+    const m = messages[i]
+    if (m && m.role === 'user' && typeof m.content === 'string') {
+      const c = m.content.trim()
+      if (c) users.unshift(c)
+    }
+  }
+  if (users.length <= 1) return lastUserText
+  return users.join('\n---\n')
+}
+
+/**
+ * Hent ekstra chunks via ILIKE på viktige ord (hybrid RAG).
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string[]} terms
+ */
+async function fetchKeywordSupplementChunks(supabase, terms) {
+  if (KEYWORD_SUPPLEMENT <= 0 || !terms.length) return []
+  const use = terms.slice(0, 8)
+  const clauses = []
+  for (const t of use) {
+    if (t.length < 2) continue
+    clauses.push(`content.ilike.%${escapeIlike(t)}%`)
+  }
+  if (!clauses.length) return []
+  const orExpr = clauses.join(',')
+  const { data, error } = await supabase
+    .from('contract_chunks')
+    .select('id, content, metadata')
+    .or(orExpr)
+    .limit(KEYWORD_SUPPLEMENT)
+
+  if (error) {
+    console.warn('contract-chat keyword supplement:', error.message)
+    return []
+  }
+  return Array.isArray(data) ? data : []
+}
+
+/**
+ * Vektor-treff først, deretter nøkkelord-treff uten duplikat-ID.
+ * @param {unknown[]} vectorRows
+ * @param {unknown[]} keywordRows
+ */
+function mergeVectorAndKeywordChunks(vectorRows, keywordRows) {
+  const seen = new Set()
+  const out = []
+  for (const row of vectorRows) {
+    const id = row && typeof row === 'object' && 'id' in row ? row.id : null
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(row)
+    if (out.length >= MAX_CONTEXT_CHUNKS) return out
+  }
+  for (const row of keywordRows) {
+    const id = row && typeof row === 'object' && 'id' in row ? row.id : null
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push({
+      ...row,
+      similarity: 0.06,
+      _keywordBoost: true,
+    })
+    if (out.length >= MAX_CONTEXT_CHUNKS) break
+  }
+  return out
+}
+
 /**
  * @param {import('express').Request} req
  * @param {import('express').Response} res
@@ -162,7 +290,8 @@ export async function handleContractChat(req, res) {
       return
     }
 
-    const queryEmbedding = await embedQuery(lastUserText)
+    const retrievalQuery = buildRetrievalQuery(messages, lastUserText)
+    const queryEmbedding = await embedQuery(retrievalQuery)
 
     const minSim = getContractRagMinSimilarity()
     let { data: rows, error: rpcError } = await supabase.rpc(
@@ -198,8 +327,8 @@ export async function handleContractChat(req, res) {
       return
     }
 
-    const chunks = Array.isArray(rows) ? rows : []
-    if (chunks.length === 0) {
+    const vectorChunks = Array.isArray(rows) ? rows : []
+    if (vectorChunks.length === 0) {
       res.status(503).json({
         error:
           'Ingen indeksert kontrakttekst. Kjør: npm run ingest-contract-pdf -- /sti/til/kontrakt.pdf (i server-mappen).',
@@ -207,6 +336,10 @@ export async function handleContractChat(req, res) {
       })
       return
     }
+
+    const kwTerms = extractKeywordTerms(retrievalQuery)
+    const kwRows = await fetchKeywordSupplementChunks(supabase, kwTerms)
+    const chunks = mergeVectorAndKeywordChunks(vectorChunks, kwRows)
 
     const contextBlock = chunks
       .map((row, i) => {
@@ -222,7 +355,14 @@ export async function handleContractChat(req, res) {
           Number.isFinite(row.similarity)
             ? row.similarity.toFixed(3)
             : ''
-        return `[Utdrag ${i + 1}${meta ? ` meta=${meta}` : ''}${sim ? ` relevans=${sim}` : ''}]\n${content}`
+        const src =
+          row &&
+          typeof row === 'object' &&
+          '_keywordBoost' in row &&
+          row._keywordBoost
+            ? '+nøkkelord'
+            : 'vektor'
+        return `[Utdrag ${i + 1} kilde=${src}${meta ? ` meta=${meta}` : ''}${sim ? ` relevans=${sim}` : ''}]\n${content}`
       })
       .join('\n\n')
 
@@ -233,38 +373,52 @@ export async function handleContractChat(req, res) {
       ? '\nMERKNAD: Brukeren ber om ordlyd/sitat – prioriter **direkte gjengivelse fra KONTEKST** i «anførselstegn», med henvisning til utdragsnummer.\n'
       : ''
 
-    const systemPrompt = `Du er en kontrakt-RAG-assistent. Du har **kun** informasjon fra KONTEKST nedenfor (utdrag fra indeksert dokument). Du har ikke tilgang til hele kontrakten utenom disse utdragene.
-${quoteHint}
+    const userSuggestsNumbers =
+      /\b\d+[,.]?\d*\s*(m|meter|km|t|timer|min|dager|år|%)|\b\d{1,2}[.:]\d{2}\b/i.test(
+        lastUserText,
+      )
+    const numberHint = userSuggestsNumbers
+      ? `\nKRITISK – BRUKERFORESLÅTTE TALL I DENNE MELDINGEN:\nBrukerens siste melding inneholder konkrete tall eller mål. Du skal **aldri** bekrefte at «det står» at disse tallene gjelder, med mindre **eksakt samme tall** (samme verdi) finnes i KONTEKST og du viser det i «anførselstegn» fra et utdrag.\nHvis tallene ikke finnes ordrett i KONTEKST: si tydelig at du **ikke kan bekrefte** disse målene ut fra utdragene, og vis heller hva som faktisk står (sitér). Ikke gjenta brukerens tall som fakta uten slikt sitat.\n`
+      : ''
+
+    const systemPrompt = `Du er en kontrakt-RAG-assistent. Du har **kun** informasjon fra KONTEKST nedenfor (utdrag fra indeksert dokument). Du har ikke tilgang til hele kontrakten utenom disse utdragene. Utdrag kan komme fra **vektorsøk** og **nøkkelord-treff** (kilde=…) – bruk alle relevante utdrag før du konkluderer.
+${quoteHint}${numberHint}
 ------------------------
 ABSOLUTTE REGLER (MOT HALLUSINASJON)
 ------------------------
 
 1) Oppfinn ALDRI §-numre, paragrafer, datoer, beløp, frister, partnavn eller konkrete formuleringer som ikke finnes i KONTEKST.
 2) Ikke fyll ut med generell juss eller «typisk i kontrakter» – bare det som faktisk står eller sikkert følger av ordlyden i utdragene.
-3) Finnes ikke svaret i utdragene: si tydelig at det **ikke finnes i de tilgjengelige utdragene** (ikke gjett).
-4) **Ett sammenhengende svar uten selvmotsigelser** – ikke motsi deg i neste avsnitt. Én konklusjon.
-5) **Motstrid mellom utdrag:** Forklar i samme svar at tekstene kan oppfattes ulikt, og hvordan – ikke gi to uforenlige konklusjoner uten forklaring.
+3) Før du sier at noe «ikke står» eller «ikke er spesifisert»: sjekk at ingen av utdragene inneholder relevante tall eller definisjoner. Hvis du er usikker, formulér: «I disse utdragene ser jeg ikke …» – ikke påstå at hele kontrakten mangler det.
+4) **Ett sammenhengende svar uten selvmotsigelser.** Ikke først benekt og deretter bekrefte samme forhold uten å forklare at nye utdrag endrer bildet.
+5) **Motstrid mellom utdrag:** Forklar i samme svar; ikke gi to uforenlige konklusjoner.
+
+------------------------
+BRUKERENS TALL (OPPFOLGING)
+------------------------
+
+- Når brukeren foreslår mål (f.eks. «3 meter», «5 meter») i et oppfølgingsspørsmål: bekreft bare hvis identiske tall finnes ordrett i KONTEKST med sitat. Ellers: avvis bekreftelsen og vis hva som faktisk står.
 
 ------------------------
 SITAT OG ORDLYD
 ------------------------
 
-- Når brukeren ber om sitat, ordrett tekst, «hvor står det», eller presis formulering: kopier fra KONTEKST i «anførselstegn». Oppgi **Utdrag N**.
+- Ved spørsmål om grenser, mål, frister eller «hvor står det»: sitér relevante setninger fra KONTEKST i «anførselstegn» og angi **Utdrag N**.
 - Avkort med … der nødvendig; ikke endre ordlyden.
-- Finnes ikke ønsket setning i utdragene: si det – ikke oppfinn sitat.
+- Finnes ikke i utdragene: si det – ikke oppfinn sitat.
 
 ------------------------
 SVARSTIL
 ------------------------
 
 - Svar direkte først; korte avsnitt. Markdown tillatt (**fet**, lister).
-- Oppfølging i tråden: forankre i tidligere spørsmål, men fakta fortsatt kun fra KONTEKST.
+- Oppfølging: fakta kun fra KONTEKST; ikke anta at tidligere assistentsvar var korrekte uten sitat.
 
 ------------------------
 INTERN SJEKK (IKKE SKRIV UT)
 ------------------------
 
-Hvilke setninger i KONTEKST støtter påstandene ordrett? Hvis ingen – si at det ikke er dekket.
+Hvilke fraser i KONTEKST støtter hver påstand ordrett?
 
 ------------------------
 FORBUDT I SVARET

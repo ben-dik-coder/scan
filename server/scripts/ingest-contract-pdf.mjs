@@ -23,7 +23,8 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') })
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const CHUNK_SIZE = 1100
-const CHUNK_OVERLAP = 180
+/** Overlapp mellom nabochunks – høyere verdi gir bedre RAG-treff på setninger delt mellom to chunks. */
+const CHUNK_OVERLAP = 240
 const BATCH_EMBED = 64
 
 /**
