@@ -1597,6 +1597,12 @@ form.auth-form[hidden] {
   background: #343541;
 }
 
+/* Synkron med JS + visualViewport: eksplisitt høyde overstyrer min-height */
+#panel-home-bilde-ai.home-ai-panel--vv {
+  min-height: 0;
+  max-height: none;
+}
+
 #panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-camera:not([hidden])) {
   background: #0e1422;
 }

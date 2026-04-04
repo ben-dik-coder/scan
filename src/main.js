@@ -5461,6 +5461,54 @@ function bindHomeListeners() {
   startHomeVegrefTracking()
 }
 
+/**
+ * Pinner AI-fullskjerm til window.visualViewport (viktig på iOS): unngår glippe
+ * nederst der forsiden skimtes, og at fixed-panelet blir for høyt når tastatur er åpent.
+ */
+function resetHomeAiPanelVisualViewport(panel) {
+  panel.classList.remove('home-ai-panel--vv')
+  panel.style.removeProperty('top')
+  panel.style.removeProperty('left')
+  panel.style.removeProperty('width')
+  panel.style.removeProperty('height')
+  panel.style.removeProperty('right')
+  panel.style.removeProperty('bottom')
+}
+
+function applyHomeAiPanelVisualViewport(panel) {
+  const vv = window.visualViewport
+  if (!vv) return
+  const h = Math.max(1, vv.height)
+  panel.classList.add('home-ai-panel--vv')
+  panel.style.top = `${vv.offsetTop}px`
+  panel.style.left = `${vv.offsetLeft}px`
+  panel.style.width = `${vv.width}px`
+  panel.style.height = `${h}px`
+  panel.style.right = 'auto'
+  panel.style.bottom = 'auto'
+}
+
+function updateHomeAiPanelVisualViewport() {
+  const panel = document.getElementById('panel-home-bilde-ai')
+  if (!panel || panel.hidden) {
+    if (panel) resetHomeAiPanelVisualViewport(panel)
+    return
+  }
+  if (!window.visualViewport) return
+  applyHomeAiPanelVisualViewport(panel)
+}
+
+function bindHomeAiPanelVisualViewport(signal) {
+  const vv = window.visualViewport
+  if (!vv) return
+  const schedule = () => {
+    requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
+  }
+  vv.addEventListener('resize', schedule, { signal })
+  vv.addEventListener('scroll', schedule, { signal })
+  window.addEventListener('orientationchange', schedule, { signal })
+}
+
 function setHomeBildeSubTab(which) {
   const panelCam = document.getElementById('panel-home-bilde-camera')
   const panelAi = document.getElementById('panel-home-bilde-ai')
@@ -5476,6 +5524,7 @@ function setHomeBildeSubTab(which) {
   }
   const navAi = document.getElementById('btn-home-nav-ai')
   navAi?.classList.toggle('home-bottom-nav__btn--active', !isCam)
+  updateHomeAiPanelVisualViewport()
 }
 
 function stopHomeAiCamera() {
@@ -6153,6 +6202,9 @@ function bindHomeAiDocumentationListeners(signal) {
   )
 
   syncHomeAiModeHint(false)
+
+  bindHomeAiPanelVisualViewport(signal)
+  updateHomeAiPanelVisualViewport()
 
   document.getElementById('btn-home-ai-pdf-exit')?.addEventListener(
     'click',
