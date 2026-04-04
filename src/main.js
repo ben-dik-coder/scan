@@ -1359,6 +1359,10 @@ let homeAiContractRagMode = false
  * @type {Array<{ role: string, content: string }>}
  */
 let homeAiRagMessages = []
+/** Lydeffekt mens AI arbeider (AI dokumentering). */
+let homeAiThinkingSoundTimer = 0
+/** @type {AudioContext | null} */
+let homeAiAudioContext = null
 const HOME_AI_CAPTURE_MAX = 1600
 
 /** Når true, hold kartutsnittet på den blå posisjonen (GPS). Slås av ved manuell panorering/zoom. */
@@ -3545,10 +3549,14 @@ function renderHomeHtml() {
             </div>
             <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
           </div>
-          <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs">
+          <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs home-ai-gpt--chatgpt">
             <header class="home-ai-gpt__header">
-              <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Lukk">← Lukk</button>
-              <span class="home-ai-gpt__title">AI dokumentering</span>
+              <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Lukk">
+                <svg class="home-ai-gpt__close-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <div class="home-ai-gpt__title-wrap">
+                <span class="home-ai-gpt__title">AI dokumentering</span>
+              </div>
               <div class="home-ai-gpt__header-actions">
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-open-camera">Ta bilde</button>
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pick-file-chat">Filer</button>
@@ -5706,15 +5714,43 @@ function retakeHomeAiDoc() {
   if (st) st.textContent = ''
 }
 
-function appendHomeAiChatBubble(role, html) {
+/**
+ * @param {'user' | 'assistant'} role
+ * @param {string} html
+ * @param {{ appearIn?: boolean }} [options]
+ */
+function appendHomeAiChatBubble(role, html, options) {
   const log = document.getElementById('home-ai-chat-log')
   if (!log) return
   const row = document.createElement('div')
   row.className = `home-ai-gpt__row home-ai-gpt__row--${role}`
-  const bubble = document.createElement('div')
-  bubble.className = `home-ai-gpt__bubble home-ai-gpt__bubble--${role}`
-  bubble.innerHTML = html
-  row.appendChild(bubble)
+
+  if (role === 'assistant') {
+    const turn = document.createElement('div')
+    turn.className = 'home-ai-gpt__turn'
+    const avatar = document.createElement('div')
+    avatar.className = 'home-ai-gpt__avatar'
+    avatar.setAttribute('aria-hidden', 'true')
+    avatar.innerHTML = '<span class="home-ai-gpt__avatar-mark"></span>'
+    const bubble = document.createElement('div')
+    bubble.className = 'home-ai-gpt__bubble home-ai-gpt__bubble--assistant'
+    if (options?.appearIn) {
+      bubble.classList.add('home-ai-gpt__bubble--appear-in')
+    }
+    bubble.innerHTML = html
+    turn.appendChild(avatar)
+    turn.appendChild(bubble)
+    row.appendChild(turn)
+  } else {
+    const turn = document.createElement('div')
+    turn.className = 'home-ai-gpt__turn home-ai-gpt__turn--user'
+    const bubble = document.createElement('div')
+    bubble.className = 'home-ai-gpt__bubble home-ai-gpt__bubble--user'
+    bubble.innerHTML = html
+    turn.appendChild(bubble)
+    row.appendChild(turn)
+  }
+
   log.appendChild(row)
   log.scrollTop = log.scrollHeight
 }
@@ -5777,6 +5813,185 @@ function renderHomeAiFollowupReplyHtml(text) {
   return `<div class="home-ai-gpt__reply"><p class="home-ai-gpt__reply-p">${escaped}</p></div>`
 }
 
+/**
+ * Ord / tegn-biter for ChatGPT-lignende «streaming» av ferdig tekst.
+ * @param {string} text
+ * @returns {string[]}
+ */
+function tokenizeForStream(text) {
+  const m = String(text).match(/\S+|\s+/g)
+  return m && m.length ? m : [String(text)]
+}
+
+/**
+ * Tom assistent-rad klar for simulert streaming.
+ * @returns {{ row: HTMLDivElement, pEl: HTMLParagraphElement } | null}
+ */
+function appendHomeAiAssistantStreamingShell() {
+  const log = document.getElementById('home-ai-chat-log')
+  if (!log) return null
+  const row = document.createElement('div')
+  row.className =
+    'home-ai-gpt__row home-ai-gpt__row--assistant home-ai-gpt__row--streaming'
+  const turn = document.createElement('div')
+  turn.className = 'home-ai-gpt__turn'
+  const avatar = document.createElement('div')
+  avatar.className = 'home-ai-gpt__avatar'
+  avatar.setAttribute('aria-hidden', 'true')
+  avatar.innerHTML = '<span class="home-ai-gpt__avatar-mark"></span>'
+  const bubble = document.createElement('div')
+  bubble.className = 'home-ai-gpt__bubble home-ai-gpt__bubble--assistant'
+  const wrap = document.createElement('div')
+  wrap.className = 'home-ai-gpt__reply home-ai-gpt__reply--stream'
+  const pEl = document.createElement('p')
+  pEl.className = 'home-ai-gpt__reply-p'
+  wrap.appendChild(pEl)
+  bubble.appendChild(wrap)
+  turn.appendChild(avatar)
+  turn.appendChild(bubble)
+  row.appendChild(turn)
+  log.appendChild(row)
+  log.scrollTop = log.scrollHeight
+  return { row, pEl }
+}
+
+/**
+ * Viser tekst ord for ord (simulert stream som ChatGPT når hele svar allerede er mottatt).
+ * @param {HTMLParagraphElement} pEl
+ * @param {string} fullText
+ * @returns {Promise<void>}
+ */
+function streamHomeAiPlainTextIntoParagraph(pEl, fullText) {
+  const tokens = tokenizeForStream(fullText)
+  if (homeAiPrefersReducedMotion() || tokens.length === 0) {
+    pEl.innerHTML = escapeHtml(fullText).replace(/\n/g, '<br />')
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    let i = 0
+    let acc = ''
+    const tick = () => {
+      if (i >= tokens.length) {
+        pEl.innerHTML = escapeHtml(fullText).replace(/\n/g, '<br />')
+        const log = document.getElementById('home-ai-chat-log')
+        if (log) log.scrollTop = log.scrollHeight
+        resolve()
+        return
+      }
+      let take = 1
+      if (Math.random() > 0.45) take++
+      if (Math.random() > 0.82) take++
+      take = Math.min(take, tokens.length - i)
+      for (let k = 0; k < take; k++) acc += tokens[i++]
+      pEl.innerHTML =
+        escapeHtml(acc).replace(/\n/g, '<br />') +
+        '<span class="home-ai-gpt__stream-cursor" aria-hidden="true"></span>'
+      const log = document.getElementById('home-ai-chat-log')
+      if (log) log.scrollTop = log.scrollHeight
+      const delay = 5 + Math.random() * 21
+      setTimeout(tick, delay)
+    }
+    tick()
+  })
+}
+
+/**
+ * @param {string} fullText
+ */
+async function appendHomeAiAssistantPlainTextStreamed(fullText) {
+  const shell = appendHomeAiAssistantStreamingShell()
+  if (!shell) {
+    appendHomeAiChatBubble(
+      'assistant',
+      renderHomeAiFollowupReplyHtml(fullText),
+    )
+    return
+  }
+  await streamHomeAiPlainTextIntoParagraph(shell.pEl, fullText)
+  shell.row.classList.remove('home-ai-gpt__row--streaming')
+}
+
+function homeAiPrefersReducedMotion() {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+function ensureHomeAiAudioContext() {
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (!AC) return null
+  if (!homeAiAudioContext) homeAiAudioContext = new AC()
+  if (homeAiAudioContext.state === 'suspended') {
+    void homeAiAudioContext.resume()
+  }
+  return homeAiAudioContext
+}
+
+/** Diskrete «tenke»-klikk (lav volum), trigges etter brukerhandling (send). */
+function playHomeAiThinkingTick() {
+  const ctx = ensureHomeAiAudioContext()
+  if (!ctx) return
+  const t = ctx.currentTime
+  const osc = ctx.createOscillator()
+  const g = ctx.createGain()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(720 + Math.random() * 140, t)
+  g.gain.setValueAtTime(0, t)
+  g.gain.linearRampToValueAtTime(0.065, t + 0.012)
+  g.gain.linearRampToValueAtTime(0, t + 0.095)
+  osc.connect(g)
+  g.connect(ctx.destination)
+  osc.start(t)
+  osc.stop(t + 0.1)
+}
+
+function appendHomeAiTypingIndicator() {
+  const log = document.getElementById('home-ai-chat-log')
+  if (!log || log.querySelector('[data-home-ai-typing]')) return
+  const row = document.createElement('div')
+  row.className =
+    'home-ai-gpt__row home-ai-gpt__row--assistant home-ai-gpt__typing-row'
+  row.setAttribute('data-home-ai-typing', 'true')
+  row.innerHTML = `<div class="home-ai-gpt__turn">
+    <div class="home-ai-gpt__avatar" aria-hidden="true"><span class="home-ai-gpt__avatar-mark"></span></div>
+    <div class="home-ai-gpt__typing" aria-hidden="true"><span></span><span></span><span></span></div>
+  </div>`
+  log.appendChild(row)
+  log.scrollTop = log.scrollHeight
+}
+
+function removeHomeAiTypingIndicator() {
+  document.querySelector('[data-home-ai-typing]')?.remove()
+}
+
+function startHomeAiThinkingUx() {
+  const stage = document.getElementById('home-ai-stage-chat')
+  stage?.classList.add('home-ai-gpt--thinking')
+  stage?.setAttribute('aria-busy', 'true')
+  appendHomeAiTypingIndicator()
+  if (homeAiPrefersReducedMotion()) return
+  playHomeAiThinkingTick()
+  if (homeAiThinkingSoundTimer) {
+    clearInterval(homeAiThinkingSoundTimer)
+    homeAiThinkingSoundTimer = 0
+  }
+  homeAiThinkingSoundTimer = window.setInterval(() => {
+    if (Math.random() > 0.42) playHomeAiThinkingTick()
+  }, 460)
+}
+
+function stopHomeAiThinkingUx() {
+  const stage = document.getElementById('home-ai-stage-chat')
+  stage?.classList.remove('home-ai-gpt--thinking')
+  stage?.removeAttribute('aria-busy')
+  removeHomeAiTypingIndicator()
+  if (homeAiThinkingSoundTimer) {
+    clearInterval(homeAiThinkingSoundTimer)
+    homeAiThinkingSoundTimer = 0
+  }
+}
+
 async function sendHomeAiContractRagMessage() {
   const statusEl = document.getElementById('home-ai-status')
   const input = document.getElementById('home-ai-chat-input')
@@ -5801,6 +6016,7 @@ async function sendHomeAiContractRagMessage() {
 
   if (statusEl) statusEl.textContent = 'Kontrakt-AI tenker …'
   if (sendBtn) sendBtn.disabled = true
+  startHomeAiThinkingUx()
   try {
     const r = await fetch(apiUrl('/api/contract-chat'), {
       method: 'POST',
@@ -5844,7 +6060,8 @@ async function sendHomeAiContractRagMessage() {
     }
 
     homeAiRagMessages.push({ role: 'assistant', content: reply })
-    appendHomeAiChatBubble('assistant', renderHomeAiFollowupReplyHtml(reply))
+    stopHomeAiThinkingUx()
+    await appendHomeAiAssistantPlainTextStreamed(reply)
     if (statusEl) statusEl.textContent = 'Ferdig.'
   } catch (e) {
     homeAiRagMessages.pop()
@@ -5858,6 +6075,7 @@ async function sendHomeAiContractRagMessage() {
     if (log?.lastElementChild) log.removeChild(log.lastElementChild)
     if (input) input.value = textRaw
   } finally {
+    stopHomeAiThinkingUx()
     if (sendBtn) sendBtn.disabled = false
   }
 }
@@ -5940,6 +6158,7 @@ async function sendHomeAiChatMessage() {
 
   if (statusEl) statusEl.textContent = 'VeiAi tenker …'
   if (sendBtn) sendBtn.disabled = true
+  startHomeAiThinkingUx()
   try {
     let r = await fetch(apiUrl('/api/analyze'), {
       method: 'POST',
@@ -5985,6 +6204,7 @@ async function sendHomeAiChatMessage() {
         firstUserMessage,
         { role: 'assistant', content: JSON.stringify(data) },
       ]
+      stopHomeAiThinkingUx()
       appendHomeAiChatBubble(
         'assistant',
         renderHomeAiStructuredHtml(
@@ -5992,6 +6212,7 @@ async function sendHomeAiChatMessage() {
             data
           ),
         ),
+        { appearIn: true },
       )
       if (statusEl) statusEl.textContent = 'Ferdig.'
       return
@@ -6040,6 +6261,7 @@ async function sendHomeAiChatMessage() {
           role: 'assistant',
           content: JSON.stringify(data),
         })
+        stopHomeAiThinkingUx()
         appendHomeAiChatBubble(
           'assistant',
           renderHomeAiStructuredHtml(
@@ -6047,6 +6269,7 @@ async function sendHomeAiChatMessage() {
               data
             ),
           ),
+          { appearIn: true },
         )
         if (statusEl) statusEl.textContent = 'Ferdig.'
         return
@@ -6081,6 +6304,7 @@ async function sendHomeAiChatMessage() {
         role: 'assistant',
         content: JSON.stringify(data),
       })
+      stopHomeAiThinkingUx()
       appendHomeAiChatBubble(
         'assistant',
         renderHomeAiStructuredHtml(
@@ -6088,6 +6312,7 @@ async function sendHomeAiChatMessage() {
             data
           ),
         ),
+        { appearIn: true },
       )
     } else {
       let reply = extractHomeAiFollowupReply(
@@ -6098,7 +6323,8 @@ async function sendHomeAiChatMessage() {
           'Ingen tekst i AI-svaret. Prøv å omformulere spørsmålet, eller send på nytt.'
       }
       homeAiApiMessages.push({ role: 'assistant', content: reply })
-      appendHomeAiChatBubble('assistant', renderHomeAiFollowupReplyHtml(reply))
+      stopHomeAiThinkingUx()
+      await appendHomeAiAssistantPlainTextStreamed(reply)
     }
     if (statusEl) statusEl.textContent = 'Ferdig.'
   } catch (e) {
@@ -6116,6 +6342,7 @@ async function sendHomeAiChatMessage() {
     if (log?.lastElementChild) log.removeChild(log.lastElementChild)
     if (input) input.value = textRaw
   } finally {
+    stopHomeAiThinkingUx()
     if (sendBtn) sendBtn.disabled = false
   }
 }

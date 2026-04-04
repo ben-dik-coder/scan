@@ -51,15 +51,15 @@ function loadContractContext() {
 
 const CONTRACT_CONTEXT = loadContractContext()
 
-const SYSTEM_PROMPT_BASE = `Du er en erfaren veivokter i Norge.
+const SYSTEM_PROMPT_BASE = `Du er en erfaren veivokter i Norge som svarer i samme praktiske, tydelige stil som ChatGPT: hjelpsom, strukturert, tilpasset fagperson på vei.
+
 Analyser bildet og teksten fra brukeren.
 
-Fokuser på:
-- raske og praktiske løsninger
-- vinterforhold
-- sikkerhet
+Tenk internt gjennom risiko og tiltak før du svarer (ikke skriv ut tenkeprosessen): hva er viktigst, hva er usikkert fra bildet, hva bør gjøres først?
 
-Svar kort og konkret.
+Fokuser på: raske og praktiske løsninger, vinterforhold, sikkerhet.
+
+I JSON-feltene: skriv explanation og report som naturlig, lesbar tekst – brukeren skal forstå hvorfor og hva først. Unngå tom byråkratjargon.
 
 Returner JSON med:
 - problem
@@ -70,21 +70,22 @@ Returner JSON med:
 
 Svar ALLTID med gyldig JSON-objekt med nøklene problem, risk, action, explanation, report. Bruk norsk.`
 
-const SYSTEM_PROMPT_FOLLOWUP_BASE = `Du er en erfaren veivokter i Norge.
-Brukeren har et bilde og en tidligere analyse (JSON eller tekst) i samtalen.
-Svar kort og konkret på norsk på oppfølgingsspørsmålet, med utgangspunkt i bildet og analysen.
-Ikke gjenta hele JSON-analysen med mindre brukeren ber om det.`
+const SYSTEM_PROMPT_FOLLOWUP_BASE = `Du er samme veivokter-assistent, i ChatGPT-lignende stil: svar direkte og naturlig på norsk på det brukeren spør om nå.
+
+Brukeren har et bilde og tidligere meldinger (analyse/tekst) i samtalen.
+- Forstå oppfølgingsspørsmålet i lys av tidligere i tråden.
+- Svar først med kjernen; utvid bare om det hjelper.
+- Ikke gjenta hele tidligere analyse med mindre brukeren ber om det.
+- Hvis noe ikke kan besvares ut fra bildet/samtalen, si det kort.`
 
 /** Første runde uten bilde (kun tekst). */
-const SYSTEM_PROMPT_TEXT_ONLY_BASE = `Du er en erfaren veivokter i Norge.
-Brukeren har ikke vedlagt bilde – svar ut fra tekstbeskrivelsen og generell veivokter-kunnskap.
+const SYSTEM_PROMPT_TEXT_ONLY_BASE = `Du er en erfaren veivokter i Norge i ChatGPT-lignende stil: tydelig, hjelpsom, praktisk.
 
-Fokuser på:
-- raske og praktiske løsninger
-- vinterforhold
-- sikkerhet
+Brukeren har ikke vedlagt bilde – svar ut fra tekstbeskrivelsen og solid veivokter-fagkunnskap.
 
-Svar kort og konkret.
+Tenk internt gjennom scenarioet før du fyller JSON; skriv explanation og report som levende, forståelig tekst.
+
+Fokuser på: raske og praktiske løsninger, vinterforhold, sikkerhet.
 
 Returner JSON med:
 - problem
@@ -225,6 +226,7 @@ export async function handleAnalyze(req, res) {
       const sys = isFirstShot ? SYSTEM_PROMPT : SYSTEM_PROMPT_FOLLOWUP
       const completion = await openai.chat.completions.create({
         model,
+        temperature: isFirstShot ? 0.55 : 0.78,
         response_format: isFirstShot ? { type: 'json_object' } : undefined,
         max_tokens: isFirstShot ? 2500 : 4096,
         messages: [{ role: 'system', content: sys }, ...msgs],
@@ -267,6 +269,7 @@ export async function handleAnalyze(req, res) {
       const userText = buildUserText(text, vehicle, temperature)
       const completion = await openai.chat.completions.create({
         model,
+        temperature: 0.55,
         response_format: { type: 'json_object' },
         max_tokens: 2500,
         messages: [
@@ -299,6 +302,7 @@ export async function handleAnalyze(req, res) {
 
     const completion = await openai.chat.completions.create({
       model,
+      temperature: 0.55,
       response_format: { type: 'json_object' },
       max_tokens: 2500,
       messages: [
