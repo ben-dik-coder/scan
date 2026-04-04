@@ -71,6 +71,41 @@ async function embedQuery(text) {
 }
 
 /**
+ * Kun tekst til sluttbruker: stripper [FORSTÅELSE]/[SVAR]/[LOGIKK]/[KILDE] hvis modellen
+ * fortsatt sender gammelt strukturformat.
+ * @param {string} raw
+ */
+function extractContractUserReply(raw) {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+
+  const afterSvar = t.match(
+    /\[SVAR\]\s*:?\s*([\s\S]*?)(?=\n\s*\[(?:FORSTÅELSE|LOGIKK|KILDE|SVAR)\]|\s*$)/i,
+  )
+  if (afterSvar && afterSvar[1] && afterSvar[1].trim()) {
+    return afterSvar[1].trim()
+  }
+
+  let s = t
+  s = s.replace(/\[FORSTÅELSE\][\s\S]*?(?=\n\s*\[|$)/gi, '')
+  s = s.replace(/\[LOGIKK\][\s\S]*?(?=\n\s*\[|$)/gi, '')
+  s = s.replace(/\[KILDE\][\s\S]*$/gi, '')
+  s = s.replace(/\[KILDE\][\s\S]*?(?=\n\s*\[|$)/gi, '')
+  s = s.trim()
+  if (s) return s
+
+  // Modellen skrev bare metadata-blokker: fjern kjente tagger og behold evt. ren tekst
+  const stripped = t
+    .replace(/\[(?:FORSTÅELSE|LOGIKK|KILDE|SVAR)\]\s*:?\s*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  if (stripped) return stripped
+
+  const noTags = t.replace(/\[[^\]]+\]/g, '').replace(/\s+/g, ' ').trim()
+  return noTags || ''
+}
+
+/**
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
@@ -165,44 +200,39 @@ export async function handleContractChat(req, res) {
     const systemPrompt = `Du er en presis og intelligent kontraktsanalytiker.
 
 Mål:
-Forstå hva brukeren mener, og gi et korrekt og kort svar.
+Forstå hva brukeren mener (også når formuleringen er uformell eller uklar), og gi et korrekt og kort svar basert KUN på KONTEKST under.
 
 ------------------------
-INTERN PROSESS (SKJULT)
+INTERN PROSESS (SKJULT – IKKE SKRIV UT)
 ------------------------
 
-Før du svarer, gjør dette internt:
-- Tolk hva brukeren egentlig spør om
-- Oversett til relevante kontraktsbegreper
-- Finn relevant informasjon
-- Bruk logikk for å velge riktig svar
-- Verifiser at svaret er støttet av teksten
-
-Ikke vis denne prosessen.
+Tenk internt før du svarer: hva mener brukeren ordrett og i kontraktsammenheng? Hvilke begreper (f.eks. frist, ikrafttredelse, inspeksjon) passer? Finn støtte i teksten og verifiser. Ikke skriv ut denne analysen.
 
 ------------------------
 REGLER
 ------------------------
 
-- Forstå mening, ikke bare ord
-- Du kan tolke, men ikke finne opp informasjon
-- Hvis usikker → "IKKE OPPGITT"
-- Vær kort og konkret
+- Tolking: legg merke til ordlyd; ved tvetydighet, velg den tolkningen som best samsvarer med spørsmålet og teksten.
+- Ikke finn opp krav, datoer eller tall som ikke finnes i KONTEKST.
+- Hvis svaret ikke kan utledes fra KONTEKST: skriv kort: IKKE OPPGITT.
 
-Svar på norsk. Bruk kun teksten i KONTEKST under som kilde.
+------------------------
+UTDATA (VIKTIG)
+------------------------
+
+Assistent-meldingen skal KUN inneholde det brukeren skal lese: et kort, tydelig svar i løpende norsk tekst.
+
+FORBUDT i assistent-teksten:
+- Ingen [SVAR], [KILDE], [FORSTÅELSE], [LOGIKK] eller andre klammer/overskrifter
+- Ingen «først forstår jeg at …» eller gjennomgang av egen tankeprosess
+- Ingen punktlister med meta-informasjon om hvordan du jobbet
+
+Tillatt: kort innledning som presiserer forståelsen av spørsmålet (én setning), deretter selve svaret, hvis det hjelper brukeren.
+
+Svar på norsk.
 
 KONTEKST:
-${contextBlock}
-
-------------------------
-SVARFORMAT
-------------------------
-
-[SVAR]
-...
-
-[KILDE]
-"eksakt sitat"`
+${contextBlock}`
 
     const chatMessages = [
       { role: 'system', content: systemPrompt },
@@ -219,7 +249,8 @@ SVARFORMAT
       max_tokens: 2048,
     })
 
-    const reply = completion.choices?.[0]?.message?.content?.trim() || ''
+    const rawReply = completion.choices?.[0]?.message?.content?.trim() || ''
+    const reply = extractContractUserReply(rawReply)
     if (!reply) {
       res.status(502).json({ error: 'Tomt svar fra modell.' })
       return
