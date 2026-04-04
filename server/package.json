@@ -3,20 +3,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.js",
+    "start": "node -r ./startup-log.cjs index.js",
+    "check-env": "node scripts/check-contract-env.mjs",
     "server": "node server.js",
-    "extract-contract-pdf": "node scripts/extract-pdf-to-contract-context.mjs"
+    "extract-contract-pdf": "node scripts/extract-pdf-to-contract-context.mjs",
+    "ingest-contract-pdf": "node scripts/ingest-contract-pdf.mjs",
+    "ingest": "node scripts/ingest-contract-pdf.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
     "@sparticuz/chromium": "^143.0.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "openai": "^4.85.0",
+    "pdf-parse": "^1.1.1",
     "puppeteer": "^24.2.0",
     "puppeteer-core": "^24.40.0"
-  },
-  "devDependencies": {
-    "pdf-parse": "^1.1.1"
   }
 }

@@ -1,21 +1,19 @@
 /**
- * Scanix backend: PDF (POST /api/generate-report), AI (POST /api/analyze, POST /analyze)
- * Kjør: cd server && npm install && npm start  |  eller: node server.js
+ * Scanix backend: PDF, AI, kontrakt-RAG (POST /api/contract-chat)
+ * Kjør: cd server && npm install && npm start  |  ren node: node -r ./startup-log.cjs index.js
  * Miljø: server/.env lastes automatisk (OPENAI_API_KEY, …). Kopier fra .env.example.
  * Utvikling: Vite proxyer /api → denne serveren (se vite.config.js).
+ *
+ * Tunge moduler lastes asynkront etter at HTTP-port er åpen, så du ser «lytter» raskt
+ * (unngår lang stillhet ved treg disk / iCloud / store node_modules).
  */
 
 import dotenv from 'dotenv'
 import cors from 'cors'
 import express from 'express'
-import { handleAnalyze } from './analyzeHandler.js'
 import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
-import puppeteer from 'puppeteer'
 import { fileURLToPath } from 'url'
-import { buildReportHtml } from './reportHtml.js'
-import { buildAiChatPdfHtml } from './aiChatPdfHtml.js'
-import { fetchStaticMapAsDataUrl } from './staticMap.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '.env') })
@@ -45,7 +43,6 @@ async function getBrowser() {
   if (process.env.RENDER === 'true') {
     const Chromium = (await import('@sparticuz/chromium')).default
     const puppeteerCore = (await import('puppeteer-core')).default
-    /** args inkluderer allerede --headless=shell / --no-sandbox (sparticuz) */
     browserInstance = await puppeteerCore.launch({
       args: [...Chromium.args, ...PUPPETEER_BASE_ARGS],
       executablePath: await Chromium.executablePath(),
@@ -54,6 +51,7 @@ async function getBrowser() {
     return browserInstance
   }
 
+  const puppeteer = (await import('puppeteer')).default
   browserInstance = await puppeteer.launch({
     headless: true,
     args: PUPPETEER_BASE_ARGS,
@@ -96,166 +94,213 @@ app.use(
 )
 app.use(express.json({ limit: '48mb' }))
 
+/** Ruter utenom health registreres etter dynamisk import (kan ta tid på treg disk). */
+let routesReady = false
+
+app.use((req, res, next) => {
+  const p = req.path
+  const needsRoutes =
+    p.startsWith('/api') || p === '/analyze'
+  if (routesReady || !needsRoutes || p === '/api/health') {
+    next()
+    return
+  }
+  res.status(503).json({
+    error:
+      'Server laster fortsatt moduler. Vent noen sekunder og prøv igjen.',
+  })
+})
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'scanix-server',
     version: readAppVersion(),
-    endpoints: ['/api/generate-report', '/api/generate-ai-chat-pdf', '/api/analyze'],
+    routesReady,
+    endpoints: [
+      '/api/generate-report',
+      '/api/generate-ai-chat-pdf',
+      '/api/analyze',
+      '/api/contract-chat',
+    ],
   })
-})
-
-app.post('/api/analyze', handleAnalyze)
-app.post('/analyze', handleAnalyze)
-
-app.post('/api/generate-report', async (req, res) => {
-  let page = null
-  try {
-    const body = req.body
-    if (!body || typeof body !== 'object') {
-      res.status(400).json({ error: 'Ugyldig JSON.' })
-      return
-    }
-
-    const mapDataUrl = await fetchStaticMapAsDataUrl(body.clickHistory || [])
-    const logoDataUrl = readLogoDataUrl()
-    const generatedAtLabel =
-      typeof body.generatedAtLabel === 'string' && body.generatedAtLabel.trim()
-        ? body.generatedAtLabel.trim()
-        : new Date().toLocaleString('nb-NO', {
-            dateStyle: 'long',
-            timeStyle: 'short',
-          })
-
-    const html = buildReportHtml(
-      { ...body, generatedAtLabel, appVersion: body.appVersion || readAppVersion() },
-      { mapDataUrl, logoDataUrl },
-    )
-
-    let browser
-    try {
-      browser = await getBrowser()
-    } catch (launchErr) {
-      console.error('generate-report browser launch:', launchErr)
-      resetBrowserInstance()
-      browser = await getBrowser()
-    }
-
-    page = await browser.newPage()
-    await page.setContent(html, {
-      waitUntil: 'domcontentloaded',
-      timeout: 120_000,
-    })
-    /** Vent på at bilder (data-URL) er tegnet */
-    await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
-
-    const pdfBuf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: false,
-      margin: {
-        top: '14mm',
-        right: '12mm',
-        bottom: '16mm',
-        left: '12mm',
-      },
-    })
-
-    const filename = `scanix-rapport-${new Date().toISOString().slice(0, 10)}.pdf`
-    res.setHeader('Content-Type', 'application/pdf; charset=utf-8')
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
-    res.send(Buffer.from(pdfBuf))
-  } catch (err) {
-    console.error('generate-report:', err)
-    resetBrowserInstance()
-    res.status(500).json({
-      error:
-        err && typeof err === 'object' && 'message' in err
-          ? String(/** @type {{ message: string }} */ (err).message)
-          : 'Kunne ikke generere PDF.',
-    })
-  } finally {
-    if (page) {
-      try {
-        await page.close()
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-})
-
-app.post('/api/generate-ai-chat-pdf', async (req, res) => {
-  let page = null
-  try {
-    const body = req.body
-    if (!body || typeof body !== 'object') {
-      res.status(400).json({ error: 'Ugyldig JSON.' })
-      return
-    }
-
-    const html = buildAiChatPdfHtml(body)
-
-    let browser
-    try {
-      browser = await getBrowser()
-    } catch (launchErr) {
-      console.error('generate-ai-chat-pdf browser launch:', launchErr)
-      resetBrowserInstance()
-      browser = await getBrowser()
-    }
-
-    page = await browser.newPage()
-    await page.setContent(html, {
-      waitUntil: 'domcontentloaded',
-      timeout: 120_000,
-    })
-    await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
-
-    const pdfBuf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: false,
-      margin: {
-        top: '14mm',
-        right: '12mm',
-        bottom: '16mm',
-        left: '12mm',
-      },
-    })
-
-    const filename = `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
-    res.setHeader('Content-Type', 'application/pdf; charset=utf-8')
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    )
-    res.send(Buffer.from(pdfBuf))
-  } catch (err) {
-    console.error('generate-ai-chat-pdf:', err)
-    resetBrowserInstance()
-    res.status(500).json({
-      error:
-        err && typeof err === 'object' && 'message' in err
-          ? String(/** @type {{ message: string }} */ (err).message)
-          : 'Kunne ikke generere PDF.',
-    })
-  } finally {
-    if (page) {
-      try {
-        await page.close()
-      } catch {
-        /* ignore */
-      }
-    }
-  }
 })
 
 app.listen(PORT, LISTEN_HOST, () => {
   console.log(
-    `Scanix API lytter på http://${LISTEN_HOST}:${PORT} (PDF + /api/analyze — OPENAI_API_KEY i miljø)`,
+    `Scanix API lytter på http://${LISTEN_HOST}:${PORT} (moduler lastes i bakgrunnen …)`,
   )
+  console.log(`Test: http://127.0.0.1:${PORT}/api/health`)
 })
+
+;(async () => {
+  try {
+    console.log('Laster AI-handlere og PDF-moduler (kan ta tid ved treg disk) …')
+    const [{ handleAnalyze }, { handleContractChat }, { buildReportHtml }, { buildAiChatPdfHtml }, { fetchStaticMapAsDataUrl }] =
+      await Promise.all([
+        import('./analyzeHandler.js'),
+        import('./contractChatHandler.js'),
+        import('./reportHtml.js'),
+        import('./aiChatPdfHtml.js'),
+        import('./staticMap.js'),
+      ])
+
+    app.post('/api/analyze', handleAnalyze)
+    app.post('/analyze', handleAnalyze)
+    app.post('/api/contract-chat', handleContractChat)
+
+    app.post('/api/generate-report', async (req, res) => {
+      let page = null
+      try {
+        const body = req.body
+        if (!body || typeof body !== 'object') {
+          res.status(400).json({ error: 'Ugyldig JSON.' })
+          return
+        }
+
+        const mapDataUrl = await fetchStaticMapAsDataUrl(body.clickHistory || [])
+        const logoDataUrl = readLogoDataUrl()
+        const generatedAtLabel =
+          typeof body.generatedAtLabel === 'string' && body.generatedAtLabel.trim()
+            ? body.generatedAtLabel.trim()
+            : new Date().toLocaleString('nb-NO', {
+                dateStyle: 'long',
+                timeStyle: 'short',
+              })
+
+        const html = buildReportHtml(
+          { ...body, generatedAtLabel, appVersion: body.appVersion || readAppVersion() },
+          { mapDataUrl, logoDataUrl },
+        )
+
+        let browser
+        try {
+          browser = await getBrowser()
+        } catch (launchErr) {
+          console.error('generate-report browser launch:', launchErr)
+          resetBrowserInstance()
+          browser = await getBrowser()
+        }
+
+        page = await browser.newPage()
+        await page.setContent(html, {
+          waitUntil: 'domcontentloaded',
+          timeout: 120_000,
+        })
+        await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
+
+        const pdfBuf = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          preferCSSPageSize: false,
+          margin: {
+            top: '14mm',
+            right: '12mm',
+            bottom: '16mm',
+            left: '12mm',
+          },
+        })
+
+        const filename = `scanix-rapport-${new Date().toISOString().slice(0, 10)}.pdf`
+        res.setHeader('Content-Type', 'application/pdf; charset=utf-8')
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        )
+        res.send(Buffer.from(pdfBuf))
+      } catch (err) {
+        console.error('generate-report:', err)
+        resetBrowserInstance()
+        res.status(500).json({
+          error:
+            err && typeof err === 'object' && 'message' in err
+              ? String(/** @type {{ message: string }} */ (err).message)
+              : 'Kunne ikke generere PDF.',
+        })
+      } finally {
+        if (page) {
+          try {
+            await page.close()
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    })
+
+    app.post('/api/generate-ai-chat-pdf', async (req, res) => {
+      let page = null
+      try {
+        const body = req.body
+        if (!body || typeof body !== 'object') {
+          res.status(400).json({ error: 'Ugyldig JSON.' })
+          return
+        }
+
+        const html = buildAiChatPdfHtml(body)
+
+        let browser
+        try {
+          browser = await getBrowser()
+        } catch (launchErr) {
+          console.error('generate-ai-chat-pdf browser launch:', launchErr)
+          resetBrowserInstance()
+          browser = await getBrowser()
+        }
+
+        page = await browser.newPage()
+        await page.setContent(html, {
+          waitUntil: 'domcontentloaded',
+          timeout: 120_000,
+        })
+        await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
+
+        const pdfBuf = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          preferCSSPageSize: false,
+          margin: {
+            top: '14mm',
+            right: '12mm',
+            bottom: '16mm',
+            left: '12mm',
+          },
+        })
+
+        const filename = `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+        res.setHeader('Content-Type', 'application/pdf; charset=utf-8')
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        )
+        res.send(Buffer.from(pdfBuf))
+      } catch (err) {
+        console.error('generate-ai-chat-pdf:', err)
+        resetBrowserInstance()
+        res.status(500).json({
+          error:
+            err && typeof err === 'object' && 'message' in err
+              ? String(/** @type {{ message: string }} */ (err).message)
+              : 'Kunne ikke generere PDF.',
+        })
+      } finally {
+        if (page) {
+          try {
+            await page.close()
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    })
+
+    routesReady = true
+    console.log('Alle API-ruter er klare (/api/analyze, /api/contract-chat, PDF, …).')
+  } catch (e) {
+    console.error('Kunne ikke laste server-moduler:', e)
+    process.exit(1)
+  }
+})()
 
 process.on('SIGINT', async () => {
   if (browserInstance) await browserInstance.close()

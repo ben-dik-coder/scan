@@ -1353,6 +1353,12 @@ let homeAiCapturedDataUrl = ''
  * @type {Array<{ role: string, content: unknown }>}
  */
 let homeAiApiMessages = []
+/** Tekstbasert kontrakt-RAG mot /api/contract-chat (skiller fra VeiAi-tråden). */
+let homeAiContractRagMode = false
+/**
+ * @type {Array<{ role: string, content: string }>}
+ */
+let homeAiRagMessages = []
 const HOME_AI_CAPTURE_MAX = 1600
 
 /** Når true, hold kartutsnittet på den blå posisjonen (GPS). Slås av ved manuell panorering/zoom. */
@@ -3547,8 +3553,10 @@ function renderHomeHtml() {
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-open-camera">Ta bilde</button>
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pick-file-chat">Filer</button>
                 <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pdf">PDF</button>
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__tool--contract" id="btn-home-ai-contract-rag" title="Still spørsmål om kontrakten til AI">Kontrakt</button>
               </div>
             </header>
+            <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note"></p>
             <div class="home-ai-gpt__context">
               <div class="home-ai-gpt__thumb-wrap" id="home-ai-thumb-wrap">
                 <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Valgt bilde" width="72" height="72" hidden />
@@ -3611,6 +3619,7 @@ function renderHomeHtml() {
       </div>
       <nav class="home-drawer__nav home-drawer__nav--stack">
         <button type="button" class="home-drawer__link" id="home-drawer-session-hub">Økten</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-contract-ai">Spør om kontrakten</button>
         <button type="button" class="home-drawer__link" id="home-drawer-user">Bruker</button>
         <button type="button" class="home-drawer__link" id="home-drawer-map">Kart</button>
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
@@ -5403,6 +5412,11 @@ function bindHomeListeners() {
     () => openMenuSession('sessions'),
     { signal },
   )
+  document.getElementById('home-drawer-contract-ai')?.addEventListener(
+    'click',
+    () => openHomeAiAskContract(),
+    { signal },
+  )
   document.getElementById('home-drawer-user')?.addEventListener(
     'click',
     () => openMenuUserView(),
@@ -5533,7 +5547,87 @@ function captureHomeAiFrameToDataUrl() {
   return canvas.toDataURL('image/jpeg', 0.88)
 }
 
+function syncHomeAiModeHint(on) {
+  const el = document.getElementById('home-ai-mode-hint')
+  if (!el) return
+  if (on) {
+    el.textContent =
+      'Skriv spørsmålet ditt nedenfor. Svarene bygger på kontraktsdokumentet som er indeksert på serveren.'
+    el.classList.add('home-ai-gpt__mode-hint--contract')
+  } else {
+    el.innerHTML =
+      'VeiAi hjelper med bilde og tekst fra veien. For å <strong>spørre om kontrakten</strong>, trykk «Kontrakt» over eller «Spør om kontrakten» i menyen.'
+    el.classList.remove('home-ai-gpt__mode-hint--contract')
+  }
+}
+
+function applyHomeAiContractRagUi(on) {
+  const btn = document.getElementById('btn-home-ai-contract-rag')
+  const input = document.getElementById('home-ai-chat-input')
+  const label = document.querySelector('label[for="home-ai-chat-input"]')
+  const sendBtn = document.getElementById('btn-home-ai-send')
+  btn?.classList.toggle('home-ai-gpt__tool--active', on)
+  if (input) {
+    input.placeholder = on
+      ? 'Skriv spørsmålet ditt om kontrakten …'
+      : 'Send melding til VeiAi'
+  }
+  if (label) {
+    label.textContent = on
+      ? 'Send melding om kontrakten'
+      : 'Send melding til VeiAi'
+  }
+  if (sendBtn) {
+    sendBtn.setAttribute(
+      'aria-label',
+      on ? 'Send melding om kontrakten' : 'Send melding til VeiAi',
+    )
+  }
+  syncHomeAiModeHint(on)
+}
+
+/**
+ * Slår kontrakt-RAG av eller på (tekstspørsmål mot indeksert kontrakt).
+ * @param {boolean} wantOn
+ */
+function setHomeAiContractRagEnabled(wantOn) {
+  const log = document.getElementById('home-ai-chat-log')
+  const st = document.getElementById('home-ai-status')
+  if (wantOn) {
+    homeAiContractRagMode = true
+    homeAiRagMessages = []
+    homeAiApiMessages = []
+    homeAiCapturedDataUrl = ''
+    syncHomeAiPreviewThumb()
+    if (log) log.innerHTML = ''
+    if (st) st.textContent = ''
+    applyHomeAiContractRagUi(true)
+  } else {
+    homeAiContractRagMode = false
+    homeAiRagMessages = []
+    homeAiApiMessages = []
+    if (log) log.innerHTML = ''
+    if (st) st.textContent = ''
+    applyHomeAiContractRagUi(false)
+  }
+}
+
+function openHomeAiAskContract() {
+  closeHomeDrawer()
+  setHomeBildeSubTab('ai')
+  setHomeAiContractRagEnabled(true)
+  document.getElementById('home-ai-chat-input')?.focus()
+}
+
+function exitHomeAiContractRagUi() {
+  if (!homeAiContractRagMode) return
+  homeAiContractRagMode = false
+  homeAiRagMessages = []
+  applyHomeAiContractRagUi(false)
+}
+
 function enterHomeAiChatWithImage(dataUrl) {
+  exitHomeAiContractRagUi()
   homeAiCapturedDataUrl = dataUrl
   homeAiApiMessages = []
   stopHomeAiCamera()
@@ -5552,6 +5646,7 @@ function enterHomeAiChatWithImage(dataUrl) {
 function retakeHomeAiDoc() {
   homeAiCapturedDataUrl = ''
   homeAiApiMessages = []
+  homeAiRagMessages = []
   const log = document.getElementById('home-ai-chat-log')
   if (log) log.innerHTML = ''
   stopHomeAiCamera()
@@ -5633,6 +5728,91 @@ function renderHomeAiFollowupReplyHtml(text) {
   return `<div class="home-ai-gpt__reply"><p class="home-ai-gpt__reply-p">${escaped}</p></div>`
 }
 
+async function sendHomeAiContractRagMessage() {
+  const statusEl = document.getElementById('home-ai-status')
+  const input = document.getElementById('home-ai-chat-input')
+  const sendBtn = document.getElementById('btn-home-ai-send')
+  const textRaw = input?.value?.trim() ?? ''
+  const hadAssistant = homeAiRagMessages.some((m) => m.role === 'assistant')
+
+  if (hadAssistant && !textRaw) {
+    if (statusEl) statusEl.textContent = 'Skriv et oppfølgingsspørsmål.'
+    return
+  }
+  if (!hadAssistant && !textRaw) {
+    if (statusEl) statusEl.textContent = 'Skriv et spørsmål om kontrakten.'
+    return
+  }
+
+  const bubbleHtml = escapeHtml(textRaw).replace(/\n/g, '<br />')
+  appendHomeAiChatBubble('user', `<p class="home-ai-gpt__user-p">${bubbleHtml}</p>`)
+  if (input) input.value = ''
+
+  homeAiRagMessages.push({ role: 'user', content: textRaw })
+
+  if (statusEl) statusEl.textContent = 'Kontrakt-AI tenker …'
+  if (sendBtn) sendBtn.disabled = true
+  try {
+    const r = await fetch(apiUrl('/api/contract-chat'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: homeAiRagMessages }),
+    })
+    let data = /** @type {Record<string, unknown>} */ ({})
+    const ct = r.headers.get('content-type') || ''
+    if (ct.includes('application/json')) {
+      data = await r.json().catch(() => ({}))
+    } else {
+      await r.text().catch(() => '')
+    }
+
+    if (!r.ok) {
+      homeAiRagMessages.pop()
+      const err =
+        data && typeof data.error === 'string' && data.error.trim()
+          ? data.error
+          : r.status === 503
+            ? 'Kontrakt-RAG er ikke klar. Sjekk at PDF er indeksert på serveren.'
+            : `Feil ${r.status}`
+      if (statusEl) statusEl.textContent = err
+      const log = document.getElementById('home-ai-chat-log')
+      if (log?.lastElementChild) log.removeChild(log.lastElementChild)
+      if (input) input.value = textRaw
+      return
+    }
+
+    const reply =
+      typeof data.reply === 'string' && data.reply.trim()
+        ? data.reply.trim()
+        : ''
+    if (!reply) {
+      homeAiRagMessages.pop()
+      if (statusEl) statusEl.textContent = 'Tomt svar fra serveren.'
+      const log = document.getElementById('home-ai-chat-log')
+      if (log?.lastElementChild) log.removeChild(log.lastElementChild)
+      if (input) input.value = textRaw
+      return
+    }
+
+    homeAiRagMessages.push({ role: 'assistant', content: reply })
+    appendHomeAiChatBubble('assistant', renderHomeAiFollowupReplyHtml(reply))
+    if (statusEl) statusEl.textContent = 'Ferdig.'
+  } catch (e) {
+    homeAiRagMessages.pop()
+    if (statusEl) {
+      statusEl.textContent =
+        e && typeof e === 'object' && 'message' in e
+          ? String(/** @type {{ message: string }} */ (e).message)
+          : 'Noe gikk galt.'
+    }
+    const log = document.getElementById('home-ai-chat-log')
+    if (log?.lastElementChild) log.removeChild(log.lastElementChild)
+    if (input) input.value = textRaw
+  } finally {
+    if (sendBtn) sendBtn.disabled = false
+  }
+}
+
 /** Oppfølging: API skal sende { reply }, men håndter JSON-lignende svar og tomme felt. */
 function extractHomeAiFollowupReply(data) {
   if (!data || typeof data !== 'object') return ''
@@ -5646,6 +5826,10 @@ function extractHomeAiFollowupReply(data) {
 }
 
 async function sendHomeAiChatMessage() {
+  if (homeAiContractRagMode) {
+    await sendHomeAiContractRagMessage()
+    return
+  }
   const statusEl = document.getElementById('home-ai-status')
   const input = document.getElementById('home-ai-chat-input')
   const sendBtn = document.getElementById('btn-home-ai-send')
@@ -5958,6 +6142,17 @@ function bindHomeAiDocumentationListeners(signal) {
     () => openHomeAiPdfDialog(),
     { signal },
   )
+
+  document.getElementById('btn-home-ai-contract-rag')?.addEventListener(
+    'click',
+    () => {
+      setHomeAiContractRagEnabled(!homeAiContractRagMode)
+      document.getElementById('home-ai-chat-input')?.focus()
+    },
+    { signal },
+  )
+
+  syncHomeAiModeHint(false)
 
   document.getElementById('btn-home-ai-pdf-exit')?.addEventListener(
     'click',
@@ -7589,9 +7784,10 @@ function collectHomeAiChatLinesForPdf() {
 
 function formatHomeAiPdfPreviewText(lines) {
   if (!lines.length) return 'Ingen meldinger i samtalen ennå.'
+  const assistantLabel = homeAiContractRagMode ? 'Kontrakt-AI' : 'VeiAi'
   return lines
     .map((l) => {
-      const who = l.role === 'user' ? 'Bruker' : 'VeiAi'
+      const who = l.role === 'user' ? 'Bruker' : assistantLabel
       return `${who}\n${l.text}`
     })
     .join('\n\n')
@@ -7627,7 +7823,9 @@ async function saveHomeAiPdfToDevice() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: 'VeiAi – dokumentering',
+        title: homeAiContractRagMode
+          ? 'Kontrakt – samtale'
+          : 'VeiAi – dokumentering',
         generatedAtLabel: new Date().toLocaleString('nb-NO', {
           dateStyle: 'long',
           timeStyle: 'short',
@@ -7642,7 +7840,9 @@ async function saveHomeAiPdfToDevice() {
       )
     }
     const blob = await res.blob()
-    const filename = `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+    const filename = homeAiContractRagMode
+      ? `kontrakt-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+      : `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
     await shareOrDownloadPdfBlob(blob, filename)
     if (statusEl) {
       statusEl.textContent =

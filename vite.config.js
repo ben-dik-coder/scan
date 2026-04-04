@@ -1,29 +1,39 @@
 import { defineConfig } from 'vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 
-// USE_HTTP=1 → kun HTTP (test om mobil når LAN), ingen GPS i nettleser uten HTTPS
+// USE_HTTP=1 → kun HTTP (LAN/mobil). VITE_POLL_WATCH=1 → iCloud/nettverksdisk (unngå ETIMEDOUT).
 const usePlainHttp = process.env.USE_HTTP === '1'
+
+/** Lang timeout: /api/contract-chat kan bruke lang tid (embedding + modell). */
+const apiProxy = {
+  target: 'http://127.0.0.1:8787',
+  changeOrigin: true,
+  timeout: 300_000,
+  proxyTimeout: 300_000,
+}
+
+const pollWatch =
+  process.env.VITE_POLL_WATCH === '1'
+    ? { usePolling: true, interval: 1000 }
+    : {}
 
 export default defineConfig({
   plugins: usePlainHttp ? [] : [basicSsl()],
   server: {
     host: '0.0.0.0',
     port: 5173,
-    // Samme port hver gang → samme localStorage-opprinnelse (ellers «forsvinner» brukere ved ny port).
+    // Samme port → stabil localStorage; ikke endre uten grunn.
     strictPort: true,
     https: usePlainHttp ? false : undefined,
-    // Tillat tilgang via IP (192.168…) når du kjører HTTP-modus
     allowedHosts: usePlainHttp ? true : undefined,
+    watch: pollWatch,
     proxy: {
       '/api/osrm': {
         target: 'https://router.project-osrm.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/osrm/, ''),
       },
-      '/api': {
-        target: 'http://127.0.0.1:8787',
-        changeOrigin: true,
-      },
+      '/api': apiProxy,
     },
   },
   preview: {
@@ -37,10 +47,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/osrm/, ''),
       },
-      '/api': {
-        target: 'http://127.0.0.1:8787',
-        changeOrigin: true,
-      },
+      '/api': apiProxy,
     },
   },
 })
+

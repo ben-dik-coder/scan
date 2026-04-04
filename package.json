@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "bash ./start-local-dev.sh",
     "dev:http": "USE_HTTP=1 vite",
     "build": "vite build",
     "preview": "vite preview",
-    "pdf-server": "npm run start --prefix server"
+    "pdf-server": "npm run start --prefix server",
+    "ingest-contract": "npm run ingest-contract-pdf --prefix server --"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",

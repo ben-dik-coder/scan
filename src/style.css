@@ -1940,6 +1940,36 @@ form.auth-form[hidden] {
   background: rgba(80, 81, 95, 0.95);
 }
 
+.home-ai-gpt__tool--active {
+  border-color: rgba(120, 170, 255, 0.85);
+  background: rgba(55, 75, 120, 0.95);
+  color: #f0f4ff;
+}
+
+.home-ai-gpt__tool--contract {
+  font-size: 0.68rem;
+}
+
+.home-ai-gpt__mode-hint {
+  margin: 0;
+  padding: 0.4rem 0.75rem 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: rgba(236, 236, 241, 0.88);
+  border-bottom: 1px solid rgba(86, 88, 105, 0.35);
+  background: rgba(40, 41, 52, 0.55);
+}
+
+.home-ai-gpt__mode-hint strong {
+  font-weight: 600;
+  color: #ececf1;
+}
+
+.home-ai-gpt__mode-hint--contract {
+  background: rgba(42, 55, 82, 0.5);
+  border-bottom-color: rgba(120, 170, 255, 0.28);
+}
+
 .home-ai-gpt__context {
   display: flex;
   align-items: flex-start;
