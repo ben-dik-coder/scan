@@ -10,9 +10,17 @@ const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-4o-mini'
 const MATCH_COUNT = Math.min(
-  16,
-  Math.max(4, Number(process.env.CONTRACT_RAG_MATCH_COUNT || 8)),
+  20,
+  Math.max(6, Number(process.env.CONTRACT_RAG_MATCH_COUNT || 12)),
 )
+
+/** Cosinus-likhet 0–1; filtrerer svake treff (mindre støy → mindre hallusinasjon). Tomt treff → retry med 0. */
+function getContractRagMinSimilarity() {
+  const v = process.env.CONTRACT_RAG_MIN_SIMILARITY
+  if (v == null || String(v).trim() === '') return 0.1
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(0.95, Math.max(0, n)) : 0.1
+}
 
 /** @type {OpenAI | null} */
 let openaiClient = null
@@ -156,14 +164,29 @@ export async function handleContractChat(req, res) {
 
     const queryEmbedding = await embedQuery(lastUserText)
 
-    const { data: rows, error: rpcError } = await supabase.rpc(
+    const minSim = getContractRagMinSimilarity()
+    let { data: rows, error: rpcError } = await supabase.rpc(
       'match_contract_chunks',
       {
         query_embedding: queryEmbedding,
         match_count: MATCH_COUNT,
-        min_similarity: 0,
+        min_similarity: minSim,
       },
     )
+
+    if (
+      !rpcError &&
+      minSim > 0 &&
+      (!Array.isArray(rows) || rows.length === 0)
+    ) {
+      const retry = await supabase.rpc('match_contract_chunks', {
+        query_embedding: queryEmbedding,
+        match_count: MATCH_COUNT,
+        min_similarity: 0,
+      })
+      rows = retry.data
+      rpcError = retry.error
+    }
 
     if (rpcError) {
       console.error('contract-chat rpc:', rpcError)
@@ -193,41 +216,62 @@ export async function handleContractChat(req, res) {
           row && row.metadata && typeof row.metadata === 'object'
             ? JSON.stringify(row.metadata)
             : ''
-        return `[Utdrag ${i + 1}${meta ? ` (${meta})` : ''}]\n${content}`
+        const sim =
+          row &&
+          typeof row.similarity === 'number' &&
+          Number.isFinite(row.similarity)
+            ? row.similarity.toFixed(3)
+            : ''
+        return `[Utdrag ${i + 1}${meta ? ` meta=${meta}` : ''}${sim ? ` relevans=${sim}` : ''}]\n${content}`
       })
       .join('\n\n')
 
-    const systemPrompt = `Du er en hjelpsom assistent som svarer om kontraktsinnhold – i samme ånd som ChatGPT: tydelig, direkte, naturlig norsk, og faglig presis.
+    const wantsQuote = /\b(sitat|sitere|ordrett|direkte\s+fra|hvor\s+står|pek\s+til|vis\s+meg|eksakt\s+ordlyd|siter|§\s*\d|paragraf)/i.test(
+      lastUserText,
+    )
+    const quoteHint = wantsQuote
+      ? '\nMERKNAD: Brukeren ber om ordlyd/sitat – prioriter **direkte gjengivelse fra KONTEKST** i «anførselstegn», med henvisning til utdragsnummer.\n'
+      : ''
 
-Mål:
-Forstå intensjonen bak spørsmålet (også uformelle eller ufullstendige formuleringer). Gi et svar som først og fremst **besvarer det brukeren lurer på**, deretter presisering eller nyanser der det er nyttig. Alt innhold skal hvile på KONTEKST under – ikke på generell juridisk «magefølelse» utenfor teksten.
-
+    const systemPrompt = `Du er en kontrakt-RAG-assistent. Du har **kun** informasjon fra KONTEKST nedenfor (utdrag fra indeksert dokument). Du har ikke tilgang til hele kontrakten utenom disse utdragene.
+${quoteHint}
 ------------------------
-INTERN PROSESS (SKJULT – IKKE SKRIV UT)
-------------------------
-
-Tenk stegvis før du svarer (som ChatGPT gjør internt), men vis aldri denne prosessen:
-1) Hva er brukeren egentlig ute etter (frist, plikt, definisjon, unntak, ansvar, prosedyre)?
-2) Hvilke utdrag i KONTEKST er mest relevante – inkl. synonymer og fagord (f.eks. inspeksjon/kontroll)?
-3) Kan svaret utledes direkte, eller må flere setninger settes sammen? Ved motstrid: si kort hvilken tolkning som er mest støttet i ordlyden, eller at det ikke er klart.
-4) Ikke legg til krav, datoer eller tall som ikke finnes i KONTEKST.
-
-------------------------
-SVARSTIL (LIK CHATGPT)
+ABSOLUTTE REGLER (MOT HALLUSINASJON)
 ------------------------
 
-- Vær **konkret først** (kjernesvaret i første avsnitt eller første punkt), deretter detaljer om nødvendig.
-- Bruk **korte avsnitt**; bruk punktlister eller nummerering når det gjør komplekst innhold lettere å lese (Markdown er tillatt: **utheving**, lister).
-- Tone: profesjonell men tilgjengelig; unngå stiv byråkratspråk med mindre kontrakten selv er slik.
-- Hvis noe mangler i dokumentet: si det ærlig og kort (f.eks. at dette ikke er omtalt i det tilgjengelige utdragene) – ikke gjett.
-- Oppfølgingsspørsmål: bygg på tidligere i tråden og svar som om du husker konteksten.
+1) Oppfinn ALDRI §-numre, paragrafer, datoer, beløp, frister, partnavn eller konkrete formuleringer som ikke finnes i KONTEKST.
+2) Ikke fyll ut med generell juss eller «typisk i kontrakter» – bare det som faktisk står eller sikkert følger av ordlyden i utdragene.
+3) Finnes ikke svaret i utdragene: si tydelig at det **ikke finnes i de tilgjengelige utdragene** (ikke gjett).
+4) **Ett sammenhengende svar uten selvmotsigelser** – ikke motsi deg i neste avsnitt. Én konklusjon.
+5) **Motstrid mellom utdrag:** Forklar i samme svar at tekstene kan oppfattes ulikt, og hvordan – ikke gi to uforenlige konklusjoner uten forklaring.
 
 ------------------------
-FORBUDT I SVARET DITT
+SITAT OG ORDLYD
 ------------------------
 
-- Ingen metamerker som [SVAR], [LOGIKK], [KILDE], [FORSTÅELSE] eller lignende.
-- Ingen gjennomgang av «først tenker jeg …» eller hvordan du jobber internt.
+- Når brukeren ber om sitat, ordrett tekst, «hvor står det», eller presis formulering: kopier fra KONTEKST i «anførselstegn». Oppgi **Utdrag N**.
+- Avkort med … der nødvendig; ikke endre ordlyden.
+- Finnes ikke ønsket setning i utdragene: si det – ikke oppfinn sitat.
+
+------------------------
+SVARSTIL
+------------------------
+
+- Svar direkte først; korte avsnitt. Markdown tillatt (**fet**, lister).
+- Oppfølging i tråden: forankre i tidligere spørsmål, men fakta fortsatt kun fra KONTEKST.
+
+------------------------
+INTERN SJEKK (IKKE SKRIV UT)
+------------------------
+
+Hvilke setninger i KONTEKST støtter påstandene ordrett? Hvis ingen – si at det ikke er dekket.
+
+------------------------
+FORBUDT I SVARET
+------------------------
+
+- Ingen [SVAR], [LOGIKK], [KILDE], [FORSTÅELSE] eller lignende.
+- Ingen beskrivelse av intern tankeprosess.
 
 KONTEKST:
 ${contextBlock}`
@@ -243,7 +287,8 @@ ${contextBlock}`
     const completion = await openai.chat.completions.create({
       model: CHAT_MODEL,
       messages: /** @type {any} */ (chatMessages),
-      temperature: 0.55,
+      temperature: 0.18,
+      top_p: 0.9,
       max_tokens: 2048,
     })
 
