@@ -2018,14 +2018,13 @@ body.home-ai-panel-open .home-vegref {
   background: #212121;
 }
 
-/* To rader: tittel får full bredde ved siden av tilbake (unngår «AI dokume…») */
+/* Tilbake-knapp + midtstilt tittel og Kontrakt-pille */
 .home-ai-gpt__header {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: center;
+  align-items: start;
   gap: 0.45rem 0.5rem;
-  padding: 0.45rem 0.65rem 0.5rem;
+  padding: 0.45rem 0.65rem 0.55rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: #212121;
   flex-shrink: 0;
@@ -2059,46 +2058,98 @@ body.home-ai-panel-open .home-vegref {
   display: block;
 }
 
-.home-ai-gpt__title-wrap {
+.home-ai-gpt__header-center {
   grid-column: 2;
   grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
   min-width: 0;
-  text-align: center;
-  padding: 0 0.15rem;
+  width: 100%;
+  padding-right: 0.25rem;
 }
 
-.home-ai-gpt__title {
+.home-ai-gpt__header-center .home-ai-gpt__title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   line-clamp: 2;
   -webkit-line-clamp: 2;
   overflow: hidden;
-  font-size: 0.88rem;
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.25;
-  color: #ececec;
+  color: rgba(236, 236, 236, 0.88);
   white-space: normal;
   word-break: break-word;
   hyphens: auto;
+  text-align: center;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.2rem;
 }
 
-.home-ai-gpt__header-actions {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
+/* Stor Kontrakt-pille: grå baseline, grønn fyll via --contract-fill under lasting */
+.home-ai-gpt__contract-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  overflow: hidden;
+  margin: 0;
+  padding: 0.55rem 1.5rem;
+  min-height: 2.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #3d3d3d;
+  color: #ececec;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  --contract-fill: 0%;
+  transition: border-color 0.2s ease;
 }
 
-.home-ai-gpt__header-actions::-webkit-scrollbar {
-  display: none;
+.home-ai-gpt__contract-pill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--contract-fill, 0%);
+  max-width: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(32, 210, 140, 0.95) 0%,
+    rgba(14, 143, 95, 0.98) 100%
+  );
+  transition: width 0.12s ease-out;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.home-ai-gpt__contract-pill-label {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.home-ai-gpt__contract-pill:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.home-ai-gpt__contract-pill--on {
+  border-color: rgba(25, 195, 125, 0.45);
+  box-shadow: 0 0 0 1px rgba(25, 195, 125, 0.12);
+}
+
+.home-ai-gpt__contract-pill--on:not(:disabled) {
+  background: #3a4540;
 }
 
 .home-ai-gpt__tool {
@@ -2123,10 +2174,6 @@ body.home-ai-panel-open .home-vegref {
   border-color: rgba(25, 195, 125, 0.55);
   background: rgba(25, 195, 125, 0.12);
   color: #b6f0d2;
-}
-
-.home-ai-gpt__tool--contract {
-  font-size: 0.65rem;
 }
 
 .home-ai-gpt__mode-hint {
@@ -2365,11 +2412,33 @@ body.home-ai-panel-open .home-vegref {
 .home-ai-gpt__composer {
   flex-shrink: 0;
   margin-top: auto;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.75rem 0.55rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   background-color: #212121;
   position: relative;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Ta bilde / Filer / PDF: tre like kolonner under skrivefeltet */
+.home-ai-gpt__composer-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.home-ai-gpt__composer-tool {
+  min-width: 0;
+  justify-content: center;
+  text-align: center;
+  padding: 0.42rem 0.4rem;
+  font-size: 0.72rem;
 }
 
 .home-ai-gpt__input-shell {
@@ -2457,18 +2526,21 @@ body.home-ai-panel-open .home-vegref {
   opacity: 0.98;
 }
 
+/* Skarpere, mindre utflytende kant (pulserende glow) */
 @keyframes home-ai-shell-glow {
   0%,
   100% {
     box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.15),
-      0 0 12px rgba(25, 195, 125, 0.08);
+      0 0 0 1px rgba(0, 0, 0, 0.28),
+      0 0 0 2px rgba(25, 195, 125, 0.22),
+      0 0 8px rgba(25, 195, 125, 0.18);
   }
 
   50% {
     box-shadow:
-      0 0 0 1px rgba(25, 195, 125, 0.25),
-      0 0 24px rgba(25, 195, 125, 0.12);
+      0 0 0 1px rgba(25, 195, 125, 0.42),
+      0 0 0 3px rgba(25, 195, 125, 0.28),
+      0 0 12px rgba(25, 195, 125, 0.22);
   }
 }
 

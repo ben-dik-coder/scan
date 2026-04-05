@@ -1361,6 +1361,8 @@ let homeAiContractRagMode = false
 let homeAiRagMessages = []
 /** Lydeffekt mens AI arbeider (AI dokumentering). */
 let homeAiThinkingSoundTimer = 0
+/** Grønn fyll på Kontrakt-knapp under kontrakt-RAG-forespørsel. */
+let homeAiContractPillProgressTimer = 0
 /** @type {AudioContext | null} */
 let homeAiAudioContext = null
 /** Layout-høyde (px) fanget når AI åpnes – brukes til panelhøyde slik at den IKKE krymper når tastatur senker innerHeight (da skimtes forsiden). */
@@ -3556,21 +3558,16 @@ function renderHomeHtml() {
               <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Lukk">
                 <svg class="home-ai-gpt__close-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
-              <div class="home-ai-gpt__title-wrap">
+              <div class="home-ai-gpt__header-center">
                 <span class="home-ai-gpt__title">AI dokumentering</span>
-              </div>
-              <div class="home-ai-gpt__header-actions">
-                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-open-camera">Ta bilde</button>
-                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pick-file-chat">Filer</button>
-                <button type="button" class="home-ai-gpt__tool" id="btn-home-ai-pdf">PDF</button>
-                <button type="button" class="home-ai-gpt__tool home-ai-gpt__tool--contract" id="btn-home-ai-contract-rag" title="Still spørsmål om kontrakten til AI">Kontrakt</button>
+                <button type="button" class="home-ai-gpt__contract-pill" id="btn-home-ai-contract-rag" title="Still spørsmål om kontrakten til AI"><span class="home-ai-gpt__contract-pill-label">Kontrakt</span></button>
               </div>
             </header>
             <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note"></p>
             <div class="home-ai-gpt__context">
               <div class="home-ai-gpt__thumb-wrap" id="home-ai-thumb-wrap">
                 <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Valgt bilde" width="72" height="72" hidden />
-                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Du kan skrive med en gang, eller legge ved bilde med «Ta bilde» / «Filer».</p>
+                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Du kan skrive med en gang, eller legge ved bilde med knappene under skrivefeltet.</p>
               </div>
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
@@ -3581,6 +3578,11 @@ function renderHomeHtml() {
                 <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding til VeiAi">
                   <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
+              </div>
+              <div class="home-ai-gpt__composer-tools" role="toolbar" aria-label="Vedlegg og PDF">
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-open-camera">Ta bilde</button>
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pick-file-chat">Filer</button>
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pdf">PDF</button>
               </div>
             </div>
           </div>
@@ -5713,12 +5715,51 @@ function syncHomeAiModeHint(on) {
   }
 }
 
+function setHomeAiContractPillProgress(percent) {
+  const btn = document.getElementById('btn-home-ai-contract-rag')
+  if (!btn) return
+  const p = Math.max(0, Math.min(100, percent))
+  btn.style.setProperty('--contract-fill', `${p}%`)
+}
+
+function startHomeAiContractPillProgress() {
+  if (!homeAiContractRagMode) return
+  if (homeAiContractPillProgressTimer) {
+    clearInterval(homeAiContractPillProgressTimer)
+    homeAiContractPillProgressTimer = 0
+  }
+  let p = 5
+  setHomeAiContractPillProgress(p)
+  homeAiContractPillProgressTimer = window.setInterval(() => {
+    const step = 2.5 + Math.random() * 6.5
+    p = Math.min(90, p + step)
+    setHomeAiContractPillProgress(p)
+  }, 165)
+}
+
+/**
+ * @param {boolean} success full grønn ved suksess, deretter reset; false ved avbrudd/feil.
+ */
+function finishHomeAiContractPillProgress(success) {
+  if (homeAiContractPillProgressTimer) {
+    clearInterval(homeAiContractPillProgressTimer)
+    homeAiContractPillProgressTimer = 0
+  }
+  if (success) {
+    setHomeAiContractPillProgress(100)
+    window.setTimeout(() => setHomeAiContractPillProgress(0), 480)
+  } else {
+    setHomeAiContractPillProgress(0)
+  }
+}
+
 function applyHomeAiContractRagUi(on) {
   const btn = document.getElementById('btn-home-ai-contract-rag')
   const input = document.getElementById('home-ai-chat-input')
   const label = document.querySelector('label[for="home-ai-chat-input"]')
   const sendBtn = document.getElementById('btn-home-ai-send')
-  btn?.classList.toggle('home-ai-gpt__tool--active', on)
+  btn?.classList.toggle('home-ai-gpt__contract-pill--on', on)
+  if (!on) finishHomeAiContractPillProgress(false)
   if (input) {
     input.placeholder = on
       ? 'Skriv spørsmålet ditt om kontrakten …'
@@ -6112,6 +6153,7 @@ async function sendHomeAiContractRagMessage() {
   if (statusEl) statusEl.textContent = 'Kontrakt-AI tenker …'
   if (sendBtn) sendBtn.disabled = true
   startHomeAiThinkingUx()
+  startHomeAiContractPillProgress()
   try {
     const r = await fetch(apiUrl('/api/contract-chat'), {
       method: 'POST',
@@ -6128,6 +6170,7 @@ async function sendHomeAiContractRagMessage() {
 
     if (!r.ok) {
       homeAiRagMessages.pop()
+      finishHomeAiContractPillProgress(false)
       const err =
         data && typeof data.error === 'string' && data.error.trim()
           ? data.error
@@ -6147,6 +6190,7 @@ async function sendHomeAiContractRagMessage() {
         : ''
     if (!reply) {
       homeAiRagMessages.pop()
+      finishHomeAiContractPillProgress(false)
       if (statusEl) statusEl.textContent = 'Tomt svar fra serveren.'
       const log = document.getElementById('home-ai-chat-log')
       if (log?.lastElementChild) log.removeChild(log.lastElementChild)
@@ -6155,11 +6199,13 @@ async function sendHomeAiContractRagMessage() {
     }
 
     homeAiRagMessages.push({ role: 'assistant', content: reply })
+    finishHomeAiContractPillProgress(true)
     stopHomeAiThinkingUx()
     await appendHomeAiAssistantPlainTextStreamed(reply)
     if (statusEl) statusEl.textContent = 'Ferdig.'
   } catch (e) {
     homeAiRagMessages.pop()
+    finishHomeAiContractPillProgress(false)
     if (statusEl) {
       statusEl.textContent =
         e && typeof e === 'object' && 'message' in e

@@ -54,6 +54,14 @@ const MAX_COMPLETION_TOKENS = Math.min(
   Math.max(800, Number(process.env.CONTRACT_RAG_MAX_COMPLETION_TOKENS || 2560)),
 )
 
+/** Svarmodell: høyere = mer variert resonnement (gpt-5 ignorerer temperature). */
+function getContractChatTemperature() {
+  const v = process.env.CONTRACT_RAG_TEMPERATURE
+  if (v == null || String(v).trim() === '') return 0.35
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.35
+}
+
 function isEnvEnabled(name, defaultTrue = true) {
   const v = process.env[name]
   if (v == null || String(v).trim() === '') return defaultTrue
@@ -513,35 +521,19 @@ export async function handleContractChat(req, res) {
     }
 
     const contextBlock = chunks
-      .map((row, i) => {
+      .map((row) => {
         const content =
           row && typeof row.content === 'string' ? row.content.trim() : ''
-        const meta =
-          row && row.metadata && typeof row.metadata === 'object'
-            ? JSON.stringify(row.metadata)
-            : ''
-        const sim =
-          row &&
-          typeof row.similarity === 'number' &&
-          Number.isFinite(row.similarity)
-            ? row.similarity.toFixed(3)
-            : ''
-        const src =
-          row &&
-          typeof row === 'object' &&
-          '_keywordBoost' in row &&
-          row._keywordBoost
-            ? '+nøkkelord'
-            : 'vektor'
-        return `[Utdrag ${i + 1} kilde=${src}${meta ? ` meta=${meta}` : ''}${sim ? ` relevans=${sim}` : ''}]\n${content}`
+        return content
       })
-      .join('\n\n')
+      .filter(Boolean)
+      .join('\n\n---\n\n')
 
     const wantsQuote = /\b(sitat|sitere|ordrett|direkte\s+fra|hvor\s+står|pek\s+til|vis\s+meg|eksakt\s+ordlyd|siter|§\s*\d|paragraf)/i.test(
       lastUserText,
     )
     const quoteHint = wantsQuote
-      ? '\nMERKNAD: Brukeren ber om ordlyd/sitat – prioriter **direkte gjengivelse fra KONTEKST** i «anførselstegn», med henvisning til utdragsnummer.\n'
+      ? '\nSPESIELT NÅ: Brukeren vil ha ordlyd – **sitér ordrett** fra KONTEKST i «anførselstegn». Korte sitater; ikke parafraser når ordlyd er poenget.\n'
       : ''
 
     const userSuggestsNumbers =
@@ -549,55 +541,46 @@ export async function handleContractChat(req, res) {
         lastUserText,
       )
     const numberHint = userSuggestsNumbers
-      ? `\nKRITISK – BRUKERFORESLÅTTE TALL I DENNE MELDINGEN:\nBrukerens siste melding inneholder konkrete tall eller mål. Du skal **aldri** bekrefte at «det står» at disse tallene gjelder, med mindre **eksakt samme tall** (samme verdi) finnes i KONTEKST og du viser det i «anførselstegn» fra et utdrag.\nHvis tallene ikke finnes ordrett i KONTEKST: si tydelig at du **ikke kan bekrefte** disse målene ut fra utdragene, og vis heller hva som faktisk står (sitér). Ikke gjenta brukerens tall som fakta uten slikt sitat.\n`
+      ? `\nSPESIELT NÅ – TALL I BRUKERENS MELDING:\nKonkrete tall eller mål er nevnt. Si **aldri** at kontrakten «sier» eller «fastsetter» disse tallene med mindre **samme verdi** står ordrett i KONTEKST (vis i «anførselstegn»). Finnes ikke tallet der: si at du **ikke ser det** i den teksten du har, og vis hva som faktisk står. Ikke gjenta brukerens tall som fakta uten sitat.\n`
       : ''
 
-    const systemPrompt = `Du er en kontrakt-RAG-assistent. Du har **kun** informasjon fra KONTEKST nedenfor (utdrag fra indeksert dokument). Du har ikke tilgang til hele kontrakten utenom disse utdragene. Utdrag kan komme fra **vektorsøk** og **nøkkelord-treff** (kilde=…) – bruk alle relevante utdrag før du konkluderer.
+    const systemPrompt = `Du er **fagassistent for kontraktsoppfølging** (vei, drift, vedlikehold, anskaffelse). Du svarer på **norsk**, praktisk og presist, for folk som jobber i felt eller drift.
+
+## To lag i svaret (bruk begge når det hjelper)
+1. **Kontrakten / dokumentet** – det som faktisk står i **KONTEKST** nedenfor (indekserte tekstbiter, skilt med \`---\`). Dette er **ikke** nødvendigvis hele kontrakten; det kan mangle sider og sammenheng.
+2. **Resonnement utenfor ordrett kontrakt** – du **kan og bør** bruke sunn faglig fornuft, erfaring fra vei og drift, prioritering, risikovurdering, praktiske råd, og forklaring på *hvorfor* noe er rimelig eller hva man bør sjekke videre – når det gjør svaret mer nyttig. **Merk tydelig** hva som er *sitert fra kontrakten* og hva som er *generell vurdering eller råd*, f.eks. med overskrifter (**I kontrakten**, **Vurdering**, **Praktisk tips**) eller korte innledninger («Det som står i teksten jeg har: …», «Utenfor den konkrete ordlyden, mer generelt: …»).
+
 ${quoteHint}${numberHint}
-------------------------
-ABSOLUTTE REGLER (MOT HALLUSINASJON)
-------------------------
+## Streng regel bare for «hva står det i kontrakten»
+- Når du sier at kontrakten **krever**, **sier**, **fastsetter** eller **henviser til** noe konkret (§, prosess, tall, frist, kode, ordlyd): da skal det **kunne spores til KONTEKST** – sitér med «anførselstegn» eller parafraser nøyaktig. **Oppfinn ikke** §-numre, prosesser, beløp, datoer eller formuleringer som ikke finnes i KONTEKST.
+- Hvis brukeren bare spør «hva mener du», «hva bør vi gjøre», «er dette lurt»: du **trenger ikke** begrense deg til KONTEKST – gi et begrunnet svar og koble gjerne til kontrakten der det er relevant.
 
-1) Oppfinn ALDRI §-numre, paragrafer, datoer, beløp, frister, partnavn eller konkrete formuleringer som ikke finnes i KONTEKST.
-2) Ikke fyll ut med generell juss eller «typisk i kontrakter» – bare det som faktisk står eller sikkert følger av ordlyden i utdragene.
-3) Før du sier at noe «ikke står» eller «ikke er spesifisert»: sjekk at ingen av utdragene inneholder relevante tall eller definisjoner. Hvis du er usikker, formulér: «I disse utdragene ser jeg ikke …» – ikke påstå at hele kontrakten mangler det.
-4) **Ett sammenhengende svar uten selvmotsigelser.** Ikke først benekt og deretter bekrefte samme forhold uten å forklare at nye utdrag endrer bildet.
-5) **Motstrid mellom utdrag:** Forklar i samme svar; ikke gi to uforenlige konklusjoner.
+## Fleksibilitet og resonnement
+- **Tolk** og **sammenlign** gjerne deler av KONTEKST; forklar sluttninger steg for steg der det er nyttig.
+- Du kan trekke inn **generell kunnskap** (f.eks. vanlig praksis i drift, sikkerhet, dokumentasjon) – merk det som egen vurdering, ikke som direkte sitat fra kontrakten.
+- **Ikke skjul usikkerhet** verken for kontrakt eller for råd: «Jeg ser ikke dette i teksten jeg har», «Her er jeg mer usikker, men …»
 
-------------------------
-BRUKERENS TALL (OPPFOLGING)
-------------------------
+## Motstrid og tidligere meldinger
+- Hvis KONTEKST er motstridende: forklar det tydelig i ett svar.
+- Tidligere assistentsvar i tråden kan være feil – verifiser mot KONTEKST når det gjelder **kontraktsinnhold**.
 
-- Når brukeren foreslår mål (f.eks. «3 meter», «5 meter») i et oppfølgingsspørsmål: bekreft bare hvis identiske tall finnes ordrett i KONTEKST med sitat. Ellers: avvis bekreftelsen og vis hva som faktisk står.
+## Sitater og tall (når ordlyd teller)
+- Ved spørsmål om *hvor det står*, eksakte krav eller grenser: **sitér** fra KONTEKST i «anførselstegn»; ikke referer til intern nummerering av utdrag.
+- Tall brukeren foreslår: si ikke at kontrakten «sier» disse tallene uten at **samme verdi** står i KONTEKST (sitér).
 
-------------------------
-SITAT OG ORDLYD
-------------------------
+## Svarstruktur
+1. Svar på **kjernen** først (gjerne med kort resonnement).
+2. Deretter kontrakthenvisning, detaljer eller punktliste etter behov.
+3. Markdown tillatt (**fet**, lister, overskrifter).
 
-- Ved spørsmål om grenser, mål, frister eller «hvor står det»: sitér relevante setninger fra KONTEKST i «anførselstegn» og angi **Utdrag N**.
-- Avkort med … der nødvendig; ikke endre ordlyden.
-- Finnes ikke i utdragene: si det – ikke oppfinn sitat.
+## Ikke bruk disse formatene
+- Ingen [SVAR], [LOGIKK], [KILDE], [FORSTÅELSE] eller lignende tagger.
+- Ingen «Utdrag 1/4» eller intern chunk-nummerering.
 
-------------------------
-SVARSTIL
-------------------------
+## Intern sjekk (ikke vis brukeren)
+Skille mellom (a) fakta om kontrakttekst = må finnes i KONTEKST, (b) råd/tolkning = tydelig merket.
 
-- Svar direkte først; korte avsnitt. Markdown tillatt (**fet**, lister).
-- Oppfølging: fakta kun fra KONTEKST; ikke anta at tidligere assistentsvar var korrekte uten sitat.
-
-------------------------
-INTERN SJEKK (IKKE SKRIV UT)
-------------------------
-
-Hvilke fraser i KONTEKST støtter hver påstand ordrett?
-
-------------------------
-FORBUDT I SVARET
-------------------------
-
-- Ingen [SVAR], [LOGIKK], [KILDE], [FORSTÅELSE] eller lignende.
-- Ingen beskrivelse av intern tankeprosess.
-
+---
 KONTEKST:
 ${contextBlock}`
 
@@ -615,8 +598,8 @@ ${contextBlock}`
       max_completion_tokens: MAX_COMPLETION_TOKENS,
     }
     if (modelSupportsCustomTemperature(CHAT_MODEL)) {
-      completionOpts.temperature = 0.18
-      completionOpts.top_p = 0.9
+      completionOpts.temperature = getContractChatTemperature()
+      completionOpts.top_p = 0.92
     }
     const completion = await openai.chat.completions.create(completionOpts)
 
