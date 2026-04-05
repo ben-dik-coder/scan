@@ -1597,16 +1597,20 @@ form.auth-form[hidden] {
  */
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
   max-width: none;
-  /* Fyll alltid visningsporten (ikke kortere px-høyde fra JS – det ga stripe nederst). */
-  height: 100vh;
-  height: 100dvh;
-  min-height: 100vh;
-  min-height: 100dvh;
+  /*
+   * Ikke bruk 100dvh/max-height her – på iOS blir ofte synlig flate kortere enn dvh,
+   * så chat/knapper «flyter» for høyt med tom sone under. Fyll viewport med inset + %.
+   */
+  height: 100%;
+  min-height: 100%;
   min-height: -webkit-fill-available;
-  max-height: 100dvh;
+  max-height: none;
   margin: 0;
   padding: 0;
   z-index: 2147483640;
@@ -1616,6 +1620,8 @@ form.auth-form[hidden] {
   overflow: hidden;
   overscroll-behavior: none;
   pointer-events: auto;
+  /* Gir egen containing block for ev. position:fixed barn (samme som viewport når fullskjerm). */
+  transform: translateZ(0);
   isolation: isolate;
   background-color: #212121;
   background-image: none;
@@ -1702,7 +1708,8 @@ body.home-ai-panel-open #app.app-root--home .app-body {
 }
 
 body.home-ai-panel-open .view-home.surface--home {
-  padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+  /* Safe area for composer ligger i .home-ai-gpt__composer; ekstra padding her ga ofte feil høyde-justering. */
+  padding-bottom: 0;
   overflow: hidden;
 }
 
@@ -2071,7 +2078,7 @@ body.home-ai-panel-open .home-vegref {
   min-height: 2.75rem;
   padding: 0.35rem max(0.65rem, env(safe-area-inset-left)) 0.4rem
     max(0.65rem, env(safe-area-inset-right));
-  padding-top: max(0.35rem, env(safe-area-inset-top, 0px));
+  /* Notch: kun .home-ai-fullscreen har padding-top safe-area – unngå dobbel luft som presser alt opp. */
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   background: #212121;
   box-sizing: border-box;
