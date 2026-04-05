@@ -1869,8 +1869,8 @@ body.home-ai-panel-open .home-vegref {
   padding-top: env(safe-area-inset-top, 0);
   padding-right: env(safe-area-inset-right, 0);
   padding-left: env(safe-area-inset-left, 0);
-  /* Kun tastatur-inset her. Safe area ligger i .home-ai-gpt__composer padding så bakgrunnen fyller helt ned. */
-  padding-bottom: max(0px, var(--home-ai-keyboard-inset, 0px));
+  /* Tastatur-løft håndteres med --home-ai-keyboard-inset på .input-bar (bottom), ikke padding her – unngår feil luft når inset ble satt av Safari uten tastatur. */
+  padding-bottom: 0;
   pointer-events: auto;
 }
 
@@ -2546,7 +2546,7 @@ body.home-ai-panel-open .home-vegref {
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
   position: fixed;
-  bottom: 0;
+  bottom: var(--home-ai-keyboard-inset, 0px);
   left: 0;
   right: 0;
   width: 100%;
