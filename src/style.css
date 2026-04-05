@@ -2510,7 +2510,8 @@ body.home-ai-panel-open .home-vegref {
   margin-top: auto;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.65rem max(1rem, env(safe-area-inset-left)) 0.65rem
+  /* Bunn: litt tettere; safe area håndteres av .home-ai-fullscreen padding-bottom */
+  padding: 0.55rem max(1rem, env(safe-area-inset-left)) 0.45rem
     max(1rem, env(safe-area-inset-right));
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   background-color: #1c1c1c;
@@ -2519,7 +2520,7 @@ body.home-ai-panel-open .home-vegref {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.55rem;
+  gap: 0.45rem;
 }
 
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */

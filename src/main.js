@@ -5517,6 +5517,36 @@ function resetHomeAiPanelVisualViewport(panel) {
   panel.style.removeProperty('bottom')
 }
 
+/**
+ * Ekstra bunnluft (--home-ai-keyboard-inset) kun når tastatur sannsynligvis er åpent.
+ * Uten dette legger iOS/Safari ofte inn 56–72 px «tom» padding fordi visualViewport
+ * er lavere enn layout-høyde (adresselinje, ikke tastatur) – det gir stor død sone over verktøyknappene.
+ */
+function isHomeAiKeyboardLikelyOpen(panel) {
+  if (!panel) return false
+  const ae = document.activeElement
+  if (
+    ae &&
+    panel.contains(ae) &&
+    (ae.tagName === 'TEXTAREA' ||
+      ae.tagName === 'INPUT' ||
+      ae.tagName === 'SELECT' ||
+      (typeof ae.isContentEditable === 'boolean' && ae.isContentEditable))
+  ) {
+    return true
+  }
+  const vv = window.visualViewport
+  if (!vv) return false
+  const layoutH =
+    homeAiLayoutHeightPx ||
+    Math.max(
+      window.innerHeight || 0,
+      document.documentElement?.clientHeight || 0,
+    )
+  if (layoutH < 80) return false
+  return layoutH - vv.height > 140
+}
+
 function applyHomeAiPanelVisualViewport(panel) {
   panel.classList.add('home-ai-panel--vv')
   if (!homeAiLayoutHeightPx) {
@@ -5542,14 +5572,26 @@ function applyHomeAiPanelVisualViewport(panel) {
     panel.style.removeProperty('--home-ai-keyboard-inset')
     return
   }
+
+  const keyboardLikely = isHomeAiKeyboardLikelyOpen(panel)
   let inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
-  if (inset > 0 || vv.height < layoutH - 72) {
-    inset += 56
+
+  if (keyboardLikely) {
+    if (inset > 0 || vv.height < layoutH - 72) {
+      inset += 56
+    }
+    if (vv.height < layoutH - 48) {
+      inset = Math.max(inset, 72)
+    }
+  } else {
+    inset = 0
   }
-  if (vv.height < layoutH - 48) {
-    inset = Math.max(inset, 72)
+
+  if (inset <= 0) {
+    panel.style.removeProperty('--home-ai-keyboard-inset')
+  } else {
+    panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
   }
-  panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
 }
 
 function updateHomeAiPanelVisualViewport() {
@@ -6623,6 +6665,13 @@ function bindHomeAiDocumentationListeners(signal) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
       })
+    },
+    { signal },
+  )
+  homeAiChatInput?.addEventListener(
+    'focusout',
+    () => {
+      requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
     },
     { signal },
   )
