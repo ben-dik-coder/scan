@@ -120,6 +120,7 @@ app.get('/api/health', (_req, res) => {
     endpoints: [
       '/api/generate-report',
       '/api/generate-ai-chat-pdf',
+      '/api/ai-chat-pdf-summary',
       '/api/analyze',
       '/api/contract-chat',
     ],
@@ -136,14 +137,21 @@ app.listen(PORT, LISTEN_HOST, () => {
 ;(async () => {
   try {
     console.log('Laster AI-handlere og PDF-moduler (kan ta tid ved treg disk) …')
-    const [{ handleAnalyze }, { handleContractChat }, { buildReportHtml }, { buildAiChatPdfHtml }, { fetchStaticMapAsDataUrl }] =
-      await Promise.all([
-        import('./analyzeHandler.js'),
-        import('./contractChatHandler.js'),
-        import('./reportHtml.js'),
-        import('./aiChatPdfHtml.js'),
-        import('./staticMap.js'),
-      ])
+    const [
+      { handleAnalyze },
+      { handleContractChat },
+      { buildReportHtml },
+      { buildAiChatPdfHtml },
+      { summarizeAiChatLinesForPdf },
+      { fetchStaticMapAsDataUrl },
+    ] = await Promise.all([
+      import('./analyzeHandler.js'),
+      import('./contractChatHandler.js'),
+      import('./reportHtml.js'),
+      import('./aiChatPdfHtml.js'),
+      import('./aiChatPdfSummary.js'),
+      import('./staticMap.js'),
+    ])
 
     app.post('/api/analyze', handleAnalyze)
     app.post('/analyze', handleAnalyze)
@@ -228,6 +236,33 @@ app.listen(PORT, LISTEN_HOST, () => {
       }
     })
 
+    app.post('/api/ai-chat-pdf-summary', async (req, res) => {
+      try {
+        const body = req.body
+        if (!body || typeof body !== 'object') {
+          res.status(400).json({ error: 'Ugyldig JSON.' })
+          return
+        }
+        const lines = Array.isArray(body.lines) ? body.lines : []
+        if (!lines.length) {
+          res.status(400).json({ error: 'Ingen samtale å oppsummere.' })
+          return
+        }
+        const out = await summarizeAiChatLinesForPdf(lines, {
+          contractMode: Boolean(body.contractMode),
+        })
+        res.json(out)
+      } catch (err) {
+        console.error('ai-chat-pdf-summary:', err)
+        res.status(500).json({
+          error:
+            err && typeof err === 'object' && 'message' in err
+              ? String(/** @type {{ message: string }} */ (err).message)
+              : 'Oppsummering feilet.',
+        })
+      }
+    })
+
     app.post('/api/generate-ai-chat-pdf', async (req, res) => {
       let page = null
       try {
@@ -237,7 +272,29 @@ app.listen(PORT, LISTEN_HOST, () => {
           return
         }
 
-        const html = buildAiChatPdfHtml(body)
+        let conclusion =
+          typeof body.conclusion === 'string' ? body.conclusion.trim() : ''
+        let highlights = Array.isArray(body.highlights) ? body.highlights : []
+        const lines = Array.isArray(body.lines) ? body.lines : []
+
+        if (!conclusion && lines.length > 0) {
+          try {
+            const sum = await summarizeAiChatLinesForPdf(lines, {
+              contractMode: Boolean(body.contractMode),
+            })
+            conclusion = sum.conclusion
+            highlights = sum.highlights
+          } catch (sumErr) {
+            console.warn('generate-ai-chat-pdf summarize:', sumErr)
+          }
+        }
+
+        const html = buildAiChatPdfHtml({
+          ...body,
+          conclusion,
+          highlights,
+          lines,
+        })
 
         let browser
         try {

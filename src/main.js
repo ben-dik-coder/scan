@@ -1363,6 +1363,8 @@ let homeAiRagMessages = []
 let homeAiThinkingSoundTimer = 0
 /** Grønn fyll på Kontrakt-knapp under kontrakt-RAG-forespørsel. */
 let homeAiContractPillProgressTimer = 0
+/** Siste AI-oppsummering for PDF (unngår dobbelt kall ved «Lagre»). */
+let homeAiPdfSummaryCache = null
 /** @type {AudioContext | null} */
 let homeAiAudioContext = null
 /** Layout-høyde (px) fanget når AI åpnes – brukes til panelhøyde slik at den IKKE krymper når tastatur senker innerHeight (da skimtes forsiden). */
@@ -8225,14 +8227,85 @@ function formatHomeAiPdfPreviewText(lines) {
     .join('\n\n')
 }
 
-function openHomeAiPdfDialog() {
+/**
+ * Samme logikk som server: grønn ramme rundt markerte fraser i konklusjon.
+ * @param {string} conclusion
+ * @param {string[]} highlights
+ */
+function formatHomeAiPdfPreviewHtml(conclusion, highlights) {
+  const escaped = escapeHtml(conclusion).replace(/\r\n/g, '\n')
+  const uniq = [
+    ...new Set((highlights || []).map((h) => String(h).trim()).filter(Boolean)),
+  ].sort((a, b) => b.length - a.length)
+  let body = escaped
+  if (uniq.length) {
+    const parts = uniq.map((h) => escapeHtml(h)).filter(Boolean)
+    const pattern = parts
+      .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|')
+    if (pattern) {
+      body = escaped.replace(
+        new RegExp(`(${pattern})`, 'g'),
+        '<span class="pdf-kw">$1</span>',
+      )
+    }
+  }
+  return body.replace(/\n/g, '<br />')
+}
+
+async function openHomeAiPdfDialog() {
   const dlg = document.getElementById('home-ai-pdf-dialog')
   const preview = document.getElementById('home-ai-pdf-preview')
   const statusEl = document.getElementById('home-ai-pdf-dialog-status')
   if (statusEl) statusEl.textContent = ''
+  homeAiPdfSummaryCache = null
   const lines = collectHomeAiChatLinesForPdf()
-  if (preview) preview.textContent = formatHomeAiPdfPreviewText(lines)
+  if (!lines.length) {
+    if (preview) {
+      preview.classList.remove('home-ai-pdf-dialog__preview--html')
+      preview.textContent = 'Ingen meldinger i samtalen ennå.'
+    }
+    if (dlg instanceof HTMLDialogElement) dlg.showModal()
+    return
+  }
+  if (preview) {
+    preview.classList.remove('home-ai-pdf-dialog__preview--html')
+    preview.innerHTML =
+      '<p class="home-ai-pdf-dialog__loading">Oppsummerer samtalen …</p>'
+  }
   if (dlg instanceof HTMLDialogElement) dlg.showModal()
+  try {
+    const r = await fetch(apiUrl('/api/ai-chat-pdf-summary'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lines, contractMode: homeAiContractRagMode }),
+    })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      throw new Error(
+        typeof data.error === 'string' ? data.error : 'Oppsummering feilet',
+      )
+    }
+    const conclusion = typeof data.conclusion === 'string' ? data.conclusion : ''
+    const highlights = Array.isArray(data.highlights) ? data.highlights : []
+    homeAiPdfSummaryCache = { conclusion, highlights }
+    if (preview) {
+      preview.classList.add('home-ai-pdf-dialog__preview--html')
+      preview.innerHTML = `<p class="home-ai-pdf-dialog__badge">Konklusjon (AI-oppsummert)</p><div class="home-ai-pdf-dialog__summary">${formatHomeAiPdfPreviewHtml(conclusion, highlights)}</div><p class="home-ai-pdf-dialog__hint">Nøkkelord er markert med grønn ramme.</p>`
+    }
+  } catch (e) {
+    homeAiPdfSummaryCache = null
+    if (preview) {
+      preview.classList.remove('home-ai-pdf-dialog__preview--html')
+      preview.textContent = formatHomeAiPdfPreviewText(lines)
+    }
+    if (statusEl) {
+      statusEl.textContent =
+        e && typeof e === 'object' && 'message' in e
+          ? `${String(/** @type {{ message: string }} */ (e).message)} — viser full samtale.`
+          : 'Kunne ikke oppsummere — viser full samtale.'
+    }
+  }
 }
 
 function exitHomeAiFromPdfDialog() {
@@ -8263,6 +8336,9 @@ async function saveHomeAiPdfToDevice() {
           timeStyle: 'short',
         }),
         lines,
+        contractMode: homeAiContractRagMode,
+        conclusion: homeAiPdfSummaryCache?.conclusion,
+        highlights: homeAiPdfSummaryCache?.highlights,
       }),
     })
     if (!res.ok) {
