@@ -3579,10 +3579,11 @@ function renderHomeHtml() {
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
             <div class="home-ai-gpt__composer input-bar">
-              <div class="home-ai-gpt__composer-tools" role="toolbar" aria-label="Vedlegg og PDF">
+              <div class="home-ai-gpt__composer-tools" role="toolbar" aria-label="Vedlegg, PDF og test">
                 <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-open-camera">Ta bilde</button>
                 <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pick-file-chat">Filer</button>
                 <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pdf">PDF</button>
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-test">Test</button>
               </div>
               <div class="home-ai-gpt__input-shell">
                 <label class="visually-hidden" for="home-ai-chat-input">Send melding til VeiAi</label>
@@ -6567,6 +6568,20 @@ function bindHomeAiDocumentationListeners(signal) {
   document.getElementById('btn-home-ai-pdf')?.addEventListener(
     'click',
     () => openHomeAiPdfDialog(),
+    { signal },
+  )
+
+  document.getElementById('btn-home-ai-test')?.addEventListener(
+    'click',
+    () => {
+      const st = document.getElementById('home-ai-status')
+      if (st) {
+        st.textContent = 'Test: du ser siste bygg (trykk for å bekrefte).'
+        window.setTimeout(() => {
+          if (st.textContent.startsWith('Test:')) st.textContent = ''
+        }, 5000)
+      }
+    },
     { signal },
   )
 

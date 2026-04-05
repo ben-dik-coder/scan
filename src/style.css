@@ -2579,7 +2579,7 @@ body.home-ai-panel-open .home-vegref {
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */
 .home-ai-gpt__composer-tools {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
   width: 100%;
   max-width: none;
