@@ -13,6 +13,8 @@ import { fileURLToPath } from 'url'
 
 import OpenAI from 'openai'
 
+import { modelSupportsCustomTemperature } from './openaiModelHelpers.js'
+
 const DEFAULT_MODEL = 'gpt-5-mini'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -224,13 +226,16 @@ export async function handleAnalyze(req, res) {
       )
       const isFirstShot = msgs.length === 1
       const sys = isFirstShot ? SYSTEM_PROMPT : SYSTEM_PROMPT_FOLLOWUP
-      const completion = await openai.chat.completions.create({
+      const chatOpts = {
         model,
-        temperature: isFirstShot ? 0.55 : 0.78,
         response_format: isFirstShot ? { type: 'json_object' } : undefined,
         max_completion_tokens: isFirstShot ? 2500 : 4096,
         messages: [{ role: 'system', content: sys }, ...msgs],
-      })
+      }
+      if (modelSupportsCustomTemperature(model)) {
+        chatOpts.temperature = isFirstShot ? 0.55 : 0.78
+      }
+      const completion = await openai.chat.completions.create(chatOpts)
 
       const raw = textFromAssistantMessage(completion.choices[0]?.message)
       if (!raw || !String(raw).trim()) {
@@ -267,16 +272,19 @@ export async function handleAnalyze(req, res) {
     /** Legacy uten bilde: ren tekst (første analyse eller oppfølging som ren tekst). */
     if (!hasImage) {
       const userText = buildUserText(text, vehicle, temperature)
-      const completion = await openai.chat.completions.create({
+      const textOnlyOpts = {
         model,
-        temperature: 0.55,
         response_format: { type: 'json_object' },
         max_completion_tokens: 2500,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT_TEXT_ONLY },
           { role: 'user', content: userText },
         ],
-      })
+      }
+      if (modelSupportsCustomTemperature(model)) {
+        textOnlyOpts.temperature = 0.55
+      }
+      const completion = await openai.chat.completions.create(textOnlyOpts)
 
       const raw = textFromAssistantMessage(completion.choices[0]?.message)
       if (!raw || !String(raw).trim()) {
@@ -300,9 +308,8 @@ export async function handleAnalyze(req, res) {
     const imageUrl = await normalizeImageForOpenAI(String(image))
     const userText = buildUserText(text, vehicle, temperature)
 
-    const completion = await openai.chat.completions.create({
+    const visionOpts = {
       model,
-      temperature: 0.55,
       response_format: { type: 'json_object' },
       max_completion_tokens: 2500,
       messages: [
@@ -318,7 +325,11 @@ export async function handleAnalyze(req, res) {
           ],
         },
       ],
-    })
+    }
+    if (modelSupportsCustomTemperature(model)) {
+      visionOpts.temperature = 0.55
+    }
+    const completion = await openai.chat.completions.create(visionOpts)
 
     const raw = textFromAssistantMessage(completion.choices[0]?.message)
     if (!raw || !String(raw).trim()) {

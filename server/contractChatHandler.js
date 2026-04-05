@@ -6,6 +6,8 @@
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
+import { modelSupportsCustomTemperature } from './openaiModelHelpers.js'
+
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-5-mini'
@@ -438,13 +440,16 @@ ${contextBlock}`
       })),
     ]
 
-    const completion = await openai.chat.completions.create({
+    const completionOpts = {
       model: CHAT_MODEL,
       messages: /** @type {any} */ (chatMessages),
-      temperature: 0.18,
-      top_p: 0.9,
       max_completion_tokens: 2048,
-    })
+    }
+    if (modelSupportsCustomTemperature(CHAT_MODEL)) {
+      completionOpts.temperature = 0.18
+      completionOpts.top_p = 0.9
+    }
+    const completion = await openai.chat.completions.create(completionOpts)
 
     const rawReply = completion.choices?.[0]?.message?.content?.trim() || ''
     const reply = extractContractUserReply(rawReply)
