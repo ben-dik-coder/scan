@@ -44,7 +44,13 @@ export async function summarizeAiChatLinesForPdf(lines, opts = {}) {
   if (!key) {
     throw new Error('OPENAI_API_KEY mangler for oppsummering.')
   }
-  const openai = new OpenAI({ apiKey: key })
+  const timeoutMs = (() => {
+    const v = process.env.OPENAI_TIMEOUT_MS
+    if (v == null || String(v).trim() === '') return 720_000
+    const n = Number(v)
+    return Number.isFinite(n) ? Math.min(1_800_000, Math.max(60_000, n)) : 720_000
+  })()
+  const openai = new OpenAI({ apiKey: key, timeout: timeoutMs })
   const assistantLabel = opts.contractMode ? 'Kontrakt-AI' : 'VeiAi'
   const transcript = (Array.isArray(lines) ? lines : [])
     .map((line) => {

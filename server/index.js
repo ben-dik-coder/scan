@@ -127,12 +127,15 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.listen(PORT, LISTEN_HOST, () => {
+const httpServer = app.listen(PORT, LISTEN_HOST, () => {
   console.log(
     `Scanix API lytter på http://${LISTEN_HOST}:${PORT} (moduler lastes i bakgrunnen …)`,
   )
   console.log(`Test: http://127.0.0.1:${PORT}/api/health`)
 })
+/* Lange AI-kall (kontrakt-RAG, analyse): Node sin standard requestTimeout (5 min) kan avbryte før svar er klart. */
+httpServer.requestTimeout = 0
+httpServer.headersTimeout = 660000
 
 ;(async () => {
   try {

@@ -4,12 +4,12 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // USE_HTTP=1 → kun HTTP (LAN/mobil). VITE_POLL_WATCH=1 → iCloud/nettverksdisk (unngå ETIMEDOUT).
 const usePlainHttp = process.env.USE_HTTP === '1'
 
-/** Lang timeout: /api/contract-chat kan bruke lang tid (embedding + modell). */
+/** Lang timeout: kontrakt-RAG (embedding + rerank + modell) kan ta mange minutter. */
 const apiProxy = {
   target: 'http://127.0.0.1:8787',
   changeOrigin: true,
-  timeout: 300_000,
-  proxyTimeout: 300_000,
+  timeout: 900_000,
+  proxyTimeout: 900_000,
 }
 
 const pollWatch =

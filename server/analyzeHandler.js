@@ -183,11 +183,18 @@ function textFromAssistantMessage(message) {
 /** @type {OpenAI | null} */
 let client = null
 
+function getOpenAiTimeoutMs() {
+  const v = process.env.OPENAI_TIMEOUT_MS
+  if (v == null || String(v).trim() === '') return 720_000
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(1_800_000, Math.max(60_000, n)) : 720_000
+}
+
 function getClient() {
   const key = process.env.OPENAI_API_KEY
   if (!key || !key.trim()) return null
   if (!client) {
-    client = new OpenAI({ apiKey: key.trim() })
+    client = new OpenAI({ apiKey: key.trim(), timeout: getOpenAiTimeoutMs() })
   }
   return client
 }

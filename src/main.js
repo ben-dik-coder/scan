@@ -3556,12 +3556,16 @@ function renderHomeHtml() {
             <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
           </div>
           <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs home-ai-gpt--chatgpt">
+            <div class="home-ai-gpt__topbar">
+              <button type="button" class="home-ai-gpt__done" id="btn-home-ai-done">Ferdig</button>
+              <h1 class="home-ai-gpt__topbar-title">AI dokumentering</h1>
+              <span class="home-ai-gpt__topbar-spacer" aria-hidden="true"></span>
+            </div>
             <header class="home-ai-gpt__header">
-              <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Lukk">
+              <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Tilbake">
                 <svg class="home-ai-gpt__close-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
               <div class="home-ai-gpt__header-center">
-                <span class="home-ai-gpt__title">AI dokumentering</span>
                 <button type="button" class="home-ai-gpt__contract-pill" id="btn-home-ai-contract-rag" title="Still spørsmål om kontrakten til AI"><span class="home-ai-gpt__contract-pill-label">Kontrakt</span></button>
               </div>
               <div class="home-ai-gpt__header-spacer" aria-hidden="true"></div>
@@ -6530,12 +6534,18 @@ function bindHomeAiDocumentationListeners(signal) {
     { signal },
   )
 
+  const closeHomeAiPanel = () => {
+    stopHomeAiCamera()
+    setHomeBildeSubTab('camera')
+  }
   document.getElementById('btn-home-ai-close-fs')?.addEventListener(
     'click',
-    () => {
-      stopHomeAiCamera()
-      setHomeBildeSubTab('camera')
-    },
+    closeHomeAiPanel,
+    { signal },
+  )
+  document.getElementById('btn-home-ai-done')?.addEventListener(
+    'click',
+    closeHomeAiPanel,
     { signal },
   )
 

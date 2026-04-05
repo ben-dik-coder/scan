@@ -84,10 +84,22 @@ let openaiClient = null
 /** @type {ReturnType<typeof createClient> | null} */
 let supabaseAdmin = null
 
+function getOpenAiTimeoutMs() {
+  const v = process.env.OPENAI_TIMEOUT_MS
+  if (v == null || String(v).trim() === '') return 720_000
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(1_800_000, Math.max(60_000, n)) : 720_000
+}
+
 function getOpenAI() {
   const key = process.env.OPENAI_API_KEY
   if (!key?.trim()) return null
-  if (!openaiClient) openaiClient = new OpenAI({ apiKey: key.trim() })
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: key.trim(),
+      timeout: getOpenAiTimeoutMs(),
+    })
+  }
   return openaiClient
 }
 
@@ -246,6 +258,33 @@ async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
  * fortsatt sender gammelt strukturformat.
  * @param {string} raw
  */
+/**
+ * OpenAI kan returnere assistant.content som streng eller liste (gpt-5 m.fl.).
+ * @param {unknown} message
+ * @returns {string}
+ */
+function textFromAssistantMessage(message) {
+  if (!message || typeof message !== 'object') return ''
+  const m = /** @type {Record<string, unknown>} */ (message)
+  if (typeof m.refusal === 'string' && m.refusal.trim()) {
+    return m.refusal.trim()
+  }
+  const c = m.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c)) {
+    return c
+      .map((part) => {
+        if (!part || typeof part !== 'object') return ''
+        const p = /** @type {Record<string, unknown>} */ (part)
+        if (typeof p.text === 'string') return p.text
+        return ''
+      })
+      .join('')
+  }
+  if (c == null) return ''
+  return String(c)
+}
+
 function extractContractUserReply(raw) {
   const t = String(raw ?? '').trim()
   if (!t) return ''
@@ -603,7 +642,9 @@ ${contextBlock}`
     }
     const completion = await openai.chat.completions.create(completionOpts)
 
-    const rawReply = completion.choices?.[0]?.message?.content?.trim() || ''
+    const rawReply = textFromAssistantMessage(
+      completion.choices?.[0]?.message,
+    ).trim()
     const reply = extractContractUserReply(rawReply)
     if (!reply) {
       res.status(502).json({ error: 'Tomt svar fra modell.' })
