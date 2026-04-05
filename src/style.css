@@ -1577,21 +1577,15 @@ form.auth-form[hidden] {
 }
 
 /*
- * AI fullskjerm: fixed, helt ugjennomsiktig.
- * 100lvh = «stor» viewport-høyde – krymper ikke når tastatur åpner (legger seg oppå, dytter ikke layout).
- * Ikke overstyr høyde med JS innerHeight; det ga kortere panel og avdekket forsiden over tastaturet.
+ * AI fullskjerm: fixed med inset:0 fyller layout-viewport helt (ingen blå stripe nederst fra #app).
+ * Unngår 100lvh/vh-konflikt på iOS der eksplisitt høyde ikke matcher safe area / dynamisk verktøylinje.
  */
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
+  inset: 0;
+  width: auto;
   max-width: none;
-  height: 100vh;
-  height: 100lvh;
-  min-height: 100vh;
-  min-height: 100lvh;
-  min-height: -webkit-fill-available;
+  height: auto;
   margin: 0;
   padding: 0;
   z-index: 10000;
@@ -1839,10 +1833,9 @@ body.home-ai-panel-open .home-vegref {
   padding-top: env(safe-area-inset-top, 0);
   padding-right: env(safe-area-inset-right, 0);
   padding-left: env(safe-area-inset-left, 0);
-  /* Luft nederst innenfor panelet (chat over tastatur); ikke layout-skalering av hele siden */
+  /* Én kilde for tastaturluft (JS fra visualViewport); unngå dobbelt med keyboard-inset-env */
   padding-bottom: max(
     env(safe-area-inset-bottom, 0px),
-    env(keyboard-inset-height, 0px),
     var(--home-ai-keyboard-inset, 0px)
   );
   pointer-events: auto;

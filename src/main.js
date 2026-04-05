@@ -5475,9 +5475,8 @@ function bindHomeListeners() {
 }
 
 /**
- * AI-fullskjerm: høyde styres i CSS med 100lvh (krymper ikke når tastatur åpner seg).
- * Her settes kun --home-ai-keyboard-inset fra visualViewport slik at innhold kan padde
- * innenfor panelet uten at hele siden (innerHeight) skaleres ned – da avdekkes forsiden.
+ * --home-ai-keyboard-inset fra visualViewport: luft nederst i .home-ai-fullscreen så chat ikke
+ * skjules under tastatur. Selve panelet bruker CSS inset:0 (full layout-viewport).
  */
 function resetHomeAiPanelVisualViewport(panel) {
   panel.classList.remove('home-ai-panel--vv')
@@ -5701,7 +5700,7 @@ function openHomeAiAskContract() {
   closeHomeDrawer()
   setHomeBildeSubTab('ai')
   setHomeAiContractRagEnabled(true)
-  document.getElementById('home-ai-chat-input')?.focus()
+  document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
 }
 
 function exitHomeAiContractRagUi() {
@@ -5725,7 +5724,7 @@ function enterHomeAiChatWithImage(dataUrl) {
   if (log) log.innerHTML = ''
   const st = document.getElementById('home-ai-status')
   if (st) st.textContent = ''
-  document.getElementById('home-ai-chat-input')?.focus()
+  document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
 }
 
 function retakeHomeAiDoc() {
@@ -6451,7 +6450,7 @@ function bindHomeAiDocumentationListeners(signal) {
     'click',
     () => {
       setHomeAiContractRagEnabled(!homeAiContractRagMode)
-      document.getElementById('home-ai-chat-input')?.focus()
+      document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
     },
     { signal },
   )
@@ -6493,10 +6492,7 @@ function bindHomeAiDocumentationListeners(signal) {
   homeAiChatInput?.addEventListener(
     'focusin',
     () => {
-      /* Stopp iOS/Chrome i å scrolle dokumentet opp slik at forsiden vises under tastaturet */
-      window.scrollTo(0, 0)
-      document.documentElement.scrollTop = 0
-      document.body.scrollTop = 0
+      /* Ikke scrollTo(0,0) her – på iOS flyttes da caret/komponenter til toppen av skjermen. */
       requestAnimationFrame(() => {
         requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
       })
