@@ -1676,6 +1676,12 @@ body.home-ai-panel-open {
   overscroll-behavior: none;
 }
 
+/* AI-panelet ligger på body; skjul hele #app så ingenting fra forsiden kan skimtes i glipper */
+body.home-ai-panel-open #app {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 body.home-ai-panel-open #app.app-root--home {
   overflow: hidden;
   min-height: 100dvh;

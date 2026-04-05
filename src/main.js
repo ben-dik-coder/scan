@@ -1363,6 +1363,8 @@ let homeAiRagMessages = []
 let homeAiThinkingSoundTimer = 0
 /** @type {AudioContext | null} */
 let homeAiAudioContext = null
+/** Layout-høyde (px) fanget når AI åpnes – brukes til panelhøyde slik at den IKKE krymper når tastatur senker innerHeight (da skimtes forsiden). */
+let homeAiLayoutHeightPx = 0
 const HOME_AI_CAPTURE_MAX = 1600
 
 /** Når true, hold kartutsnittet på den blå posisjonen (GPS). Slås av ved manuell panorering/zoom. */
@@ -5475,33 +5477,68 @@ function bindHomeListeners() {
   startHomeVegrefTracking()
 }
 
+function captureHomeAiLayoutHeight() {
+  const vv = window.visualViewport
+  const raw = Math.max(
+    window.innerHeight || 0,
+    document.documentElement?.clientHeight || 0,
+    vv?.height || 0,
+  )
+  const fallback =
+    window.innerHeight ||
+    document.documentElement?.clientHeight ||
+    667
+  homeAiLayoutHeightPx = Math.round(raw > 80 ? raw : fallback)
+}
+
 /**
- * --home-ai-keyboard-inset fra visualViewport: luft nederst i .home-ai-fullscreen så chat ikke
- * skjules under tastatur. Selve panelet bruker CSS inset:0 (full layout-viewport).
+ * Panel: fast høyde = fanget layout (krymper ikke med tastatur). Tastatur legger seg visuelt oppå.
+ * --home-ai-keyboard-inset: luft i bunn av .home-ai-fullscreen så composer/tekst ikke skjules.
  */
 function resetHomeAiPanelVisualViewport(panel) {
   panel.classList.remove('home-ai-panel--vv')
   panel.style.removeProperty('--home-ai-keyboard-inset')
+  panel.style.removeProperty('top')
+  panel.style.removeProperty('left')
+  panel.style.removeProperty('width')
+  panel.style.removeProperty('maxWidth')
+  panel.style.removeProperty('height')
+  panel.style.removeProperty('minHeight')
+  panel.style.removeProperty('right')
+  panel.style.removeProperty('bottom')
 }
 
 function applyHomeAiPanelVisualViewport(panel) {
   panel.classList.add('home-ai-panel--vv')
-  const vv = window.visualViewport
+  if (!homeAiLayoutHeightPx) {
+    captureHomeAiLayoutHeight()
+  }
   const layoutH =
-    window.innerHeight || document.documentElement?.clientHeight || 0
+    homeAiLayoutHeightPx ||
+    Math.max(
+      window.innerHeight || 0,
+      document.documentElement?.clientHeight || 0,
+    )
+  panel.style.top = '0px'
+  panel.style.left = '0px'
+  panel.style.width = '100%'
+  panel.style.maxWidth = '100%'
+  panel.style.height = `${layoutH}px`
+  panel.style.minHeight = `${layoutH}px`
+  panel.style.right = 'auto'
+  panel.style.bottom = 'auto'
+
+  const vv = window.visualViewport
   if (!vv) {
     panel.style.removeProperty('--home-ai-keyboard-inset')
     return
   }
   let inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
-  /*
-   * Safari iOS: «form accessory» (pil/OK) over tastatur dekker ofte tekstfelt; vv.height
-   * inkluderer ikke alltid den raden. Ekstra luft + fang tiffeller der vv ikke oppdateres.
-   */
-  if (inset > 0) {
-    inset += 52
-  } else if (vv.height < layoutH - 72) {
-    inset = Math.max(0, layoutH - vv.offsetTop - vv.height) + 52
+  if (inset > 0 || vv.height < layoutH - 72) {
+    inset += 56
+  }
+  if (vv.height < layoutH - 48) {
+    inset = Math.max(inset, 72)
   }
   panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
 }
@@ -5520,7 +5557,14 @@ function bindHomeAiPanelVisualViewport(signal) {
     requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
   }
   window.addEventListener('resize', schedule, { signal })
-  window.addEventListener('orientationchange', schedule, { signal })
+  window.addEventListener(
+    'orientationchange',
+    () => {
+      homeAiLayoutHeightPx = 0
+      schedule()
+    },
+    { signal },
+  )
   const vv = window.visualViewport
   if (vv) {
     vv.addEventListener('resize', schedule, { signal })
@@ -5569,6 +5613,11 @@ function setHomeBildeSubTab(which) {
   const navAi = document.getElementById('btn-home-nav-ai')
   navAi?.classList.toggle('home-bottom-nav__btn--active', !isCam)
   reparentHomeAiPanelForViewportStacking(!isCam)
+  if (isCam) {
+    homeAiLayoutHeightPx = 0
+  } else {
+    captureHomeAiLayoutHeight()
+  }
   syncHomeAiPanelBodyClass()
   updateHomeAiPanelVisualViewport()
 }
