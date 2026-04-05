@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1536
-const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-4o-mini'
+const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-5-mini'
 const MATCH_COUNT = Math.min(
   24,
   Math.max(6, Number(process.env.CONTRACT_RAG_MATCH_COUNT || 14)),

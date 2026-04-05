@@ -1,6 +1,6 @@
  /**
  * POST /api/analyze — OpenAI vision + tekst (veivokter-rapport).
- * Krever OPENAI_API_KEY. Modell: OPENAI_MODEL (standard gpt-4.1).
+ * Krever OPENAI_API_KEY. Modell: OPENAI_MODEL (standard gpt-5-mini).
  *
  * Valgfri kontrakt/avtale: legg tekst i fil (se loadContractContext nedenfor)
  * eller sett miljøvariabel CONTRACT_CONTEXT_PATH. Teksten legges til systemprompt
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url'
 
 import OpenAI from 'openai'
 
-const DEFAULT_MODEL = 'gpt-4.1'
+const DEFAULT_MODEL = 'gpt-5-mini'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -345,7 +345,7 @@ export async function handleAnalyze(req, res) {
     /** Ikke videresend OpenAI sin HTTP-status (f.eks. 404 ved ukjent modell) — gir «feil 404» i appen uten tydelig årsak. */
     const hint =
       /404|model/i.test(msg) && !/fetch|connect/i.test(msg)
-        ? ' Sjekk OPENAI_MODEL i server/.env (f.eks. gpt-4o).'
+        ? ' Sjekk OPENAI_MODEL i server/.env (f.eks. gpt-5-mini).'
         : ''
     res.status(502).json({ error: `${msg}${hint}` })
   }

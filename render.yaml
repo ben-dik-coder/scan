@@ -25,4 +25,4 @@ services:
       # Settes manuelt i Render Dashboard (ikke i git):
       - key: OPENAI_API_KEY
         sync: false
-      # Valgfritt i Dashboard: OPENAI_MODEL (standard i kode: gpt-4.1)
+      # Valgfritt i Dashboard: OPENAI_MODEL (standard i kode: gpt-5-mini)
