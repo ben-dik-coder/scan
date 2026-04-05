@@ -2358,10 +2358,10 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* AI dokumentering: luft i logg (+ 5vh når .input-bar er translateY(5vh)) */
+/* AI dokumentering: luft i logg = verktøyrad + skrivefelt + composer-padding + safe area (ingen ekstra vh – fixed bunn skal ikke translateY) */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
   padding-bottom: calc(
-    0.75rem + 6px + 2.5rem + 0.25rem + 2.75rem + 4px + env(safe-area-inset-bottom, 0px) + 5vh
+    0.75rem + 6px + 2.5rem + 0.25rem + 2.75rem + 4px + env(safe-area-inset-bottom, 0px)
   );
 }
 
@@ -2543,7 +2543,7 @@ body.home-ai-panel-open .home-vegref {
 
 /*
  * AI dokumentering: .input-bar – avrundet felt nederst (rett over safe area), faner over.
- * translateY(5vh) = ca. 5 % av skjermhøyde lenger ned (ønsket plassering).
+ * Ikke translateY(vh): fixed + bottom:0 + transform dyttet feltet under skjermkanten på mobil.
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
   position: fixed;
@@ -2553,7 +2553,6 @@ body.home-ai-panel-open .home-vegref {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  transform: translateY(5vh);
   z-index: 2147483641;
   margin-top: 0;
   gap: 0.25rem;
@@ -2579,7 +2578,7 @@ body.home-ai-panel-open .home-vegref {
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */
 .home-ai-gpt__composer-tools {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
   width: 100%;
   max-width: none;
