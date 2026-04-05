@@ -64,6 +64,19 @@ html {
  * Hovedbakgrunn (kun CSS – ingen bakgrunnsbilder): samme palett som .home-drawer-skallet.
  * html + body sikrer full viewport uten «hull» der margin/scroll oppfører seg annerledes.
  */
+/* Når AI-fullskjerm er åpen: lås rot slik at fixed inset:0 faktisk dekker hele skjermen (iOS). */
+html.home-ai-root-lock {
+  height: 100%;
+  height: -webkit-fill-available;
+  overflow: hidden;
+}
+
+html.home-ai-root-lock body {
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 100%;
@@ -1577,8 +1590,8 @@ form.auth-form[hidden] {
 }
 
 /*
- * AI fullskjerm: fixed med inset:0 fyller layout-viewport helt (ingen blå stripe nederst fra #app).
- * Unngår 100lvh/vh-konflikt på iOS der eksplisitt høyde ikke matcher safe area / dynamisk verktøylinje.
+ * AI fullskjerm: fixed, kant-i-kant med viewport (html må ha høyde – home-ai-root-lock).
+ * Uten translateZ på panelet: unngår subpiksel-glipp der #0e1422 «forside» skimtes nederst.
  */
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
@@ -1586,6 +1599,9 @@ form.auth-form[hidden] {
   width: auto;
   max-width: none;
   height: auto;
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
   z-index: 10000;
@@ -1596,8 +1612,6 @@ form.auth-form[hidden] {
   overscroll-behavior: none;
   pointer-events: auto;
   isolation: isolate;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
   background-color: #212121;
   background-image: none;
 }
@@ -2342,6 +2356,8 @@ body.home-ai-panel-open .home-vegref {
   padding: 0.5rem 0.75rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   background-color: #212121;
+  position: relative;
+  z-index: 2;
 }
 
 .home-ai-gpt__input-shell {

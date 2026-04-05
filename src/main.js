@@ -4880,6 +4880,7 @@ function renderApp() {
   const orphanAiPanel = document.getElementById('panel-home-bilde-ai')
   if (orphanAiPanel && orphanAiPanel.parentElement === document.body) {
     orphanAiPanel.remove()
+    syncHomeAiPanelBodyClass()
   }
   const banner = insecureContextBannerHtml()
   let main = ''
@@ -5488,12 +5489,21 @@ function applyHomeAiPanelVisualViewport(panel) {
   const vv = window.visualViewport
   const layoutH =
     window.innerHeight || document.documentElement?.clientHeight || 0
-  if (vv) {
-    const inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
-    panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
-  } else {
+  if (!vv) {
     panel.style.removeProperty('--home-ai-keyboard-inset')
+    return
   }
+  let inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
+  /*
+   * Safari iOS: «form accessory» (pil/OK) over tastatur dekker ofte tekstfelt; vv.height
+   * inkluderer ikke alltid den raden. Ekstra luft + fang tiffeller der vv ikke oppdateres.
+   */
+  if (inset > 0) {
+    inset += 52
+  } else if (vv.height < layoutH - 72) {
+    inset = Math.max(0, layoutH - vv.offsetTop - vv.height) + 52
+  }
+  panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
 }
 
 function updateHomeAiPanelVisualViewport() {
@@ -5523,6 +5533,7 @@ function syncHomeAiPanelBodyClass() {
   const panel = document.getElementById('panel-home-bilde-ai')
   const open = Boolean(panel && !panel.hidden)
   document.body.classList.toggle('home-ai-panel-open', open)
+  document.documentElement.classList.toggle('home-ai-root-lock', open)
 }
 
 /**
