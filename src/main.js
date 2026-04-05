@@ -6451,12 +6451,22 @@ function bindHomeAiDocumentationListeners(signal) {
     { signal },
   )
 
-  document.getElementById('home-ai-chat-input')?.addEventListener(
+  const homeAiChatInput = document.getElementById('home-ai-chat-input')
+  homeAiChatInput?.addEventListener(
     'keydown',
     (ev) => {
       if (ev.key !== 'Enter' || ev.shiftKey) return
       ev.preventDefault()
       void sendHomeAiChatMessage()
+    },
+    { signal },
+  )
+  homeAiChatInput?.addEventListener(
+    'focusin',
+    () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
+      })
     },
     { signal },
   )

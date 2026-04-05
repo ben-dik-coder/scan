@@ -1791,8 +1791,12 @@ form.auth-form[hidden] {
   display: none !important;
 }
 
-/* Synlig chat-scene: fyll resten av kolonnen uten ekstra ytre scroll */
+/* Synlig chat-scene: kolonne-flex slik at scroll + composer fyller viewport (tastatur) */
 #home-ai-stage-chat:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1900,19 +1904,22 @@ form.auth-form[hidden] {
   background: #212121;
 }
 
+/* To rader: tittel får full bredde ved siden av tilbake (unngår «AI dokume…») */
 .home-ai-gpt__header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 0.35rem 0.5rem;
-  min-height: 3rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+  gap: 0.45rem 0.5rem;
+  padding: 0.45rem 0.65rem 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: #212121;
   flex-shrink: 0;
 }
 
 .home-ai-gpt__close {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1926,6 +1933,7 @@ form.auth-form[hidden] {
   font: inherit;
   cursor: pointer;
   flex-shrink: 0;
+  align-self: center;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1938,27 +1946,37 @@ form.auth-form[hidden] {
 }
 
 .home-ai-gpt__title-wrap {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   text-align: center;
+  padding: 0 0.15rem;
 }
 
 .home-ai-gpt__title {
-  display: block;
-  font-size: 0.95rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.88rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.25;
   color: #ececec;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .home-ai-gpt__header-actions {
+  grid-column: 1 / -1;
+  grid-row: 2;
   display: flex;
-  flex-wrap: nowrap;
-  gap: 0.25rem;
-  justify-content: flex-end;
-  max-width: min(56vw, 14rem);
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  justify-content: center;
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -1999,9 +2017,9 @@ form.auth-form[hidden] {
 
 .home-ai-gpt__mode-hint {
   margin: 0;
-  padding: 0.5rem 1rem 0.6rem;
-  font-size: 0.75rem;
-  line-height: 1.45;
+  padding: 0.38rem 0.85rem 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.32;
   color: rgba(236, 236, 236, 0.72);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: transparent;
@@ -2016,6 +2034,7 @@ form.auth-form[hidden] {
 }
 
 .home-ai-gpt__mode-hint--contract {
+  padding: 0.32rem 0.8rem 0.36rem;
   background: rgba(25, 195, 125, 0.06);
   border-bottom-color: rgba(25, 195, 125, 0.15);
 }
@@ -2023,14 +2042,19 @@ form.auth-form[hidden] {
 .home-ai-gpt__context {
   display: flex;
   align-items: flex-start;
-  gap: 0.65rem;
-  padding: 0.5rem 1rem 0.65rem;
+  gap: 0.55rem;
+  padding: 0.4rem 0.85rem 0.45rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
   max-width: 48rem;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* Kontrakt uten vedlagt bilde: skjul tom forhånds-rad (mindre luft over chat) */
+.home-ai-gpt:has(.home-ai-gpt__mode-hint--contract) .home-ai-gpt__context:has(#home-ai-preview-img[hidden]) {
+  display: none;
 }
 
 .home-ai-gpt__thumb-wrap {
@@ -2062,11 +2086,28 @@ form.auth-form[hidden] {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 1rem 0 1.25rem;
+  padding: 0.5rem 0 0.65rem;
   display: flex;
   flex-direction: column;
   gap: 0;
   -webkit-overflow-scrolling: touch;
+}
+
+#home-ai-chat-log:empty {
+  flex: 1;
+  min-height: min(20vh, 8.5rem);
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem 1rem;
+  box-sizing: border-box;
+  color: rgba(236, 236, 236, 0.38);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+#home-ai-chat-log:empty::after {
+  content: 'Start samtalen med et spørsmål nedenfor.';
 }
 
 .home-ai-gpt__row {
@@ -2208,7 +2249,8 @@ form.auth-form[hidden] {
 
 .home-ai-gpt__composer {
   flex-shrink: 0;
-  padding: 0.65rem 0.75rem max(0.65rem, env(safe-area-inset-bottom, 0px));
+  margin-top: auto;
+  padding: 0.5rem 0.75rem max(0.5rem, env(safe-area-inset-bottom, 0px));
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   background: #212121;
 }
