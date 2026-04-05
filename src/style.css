@@ -1607,6 +1607,33 @@ form.auth-form[hidden] {
   background: #0e1422;
 }
 
+/*
+ * AI fullskjerm: home-main må stable over .home-bottom-nav (z-index 150).
+ * Ellers ligger fast bunnnav og «forsiden» visuelt oppå chat (feil stablelag).
+ */
+.view-home:has(#panel-home-bilde-ai:not([hidden])) .home-main {
+  position: relative;
+  z-index: 5000;
+  isolation: isolate;
+}
+
+.view-home:has(#panel-home-bilde-ai:not([hidden])) .home-bilde-stack {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.view-home:has(#panel-home-bilde-ai:not([hidden])) .home-bottom-nav {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .home-bilde-panel__hint {
   margin: 0;
   font-size: 0.82rem;
