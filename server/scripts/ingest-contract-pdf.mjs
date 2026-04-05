@@ -9,6 +9,8 @@
  * Valgfritt i server/.env:
  *   CONTRACT_INGEST_CHUNK_SIZE=1400
  *   CONTRACT_INGEST_CHUNK_OVERLAP=280
+ *   CONTRACT_EMBEDDING_MODEL=text-embedding-3-small
+ *   CONTRACT_EMBEDDING_DIM=1536 (må samsvare med kolonnen vector(N) i Supabase)
  *
  * Krever: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
@@ -27,8 +29,12 @@ const pdfParse = require('pdf-parse')
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(__dirname, '..', '.env') })
 
-const EMBEDDING_MODEL = 'text-embedding-3-small'
-const EMBEDDING_DIM = 1536
+const EMBEDDING_MODEL =
+  process.env.CONTRACT_EMBEDDING_MODEL?.trim() || 'text-embedding-3-small'
+const EMBEDDING_DIM = Math.min(
+  3072,
+  Math.max(256, Number(process.env.CONTRACT_EMBEDDING_DIM || 1536)),
+)
 const CHUNK_SIZE = Math.min(
   8000,
   Math.max(400, Number(process.env.CONTRACT_INGEST_CHUNK_SIZE || 1400)),

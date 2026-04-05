@@ -1,6 +1,9 @@
 /**
  * POST /api/contract-chat — RAG mot contract_chunks (Supabase pgvector).
  * Krever: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *
+ * Kvalitet: stort vektor-trekk → hybrid merge → (valgfritt) query-utvidelse ved embedding
+ * → LLM-rerank til færre, mest relevante utdrag → svarmodell.
  */
 
 import OpenAI from 'openai'
@@ -8,24 +11,57 @@ import { createClient } from '@supabase/supabase-js'
 
 import { modelSupportsCustomTemperature } from './openaiModelHelpers.js'
 
-const EMBEDDING_MODEL = 'text-embedding-3-small'
-const EMBEDDING_DIM = 1536
+const EMBEDDING_MODEL =
+  process.env.CONTRACT_EMBEDDING_MODEL?.trim() || 'text-embedding-3-small'
+const EMBEDDING_DIM = Math.min(
+  3072,
+  Math.max(256, Number(process.env.CONTRACT_EMBEDDING_DIM || 1536)),
+)
 const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-5-mini'
-const MATCH_COUNT = Math.min(
-  24,
-  Math.max(6, Number(process.env.CONTRACT_RAG_MATCH_COUNT || 14)),
+
+/** Vektor-treff fra DB (pool før rerank). Må matche eller underskride match_contract_chunks limit (100). */
+const POOL_MATCH_COUNT = Math.min(
+  80,
+  Math.max(8, Number(process.env.CONTRACT_RAG_POOL_MATCH_COUNT || 36)),
 )
 
-/** Maks antall utdrag sendt til modellen etter sammenslåing (vektor + nøkkelord). */
+/** Maks utdrag etter vektor+nøkkelord før rerank (kap på token til reranker). */
+const MERGE_POOL_MAX = Math.min(
+  64,
+  Math.max(12, Number(process.env.CONTRACT_RAG_MERGE_POOL_MAX || 52)),
+)
+
+/** Utdrag sendt til svarmodellen etter rerank (kvalitet > kvantitet). */
 const MAX_CONTEXT_CHUNKS = Math.min(
   28,
-  Math.max(10, Number(process.env.CONTRACT_RAG_MAX_CONTEXT_CHUNKS || 22)),
+  Math.max(8, Number(process.env.CONTRACT_RAG_MAX_CONTEXT_CHUNKS || 16)),
 )
 
 const KEYWORD_SUPPLEMENT = Math.min(
-  16,
-  Math.max(0, Number(process.env.CONTRACT_RAG_KEYWORD_SUPPLEMENT || 12)),
+  20,
+  Math.max(0, Number(process.env.CONTRACT_RAG_KEYWORD_SUPPLEMENT || 14)),
 )
+
+const RERANK_MODEL =
+  process.env.CONTRACT_RAG_RERANK_MODEL?.trim() || 'gpt-4o-mini'
+const RERANK_INPUT_MAX = Math.min(
+  40,
+  Math.max(12, Number(process.env.CONTRACT_RAG_RERANK_INPUT_MAX || 32)),
+)
+
+const MAX_COMPLETION_TOKENS = Math.min(
+  4096,
+  Math.max(800, Number(process.env.CONTRACT_RAG_MAX_COMPLETION_TOKENS || 2560)),
+)
+
+function isEnvEnabled(name, defaultTrue = true) {
+  const v = process.env[name]
+  if (v == null || String(v).trim() === '') return defaultTrue
+  const s = String(v).trim().toLowerCase()
+  if (['0', 'false', 'off', 'no'].includes(s)) return false
+  if (['1', 'true', 'on', 'yes'].includes(s)) return true
+  return defaultTrue
+}
 
 /** Cosinus-likhet 0–1; filtrerer svake treff (mindre støy → mindre hallusinasjon). Tomt treff → retry med 0. */
 function getContractRagMinSimilarity() {
@@ -81,7 +117,7 @@ async function embedQuery(text) {
   if (!t) throw new Error('Tom tekst for embedding.')
   const res = await openai.embeddings.create({
     model: EMBEDDING_MODEL,
-    input: t,
+    input: t.length > 8000 ? t.slice(0, 8000) : t,
     dimensions: EMBEDDING_DIM,
   })
   const emb = res.data?.[0]?.embedding
@@ -89,6 +125,112 @@ async function embedQuery(text) {
     throw new Error('Ugyldig embedding-svar fra OpenAI.')
   }
   return emb
+}
+
+const QUERY_EXPAND_MODEL =
+  process.env.CONTRACT_RAG_QUERY_EXPAND_MODEL?.trim() || 'gpt-4o-mini'
+
+/**
+ * Utvider brukerens spørsmål med fagord/synonymer for bedre vektor-treff (valgfritt).
+ * @param {OpenAI} openai
+ * @param {string} query
+ */
+async function expandQueryForRetrieval(openai, query) {
+  const q = String(query).trim()
+  if (!q || q.length > 12_000) return q
+  const completion = await openai.chat.completions.create({
+    model: QUERY_EXPAND_MODEL,
+    response_format: { type: 'json_object' },
+    max_completion_tokens: 400,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Du hjelper med semantisk søk i norske anskaffelses-/veikontrakter (drift, vedlikehold, veg, grøfter, snø, merking). Returner JSON: {"search_text":"..."} der search_text er én kort søkeforespørsel (2–5 setninger) som gjengir brukerens intensjon og legger til relevante fagord, prosess-/kapittelhenvisninger hvis brukeren nevnte dem, og nære synonymer. Ikke svar på spørsmålet; ikke moraliser. Hvis teksten allerede er presis, kan du returnere den nesten uendret i search_text.',
+      },
+      { role: 'user', content: q },
+    ],
+  })
+  const raw = completion.choices?.[0]?.message?.content?.trim() || ''
+  try {
+    const parsed = JSON.parse(raw)
+    const st =
+      parsed && typeof parsed.search_text === 'string'
+        ? parsed.search_text.trim()
+        : ''
+    if (st.length >= 8) {
+      return `${q}\n\n${st}`.slice(0, 8000)
+    }
+  } catch {
+    /* fall back */
+  }
+  return q
+}
+
+/**
+ * Velger de mest relevante utdragene for svarmodellen (reduserer støy og «nesten riktige» chunks).
+ * @param {OpenAI} openai
+ * @param {string} userQuery
+ * @param {unknown[]} chunks rader med id, content, similarity, metadata
+ * @param {number} targetK
+ */
+async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
+  if (!chunks.length || chunks.length <= targetK) {
+    return /** @type {any[]} */ (chunks)
+  }
+  const pool = chunks.slice(
+    0,
+    Math.min(chunks.length, RERANK_INPUT_MAX),
+  )
+  const previews = pool.map((row, i) => {
+    const content =
+      row && typeof row === 'object' && row !== null && 'content' in row
+        ? String(/** @type {{ content?: string }} */ (row).content ?? '')
+        : ''
+    const excerpt = content.trim().slice(0, 1450)
+    return `[${i}]\n${excerpt}${content.length > 1450 ? '\n…' : ''}`
+  })
+  const listing = previews.join('\n\n---\n\n')
+  const completion = await openai.chat.completions.create({
+    model: RERANK_MODEL,
+    response_format: { type: 'json_object' },
+    max_completion_tokens: 500,
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'system',
+        content: `Du rangerer utdrag fra et kontraktsdokument etter relevans for brukerens spørsmål. Returner JSON: {"indices":[...]} der indices er en liste av 0-baserte indekser (0–${pool.length - 1}), sortert fra mest til minst relevant. Inkluder maks ${targetK} indekser. Utelat indekser som ikke hjelper med å besvare spørsmålet. Ved tvil: inkluder utdrag som kan inneholde sitatbar ordlyd.`,
+      },
+      {
+        role: 'user',
+        content: `SPØRSMÅL:\n${String(userQuery).slice(0, 6000)}\n\nNUMMERERTE UTDDRAG:\n${listing}`,
+      },
+    ],
+  })
+  const raw = completion.choices?.[0]?.message?.content?.trim() || ''
+  let indices = []
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed.indices)) {
+      indices = parsed.indices
+        .map((n) => (typeof n === 'number' ? n : parseInt(String(n), 10)))
+        .filter((n) => Number.isFinite(n) && n >= 0 && n < pool.length)
+    }
+  } catch {
+    return /** @type {any[]} */ (pool.slice(0, targetK))
+  }
+  const seen = new Set()
+  const ordered = []
+  for (const idx of indices) {
+    if (seen.has(idx)) continue
+    seen.add(idx)
+    ordered.push(pool[idx])
+    if (ordered.length >= targetK) break
+  }
+  if (ordered.length === 0) {
+    return /** @type {any[]} */ (pool.slice(0, targetK))
+  }
+  return ordered
 }
 
 /**
@@ -218,8 +360,10 @@ async function fetchKeywordSupplementChunks(supabase, terms) {
  * Vektor-treff først, deretter nøkkelord-treff uten duplikat-ID.
  * @param {unknown[]} vectorRows
  * @param {unknown[]} keywordRows
+ * @param {number} maxPool maks antall rader før rerank
  */
-function mergeVectorAndKeywordChunks(vectorRows, keywordRows) {
+function mergeVectorAndKeywordChunks(vectorRows, keywordRows, maxPool) {
+  const cap = Math.max(MAX_CONTEXT_CHUNKS, maxPool)
   const seen = new Set()
   const out = []
   for (const row of vectorRows) {
@@ -227,7 +371,7 @@ function mergeVectorAndKeywordChunks(vectorRows, keywordRows) {
     if (!id || seen.has(id)) continue
     seen.add(id)
     out.push(row)
-    if (out.length >= MAX_CONTEXT_CHUNKS) return out
+    if (out.length >= cap) return out
   }
   for (const row of keywordRows) {
     const id = row && typeof row === 'object' && 'id' in row ? row.id : null
@@ -238,7 +382,7 @@ function mergeVectorAndKeywordChunks(vectorRows, keywordRows) {
       similarity: 0.06,
       _keywordBoost: true,
     })
-    if (out.length >= MAX_CONTEXT_CHUNKS) break
+    if (out.length >= cap) break
   }
   return out
 }
@@ -293,14 +437,18 @@ export async function handleContractChat(req, res) {
     }
 
     const retrievalQuery = buildRetrievalQuery(messages, lastUserText)
-    const queryEmbedding = await embedQuery(retrievalQuery)
+    const queryExpandOn = isEnvEnabled('CONTRACT_RAG_QUERY_EXPAND', true)
+    const textForEmbedding = queryExpandOn
+      ? await expandQueryForRetrieval(openai, retrievalQuery)
+      : retrievalQuery
+    const queryEmbedding = await embedQuery(textForEmbedding)
 
     const minSim = getContractRagMinSimilarity()
     let { data: rows, error: rpcError } = await supabase.rpc(
       'match_contract_chunks',
       {
         query_embedding: queryEmbedding,
-        match_count: MATCH_COUNT,
+        match_count: POOL_MATCH_COUNT,
         min_similarity: minSim,
       },
     )
@@ -312,7 +460,7 @@ export async function handleContractChat(req, res) {
     ) {
       const retry = await supabase.rpc('match_contract_chunks', {
         query_embedding: queryEmbedding,
-        match_count: MATCH_COUNT,
+        match_count: POOL_MATCH_COUNT,
         min_similarity: 0,
       })
       rows = retry.data
@@ -341,7 +489,28 @@ export async function handleContractChat(req, res) {
 
     const kwTerms = extractKeywordTerms(retrievalQuery)
     const kwRows = await fetchKeywordSupplementChunks(supabase, kwTerms)
-    const chunks = mergeVectorAndKeywordChunks(vectorChunks, kwRows)
+    let chunks = mergeVectorAndKeywordChunks(
+      vectorChunks,
+      kwRows,
+      MERGE_POOL_MAX,
+    )
+
+    const rerankOn = isEnvEnabled('CONTRACT_RAG_RERANK', true)
+    if (rerankOn && chunks.length > MAX_CONTEXT_CHUNKS) {
+      try {
+        chunks = await rerankRetrievalChunks(
+          openai,
+          retrievalQuery,
+          chunks,
+          MAX_CONTEXT_CHUNKS,
+        )
+      } catch (reErr) {
+        console.warn('contract-chat rerank:', reErr)
+        chunks = /** @type {any[]} */ (chunks).slice(0, MAX_CONTEXT_CHUNKS)
+      }
+    } else if (chunks.length > MAX_CONTEXT_CHUNKS) {
+      chunks = /** @type {any[]} */ (chunks).slice(0, MAX_CONTEXT_CHUNKS)
+    }
 
     const contextBlock = chunks
       .map((row, i) => {
@@ -443,7 +612,7 @@ ${contextBlock}`
     const completionOpts = {
       model: CHAT_MODEL,
       messages: /** @type {any} */ (chatMessages),
-      max_completion_tokens: 2048,
+      max_completion_tokens: MAX_COMPLETION_TOKENS,
     }
     if (modelSupportsCustomTemperature(CHAT_MODEL)) {
       completionOpts.temperature = 0.18
