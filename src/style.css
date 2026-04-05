@@ -1577,19 +1577,19 @@ form.auth-form[hidden] {
 }
 
 /*
- * AI fullskjerm: fixed, hele viewport, helt ugjennomsiktig.
- * (Panelet kan flyttes til document.body i JS for korrekt stablelag – fortsatt samme ID.)
+ * AI fullskjerm: fixed, helt ugjennomsiktig.
+ * 100lvh = «stor» viewport-høyde – krymper ikke når tastatur åpner (legger seg oppå, dytter ikke layout).
+ * Ikke overstyr høyde med JS innerHeight; det ga kortere panel og avdekket forsiden over tastaturet.
  */
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
   width: 100%;
   max-width: none;
-  min-height: 100%;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100lvh;
+  min-height: 100vh;
   min-height: 100lvh;
   min-height: -webkit-fill-available;
   margin: 0;
@@ -1604,15 +1604,8 @@ form.auth-form[hidden] {
   isolation: isolate;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  /* Ett solid lerret – ingen gjennomsiktighet */
   background-color: #212121;
   background-image: none;
-}
-
-/* Synkron med JS + visualViewport: eksplisitt høyde overstyrer min-height */
-#panel-home-bilde-ai.home-ai-panel--vv {
-  min-height: 0;
-  max-height: none;
 }
 
 #panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-camera:not([hidden])) {
@@ -1846,9 +1839,10 @@ body.home-ai-panel-open .home-vegref {
   padding-top: env(safe-area-inset-top, 0);
   padding-right: env(safe-area-inset-right, 0);
   padding-left: env(safe-area-inset-left, 0);
-  /* Tastatur / UI: JS setter --home-ai-keyboard-inset fra visualViewport */
+  /* Luft nederst innenfor panelet (chat over tastatur); ikke layout-skalering av hele siden */
   padding-bottom: max(
     env(safe-area-inset-bottom, 0px),
+    env(keyboard-inset-height, 0px),
     var(--home-ai-keyboard-inset, 0px)
   );
   pointer-events: auto;

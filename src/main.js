@@ -5475,39 +5475,20 @@ function bindHomeListeners() {
 }
 
 /**
- * AI-fullskjerm: panelet dekker alltid hele layout-viewport (top/left 0, opaque i CSS).
- * Da blir det ingen tomme striper der visualViewport er forskjøvet (Åsveien / forsiden bak).
- * visualViewport brukes kun til --home-ai-keyboard-inset (område skjult av tastatur/UI).
+ * AI-fullskjerm: høyde styres i CSS med 100lvh (krymper ikke når tastatur åpner seg).
+ * Her settes kun --home-ai-keyboard-inset fra visualViewport slik at innhold kan padde
+ * innenfor panelet uten at hele siden (innerHeight) skaleres ned – da avdekkes forsiden.
  */
 function resetHomeAiPanelVisualViewport(panel) {
   panel.classList.remove('home-ai-panel--vv')
-  panel.style.removeProperty('top')
-  panel.style.removeProperty('left')
-  panel.style.removeProperty('width')
-  panel.style.removeProperty('maxWidth')
-  panel.style.removeProperty('height')
-  panel.style.removeProperty('minHeight')
-  panel.style.removeProperty('right')
-  panel.style.removeProperty('bottom')
   panel.style.removeProperty('--home-ai-keyboard-inset')
 }
 
 function applyHomeAiPanelVisualViewport(panel) {
-  const layoutH = Math.max(
-    1,
-    window.innerHeight || document.documentElement?.clientHeight || 0,
-  )
   panel.classList.add('home-ai-panel--vv')
-  panel.style.top = '0px'
-  panel.style.left = '0px'
-  panel.style.right = 'auto'
-  panel.style.bottom = 'auto'
-  panel.style.width = '100%'
-  panel.style.maxWidth = '100%'
-  panel.style.height = `${layoutH}px`
-  panel.style.minHeight = `${layoutH}px`
-
   const vv = window.visualViewport
+  const layoutH =
+    window.innerHeight || document.documentElement?.clientHeight || 0
   if (vv) {
     const inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
     panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
@@ -6512,6 +6493,10 @@ function bindHomeAiDocumentationListeners(signal) {
   homeAiChatInput?.addEventListener(
     'focusin',
     () => {
+      /* Stopp iOS/Chrome i å scrolle dokumentet opp slik at forsiden vises under tastaturet */
+      window.scrollTo(0, 0)
+      document.documentElement.scrollTop = 0
+      document.body.scrollTop = 0
       requestAnimationFrame(() => {
         requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
       })
