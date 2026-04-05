@@ -1619,8 +1619,7 @@ form.auth-form[hidden] {
   overscroll-behavior: none;
   pointer-events: auto;
   /*
-   * IKKE transform/filter her: det gjør at .bottom-bar (position:fixed) forankres til panelet
-   * i stedet for viewport → felt/knapper «flyter» med tom sone under på mobil.
+   * IKKE transform/filter her: det gjør at fast bunnlinje i AI-dok. (position:fixed) forankres feil.
    */
   isolation: isolate;
   background-color: #212121;
@@ -2350,8 +2349,8 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* Luft når composer er .bottom-bar (fixed): matcher kompakt bunnhøyde (felt + gap + faner + safe area) */
-#home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
+/* AI dokumentering: luft i logg når bunnlinje er fixed (kun dette panelet) */
+#panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
   padding-bottom: calc(
     0.75rem + 8px + 8px + 3rem + 0.35rem + 2.75rem + 6px + env(safe-area-inset-bottom, 0px)
   );
@@ -2533,22 +2532,19 @@ body.home-ai-panel-open .home-vegref {
   gap: 0.45rem;
 }
 
-/* Chatfelt + faner: fixed helt i bunn (referanse: tett mot kant, liten luft + safe area for hjem-streken). */
-.bottom-bar {
+/*
+ * AI dokumentering (fullskjerm-panelet): chatfelt + Ta bilde/Filer/PDF – kun her, helt i bunn av skjermen.
+ * Scopes til #panel-home-bilde-ai så ingenting annet i appen påvirkes.
+ */
+#panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.bottom-bar {
   position: fixed;
+  bottom: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  padding: 8px 12px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-  box-sizing: border-box;
-}
-
-#home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.bottom-bar {
-  bottom: 0;
   inset-inline: 0;
   width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
   z-index: 2147483641;
   margin-top: 0;
   gap: 0.35rem;
