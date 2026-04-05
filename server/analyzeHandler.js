@@ -228,7 +228,7 @@ export async function handleAnalyze(req, res) {
         model,
         temperature: isFirstShot ? 0.55 : 0.78,
         response_format: isFirstShot ? { type: 'json_object' } : undefined,
-        max_tokens: isFirstShot ? 2500 : 4096,
+        max_completion_tokens: isFirstShot ? 2500 : 4096,
         messages: [{ role: 'system', content: sys }, ...msgs],
       })
 
@@ -271,7 +271,7 @@ export async function handleAnalyze(req, res) {
         model,
         temperature: 0.55,
         response_format: { type: 'json_object' },
-        max_tokens: 2500,
+        max_completion_tokens: 2500,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT_TEXT_ONLY },
           { role: 'user', content: userText },
@@ -304,7 +304,7 @@ export async function handleAnalyze(req, res) {
       model,
       temperature: 0.55,
       response_format: { type: 'json_object' },
-      max_tokens: 2500,
+      max_completion_tokens: 2500,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {

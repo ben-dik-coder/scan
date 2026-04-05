@@ -443,7 +443,7 @@ ${contextBlock}`
       messages: /** @type {any} */ (chatMessages),
       temperature: 0.18,
       top_p: 0.9,
-      max_tokens: 2048,
+      max_completion_tokens: 2048,
     })
 
     const rawReply = completion.choices?.[0]?.message?.content?.trim() || ''
