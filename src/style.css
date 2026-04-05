@@ -1634,6 +1634,40 @@ form.auth-form[hidden] {
   pointer-events: none;
 }
 
+/*
+ * Samme fullskjerm-fiks via body-klasse (JS: syncHomeAiPanelBodyClass).
+ * Sikrer stablelag når :has() mangler/feiler, og skjuler bunnnav helt (unngår glimt).
+ */
+body.home-ai-panel-open .home-main {
+  position: relative;
+  z-index: 5000;
+  isolation: isolate;
+}
+
+body.home-ai-panel-open .home-bilde-stack {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+body.home-ai-panel-open .home-bottom-nav {
+  display: none !important;
+}
+
+body.home-ai-panel-open .view-home.surface--home {
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* iOS: unngå auto-zoom og caret som «flyter» ved font < 16px */
+#home-ai-chat-input.home-ai-gpt__textarea {
+  font-size: 16px;
+}
+
 .home-bilde-panel__hint {
   margin: 0;
   font-size: 0.82rem;

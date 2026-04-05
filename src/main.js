@@ -5517,6 +5517,13 @@ function bindHomeAiPanelVisualViewport(signal) {
   window.addEventListener('orientationchange', schedule, { signal })
 }
 
+/** Synkroniser body-klasse når AI-fullskjerm er åpen (skjul forsidenav, bunnnav – fiks stablelag/iOS). */
+function syncHomeAiPanelBodyClass() {
+  const panel = document.getElementById('panel-home-bilde-ai')
+  const open = Boolean(panel && !panel.hidden)
+  document.body.classList.toggle('home-ai-panel-open', open)
+}
+
 function setHomeBildeSubTab(which) {
   const panelCam = document.getElementById('panel-home-bilde-camera')
   const panelAi = document.getElementById('panel-home-bilde-ai')
@@ -5532,6 +5539,7 @@ function setHomeBildeSubTab(which) {
   }
   const navAi = document.getElementById('btn-home-nav-ai')
   navAi?.classList.toggle('home-bottom-nav__btn--active', !isCam)
+  syncHomeAiPanelBodyClass()
   updateHomeAiPanelVisualViewport()
 }
 
@@ -5609,11 +5617,11 @@ function syncHomeAiModeHint(on) {
   if (!el) return
   if (on) {
     el.textContent =
-      'Skriv spørsmålet ditt nedenfor. Svarene bygger på kontraktsdokumentet som er indeksert på serveren.'
+      'Kontraktmodus: svarene bygger på dokumentet på serveren. Skriv spørsmålet under.'
     el.classList.add('home-ai-gpt__mode-hint--contract')
   } else {
     el.innerHTML =
-      'VeiAi hjelper med bilde og tekst fra veien. For å <strong>spørre om kontrakten</strong>, trykk «Kontrakt» over eller «Spør om kontrakten» i menyen.'
+      'Bilde/tekst fra veien. <strong>Kontrakt:</strong> trykk «Kontrakt».'
     el.classList.remove('home-ai-gpt__mode-hint--contract')
   }
 }
@@ -6432,6 +6440,7 @@ function bindHomeAiDocumentationListeners(signal) {
 
   bindHomeAiPanelVisualViewport(signal)
   updateHomeAiPanelVisualViewport()
+  syncHomeAiPanelBodyClass()
 
   document.getElementById('btn-home-ai-pdf-exit')?.addEventListener(
     'click',
