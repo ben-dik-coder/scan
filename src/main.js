@@ -4876,6 +4876,11 @@ function renderApp() {
   }
   /** Fjern ev. gammelt AI-overlay lagt på body (unngå usynlig lag som blokkerer klikk). */
   document.querySelector('body > #home-ai-fullscreen')?.remove()
+  /** AI-dokumentering kan være flyttet til body for korrekt fixed-stack; fjern før #app byttes (unngår spøkelseslag / duplikat-ID). */
+  const orphanAiPanel = document.getElementById('panel-home-bilde-ai')
+  if (orphanAiPanel && orphanAiPanel.parentElement === document.body) {
+    orphanAiPanel.remove()
+  }
   const banner = insecureContextBannerHtml()
   let main = ''
   if (!currentUser) {
@@ -5524,6 +5529,23 @@ function syncHomeAiPanelBodyClass() {
   document.body.classList.toggle('home-ai-panel-open', open)
 }
 
+/**
+ * Flytter AI-panelet til document.body når det er synlig, tilbake under .home-bilde-stack når kamera vises.
+ * Da blir fixed/fullskjerm alltid relativt visningsporten (ikke #app / flex-foreldre) – fikser glipper og at forsiden/bunnnav skimtes i WebKit/iOS.
+ */
+function reparentHomeAiPanelForViewportStacking(showAi) {
+  const panelAi = document.getElementById('panel-home-bilde-ai')
+  const stack = document.querySelector('.home-bilde-stack')
+  if (!panelAi || !stack) return
+  if (showAi) {
+    if (panelAi.parentElement !== document.body) {
+      document.body.appendChild(panelAi)
+    }
+  } else if (panelAi.parentElement === document.body) {
+    stack.appendChild(panelAi)
+  }
+}
+
 function setHomeBildeSubTab(which) {
   const panelCam = document.getElementById('panel-home-bilde-camera')
   const panelAi = document.getElementById('panel-home-bilde-ai')
@@ -5539,6 +5561,7 @@ function setHomeBildeSubTab(which) {
   }
   const navAi = document.getElementById('btn-home-nav-ai')
   navAi?.classList.toggle('home-bottom-nav__btn--active', !isCam)
+  reparentHomeAiPanelForViewportStacking(!isCam)
   syncHomeAiPanelBodyClass()
   updateHomeAiPanelVisualViewport()
 }
