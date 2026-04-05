@@ -2350,10 +2350,10 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* Luft når composer er .bottom-bar (fixed): innhold scroller over felt + faner */
+/* Luft når composer er .bottom-bar (fixed): matcher kompakt bunnhøyde (felt + gap + faner + safe area) */
 #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
   padding-bottom: calc(
-    0.75rem + 20px + 3rem + 0.45rem + 2.75rem + env(safe-area-inset-bottom, 0px)
+    0.75rem + 8px + 8px + 3rem + 0.35rem + 2.75rem + 6px + env(safe-area-inset-bottom, 0px)
   );
 }
 
@@ -2533,26 +2533,31 @@ body.home-ai-panel-open .home-vegref {
   gap: 0.45rem;
 }
 
-/* Chatfelt + faner: fixed mot viewport (krever at forelder #panel-home-bilde-ai ikke har transform) */
+/* Chatfelt + faner: fixed helt i bunn (referanse: tett mot kant, liten luft + safe area for hjem-streken). */
 .bottom-bar {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 10px;
+  padding: 8px 12px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
 }
 
 #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.bottom-bar {
-  /* Alltid helt ned: hjem-indikator håndteres med padding, ikke med bottom-offset (unngår død sone). */
   bottom: 0;
+  inset-inline: 0;
+  width: 100%;
+  max-width: 100%;
   z-index: 2147483641;
   margin-top: 0;
+  gap: 0.35rem;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   background-color: #1c1c1c;
-  padding-bottom: max(10px, calc(10px + env(safe-area-inset-bottom, 0px)));
-  padding-left: max(10px, env(safe-area-inset-left, 0px));
-  padding-right: max(10px, env(safe-area-inset-right, 0px));
-  padding-top: 10px;
+  padding-top: 8px;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */
