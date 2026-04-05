@@ -3578,7 +3578,7 @@ function renderHomeHtml() {
               </div>
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
-            <div class="home-ai-gpt__composer">
+            <div class="home-ai-gpt__composer bottom-bar">
               <div class="home-ai-gpt__input-shell">
                 <label class="visually-hidden" for="home-ai-chat-input">Send melding til VeiAi</label>
                 <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Send melding til VeiAi"></textarea>
