@@ -3541,7 +3541,7 @@ function renderHomeHtml() {
         <p class="home-bilde-panel__hint">Trykk kamera-ikonet nederst for å ta bilde til albumet.</p>
       </div>
       <div id="panel-home-bilde-ai" class="home-bilde-panel" role="region" aria-label="AI dokumentering" hidden>
-        <div id="home-ai-fullscreen" class="home-ai-fullscreen">
+        <div id="home-ai-fullscreen" class="home-ai-fullscreen ai-doc-container">
           <p id="home-ai-status" class="home-ai-fs-status" role="status" aria-live="polite"></p>
           <div id="home-ai-stage-camera" class="home-ai-stage home-ai-stage--camera home-ai-stage--fs" hidden>
             <p class="home-bilde-panel__hint home-ai-camera-hint">Ta bilde, eller gå tilbake til chat.</p>
@@ -3578,7 +3578,7 @@ function renderHomeHtml() {
               </div>
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
-            <div class="home-ai-gpt__composer bottom-bar">
+            <div class="home-ai-gpt__composer input-bar">
               <div class="home-ai-gpt__input-shell">
                 <label class="visually-hidden" for="home-ai-chat-input">Send melding til VeiAi</label>
                 <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Send melding til VeiAi"></textarea>

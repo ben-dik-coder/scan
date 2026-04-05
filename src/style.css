@@ -74,6 +74,7 @@ html.home-ai-root-lock {
 }
 
 html.home-ai-root-lock body {
+  height: 100%;
   min-height: 100%;
   min-height: -webkit-fill-available;
   overflow: hidden;
@@ -1873,6 +1874,14 @@ body.home-ai-panel-open .home-vegref {
   pointer-events: auto;
 }
 
+/* Flex-kolonne som minst fyller viewport (samme mønster som .container i ditt utkast) – kun AI-dok. */
+#panel-home-bilde-ai:not([hidden]) .home-ai-fullscreen.ai-doc-container {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  display: flex;
+  flex-direction: column;
+}
+
 .home-ai-fs-status {
   flex-shrink: 0;
   margin: 0;
@@ -2349,10 +2358,10 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* AI dokumentering: luft i logg når bunnlinje er fixed (kun dette panelet) */
+/* AI dokumentering: luft i logg når .input-bar er fixed (matcher padding 10px + safe area) */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
   padding-bottom: calc(
-    0.75rem + 8px + 8px + 3rem + 0.35rem + 2.75rem + 6px + env(safe-area-inset-bottom, 0px)
+    0.75rem + 10px + 10px + 3rem + 0.35rem + 2.75rem + 10px + env(safe-area-inset-bottom, 0px)
   );
 }
 
@@ -2533,15 +2542,13 @@ body.home-ai-panel-open .home-vegref {
 }
 
 /*
- * AI dokumentering (fullskjerm-panelet): chatfelt + Ta bilde/Filer/PDF – kun her, helt i bunn av skjermen.
- * Scopes til #panel-home-bilde-ai så ingenting annet i appen påvirkes.
+ * AI dokumentering: .input-bar (fast bunn) – samme mønster som ditt utkast, scoped til panelet.
  */
-#panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.bottom-bar {
+#panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  inset-inline: 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -2550,10 +2557,10 @@ body.home-ai-panel-open .home-vegref {
   gap: 0.35rem;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   background-color: #1c1c1c;
-  padding-top: 8px;
-  padding-left: max(12px, env(safe-area-inset-left, 0px));
-  padding-right: max(12px, env(safe-area-inset-right, 0px));
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  padding: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(10px, env(safe-area-inset-left, 0px));
+  padding-right: max(10px, env(safe-area-inset-right, 0px));
 }
 
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */
