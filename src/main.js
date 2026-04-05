@@ -3564,6 +3564,7 @@ function renderHomeHtml() {
                 <span class="home-ai-gpt__title">AI dokumentering</span>
                 <button type="button" class="home-ai-gpt__contract-pill" id="btn-home-ai-contract-rag" title="Still spørsmål om kontrakten til AI"><span class="home-ai-gpt__contract-pill-label">Kontrakt</span></button>
               </div>
+              <div class="home-ai-gpt__header-spacer" aria-hidden="true"></div>
             </header>
             <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note"></p>
             <div class="home-ai-gpt__context">
