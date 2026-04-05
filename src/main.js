@@ -5475,30 +5475,45 @@ function bindHomeListeners() {
 }
 
 /**
- * Pinner AI-fullskjerm til window.visualViewport (viktig på iOS): unngår glippe
- * nederst der forsiden skimtes, og at fixed-panelet blir for høyt når tastatur er åpent.
+ * AI-fullskjerm: panelet dekker alltid hele layout-viewport (top/left 0, opaque i CSS).
+ * Da blir det ingen tomme striper der visualViewport er forskjøvet (Åsveien / forsiden bak).
+ * visualViewport brukes kun til --home-ai-keyboard-inset (område skjult av tastatur/UI).
  */
 function resetHomeAiPanelVisualViewport(panel) {
   panel.classList.remove('home-ai-panel--vv')
   panel.style.removeProperty('top')
   panel.style.removeProperty('left')
   panel.style.removeProperty('width')
+  panel.style.removeProperty('maxWidth')
   panel.style.removeProperty('height')
+  panel.style.removeProperty('minHeight')
   panel.style.removeProperty('right')
   panel.style.removeProperty('bottom')
+  panel.style.removeProperty('--home-ai-keyboard-inset')
 }
 
 function applyHomeAiPanelVisualViewport(panel) {
-  const vv = window.visualViewport
-  if (!vv) return
-  const h = Math.max(1, vv.height)
+  const layoutH = Math.max(
+    1,
+    window.innerHeight || document.documentElement?.clientHeight || 0,
+  )
   panel.classList.add('home-ai-panel--vv')
-  panel.style.top = `${vv.offsetTop}px`
-  panel.style.left = `${vv.offsetLeft}px`
-  panel.style.width = `${vv.width}px`
-  panel.style.height = `${h}px`
+  panel.style.top = '0px'
+  panel.style.left = '0px'
   panel.style.right = 'auto'
   panel.style.bottom = 'auto'
+  panel.style.width = '100%'
+  panel.style.maxWidth = '100%'
+  panel.style.height = `${layoutH}px`
+  panel.style.minHeight = `${layoutH}px`
+
+  const vv = window.visualViewport
+  if (vv) {
+    const inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
+    panel.style.setProperty('--home-ai-keyboard-inset', `${inset}px`)
+  } else {
+    panel.style.removeProperty('--home-ai-keyboard-inset')
+  }
 }
 
 function updateHomeAiPanelVisualViewport() {
@@ -5507,19 +5522,20 @@ function updateHomeAiPanelVisualViewport() {
     if (panel) resetHomeAiPanelVisualViewport(panel)
     return
   }
-  if (!window.visualViewport) return
   applyHomeAiPanelVisualViewport(panel)
 }
 
 function bindHomeAiPanelVisualViewport(signal) {
-  const vv = window.visualViewport
-  if (!vv) return
   const schedule = () => {
     requestAnimationFrame(() => updateHomeAiPanelVisualViewport())
   }
-  vv.addEventListener('resize', schedule, { signal })
-  vv.addEventListener('scroll', schedule, { signal })
+  window.addEventListener('resize', schedule, { signal })
   window.addEventListener('orientationchange', schedule, { signal })
+  const vv = window.visualViewport
+  if (vv) {
+    vv.addEventListener('resize', schedule, { signal })
+    vv.addEventListener('scroll', schedule, { signal })
+  }
 }
 
 /** Synkroniser body-klasse når AI-fullskjerm er åpen (skjul forsidenav, bunnnav – fiks stablelag/iOS). */

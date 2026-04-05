@@ -68,6 +68,7 @@ body {
   margin: 0;
   min-width: 100%;
   min-height: 100dvh;
+  min-height: -webkit-fill-available;
   overflow-x: hidden;
   color: var(--text);
   background-color: #0e1422;
@@ -143,6 +144,11 @@ body {
   padding: 1.5rem 1.125rem 3rem;
   position: relative;
   z-index: 0;
+  /* Fast, ugjennomsiktig skallflate – hindrer at innhold «under» (#app) synes ved scroll/overscroll */
+  background-color: #0e1422;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  box-sizing: border-box;
 }
 
 /* Øktvisning: litt mindre ytre padding → mer innhold synlig uten scroll */
@@ -268,6 +274,7 @@ html.app-launch-active body {
 
 .app-body {
   min-height: 60vh;
+  background-color: #0e1422;
 }
 
 .surface--home {
@@ -1569,7 +1576,10 @@ form.auth-form[hidden] {
   text-align: left;
 }
 
-/* AI: ekte fullskjerm (fixed på panelet – ikke flytt DOM til body; unngår duplikat-ID / spøkelseslag) */
+/*
+ * AI fullskjerm: fixed, hele viewport, helt ugjennomsiktig.
+ * (Panelet kan flyttes til document.body i JS for korrekt stablelag – fortsatt samme ID.)
+ */
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
   top: 0;
@@ -1584,17 +1594,19 @@ form.auth-form[hidden] {
   min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 10000;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: none;
   pointer-events: auto;
+  isolation: isolate;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  /* ChatGPT-lignende mørkt lerret; kamera-scene overstyrer */
-  background: #212121;
+  /* Ett solid lerret – ingen gjennomsiktighet */
+  background-color: #212121;
+  background-image: none;
 }
 
 /* Synkron med JS + visualViewport: eksplisitt høyde overstyrer min-height */
@@ -1629,9 +1641,7 @@ form.auth-form[hidden] {
 }
 
 .view-home:has(#panel-home-bilde-ai:not([hidden])) .home-bottom-nav {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
+  display: none !important;
 }
 
 /*
@@ -1659,8 +1669,32 @@ body.home-ai-panel-open .home-bottom-nav {
   display: none !important;
 }
 
+/* Én aktiv flate: ingen underliggende «skjerm» (vegref/brukerlinje) synlig eller interaktiv */
+body.home-ai-panel-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.home-ai-panel-open #app.app-root--home {
+  overflow: hidden;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
+
+body.home-ai-panel-open #app.app-root--home .app-body {
+  overflow: hidden;
+}
+
 body.home-ai-panel-open .view-home.surface--home {
   padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+}
+
+body.home-ai-panel-open .home-user-bar,
+body.home-ai-panel-open .home-vegref {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* iOS: unngå auto-zoom og caret som «flyter» ved font < 16px */
@@ -1809,8 +1843,14 @@ body.home-ai-panel-open .view-home.surface--home {
   height: 100%;
   max-height: 100%;
   box-sizing: border-box;
-  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) 0
-    env(safe-area-inset-left, 0);
+  padding-top: env(safe-area-inset-top, 0);
+  padding-right: env(safe-area-inset-right, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  /* Tastatur / UI: JS setter --home-ai-keyboard-inset fra visualViewport */
+  padding-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--home-ai-keyboard-inset, 0px)
+  );
   pointer-events: auto;
 }
 
@@ -2152,6 +2192,7 @@ body.home-ai-panel-open .view-home.surface--home {
   flex-direction: column;
   gap: 0;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 #home-ai-chat-log:empty {
@@ -2311,9 +2352,9 @@ body.home-ai-panel-open .view-home.surface--home {
 .home-ai-gpt__composer {
   flex-shrink: 0;
   margin-top: auto;
-  padding: 0.5rem 0.75rem max(0.5rem, env(safe-area-inset-bottom, 0px));
+  padding: 0.5rem 0.75rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: #212121;
+  background-color: #212121;
 }
 
 .home-ai-gpt__input-shell {
