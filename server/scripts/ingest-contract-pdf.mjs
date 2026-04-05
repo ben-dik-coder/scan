@@ -188,9 +188,16 @@ async function main() {
   const doClear = process.argv.includes('--clear')
   const inputPath = args[0]
 
-  if (!inputPath || !fs.existsSync(inputPath)) {
+  if (!inputPath) {
     console.error(
       'Bruk: node scripts/ingest-contract-pdf.mjs /sti/til/fil.{pdf,md,html,txt} [--clear]',
+    )
+    process.exit(1)
+  }
+  if (!fs.existsSync(inputPath)) {
+    console.error('Fant ikke filen:', inputPath)
+    console.error(
+      'Sjekk sti og filnavn (dra PDF inn i Terminal for å lime inn riktig sti).',
     )
     process.exit(1)
   }
