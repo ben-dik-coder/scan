@@ -1,9 +1,16 @@
 /**
- * PDF → chunks → embeddings → Supabase contract_chunks
- * Bruk: cd server && node scripts/ingest-contract-pdf.mjs /full/sti/kontrakt.pdf
- * Valgfritt: --clear  (sletter eksisterende rader først)
+ * Kontrakt → vask → dedupe → chunks → embeddings → Supabase contract_chunks
  *
- * Krever i .env: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * Støtter: .pdf (pdf-parse), .md / .html / .htm / .txt (f.eks. LlamaParse)
+ *
+ * cd server && node scripts/ingest-contract-pdf.mjs /sti/til/fil.pdf [--clear]
+ * cd server && node scripts/ingest-contract-pdf.mjs /sti/til/export.md [--clear]
+ *
+ * Valgfritt i server/.env:
+ *   CONTRACT_INGEST_CHUNK_SIZE=1400
+ *   CONTRACT_INGEST_CHUNK_OVERLAP=280
+ *
+ * Krever: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 
 import fs from 'fs'
@@ -22,16 +29,129 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') })
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1536
-const CHUNK_SIZE = 1100
-/** Overlapp mellom nabochunks – høyere verdi gir bedre RAG-treff på setninger delt mellom to chunks. */
-const CHUNK_OVERLAP = 240
+const CHUNK_SIZE = Math.min(
+  8000,
+  Math.max(400, Number(process.env.CONTRACT_INGEST_CHUNK_SIZE || 1400)),
+)
+const CHUNK_OVERLAP = Math.min(
+  CHUNK_SIZE - 1,
+  Math.max(0, Number(process.env.CONTRACT_INGEST_CHUNK_OVERLAP || 280)),
+)
 const BATCH_EMBED = 64
 
-/**
- * @param {string} text
- * @param {number} size
- * @param {number} overlap
- */
+/** Min. tegn i normalisert avsnitt for global dedupe */
+const DEDUPE_MIN_LEN = 32
+
+function repairBrokenHtmlTags(s) {
+  let t = String(s)
+  t = t.replace(/<\s*\/\s*\r?\n\s*(th|td|tr|table|thead|tbody|p|div)\s*>/gi, '</$1>')
+  t = t.replace(/<\s*br\s*\/\s*\r?\n\s*>/gi, '<br/>')
+  return t
+}
+
+function stripHtmlToText(html) {
+  let s = String(html)
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, '')
+  s = s.replace(/<style[\s\S]*?<\/style>/gi, '')
+  s = s.replace(/<br\s*\/?>/gi, '\n')
+  s = s.replace(/<\/(p|div|tr|h[1-6]|li|table|thead|tbody)>/gi, '\n')
+  s = s.replace(/<\/td>/gi, '\t')
+  s = s.replace(/<\/th>/gi, '\t')
+  s = s.replace(/<[^>]+>/g, '')
+  s = s
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+  return s
+}
+
+function stripPageMarkers(text) {
+  return text.replace(/^\s*--\s*\d+\s+of\s+\d+\s*--\s*$/gm, '')
+}
+
+function stripRepeatedHeadersFooters(text) {
+  const lines = text.split(/\n/)
+  const out = []
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t) {
+      out.push('')
+      continue
+    }
+    if (/^--\s*\d+\s+of\s+\d+\s*--$/i.test(t)) continue
+    if (/^Nordland fylkeskommune(\s+D1-\d+)?$/i.test(t)) continue
+    if (/^1813 Ofoten 2023-2026$/i.test(t)) continue
+    if (/^\*\*D Beskrivende del\*\*$/i.test(t)) continue
+    if (/^\*\*D1 Beskrivelse\*\*$/i.test(t)) continue
+    if (/^D Beskrivende del$/i.test(t)) continue
+    if (/^D1 Beskrivelse(\s+09\.03\.2021)?$/i.test(t)) continue
+    if (/^D1-\d+$/i.test(t)) continue
+    if (/^<\/a>$/i.test(t)) continue
+    out.push(line)
+  }
+  return out.join('\n')
+}
+
+function dedupeConsecutiveLines(text) {
+  const lines = text.split('\n')
+  const out = []
+  for (const line of lines) {
+    if (out.length && out[out.length - 1] === line) continue
+    out.push(line)
+  }
+  return out.join('\n')
+}
+
+function paragraphNormKey(p) {
+  return p
+    .replace(/\s+/g, ' ')
+    .replace(/\*+/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+function dedupeParagraphs(text) {
+  const rawBlocks = text.split(/\n{2,}/)
+  const seen = new Set()
+  const out = []
+  for (const block of rawBlocks) {
+    const trimmed = block.trim()
+    if (!trimmed) continue
+    const key = paragraphNormKey(trimmed)
+    if (key.length >= DEDUPE_MIN_LEN && seen.has(key)) continue
+    if (key.length >= DEDUPE_MIN_LEN) seen.add(key)
+    out.push(trimmed)
+  }
+  return out.join('\n\n')
+}
+
+function normalizeParseArtifacts(text) {
+  let s = text.replace(/\r\n/g, '\n')
+  s = s.replace(/\\\*\\\*\*?/g, '***')
+  s = s.replace(/\\([*_])/g, '$1')
+  s = s.replace(/\n{4,}/g, '\n\n\n')
+  s = s.replace(/[ \t]+\n/g, '\n')
+  s = s.replace(/\n{3,}/g, '\n\n')
+  return s.trim()
+}
+
+function normalizeContractText(text) {
+  let s = String(text).replace(/\r\n/g, '\n')
+  s = repairBrokenHtmlTags(s)
+  s = stripPageMarkers(s)
+  if (/<[a-z][\s\S]*>/i.test(s)) {
+    s = stripHtmlToText(s)
+  }
+  s = stripRepeatedHeadersFooters(s)
+  s = dedupeConsecutiveLines(s)
+  s = normalizeParseArtifacts(s)
+  s = dedupeParagraphs(s)
+  return s.trim()
+}
+
 function chunkText(text, size, overlap) {
   const t = text.replace(/\r\n/g, '\n').trim()
   if (!t) return []
@@ -46,19 +166,36 @@ function chunkText(text, size, overlap) {
   return chunks
 }
 
+async function extractTextFromFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase()
+  if (ext === '.pdf') {
+    const buf = fs.readFileSync(filePath)
+    const parsed = await pdfParse(buf)
+    const fullText = typeof parsed.text === 'string' ? parsed.text : ''
+    return { text: fullText, pages: parsed.numpages ?? null }
+  }
+  if (['.md', '.html', '.htm', '.txt', '.markdown'].includes(ext)) {
+    const raw = fs.readFileSync(filePath, 'utf8')
+    return { text: raw, pages: null }
+  }
+  throw new Error(
+    `Ukjent filtype «${ext}». Bruk .pdf, .md, .html, .htm eller .txt`,
+  )
+}
+
 async function main() {
   const args = process.argv.slice(2).filter((a) => a !== '--clear')
   const doClear = process.argv.includes('--clear')
-  const pdfPath = args[0]
+  const inputPath = args[0]
 
-  if (!pdfPath || !fs.existsSync(pdfPath)) {
+  if (!inputPath || !fs.existsSync(inputPath)) {
     console.error(
-      'Bruk: node scripts/ingest-contract-pdf.mjs /sti/til/kontrakt.pdf [--clear]',
+      'Bruk: node scripts/ingest-contract-pdf.mjs /sti/til/fil.{pdf,md,html,txt} [--clear]',
     )
     process.exit(1)
   }
 
-  console.log('Leser PDF (store filer kan ta litt tid) …', pdfPath)
+  console.log('Leser fil …', inputPath)
 
   const key = process.env.OPENAI_API_KEY?.trim()
   const url = process.env.SUPABASE_URL?.trim()
@@ -87,21 +224,34 @@ async function main() {
     }
   }
 
-  const buf = fs.readFileSync(pdfPath)
-  console.log('Parser PDF …')
-  const parsed = await pdfParse(buf)
-  const fullText = typeof parsed.text === 'string' ? parsed.text : ''
-  const chunks = chunkText(fullText, CHUNK_SIZE, CHUNK_OVERLAP)
-  if (!chunks.length) {
-    console.error('Ingen tekst fra PDF. Sjekk filen.')
+  const { text: rawText, pages } = await extractTextFromFile(inputPath)
+  const rawLen = rawText.length
+  console.log('Normaliserer (HTML→tekst, fjern sidehoder, dedupe avsnitt) …')
+  const fullText = normalizeContractText(rawText)
+  if (!fullText.length) {
+    console.error('Ingen tekst etter normalisering. Sjekk filen.')
     process.exit(1)
   }
 
-  console.log(`Chunks: ${chunks.length} (fra ${fullText.length} tegn)`)
+  console.log(
+    `Tekst: ${rawLen} → ${fullText.length} tegn etter vask (spar ${rawLen - fullText.length})`,
+  )
+
+  const chunks = chunkText(fullText, CHUNK_SIZE, CHUNK_OVERLAP)
+  if (!chunks.length) {
+    console.error('Ingen chunks. Sjekk filen.')
+    process.exit(1)
+  }
+
+  console.log(
+    `Chunks: ${chunks.length} (chunk=${CHUNK_SIZE}, overlapp=${CHUNK_OVERLAP})`,
+  )
 
   const baseMeta = {
-    source: path.basename(pdfPath),
-    pages: parsed.numpages ?? null,
+    source: path.basename(inputPath),
+    pages,
+    ingest_format:
+      path.extname(inputPath).toLowerCase().replace('.', '') || null,
   }
 
   let inserted = 0
