@@ -64,11 +64,13 @@ html {
  * Hovedbakgrunn (kun CSS – ingen bakgrunnsbilder): samme palett som .home-drawer-skallet.
  * html + body sikrer full viewport uten «hull» der margin/scroll oppfører seg annerledes.
  */
-/* Når AI-fullskjerm er åpen: lås rot slik at fixed inset:0 faktisk dekker hele skjermen (iOS). */
+/* Når AI-fullskjerm er åpen: lås rot; samme farge som AI-panelet slik at ingen glipper viser annen «side». */
 html.home-ai-root-lock {
   height: 100%;
   height: -webkit-fill-available;
   overflow: hidden;
+  background-color: #212121 !important;
+  background-image: none !important;
 }
 
 html.home-ai-root-lock body {
@@ -1590,8 +1592,8 @@ form.auth-form[hidden] {
 }
 
 /*
- * AI fullskjerm: fixed, kant-i-kant med viewport (html må ha høyde – home-ai-root-lock).
- * Uten translateZ på panelet: unngår subpiksel-glipp der #0e1422 «forside» skimtes nederst.
+ * AI dokumentering = én fullskjermsflate, alltid (tastatur endrer ikke dette laget).
+ * z-index rett under #app-launch; over alt annet i appen.
  */
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
@@ -1604,7 +1606,7 @@ form.auth-form[hidden] {
   min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
-  z-index: 10000;
+  z-index: 2147483640;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1674,12 +1676,16 @@ body.home-ai-panel-open .home-bottom-nav {
 body.home-ai-panel-open {
   overflow: hidden;
   overscroll-behavior: none;
+  background-color: #212121 !important;
+  background-image: none !important;
+  background-attachment: scroll !important;
 }
 
-/* AI-panelet ligger på body; skjul hele #app så ingenting fra forsiden kan skimtes i glipper */
-body.home-ai-panel-open #app {
-  visibility: hidden;
-  pointer-events: none;
+/* Alt app-innhold og splash skjules – kun AI-panelet (på body) skal eksistere visuelt */
+body.home-ai-panel-open #app,
+body.home-ai-panel-open #app-launch {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 body.home-ai-panel-open #app.app-root--home {

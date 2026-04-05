@@ -5620,6 +5620,14 @@ function setHomeBildeSubTab(which) {
   }
   syncHomeAiPanelBodyClass()
   updateHomeAiPanelVisualViewport()
+  if (!isCam) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        captureHomeAiLayoutHeight()
+        updateHomeAiPanelVisualViewport()
+      })
+    })
+  }
 }
 
 function stopHomeAiCamera() {
