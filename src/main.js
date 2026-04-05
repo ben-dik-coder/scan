@@ -3574,22 +3574,22 @@ function renderHomeHtml() {
             <div class="home-ai-gpt__context">
               <div class="home-ai-gpt__thumb-wrap" id="home-ai-thumb-wrap">
                 <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Valgt bilde" width="72" height="72" hidden />
-                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Du kan skrive med en gang, eller legge ved bilde med knappene under skrivefeltet.</p>
+                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Du kan skrive med en gang, eller legge ved bilde med knappene over skrivefeltet.</p>
               </div>
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
             <div class="home-ai-gpt__composer input-bar">
+              <div class="home-ai-gpt__composer-tools" role="toolbar" aria-label="Vedlegg og PDF">
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-open-camera">Ta bilde</button>
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pick-file-chat">Filer</button>
+                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pdf">PDF</button>
+              </div>
               <div class="home-ai-gpt__input-shell">
                 <label class="visually-hidden" for="home-ai-chat-input">Send melding til VeiAi</label>
                 <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Send melding til VeiAi"></textarea>
                 <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding til VeiAi">
                   <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
-              </div>
-              <div class="home-ai-gpt__composer-tools" role="toolbar" aria-label="Vedlegg og PDF">
-                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-open-camera">Ta bilde</button>
-                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pick-file-chat">Filer</button>
-                <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pdf">PDF</button>
               </div>
             </div>
           </div>

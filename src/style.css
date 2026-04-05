@@ -2358,10 +2358,10 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* AI dokumentering: luft i logg når .input-bar er fixed (matcher padding 10px + safe area) */
+/* AI dokumentering: luft i logg (rekkefølge: verktøy øverst, avrundet felt nederst i .input-bar) */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
   padding-bottom: calc(
-    0.75rem + 10px + 10px + 3rem + 0.35rem + 2.75rem + 10px + env(safe-area-inset-bottom, 0px)
+    0.75rem + 6px + 2.5rem + 0.25rem + 2.75rem + 4px + env(safe-area-inset-bottom, 0px)
   );
 }
 
@@ -2542,7 +2542,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 /*
- * AI dokumentering: .input-bar (fast bunn) – samme mønster som ditt utkast, scoped til panelet.
+ * AI dokumentering: .input-bar – avrundet felt nederst (rett over safe area), faner over.
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
   position: fixed;
@@ -2554,13 +2554,24 @@ body.home-ai-panel-open .home-vegref {
   box-sizing: border-box;
   z-index: 2147483641;
   margin-top: 0;
-  gap: 0.35rem;
+  gap: 0.25rem;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   background-color: #1c1c1c;
-  padding: 10px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  padding-left: max(10px, env(safe-area-inset-left, 0px));
-  padding-right: max(10px, env(safe-area-inset-right, 0px));
+  padding: 6px 10px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+}
+
+/* Kompaktere verktøyrad slik at skrivefeltet kommer nærmere skjermkanten */
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__composer-tool {
+  min-height: 2.5rem;
+  padding: 0.38rem 0.3rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__input-shell {
+  min-height: 2.75rem;
+  padding: 0.42rem 0.6rem 0.42rem 0.75rem;
 }
 
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */
