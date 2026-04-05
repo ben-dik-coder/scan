@@ -1604,12 +1604,10 @@ form.auth-form[hidden] {
   width: 100%;
   max-width: none;
   /*
-   * Ikke bruk 100dvh/max-height her – på iOS blir ofte synlig flate kortere enn dvh,
-   * så chat/knapper «flyter» for høyt med tom sone under. Fyll viewport med inset + %.
+   * La høyden styres av top+bottom (ikke height:%): full synlig høyde på iOS uten stripe under.
    */
-  height: 100%;
-  min-height: 100%;
-  min-height: -webkit-fill-available;
+  height: auto;
+  min-height: 0;
   max-height: none;
   margin: 0;
   padding: 0;
@@ -1620,8 +1618,10 @@ form.auth-form[hidden] {
   overflow: hidden;
   overscroll-behavior: none;
   pointer-events: auto;
-  /* Gir egen containing block for ev. position:fixed barn (samme som viewport når fullskjerm). */
-  transform: translateZ(0);
+  /*
+   * IKKE transform/filter her: det gjør at .bottom-bar (position:fixed) forankres til panelet
+   * i stedet for viewport → felt/knapper «flyter» med tom sone under på mobil.
+   */
   isolation: isolate;
   background-color: #212121;
   background-image: none;
@@ -2533,17 +2533,19 @@ body.home-ai-panel-open .home-vegref {
   gap: 0.45rem;
 }
 
-/* Chatfelt + faner låst til skjermbunn (#panel-home-bilde-ai har transform → fixed relativt til panelet) */
+/* Chatfelt + faner: fixed mot viewport (krever at forelder #panel-home-bilde-ai ikke har transform) */
 .bottom-bar {
   position: fixed;
-  bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0;
   padding: 10px;
 }
 
 #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.bottom-bar {
-  z-index: 10;
+  /* Alltid helt ned: hjem-indikator håndteres med padding, ikke med bottom-offset (unngår død sone). */
+  bottom: 0;
+  z-index: 2147483641;
   margin-top: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   background-color: #1c1c1c;

@@ -17,8 +17,21 @@ const pollWatch =
     ? { usePolling: true, interval: 1000 }
     : {}
 
+/** Når satt: `vite build` kjører i watch-modus og skriver til dist/ ved endringer (samme som build.watch i config). */
+const watchDist =
+  process.env.VITE_WATCH_DIST === '1'
+    ? {
+        watch: {
+          ...(Object.keys(pollWatch).length ? { chokidar: pollWatch } : {}),
+        },
+      }
+    : {}
+
 export default defineConfig({
   plugins: usePlainHttp ? [] : [basicSsl()],
+  build: {
+    ...watchDist,
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
