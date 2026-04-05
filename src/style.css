@@ -1598,12 +1598,15 @@ form.auth-form[hidden] {
 #panel-home-bilde-ai:not([hidden]) {
   position: fixed;
   inset: 0;
-  width: auto;
+  width: 100%;
   max-width: none;
-  height: auto;
-  min-height: 100%;
+  /* Fyll alltid visningsporten (ikke kortere px-høyde fra JS – det ga stripe nederst). */
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
   min-height: 100dvh;
   min-height: -webkit-fill-available;
+  max-height: 100dvh;
   margin: 0;
   padding: 0;
   z-index: 2147483640;
@@ -2340,12 +2343,13 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
+/* Tom logg: ikke vertikalsentrer i hele scroll-høyden (det så ut som enorm «død» sone). */
 #home-ai-chat-log:empty {
   flex: 1;
-  min-height: min(20vh, 8.5rem);
+  min-height: 0;
   align-items: center;
-  justify-content: center;
-  padding: 0.75rem 1rem 1rem;
+  justify-content: flex-start;
+  padding: 0.5rem 1rem 0.75rem;
   box-sizing: border-box;
   color: rgba(236, 236, 236, 0.38);
   font-size: 0.78rem;

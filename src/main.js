@@ -5501,20 +5501,12 @@ function captureHomeAiLayoutHeight() {
 }
 
 /**
- * Panel: fast høyde = fanget layout (krymper ikke med tastatur). Tastatur legger seg visuelt oppå.
- * --home-ai-keyboard-inset: luft i bunn av .home-ai-fullscreen så composer/tekst ikke skjules.
+ * --home-ai-keyboard-inset: ekstra bunnluft i .home-ai-fullscreen når tastatur er åpent.
+ * Vi setter ikke lenger height i px på panelet – det ga ofte kortere høyde enn viewport (svart stripe nederst).
  */
 function resetHomeAiPanelVisualViewport(panel) {
   panel.classList.remove('home-ai-panel--vv')
   panel.style.removeProperty('--home-ai-keyboard-inset')
-  panel.style.removeProperty('top')
-  panel.style.removeProperty('left')
-  panel.style.removeProperty('width')
-  panel.style.removeProperty('maxWidth')
-  panel.style.removeProperty('height')
-  panel.style.removeProperty('minHeight')
-  panel.style.removeProperty('right')
-  panel.style.removeProperty('bottom')
 }
 
 /**
@@ -5552,26 +5544,19 @@ function applyHomeAiPanelVisualViewport(panel) {
   if (!homeAiLayoutHeightPx) {
     captureHomeAiLayoutHeight()
   }
-  const layoutH =
-    homeAiLayoutHeightPx ||
-    Math.max(
-      window.innerHeight || 0,
-      document.documentElement?.clientHeight || 0,
-    )
-  panel.style.top = '0px'
-  panel.style.left = '0px'
-  panel.style.width = '100%'
-  panel.style.maxWidth = '100%'
-  panel.style.height = `${layoutH}px`
-  panel.style.minHeight = `${layoutH}px`
-  panel.style.right = 'auto'
-  panel.style.bottom = 'auto'
 
   const vv = window.visualViewport
   if (!vv) {
     panel.style.removeProperty('--home-ai-keyboard-inset')
     return
   }
+
+  const layoutH =
+    homeAiLayoutHeightPx ||
+    Math.max(
+      window.innerHeight || 0,
+      document.documentElement?.clientHeight || 0,
+    )
 
   const keyboardLikely = isHomeAiKeyboardLikelyOpen(panel)
   let inset = Math.max(0, layoutH - vv.offsetTop - vv.height)
