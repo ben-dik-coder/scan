@@ -1640,9 +1640,12 @@ form.auth-form[hidden] {
   overflow: visible;
 }
 
-/* AI-dok.: ingen env(safe-area) – fast padding; bunnfelt (faner + skrivefelt) ligger lavere mot kanten */
+/*
+ * AI-dok.: horisontal utkant uten safe-area (full bredde); topp må ha safe-area + luft
+ * under Dynamic Island / notch (ellers kolliderer header med system-UI).
+ */
 #panel-home-bilde-ai:not([hidden]) .home-ai-fullscreen {
-  padding-top: 0;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
   padding-left: 0;
   padding-right: 0;
 }
@@ -1652,7 +1655,7 @@ form.auth-form[hidden] {
 }
 
 #panel-home-bilde-ai:not([hidden]) .home-ai-gpt__header {
-  padding: 0.4rem 0.65rem 0.45rem;
+  padding: 0.5rem 0.65rem 0.45rem;
 }
 
 #panel-home-bilde-ai:not([hidden]) .home-ai-gpt__mode-hint {
@@ -2124,7 +2127,7 @@ body.home-ai-panel-open .home-vegref {
   grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
   align-items: center;
   gap: 0;
-  padding: 0.4rem max(0.65rem, env(safe-area-inset-left)) 0.45rem
+  padding: 0.5rem max(0.65rem, env(safe-area-inset-left)) 0.45rem
     max(0.65rem, env(safe-area-inset-right));
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: #212121;
