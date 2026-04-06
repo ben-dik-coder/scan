@@ -25,19 +25,19 @@ const CHAT_MODEL = process.env.OPENAI_CONTRACT_MODEL || 'gpt-5-mini'
 /** Vektor-treff fra DB (pool før rerank). Må matche eller underskride match_contract_chunks limit (100). */
 const POOL_MATCH_COUNT = Math.min(
   80,
-  Math.max(8, Number(process.env.CONTRACT_RAG_POOL_MATCH_COUNT || 36)),
+  Math.max(8, Number(process.env.CONTRACT_RAG_POOL_MATCH_COUNT || 32)),
 )
 
 /** Maks utdrag etter vektor+nøkkelord før rerank (kap på token til reranker). */
 const MERGE_POOL_MAX = Math.min(
   64,
-  Math.max(12, Number(process.env.CONTRACT_RAG_MERGE_POOL_MAX || 52)),
+  Math.max(12, Number(process.env.CONTRACT_RAG_MERGE_POOL_MAX || 44)),
 )
 
 /** Utdrag sendt til svarmodellen etter rerank (kvalitet > kvantitet). */
 const MAX_CONTEXT_CHUNKS = Math.min(
   28,
-  Math.max(8, Number(process.env.CONTRACT_RAG_MAX_CONTEXT_CHUNKS || 16)),
+  Math.max(8, Number(process.env.CONTRACT_RAG_MAX_CONTEXT_CHUNKS || 12)),
 )
 
 const KEYWORD_SUPPLEMENT = Math.min(
@@ -77,7 +77,7 @@ function modelUsesReasoningOutputBudget(model) {
  */
 function getContractChatCompletionMaxTokens(model, compactMode) {
   const base = MAX_COMPLETION_TOKENS
-  let cap = compactMode ? Math.min(560, base) : base
+  let cap = compactMode ? Math.min(420, base) : base
   if (modelUsesReasoningOutputBudget(model)) {
     const floor = Math.min(
       16384,
@@ -701,7 +701,7 @@ export async function handleContractChat(req, res) {
       /\b(ordrett|sitater|sitering|\bsiter\b|vis meg ordlyd|utdyp|mer detalj|lengre svar|full oversikt|praktiske råd|vurdering\s*\/\s*råd)\b/i.test(
         trimmedLast,
       ) ||
-      /\b(gi|ønsker|vil ha|trenger|vis)\s+(meg\s+)?(sitater|ordlyd|råd|utdyping)\b/i.test(
+      /\b(gi|ønsker|vil ha|trenger|vis)\s+(meg\s+)?(sitater|ordlyd|utdyping|praktiske\s+råd|konkrete\s+råd|faglige\s+råd|mer\s+detaljert)\b/i.test(
         trimmedLast,
       )
     const wantsExpanded =
@@ -727,11 +727,12 @@ Brukeren har vedlagt et bilde. Bruk det til å forstå spørsmålet og hva som v
 
     const modeBlock = compactMode
       ? `## Modus: KORT SVAR (gjelder nå)
-- Svar med **kun** en kort konklusjon: **maks om lag 50–90 ord**.
+- Svar **kun** på det brukeren spurte om. Ikke oppsummer hele kontrakten og ikke liste relaterte temaer de ikke ba om.
+- Én kort konklusjon: **maks om lag 40–80 ord** (hold deg til poenget).
 - **Ikke** bruk egne seksjoner eller overskrifter som «Sitat», «I kontrakten», «Vurdering/råd», eller lange punktlister med ordrette sitater.
 - Oppsummer hva kontrakten sier **med egne ord**. Ikke ta med ordrette sitater i «anførselstegn» i dette svaret.
-- **Avslutt alltid** med én kort setning som spør hva brukeren vil ha videre, f.eks.: *Vil du ha **ordrette sitater** fra kontrakten, **praktiske råd**, eller **begge deler**?*
-- Hvis KONTEKST ikke dekker spørsmålet: si det kort og still likevel spørsmålet til slutt.`
+- **Avslutning:** Du trenger ikke alltid å stille et nytt spørsmål. Legg eventuelt til **én kort linje** som tilbyr mer (f.eks. ordrette sitater eller praktiske råd) bare hvis det åpenbart hjelper brukeren videre; ellers kan du avslutte uten oppfølgingsspørsmål.
+- Hvis KONTEKST ikke dekker spørsmålet: si det kort; still bare oppfølgingsspørsmål om det er naturlig.`
       : `## Modus: UTVIDET SVAR
 Brukeren har bedt om ordlyd/sitater, råd, utdyping, eller svart kort (f.eks. ja/begge) på tilbud om mer. Da kan du:
 - Bruke **korte sitater** i «anførselstegn» fra KONTEKST der det trengs.
@@ -757,6 +758,9 @@ ${visionHint}${quoteHint}${numberHint}
 
 ## Synlig svar
 **Svaret til brukeren skal alltid være fullstendig synlig tekst** (ikke tomt).
+
+## Bruk av KONTEKST
+Utdragene under kan inneholde støy eller avsnitt som bare delvis treffer spørsmålet. **Ignorer** irrelevante deler og bruk **kun** det som trengs for et presist svar. Ikke gjengi eller oppsummer hele KONTEKST.
 
 ---
 KONTEKST:
