@@ -1615,8 +1615,7 @@ form.auth-form[hidden] {
   max-height: none;
   margin: 0;
   padding: 0;
-  /* Samme som tidligere bottom på fixed composer: løfter innhold når tastatur er åpent (JS setter variabel) */
-  padding-bottom: var(--home-ai-keyboard-inset, 0px);
+  /* Tastatur-løft: kun på .input-bar (bottom), ikke padding her – unngår luft over bunnlinjen */
   z-index: 2147483640;
   box-sizing: border-box;
   display: flex;
@@ -1634,6 +1633,11 @@ form.auth-form[hidden] {
 
 #panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-camera:not([hidden])) {
   background: #0e1422;
+}
+
+/* Chat: fixed composer nederst – overflow:hidden på panelet kan klippe bunn i WebKit */
+#panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-chat:not([hidden])) {
+  overflow: visible;
 }
 
 /*
@@ -1874,7 +1878,7 @@ body.home-ai-panel-open .home-vegref {
   padding-top: env(safe-area-inset-top, 0);
   padding-right: env(safe-area-inset-right, 0);
   padding-left: env(safe-area-inset-left, 0);
-  /* Tastatur-løft: --home-ai-keyboard-inset på #panel-home-bilde-ai (padding-bottom), ikke her */
+  /* Tastatur-løft: --home-ai-keyboard-inset på .input-bar (bottom), ikke her */
   padding-bottom: 0;
   pointer-events: auto;
 }
@@ -2363,9 +2367,14 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* Composer er i flyt under loggen – kun vanlig luft nederst i tråden */
+/*
+ * Fast bunnlinje (chatfelt + faner): luft i logg = høyde på composer + safe area.
+ * Uten denne paddingen skjules siste meldinger bak den faste raden.
+ */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
-  padding-bottom: 0.75rem;
+  padding-bottom: calc(
+    0.75rem + 8px + 2.5rem + 0.25rem + 2.75rem + max(8px, env(safe-area-inset-bottom, 0px))
+  );
 }
 
 /* Tom logg: ikke vertikalsentrer i hele scroll-høyden (det så ut som enorm «død» sone). */
@@ -2545,56 +2554,38 @@ body.home-ai-panel-open .home-vegref {
 }
 
 /*
- * AI dokumentering: verktøyrad + skrivefelt i flyt nederst (samme flate som chat – ingen mørk stripe).
- * Tastatur: #panel-home-bilde-ai padding-bottom (--home-ai-keyboard-inset), ikke fixed bottom.
+ * AI dokumentering: faner + skrivefelt forankret til viewport-bunn (lenger ned enn flex-flyt på mobil).
+ * bottom: var(--home-ai-keyboard-inset) når feltet har fokus (JS på #panel-home-bilde-ai).
+ * Ikke translateY(vh) – det dyttet feltet utenfor skjermen.
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
-  position: relative;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--home-ai-keyboard-inset, 0px);
   flex-shrink: 0;
-  margin-top: auto;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  gap: 0.2rem;
+  gap: 0.25rem;
   border-top: none;
   background: #212121;
-  padding: 6px 10px;
-  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+  padding: 8px 10px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   padding-left: max(10px, env(safe-area-inset-left, 0px));
   padding-right: max(10px, env(safe-area-inset-right, 0px));
+  z-index: 2147483641;
 }
 
-#panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer-tools {
-  gap: 0.35rem;
-}
-
-/* Lavere bunnblokk: mindre knapper + lavere input enn standard .home-ai-gpt__* */
+/* Samme visuelle størrelse som før (kompakte overrides fjernet) */
 #panel-home-bilde-ai:not([hidden]) .home-ai-gpt__composer-tool {
-  min-height: 2.125rem;
-  padding: 0.26rem 0.22rem;
-  font-size: 0.68rem;
+  min-height: 2.5rem;
+  padding: 0.38rem 0.3rem;
 }
 
 #panel-home-bilde-ai:not([hidden]) .home-ai-gpt__input-shell {
-  min-height: 2.375rem;
-  padding: 0.3rem 0.45rem 0.3rem 0.6rem;
-  border-radius: 1.125rem;
-}
-
-#panel-home-bilde-ai:not([hidden]) #home-ai-chat-input.home-ai-gpt__textarea {
-  min-height: 2rem;
-  padding: 0.22rem 0.1rem 0.22rem 0;
-  line-height: 1.4;
-}
-
-#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__send {
-  width: 2.125rem;
-  height: 2.125rem;
-}
-
-#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__send-icon {
-  width: 18px;
-  height: 18px;
+  min-height: 2.75rem;
+  padding: 0.42rem 0.6rem 0.42rem 0.75rem;
 }
 
 /* Ta bilde / Filer / PDF: like brede, jevn avstand */
