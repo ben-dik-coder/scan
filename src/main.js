@@ -10292,7 +10292,10 @@ ${embeddedLeafletCss}
     .log-list li { padding: 0.55rem 0; border-bottom: 1px solid #2a3142; }
     .log-list time { display: block; color: #60a5fa; font-size: 0.8rem; margin-bottom: 0.25rem; }
     .leaflet-container { background: #d2d5db; }
-    .leaflet-tile-container img.leaflet-tile { image-rendering: auto; }
+    .leaflet-tile-container img.leaflet-tile {
+      image-rendering: auto;
+      filter: contrast(1.14) saturate(1.05);
+    }
     .scanix-pin-wrap { background: transparent !important; border: none !important; }
   </style>
 </head>
