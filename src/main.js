@@ -1372,8 +1372,6 @@ let homeAiContractRagMode = true
 let homeAiRagMessages = []
 /** Lydeffekt mens AI arbeider (AI dokumentering). */
 let homeAiThinkingSoundTimer = 0
-/** Grønn fyll på Kontrakt-knapp under kontrakt-RAG-forespørsel. */
-let homeAiContractPillProgressTimer = 0
 /** Siste AI-oppsummering for PDF (unngår dobbelt kall ved «Lagre»). */
 let homeAiPdfSummaryCache = null
 /** @type {AudioContext | null} */
@@ -3568,18 +3566,12 @@ function renderHomeHtml() {
             </div>
             <input type="file" id="home-ai-image-fallback" class="visually-hidden" accept="image/*" tabindex="-1" aria-hidden="true" />
           </div>
-          <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs home-ai-gpt--chatgpt">
-            <div class="home-ai-gpt__topbar">
-              <h1 class="home-ai-gpt__topbar-title">Kontraktskontroll</h1>
-            </div>
+          <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs home-ai-gpt--chatgpt home-ai-gpt__stage--contract-rag">
             <header class="home-ai-gpt__header">
               <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Tilbake">
                 <svg class="home-ai-gpt__close-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
-              <div class="home-ai-gpt__header-center">
-                <span class="home-ai-gpt__contract-pill home-ai-gpt__brand-label" id="home-ai-contract-brand" role="presentation"><span class="home-ai-gpt__contract-pill-label">Kontraktskontroll</span></span>
-              </div>
-              <div class="home-ai-gpt__header-spacer" aria-hidden="true"></div>
+              <h1 class="home-ai-gpt__header-title">Kontraktskontroll</h1>
             </header>
             <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note" hidden></p>
             <div class="home-ai-gpt__context">
@@ -5802,51 +5794,12 @@ function syncHomeAiModeHint() {
   el.hidden = true
 }
 
-function setHomeAiContractPillProgress(percent) {
-  const el = document.getElementById('home-ai-contract-brand')
-  if (!el) return
-  const p = Math.max(0, Math.min(100, percent))
-  el.style.setProperty('--contract-fill', `${p}%`)
-}
-
-function startHomeAiContractPillProgress() {
-  if (!homeAiContractRagMode) return
-  if (homeAiContractPillProgressTimer) {
-    clearInterval(homeAiContractPillProgressTimer)
-    homeAiContractPillProgressTimer = 0
-  }
-  let p = 5
-  setHomeAiContractPillProgress(p)
-  homeAiContractPillProgressTimer = window.setInterval(() => {
-    const step = 2.5 + Math.random() * 6.5
-    p = Math.min(90, p + step)
-    setHomeAiContractPillProgress(p)
-  }, 165)
-}
-
-/**
- * @param {boolean} success full grønn ved suksess, deretter reset; false ved avbrudd/feil.
- */
-function finishHomeAiContractPillProgress(success) {
-  if (homeAiContractPillProgressTimer) {
-    clearInterval(homeAiContractPillProgressTimer)
-    homeAiContractPillProgressTimer = 0
-  }
-  if (success) {
-    setHomeAiContractPillProgress(100)
-    window.setTimeout(() => setHomeAiContractPillProgress(0), 480)
-  } else {
-    setHomeAiContractPillProgress(0)
-  }
-}
-
 function applyHomeAiContractRagUi(on) {
-  const brand = document.getElementById('home-ai-contract-brand')
+  const stage = document.getElementById('home-ai-stage-chat')
   const input = document.getElementById('home-ai-chat-input')
   const label = document.querySelector('label[for="home-ai-chat-input"]')
   const sendBtn = document.getElementById('btn-home-ai-send')
-  brand?.classList.toggle('home-ai-gpt__contract-pill--on', on)
-  if (!on) finishHomeAiContractPillProgress(false)
+  stage?.classList.toggle('home-ai-gpt__stage--contract-rag', on)
   if (input) {
     input.placeholder = on
       ? 'Skriv spørsmålet ditt …'
@@ -6238,7 +6191,6 @@ async function sendHomeAiContractRagMessage() {
   if (statusEl) statusEl.textContent = 'RoadMindAi tenker …'
   if (sendBtn) sendBtn.disabled = true
   startHomeAiThinkingUx()
-  startHomeAiContractPillProgress()
   try {
     /** @type {Response | null} */
     let r = null
@@ -6276,7 +6228,6 @@ async function sendHomeAiContractRagMessage() {
 
     if (!r) {
       homeAiRagMessages.pop()
-      finishHomeAiContractPillProgress(false)
       if (statusEl) statusEl.textContent = 'Ingen respons fra serveren.'
       const log = document.getElementById('home-ai-chat-log')
       if (log?.lastElementChild) log.removeChild(log.lastElementChild)
@@ -6286,7 +6237,6 @@ async function sendHomeAiContractRagMessage() {
 
     if (!r.ok) {
       homeAiRagMessages.pop()
-      finishHomeAiContractPillProgress(false)
       const err =
         data && typeof data.error === 'string' && data.error.trim()
           ? data.error
@@ -6306,7 +6256,6 @@ async function sendHomeAiContractRagMessage() {
         : ''
     if (!reply) {
       homeAiRagMessages.pop()
-      finishHomeAiContractPillProgress(false)
       if (statusEl) statusEl.textContent = 'Tomt svar fra serveren.'
       const log = document.getElementById('home-ai-chat-log')
       if (log?.lastElementChild) log.removeChild(log.lastElementChild)
@@ -6315,13 +6264,11 @@ async function sendHomeAiContractRagMessage() {
     }
 
     homeAiRagMessages.push({ role: 'assistant', content: reply })
-    finishHomeAiContractPillProgress(true)
     stopHomeAiThinkingUx()
     await appendHomeAiAssistantPlainTextStreamed(reply)
     if (statusEl) statusEl.textContent = ''
   } catch (e) {
     homeAiRagMessages.pop()
-    finishHomeAiContractPillProgress(false)
     if (statusEl) {
       statusEl.textContent =
         e && typeof e === 'object' && 'message' in e
