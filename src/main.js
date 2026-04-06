@@ -10291,7 +10291,8 @@ ${embeddedLeafletCss}
     .log-list { list-style: none; margin: 0; padding: 0; font-size: 0.86rem; }
     .log-list li { padding: 0.55rem 0; border-bottom: 1px solid #2a3142; }
     .log-list time { display: block; color: #60a5fa; font-size: 0.8rem; margin-bottom: 0.25rem; }
-    .leaflet-container { background: #1a1d26; }
+    .leaflet-container { background: #d2d5db; }
+    .leaflet-tile-container img.leaflet-tile { image-rendering: auto; }
     .scanix-pin-wrap { background: transparent !important; border: none !important; }
   </style>
 </head>
@@ -10375,7 +10376,18 @@ ${leafletJsRaw}
 
     var map = ${'L'}.map('map', { zoomControl: true })
 
-    var osmLayer = ${'L'}.tileLayer(
+    var voyagerLayer = ${'L'}.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20,
+        detectRetina: true,
+      },
+    )
+
+    var osmFallbackLayer = ${'L'}.tileLayer(
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
         attribution:
@@ -10384,32 +10396,23 @@ ${leafletJsRaw}
       },
     )
 
-    var cartoLayer = ${'L'}.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-      {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19,
-      },
-    )
-
     function onFirstTile() {
       hideFileHint()
-      osmLayer.off('tileload', onFirstTile)
-      cartoLayer.off('tileload', onFirstTile)
+      voyagerLayer.off('tileload', onFirstTile)
+      osmFallbackLayer.off('tileload', onFirstTile)
     }
 
-    osmLayer.on('tileload', onFirstTile)
-    cartoLayer.on('tileload', onFirstTile)
+    voyagerLayer.on('tileload', onFirstTile)
+    osmFallbackLayer.on('tileload', onFirstTile)
 
-    osmLayer.once('tileerror', function () {
-      if (map.hasLayer(osmLayer)) {
-        map.removeLayer(osmLayer)
-        cartoLayer.addTo(map)
+    voyagerLayer.once('tileerror', function () {
+      if (map.hasLayer(voyagerLayer)) {
+        map.removeLayer(voyagerLayer)
+        osmFallbackLayer.addTo(map)
       }
     })
 
-    osmLayer.addTo(map)
+    voyagerLayer.addTo(map)
 
     var valid = points.filter(function (p) {
       return (
