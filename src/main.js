@@ -1219,9 +1219,16 @@ function ensureSessionPinIcons() {
   })
   userLocationIcon = Leaflet.divIcon({
     className: 'map-user-pin-wrap',
-    html: '<div class="map-user-pin" aria-hidden="true"><div class="map-user-arrow"></div></div>',
-    iconSize: [28, 34],
-    iconAnchor: [14, 34],
+    html:
+      '<div class="map-user-pin" aria-hidden="true">' +
+      '<div class="map-user-arrow" aria-hidden="true">' +
+      '<svg class="map-user-arrow-svg" viewBox="-32 -32 64 64" width="64" height="64" focusable="false">' +
+      '<path class="map-user-arrow-wedge" d="M0 0 L20 -28 A36 36 0 0 1 -20 -28 Z" fill="rgba(66,133,244,0.4)"/>' +
+      '</svg></div>' +
+      '<div class="map-user-dot"></div></div>',
+    iconSize: [64, 64],
+    iconAnchor: [32, 32],
+    popupAnchor: [0, -12],
   })
 }
 
@@ -1574,8 +1581,10 @@ function applyHeadingToMarker(headingDeg) {
   if (!arrow) return
   if (headingDeg == null || Number.isNaN(headingDeg)) {
     arrow.style.transform = ''
+    arrow.style.opacity = '0'
     return
   }
+  arrow.style.opacity = '1'
   arrow.style.transform = `rotate(${headingDeg}deg)`
 }
 
@@ -1893,10 +1902,10 @@ function updateUserLocationOnMap(
     const popupLines = buildNavPopupLines(roadSnapped, r, spdKmh)
     userAccuracyCircle = Leaflet.circle([lat, lng], {
       radius: Math.min(r, 95),
-      color: '#3b82f6',
-      fillColor: '#60a5fa',
-      fillOpacity: 0.18,
-      weight: 2,
+      color: 'rgba(66, 133, 244, 0.45)',
+      fillColor: '#4285f4',
+      fillOpacity: 0.14,
+      weight: 1,
     }).addTo(map)
     userLocationMarker = Leaflet.marker([lat, lng], {
       icon: userLocationIcon,

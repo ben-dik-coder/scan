@@ -6551,40 +6551,49 @@ body.session-map-fullscreen-open {
   border: none;
 }
 
-/* Retning mot kjøreretning (heading); pil peker nord som standard */
+/* Google Maps-lignende «min posisjon»: blå prikk med hvit ring, retningskile ved heading */
 .map-user-pin {
   position: relative;
-  width: 28px;
-  height: 28px;
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .map-user-arrow {
-  width: 0;
-  height: 0;
-  border-left: 9px solid transparent;
-  border-right: 9px solid transparent;
-  border-bottom: 22px solid #3b82f6;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
-  transform-origin: 50% 65%;
-  transition: transform 0.2s var(--ease-enter);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  opacity: 0;
+  transform-origin: 50% 50%;
+  transition:
+    transform 0.2s var(--ease-enter),
+    opacity 0.15s ease;
+  pointer-events: none;
 }
 
-.map-user-pin::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 12px;
-  height: 12px;
+.map-user-arrow-svg {
+  display: block;
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.map-user-dot {
+  position: relative;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #fff;
-  border: 2px solid #3b82f6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  z-index: -1;
+  background: #4285f4;
+  border: 3px solid #fff;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
 .logg-folder {
