@@ -25,6 +25,13 @@ import {
   upsertUserAppState,
 } from './supabaseSync.js'
 import { apiUrl } from './apiBase.js'
+import {
+  configureAdvancedRegister,
+  renderAdvancedRegisterIntroHtml,
+  renderAdvancedRegisterSessionHtml,
+  renderAdvancedRegisterReportHtml,
+  bindAdvancedRegister,
+} from './advancedRegister.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
 const LEGACY_STORAGE_KEY = 'count-clicker-v1'
@@ -4924,6 +4931,7 @@ function renderSessionHtml() {
               aria-label="Hurtig meny"
               tabindex="0"
             >
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="advancedRegister">Avansert registering</button>
               <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="lastContact">Send til siste kontakt</button>
               <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="save">Lagre</button>
               <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="pdf">PDF</button>
@@ -4979,6 +4987,9 @@ function renderApp() {
   if (!currentUser) {
     main = renderAuthHtml()
   } else if (view === 'session') main = renderSessionHtml()
+  else if (view === 'advRegIntro') main = renderAdvancedRegisterIntroHtml()
+  else if (view === 'advRegSession') main = renderAdvancedRegisterSessionHtml()
+  else if (view === 'advRegReport') main = renderAdvancedRegisterReportHtml()
   else if (view === 'menuSession') main = renderMenuSessionHtml()
   else if (view === 'menuUser') main = renderMenuUserHtml()
   else if (view === 'menuMap') main = renderMenuMapHtml()
@@ -5023,6 +5034,8 @@ let menuContactsAbort = null
 let menuInfoAbort = null
 let inboxAbort = null
 let sessionAbort = null
+/** Avansert registering (egen flyt). */
+let advRegAbort = null
 let photoAlbumAbort = null
 let receivedPhotosAbort = null
 
@@ -8618,6 +8631,12 @@ function wireSessionActionWheel(signal) {
   function runWheelAction(action) {
     closeWheelDialog()
     window.setTimeout(() => {
+      if (action === 'advancedRegister') {
+        view = 'advRegIntro'
+        renderApp()
+        bindListenersForCurrentView()
+        return
+      }
       if (action === 'lastContact') {
         openShareSessionDialog({ preselectLastContact: true })
         queueMicrotask(() => {
@@ -9133,6 +9152,10 @@ function bindSessionListeners() {
 }
 
 function bindListenersForCurrentView() {
+  if (advRegAbort) {
+    advRegAbort.abort()
+    advRegAbort = null
+  }
   if (view !== 'home' || !currentUser) {
     stopHomeVegrefTracking()
   }
@@ -9159,12 +9182,29 @@ function bindListenersForCurrentView() {
     bindPhotoAlbumListeners()
   } else if (view === 'receivedPhotos') {
     bindReceivedPhotosListeners()
+  } else if (
+    view === 'advRegIntro' ||
+    view === 'advRegSession' ||
+    view === 'advRegReport'
+  ) {
+    advRegAbort = new AbortController()
+    bindAdvancedRegister(
+      /** @type {'advRegIntro' | 'advRegSession' | 'advRegReport'} */ (view),
+      advRegAbort.signal,
+    )
   } else {
     bindHomeListeners()
   }
 }
 
 function bootstrap() {
+  configureAdvancedRegister({
+    navigate: (nextView) => {
+      view = nextView
+      renderApp()
+      bindListenersForCurrentView()
+    },
+  })
   initVegrefLive({
     haversineM,
     fetchRoadReferenceNear,
