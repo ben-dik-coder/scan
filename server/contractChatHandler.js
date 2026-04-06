@@ -2,6 +2,9 @@
  * POST /api/contract-chat — RAG mot contract_chunks (Supabase pgvector).
  * Krever: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
+ * Brukermeldinger kan være ren tekst eller multimodal (tekst + image_url, OpenAI-format).
+ * Svarmodell (OPENAI_CONTRACT_MODEL / gpt-5-mini) må støtte vision for bilde.
+ *
  * Kvalitet: stort vektor-trekk → hybrid merge → (valgfritt) query-utvidelse ved embedding
  * → LLM-rerank til færre, mest relevante utdrag → svarmodell.
  */
@@ -395,6 +398,41 @@ function escapeIlike(s) {
   return String(s).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
+/** Når siste melding bare har bilde (ingen tekstdel), brukes dette til embedding/søk. */
+const EMBEDDING_FALLBACK_IMAGE_ONLY =
+  'Brukeren har vedlagt et bilde og spør om kontrakten i lys av det som vises.'
+
+/**
+ * @param {unknown} content
+ * @returns {string}
+ */
+function extractTextFromMessageContent(content) {
+  if (typeof content === 'string') return content.trim()
+  if (!Array.isArray(content)) return ''
+  const parts = []
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue
+    const p = /** @type {Record<string, unknown>} */ (part)
+    if (p.type === 'text' && typeof p.text === 'string') {
+      parts.push(p.text.trim())
+    }
+  }
+  return parts.join('\n').trim()
+}
+
+/**
+ * @param {unknown} content
+ * @returns {boolean}
+ */
+function messageHasImagePart(content) {
+  if (!Array.isArray(content)) return false
+  return content.some((part) => {
+    if (!part || typeof part !== 'object') return false
+    const p = /** @type {Record<string, unknown>} */ (part)
+    return p.type === 'image_url' || p.type === 'input_image'
+  })
+}
+
 /**
  * Kombiner siste brukermeldinger til bedre semantisk treff (oppfølgingsspørsmål).
  * @param {Array<{ role?: string, content?: unknown }>} messages
@@ -404,9 +442,12 @@ function buildRetrievalQuery(messages, lastUserText) {
   const users = []
   for (let i = messages.length - 1; i >= 0 && users.length < 4; i--) {
     const m = messages[i]
-    if (m && m.role === 'user' && typeof m.content === 'string') {
-      const c = m.content.trim()
-      if (c) users.unshift(c)
+    if (m && m.role === 'user') {
+      const t = extractTextFromMessageContent(m.content)
+      if (t) users.unshift(t)
+      else if (messageHasImagePart(m.content)) {
+        users.unshift(EMBEDDING_FALLBACK_IMAGE_ONLY)
+      }
     }
   }
   if (users.length <= 1) return lastUserText
@@ -507,17 +548,25 @@ export async function handleContractChat(req, res) {
       return
     }
 
-    /** Siste brukerinnhold (tekst) for embedding */
+    /** Siste brukerinnhold (tekst) for embedding; bilde uten tekst → fallback-streng. */
     let lastUserText = ''
+    let lastUserHasImage = false
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
-      if (m && m.role === 'user' && typeof m.content === 'string') {
-        lastUserText = m.content.trim()
+      if (m && m.role === 'user') {
+        lastUserText = extractTextFromMessageContent(m.content)
+        lastUserHasImage = messageHasImagePart(m.content)
         break
       }
     }
+    if (!lastUserText && lastUserHasImage) {
+      lastUserText = EMBEDDING_FALLBACK_IMAGE_ONLY
+    }
     if (!lastUserText) {
-      res.status(400).json({ error: 'Ingen brukermelding med tekst funnet.' })
+      res.status(400).json({
+        error:
+          'Ingen brukermelding med tekst eller bilde funnet. Skriv et spørsmål eller legg ved et bilde.',
+      })
       return
     }
 
@@ -626,6 +675,11 @@ export async function handleContractChat(req, res) {
       wantsQuote || shortFollowUp || asksForExpanded
     const compactMode = !wantsExpanded
 
+    const visionHint = lastUserHasImage
+      ? `\n## Bilde i siste melding
+Brukeren har vedlagt et bilde. Bruk det til å forstå spørsmålet og hva som vises (sted, skilt, dokument, situasjon). **Konkrete kontraktskrav og ordlyd** skal fortsatt hentes fra KONTEKST nedenfor — ikke finn opp § eller tall fra bildet alene.\n`
+      : ''
+
     const quoteHint = wantsQuote
       ? '\nSPESIELT NÅ: Brukeren vil ha ordlyd – **sitér ordrett** fra KONTEKST i «anførselstegn». Korte sitater; ikke parafraser når ordlyd er poenget.\n'
       : ''
@@ -655,7 +709,7 @@ Brukeren har bedt om ordlyd/sitater, råd, utdyping, eller svart kort (f.eks. ja
 
 ${modeBlock}
 
-${quoteHint}${numberHint}
+${visionHint}${quoteHint}${numberHint}
 ## Fakta vs tolkning
 - Når du i **utvidet modus** sier at kontrakten **krever**, **sier** eller **fastsetter** noe konkret (§, tall, frist): det må **kunne spores til KONTEKST** — sitér eller parafraser nøyaktig. **Oppfinn ikke** §, beløp eller datoer.
 - I **kort modus**: ikke påstå konkrete tall/§ som ikke er tydelig dekket; bruk egne ord og tilby sitater i neste melding.
@@ -677,10 +731,20 @@ ${contextBlock}`
 
     const chatMessages = [
       { role: 'system', content: systemPrompt },
-      ...messages.map((m) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: String(m.content ?? ''),
-      })),
+      ...messages.map((m) => {
+        const role = m.role === 'assistant' ? 'assistant' : 'user'
+        const c = m.content
+        if (role === 'assistant') {
+          return { role: 'assistant', content: String(c ?? '') }
+        }
+        if (typeof c === 'string') {
+          return { role: 'user', content: c }
+        }
+        if (Array.isArray(c)) {
+          return { role: 'user', content: c }
+        }
+        return { role: 'user', content: String(c ?? '') }
+      }),
     ]
 
     const maxTokens = compactMode

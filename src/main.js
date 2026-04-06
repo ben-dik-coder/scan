@@ -24,7 +24,7 @@ import {
   sendSessionShare,
   upsertUserAppState,
 } from './supabaseSync.js'
-import { apiUrl, hintApiNotFound } from './apiBase.js'
+import { apiUrl } from './apiBase.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
 const LEGACY_STORAGE_KEY = 'count-clicker-v1'
@@ -1355,19 +1355,14 @@ const KMT_METER_SNAP_IF_DELTA = 280
 /** True når KMT er åpnet fra forsiden – bilder til album, tilbake → album (ikke økt). */
 let kmtStandaloneFlow = false
 
-/** Forsiden «AI dokumentering»: kamera + flertråds chat mot /api/analyze. */
+/** Forsiden «AI dokumentering»: kamera + kontrakt-RAG mot /api/contract-chat (tekst og/eller bilde). */
 let homeAiMediaStream = null
 /** @type {string} */
 let homeAiCapturedDataUrl = ''
-/**
- * OpenAI-format meldinger for /api/analyze med `messages` (første user = bilde + tekst, deretter tekst + svar).
- * @type {Array<{ role: string, content: unknown }>}
- */
-let homeAiApiMessages = []
 /** Tekstbasert kontrakt-RAG mot /api/contract-chat (skiller fra VeiAi-tråden). */
 let homeAiContractRagMode = true
 /**
- * @type {Array<{ role: string, content: string }>}
+ * @type {Array<{ role: string, content: string | unknown[] }>}
  */
 let homeAiRagMessages = []
 /** Lydeffekt mens AI arbeider (AI dokumentering). */
@@ -5834,7 +5829,6 @@ function setHomeAiContractRagEnabled(wantOn) {
   const st = document.getElementById('home-ai-status')
   if (wantOn) {
     homeAiRagMessages = []
-    homeAiApiMessages = []
     homeAiCapturedDataUrl = ''
     syncHomeAiPreviewThumb()
     if (log) log.innerHTML = ''
@@ -5842,7 +5836,6 @@ function setHomeAiContractRagEnabled(wantOn) {
     applyHomeAiContractRagUi(true)
   } else {
     homeAiRagMessages = []
-    homeAiApiMessages = []
     if (log) log.innerHTML = ''
     if (st) st.textContent = ''
     applyHomeAiContractRagUi(false)
@@ -5856,24 +5849,15 @@ function openHomeAiAskContract() {
   document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
 }
 
-function exitHomeAiContractRagUi() {
-  if (!homeAiContractRagMode) return
-  homeAiRagMessages = []
-  applyHomeAiContractRagUi(false)
-}
-
 function enterHomeAiChatWithImage(dataUrl) {
-  exitHomeAiContractRagUi()
+  applyHomeAiContractRagUi(true)
   homeAiCapturedDataUrl = dataUrl
-  homeAiApiMessages = []
   stopHomeAiCamera()
   const img = document.getElementById('home-ai-preview-img')
   if (img) img.src = dataUrl
   syncHomeAiPreviewThumb()
   document.getElementById('home-ai-stage-camera')?.setAttribute('hidden', '')
   document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
-  const log = document.getElementById('home-ai-chat-log')
-  if (log) log.innerHTML = ''
   const st = document.getElementById('home-ai-status')
   if (st) st.textContent = ''
   document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
@@ -5881,7 +5865,6 @@ function enterHomeAiChatWithImage(dataUrl) {
 
 function retakeHomeAiDoc() {
   homeAiCapturedDataUrl = ''
-  homeAiApiMessages = []
   homeAiRagMessages = []
   const log = document.getElementById('home-ai-chat-log')
   if (log) log.innerHTML = ''
@@ -5935,31 +5918,9 @@ function appendHomeAiChatBubble(role, html, options) {
   log.scrollTop = log.scrollHeight
 }
 
-function renderHomeAiStructuredHtml(data) {
-  const problem = escapeHtml(String(data.problem ?? ''))
-  const risk = escapeHtml(String(data.risk ?? ''))
-  const action = escapeHtml(String(data.action ?? ''))
-  const explanation = escapeHtml(String(data.explanation ?? ''))
-  const report = escapeHtml(String(data.report ?? '')).replace(/\n/g, '<br />')
-  return `
-    <div class="home-ai-result home-ai-result--inchat">
-      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Problem</h3><p class="home-ai-result__p">${problem}</p></div>
-      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Risiko</h3><p class="home-ai-result__p">${risk}</p></div>
-      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Tiltak</h3><p class="home-ai-result__p">${action}</p></div>
-      <div class="home-ai-result__block"><h3 class="home-ai-result__h">Forklaring</h3><p class="home-ai-result__p">${explanation}</p></div>
-      <div class="home-ai-result__block home-ai-result__block--report"><h3 class="home-ai-result__h">Rapport</h3><p class="home-ai-result__p home-ai-result__report">${report}</p></div>
-    </div>`
-}
-
-const HOME_AI_DEFAULT_FIRST_TEXT =
-  'Se bildet og gi en kort veivokter-vurdering (sikkerhet, føre, praktiske tiltak).'
-
-const HOME_AI_DEFAULT_NO_IMAGE_TEXT =
-  'Gi en kort veivokter-vurdering ut fra beskrivelsen (ingen bilde vedlagt).'
-
-function buildHomeAiUserText(text) {
-  return `Brukerens beskrivelse:\n${String(text).trim()}`
-}
+/** Brukes når brukeren sender bilde uten egen tekst (kontrakt-RAG + vision). */
+const HOME_AI_CONTRACT_IMAGE_DEFAULT =
+  'Se bildet og svar ut fra kontrakten (hva er relevant, og hva viser bildet?).'
 
 function syncHomeAiPreviewThumb() {
   const img = document.getElementById('home-ai-preview-img')
@@ -6180,22 +6141,49 @@ async function sendHomeAiContractRagMessage() {
   const input = document.getElementById('home-ai-chat-input')
   const sendBtn = document.getElementById('btn-home-ai-send')
   const textRaw = input?.value?.trim() ?? ''
+  const hasImage = Boolean(
+    homeAiCapturedDataUrl && String(homeAiCapturedDataUrl).trim().length > 0,
+  )
   const hadAssistant = homeAiRagMessages.some((m) => m.role === 'assistant')
 
-  if (hadAssistant && !textRaw) {
-    if (statusEl) statusEl.textContent = 'Skriv et oppfølgingsspørsmål.'
+  if (hadAssistant && !textRaw && !hasImage) {
+    if (statusEl) {
+      statusEl.textContent =
+        'Skriv et oppfølgingsspørsmål, eller legg ved et nytt bilde.'
+    }
     return
   }
-  if (!hadAssistant && !textRaw) {
-    if (statusEl) statusEl.textContent = 'Skriv et spørsmål om kontrakten.'
+  if (!hadAssistant && !textRaw && !hasImage) {
+    if (statusEl) {
+      statusEl.textContent =
+        'Skriv et spørsmål om kontrakten, eller legg ved et bilde.'
+    }
     return
   }
 
-  const bubbleHtml = escapeHtml(textRaw).replace(/\n/g, '<br />')
+  const textForPayload = textRaw || (hasImage ? HOME_AI_CONTRACT_IMAGE_DEFAULT : '')
+  const bubbleHtml =
+    textRaw.length > 0
+      ? escapeHtml(textRaw).replace(/\n/g, '<br />')
+      : hasImage
+        ? '<em class="home-ai-gpt__em">(Bilde vedlagt)</em>'
+        : escapeHtml(textForPayload).replace(/\n/g, '<br />')
   appendHomeAiChatBubble('user', `<p class="home-ai-gpt__user-p">${bubbleHtml}</p>`)
   if (input) input.value = ''
 
-  homeAiRagMessages.push({ role: 'user', content: textRaw })
+  const userMsg = hasImage
+    ? {
+        role: 'user',
+        content: [
+          { type: 'text', text: textForPayload },
+          {
+            type: 'image_url',
+            image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
+          },
+        ],
+      }
+    : { role: 'user', content: textRaw }
+  homeAiRagMessages.push(userMsg)
 
   if (statusEl) statusEl.textContent = 'RoadMindAi tenker …'
   if (sendBtn) sendBtn.disabled = true
@@ -6273,6 +6261,10 @@ async function sendHomeAiContractRagMessage() {
     }
 
     homeAiRagMessages.push({ role: 'assistant', content: reply })
+    if (hasImage) {
+      homeAiCapturedDataUrl = ''
+      syncHomeAiPreviewThumb()
+    }
     stopHomeAiThinkingUx()
     await appendHomeAiAssistantPlainTextStreamed(reply)
     if (statusEl) statusEl.textContent = ''
@@ -6293,274 +6285,9 @@ async function sendHomeAiContractRagMessage() {
   }
 }
 
-/** Oppfølging: API skal sende { reply }, men håndter JSON-lignende svar og tomme felt. */
-function extractHomeAiFollowupReply(data) {
-  if (!data || typeof data !== 'object') return ''
-  if (typeof data.reply === 'string' && data.reply.trim()) return data.reply.trim()
-  if (data.reply != null && String(data.reply).trim()) return String(data.reply).trim()
-  const parts = ['problem', 'risk', 'action', 'explanation', 'report']
-    .map((k) => data[k])
-    .filter((x) => x != null && String(x).trim())
-  if (parts.length) return parts.map((x) => String(x)).join('\n\n')
-  return ''
-}
-
 async function sendHomeAiChatMessage() {
-  const hasImage = Boolean(
-    homeAiCapturedDataUrl && String(homeAiCapturedDataUrl).trim().length > 0,
-  )
-  if (!hasImage) {
-    applyHomeAiContractRagUi(true)
-  }
-  if (homeAiContractRagMode) {
-    await sendHomeAiContractRagMessage()
-    return
-  }
-  const statusEl = document.getElementById('home-ai-status')
-  const input = document.getElementById('home-ai-chat-input')
-  const sendBtn = document.getElementById('btn-home-ai-send')
-  const textRaw = input?.value?.trim() ?? ''
-
-  const hadAssistantInThread = homeAiApiMessages.some(
-    (m) => m.role === 'assistant',
-  )
-  if (hadAssistantInThread && !textRaw) {
-    if (statusEl) statusEl.textContent = 'Skriv et oppfølgingsspørsmål.'
-    return
-  }
-
-  let textForApi
-  if (hadAssistantInThread) {
-    textForApi = textRaw
-  } else if (textRaw.length > 0) {
-    textForApi = textRaw
-  } else if (hasImage) {
-    textForApi = HOME_AI_DEFAULT_FIRST_TEXT
-  } else {
-    textForApi = HOME_AI_DEFAULT_NO_IMAGE_TEXT
-  }
-
-  const bubbleHtml =
-    textRaw.length > 0
-      ? escapeHtml(textRaw).replace(/\n/g, '<br />')
-      : hasImage
-        ? '<em class="home-ai-gpt__em">(Ingen egen tekst – analyse av bildet)</em>'
-        : '<em class="home-ai-gpt__em">(Tekstbasert – ingen bilde vedlagt)</em>'
-  appendHomeAiChatBubble('user', `<p class="home-ai-gpt__user-p">${bubbleHtml}</p>`)
-  if (input) input.value = ''
-
-  const userBlock = buildHomeAiUserText(String(textForApi))
-  const firstUserMessage = hasImage
-    ? {
-        role: 'user',
-        content: [
-          { type: 'text', text: userBlock },
-          {
-            type: 'image_url',
-            image_url: { url: homeAiCapturedDataUrl, detail: 'high' },
-          },
-        ],
-      }
-    : { role: 'user', content: userBlock }
-
-  if (hadAssistantInThread) {
-    homeAiApiMessages.push({ role: 'user', content: textRaw })
-  } else {
-    homeAiApiMessages = [firstUserMessage]
-  }
-
-  /** Server: én user-melding = JSON-rapport; flere = { reply } */
-  const requestWasFirstShot = homeAiApiMessages.length === 1
-
-  if (statusEl) statusEl.textContent = 'RoadMindAi tenker …'
-  if (sendBtn) sendBtn.disabled = true
-  startHomeAiThinkingUx()
-  try {
-    let r = await fetch(apiUrl('/api/analyze'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: homeAiApiMessages }),
-    })
-    let data = /** @type {Record<string, unknown>} */ ({})
-    const ct = r.headers.get('content-type') || ''
-    if (ct.includes('application/json')) {
-      data = await r.json().catch(() => ({}))
-    } else {
-      await r.text().catch(() => '')
-    }
-
-    if (!r.ok && requestWasFirstShot) {
-      homeAiApiMessages = []
-      const legacyBody = hasImage
-        ? { image: homeAiCapturedDataUrl, text: String(textForApi) }
-        : { text: String(textForApi) }
-      r = await fetch(apiUrl('/api/analyze'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(legacyBody),
-      })
-      const ct2 = r.headers.get('content-type') || ''
-      if (ct2.includes('application/json')) {
-        data = await r.json().catch(() => ({}))
-      } else {
-        await r.text().catch(() => '')
-      }
-      if (!r.ok) {
-        const fromApi =
-          data && typeof data.error === 'string' ? data.error : null
-        const hint404 = r.status === 404 ? hintApiNotFound() : ''
-        throw new Error(
-          fromApi ||
-            (r.status === 404
-              ? `Fant ikke API (404).${hint404}`
-              : `Feil ${r.status}`),
-        )
-      }
-      homeAiApiMessages = [
-        firstUserMessage,
-        { role: 'assistant', content: JSON.stringify(data) },
-      ]
-      stopHomeAiThinkingUx()
-      appendHomeAiChatBubble(
-        'assistant',
-        renderHomeAiStructuredHtml(
-          /** @type {{ problem?: unknown, risk?: unknown, action?: unknown, explanation?: unknown, report?: unknown }} */ (
-            data
-          ),
-        ),
-        { appearIn: true },
-      )
-      if (statusEl) statusEl.textContent = ''
-      return
-    }
-
-    /**
-     * Oppfølging via { messages } feiler ofte på eldre deploy / modellgrenser.
-     * Fallback: samme legacy-endepunkt som første analyse, med [Oppfølging] + bilde.
-     */
-    if (!requestWasFirstShot) {
-      const extracted = extractHomeAiFollowupReply(
-        /** @type {Record<string, unknown>} */ (data),
-      )
-      if (!r.ok || !extracted.trim()) {
-        homeAiApiMessages.pop()
-        const legacyFollowBody = hasImage
-          ? {
-              image: homeAiCapturedDataUrl,
-              text: `[Oppfølging] ${textRaw}`,
-            }
-          : { text: `[Oppfølging] ${textRaw}` }
-        r = await fetch(apiUrl('/api/analyze'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(legacyFollowBody),
-        })
-        const ctF = r.headers.get('content-type') || ''
-        if (ctF.includes('application/json')) {
-          data = await r.json().catch(() => ({}))
-        } else {
-          await r.text().catch(() => '')
-        }
-        if (!r.ok) {
-          const fromApi =
-            data && typeof data.error === 'string' ? data.error : null
-          const hint404 = r.status === 404 ? hintApiNotFound() : ''
-          throw new Error(
-            fromApi ||
-              (r.status === 404
-                ? `Fant ikke API (404).${hint404}`
-                : `Feil ${r.status}`),
-          )
-        }
-        homeAiApiMessages.push({ role: 'user', content: textRaw })
-        homeAiApiMessages.push({
-          role: 'assistant',
-          content: JSON.stringify(data),
-        })
-        stopHomeAiThinkingUx()
-        appendHomeAiChatBubble(
-          'assistant',
-          renderHomeAiStructuredHtml(
-            /** @type {{ problem?: unknown, risk?: unknown, action?: unknown, explanation?: unknown, report?: unknown }} */ (
-              data
-            ),
-          ),
-          { appearIn: true },
-        )
-        if (statusEl) statusEl.textContent = ''
-        return
-      }
-    }
-
-    if (!r.ok) {
-      const fromApi =
-        data && typeof data.error === 'string' ? data.error : null
-      const hint404 = r.status === 404 ? hintApiNotFound() : ''
-      throw new Error(
-        fromApi ||
-          (r.status === 404
-            ? `Fant ikke API (404).${hint404}`
-            : `Feil ${r.status}`),
-      )
-    }
-
-    if (
-      data &&
-      typeof data === 'object' &&
-      typeof data.error === 'string' &&
-      data.error.trim() &&
-      data.reply == null &&
-      data.problem == null
-    ) {
-      throw new Error(data.error)
-    }
-
-    if (requestWasFirstShot) {
-      homeAiApiMessages.push({
-        role: 'assistant',
-        content: JSON.stringify(data),
-      })
-      stopHomeAiThinkingUx()
-      appendHomeAiChatBubble(
-        'assistant',
-        renderHomeAiStructuredHtml(
-          /** @type {{ problem?: unknown, risk?: unknown, action?: unknown, explanation?: unknown, report?: unknown }} */ (
-            data
-          ),
-        ),
-        { appearIn: true },
-      )
-    } else {
-      let reply = extractHomeAiFollowupReply(
-        /** @type {Record<string, unknown>} */ (data),
-      )
-      if (!reply.trim()) {
-        reply =
-          'Ingen tekst i AI-svaret. Prøv å omformulere spørsmålet, eller send på nytt.'
-      }
-      homeAiApiMessages.push({ role: 'assistant', content: reply })
-      stopHomeAiThinkingUx()
-      await appendHomeAiAssistantPlainTextStreamed(reply)
-    }
-    if (statusEl) statusEl.textContent = ''
-  } catch (e) {
-    const last = homeAiApiMessages[homeAiApiMessages.length - 1]
-    if (last && last.role === 'user') {
-      homeAiApiMessages.pop()
-    }
-    if (statusEl) {
-      statusEl.textContent =
-        e && typeof e === 'object' && 'message' in e
-          ? String(/** @type {{ message: string }} */ (e).message)
-          : 'Noe gikk galt.'
-    }
-    const log = document.getElementById('home-ai-chat-log')
-    if (log?.lastElementChild) log.removeChild(log.lastElementChild)
-    if (input) input.value = textRaw
-  } finally {
-    stopHomeAiThinkingUx()
-    if (sendBtn) sendBtn.disabled = false
-  }
+  applyHomeAiContractRagUi(true)
+  await sendHomeAiContractRagMessage()
 }
 
 function bindHomeAiDocumentationListeners(signal) {
