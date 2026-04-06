@@ -4882,7 +4882,7 @@ function renderSessionHtml() {
         type="button"
         id="session-action-wheel-launcher"
         class="session-action-wheel-launcher"
-        aria-label="Hurtighandlinger for oppdraget"
+        aria-label="Hurtig meny"
         aria-expanded="false"
         aria-controls="session-action-wheel-dialog"
       >
@@ -4894,26 +4894,23 @@ function renderSessionHtml() {
 
     <dialog id="session-action-wheel-dialog" class="session-action-wheel-dialog" aria-labelledby="session-action-wheel-title">
       <div class="session-action-wheel-dialog__panel">
-        <h2 id="session-action-wheel-title" class="session-action-wheel-dialog__title">Handlinger</h2>
+        <h2 id="session-action-wheel-title" class="session-action-wheel-dialog__title">Hurtig meny</h2>
         <button type="button" class="session-action-wheel-dialog__close" id="session-action-wheel-close" aria-label="Lukk">×</button>
         <div class="session-action-wheel" role="presentation">
           <div class="session-action-wheel__viewport">
-            <div class="session-action-wheel__fade session-action-wheel__fade--top" aria-hidden="true"></div>
             <div
               id="session-action-wheel-rail"
               class="session-action-wheel__rail"
               role="listbox"
-              aria-label="Rull og velg handling"
+              aria-label="Hurtig meny"
               tabindex="0"
             >
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="share">Del</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="lastContact">Send til siste kontakt</button>
               <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="save">Lagre</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="pdf">Generer PDF</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="ai">Send til AI</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="summary">Oppsummering</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="pdf">PDF</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="ai">Ai</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="end">Avslutt oppdrag</button>
             </div>
-            <div class="session-action-wheel__fade session-action-wheel__fade--bot" aria-hidden="true"></div>
-            <div class="session-action-wheel__cursor" aria-hidden="true"></div>
           </div>
         </div>
       </div>
@@ -7495,6 +7492,53 @@ function saveContacts(contacts) {
   }
 }
 
+function lastShareRecipientStorageKey() {
+  if (!currentUser?.id) return null
+  return `scanix-last-share-recipient-v1-user-${currentUser.id}`
+}
+
+/**
+ * @param {string} shortId
+ * @param {string | null | undefined} displayName
+ */
+function saveLastShareRecipient(shortId, displayName) {
+  const key = lastShareRecipientStorageKey()
+  if (!key || !isValidStoredShortId(shortId)) return
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        shortId,
+        label:
+          typeof displayName === 'string' && displayName.trim()
+            ? displayName.trim().slice(0, AUTH_NAME_MAX_LEN)
+            : '',
+      }),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+/** @returns {{ shortId: string, label: string } | null} */
+function loadLastShareRecipient() {
+  const key = lastShareRecipientStorageKey()
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    if (!p || typeof p !== 'object' || !isValidStoredShortId(p.shortId))
+      return null
+    return {
+      shortId: p.shortId,
+      label: typeof p.label === 'string' ? p.label : '',
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
  * @param {string} shortId
  * @param {string} label
@@ -7954,9 +7998,24 @@ function refreshShareContactsList() {
     .join('')
 }
 
-function openShareSessionDialog() {
-  shareRecipientShortId = null
-  shareRecipientDisplayName = null
+/**
+ * @param {{ preselectLastContact?: boolean }} [opts]
+ */
+function openShareSessionDialog(opts = {}) {
+  const preselectLast = opts.preselectLastContact === true
+  if (!preselectLast) {
+    shareRecipientShortId = null
+    shareRecipientDisplayName = null
+  } else {
+    const last = loadLastShareRecipient()
+    if (last) {
+      shareRecipientShortId = last.shortId
+      shareRecipientDisplayName = last.label ? last.label : null
+    } else {
+      shareRecipientShortId = null
+      shareRecipientDisplayName = null
+    }
+  }
   const dlg = document.getElementById('share-session-dialog')
   const sel = document.getElementById('share-session-select')
   const feedback = document.getElementById('share-session-feedback')
@@ -8017,6 +8076,13 @@ async function performShareSessionSend() {
     persist()
   }
 
+  const rememberRecipient = () => {
+    saveLastShareRecipient(
+      shareRecipientShortId,
+      shareRecipientDisplayName ?? '',
+    )
+  }
+
   const sb = getSupabase()
   if (sb && isSupabaseConfigured()) {
     const payload = sessionToSharePayload(sess)
@@ -8029,6 +8095,7 @@ async function performShareSessionSend() {
       await sendSessionShare(sb, shareRecipientShortId, payload)
       document.getElementById('share-session-dialog')?.close()
       if (statusEl) statusEl.textContent = ''
+      rememberRecipient()
       logShare()
       return
     } catch (e) {
@@ -8062,6 +8129,7 @@ async function performShareSessionSend() {
       })
       document.getElementById('share-session-dialog')?.close()
       if (statusEl) statusEl.textContent = ''
+      rememberRecipient()
       logShare()
       return
     } catch (err) {
@@ -8076,6 +8144,7 @@ async function performShareSessionSend() {
   URL.revokeObjectURL(url)
   document.getElementById('share-session-dialog')?.close()
   if (statusEl) statusEl.textContent = ''
+  rememberRecipient()
   logShare()
 }
 
@@ -8655,7 +8724,6 @@ function wireSessionActionWheel(signal) {
 
   applySessionWheelLauncherPosition()
 
-  const ITEM_HEIGHT = 52
   let drag = null
   let wheelDragMoved = false
 
@@ -8786,8 +8854,12 @@ function wireSessionActionWheel(signal) {
   rail.addEventListener(
     'scroll',
     () => {
-      const idx = Math.round(rail.scrollTop / ITEM_HEIGHT)
-      const clamped = Math.max(0, Math.min(4, idx))
+      const first = rail.querySelector('.session-action-wheel__item')
+      if (!(first instanceof HTMLElement)) return
+      const itemH = first.getBoundingClientRect().height || 1
+      const idx = Math.round(rail.scrollTop / itemH)
+      const n = rail.querySelectorAll('.session-action-wheel__item').length
+      const clamped = Math.max(0, Math.min(Math.max(0, n - 1), idx))
       if (clamped !== lastTickIndex) {
         lastTickIndex = clamped
         playSessionWheelTick()
@@ -8805,18 +8877,18 @@ function wireSessionActionWheel(signal) {
   function runWheelAction(action) {
     closeWheelDialog()
     window.setTimeout(() => {
-      if (action === 'share') {
-        openShareSessionDialog()
+      if (action === 'lastContact') {
+        openShareSessionDialog({ preselectLastContact: true })
+        queueMicrotask(() => {
+          if (!loadLastShareRecipient()) {
+            showSessionToast('Ingen siste kontakt ennå – velg mottaker.')
+          }
+        })
         return
       }
       if (action === 'save') {
-        prepSessionEndDialogForWheel()
-        setSessionEndDialogTab('quit')
-        const d = document.getElementById('session-end-dialog')
-        if (d instanceof HTMLDialogElement) d.showModal()
-        queueMicrotask(() =>
-          document.getElementById('session-end-title')?.focus(),
-        )
+        flushCurrentSession()
+        showSessionToast('Oppdraget er lagret.')
         return
       }
       if (action === 'pdf') {
@@ -8833,8 +8905,14 @@ function wireSessionActionWheel(signal) {
         goHomeOpenVeiAi({ summaryHint: false })
         return
       }
-      if (action === 'summary') {
-        goHomeOpenVeiAi({ summaryHint: true })
+      if (action === 'end') {
+        prepSessionEndDialogForWheel()
+        setSessionEndDialogTab('quit')
+        const d = document.getElementById('session-end-dialog')
+        if (d instanceof HTMLDialogElement) d.showModal()
+        queueMicrotask(() =>
+          document.getElementById('session-end-title')?.focus(),
+        )
         return
       }
     }, 180)
