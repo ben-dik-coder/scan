@@ -1606,9 +1606,12 @@ form.auth-form[hidden] {
   max-width: none;
   /*
    * La høyden styres av top+bottom (ikke height:%): full synlig høyde på iOS uten stripe under.
+   * min-height: dvh/fill-available hjelper når layout-viewport og synlig flate divergerer (Safari).
    */
   height: auto;
   min-height: 0;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
   max-height: none;
   margin: 0;
   padding: 0;
@@ -1629,6 +1632,11 @@ form.auth-form[hidden] {
 
 #panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-camera:not([hidden])) {
   background: #0e1422;
+}
+
+/* Chat: ikke overflow:hidden på panelet – ellers klipper WebKit ofte fixed composer nederst */
+#panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-chat:not([hidden])) {
+  overflow: visible;
 }
 
 /*
@@ -1927,7 +1935,8 @@ body.home-ai-panel-open .home-vegref {
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
-  overflow: hidden;
+  /* visible: overflow:hidden her + .home-ai-gpt klippet fixed composer (iOS/WebKit) */
+  overflow: visible;
   align-self: stretch;
 }
 
@@ -2358,10 +2367,10 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* AI dokumentering: luft i logg = verktøyrad + skrivefelt + composer-padding + safe area (ingen ekstra vh – fixed bunn skal ikke translateY) */
+/* AI dokumentering: luft i logg = border + verktøyrad + gap + skrivefelt + composer-padding + safe area + liten buffer (subpixel) */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
   padding-bottom: calc(
-    0.75rem + 6px + 2.5rem + 0.25rem + 2.75rem + 4px + env(safe-area-inset-bottom, 0px)
+    0.75rem + 1px + 6px + 2.5rem + 0.25rem + 2.75rem + 4px + env(safe-area-inset-bottom, 0px) + 10px
   );
 }
 
@@ -2553,6 +2562,9 @@ body.home-ai-panel-open .home-vegref {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  /* egen compositor-lag: reduserer at WebKit klipper nederste kant på mobil */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
   z-index: 2147483641;
   margin-top: 0;
   gap: 0.25rem;
