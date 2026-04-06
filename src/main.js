@@ -3543,9 +3543,7 @@ function renderHomeHtml() {
     </div>
     <div class="home-main">
     <div class="home-bilde-stack">
-      <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde">
-        <p class="home-bilde-panel__hint">Trykk kamera-ikonet nederst for å ta bilde til albumet.</p>
-      </div>
+      <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde"></div>
       <div id="panel-home-bilde-ai" class="home-bilde-panel" role="region" aria-label="Kontraktskontroll" hidden>
         <div id="home-ai-fullscreen" class="home-ai-fullscreen ai-doc-container">
           <p id="home-ai-status" class="home-ai-fs-status" role="status" aria-live="polite"></p>
