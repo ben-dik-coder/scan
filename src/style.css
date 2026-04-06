@@ -1640,6 +1640,42 @@ form.auth-form[hidden] {
   overflow: visible;
 }
 
+/* AI-dok.: ingen env(safe-area) – fast padding; bunnfelt (faner + skrivefelt) ligger lavere mot kanten */
+#panel-home-bilde-ai:not([hidden]) .home-ai-fullscreen {
+  padding-top: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-fs-status {
+  padding: 0.35rem 1rem 0.2rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__topbar {
+  padding: 0.5rem 0.65rem 0.4rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__header {
+  padding: 0.4rem 0.65rem 0.45rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__mode-hint {
+  padding: 0.5rem 1rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__mode-hint--contract {
+  padding: 0.32rem 0.8rem 0.36rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__context {
+  padding: 0.45rem 1rem 0.5rem;
+}
+
+#panel-home-bilde-ai:not([hidden]) .home-ai-gpt__row {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 /*
  * AI fullskjerm: home-main må stable over .home-bottom-nav (z-index 150).
  * Ellers ligger fast bunnnav og «forsiden» visuelt oppå chat (feil stablelag).
@@ -1717,7 +1753,7 @@ body.home-ai-panel-open #app.app-root--home .app-body {
 }
 
 body.home-ai-panel-open .view-home.surface--home {
-  /* Safe area for composer ligger i .home-ai-gpt__composer; ekstra padding her ga ofte feil høyde-justering. */
+  /* Ekstra padding her ga ofte feil høyde-justering ved AI-fullskjerm */
   padding-bottom: 0;
   overflow: hidden;
 }
@@ -2368,13 +2404,10 @@ body.home-ai-panel-open .home-vegref {
 }
 
 /*
- * Fast bunnlinje (chatfelt + faner): luft i logg = høyde på composer + safe area.
- * Uten denne paddingen skjules siste meldinger bak den faste raden.
+ * Fast bunnlinje: luft i logg = høyde på composer-rad (uten safe-area – samme som padding under felt).
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
-  padding-bottom: calc(
-    0.75rem + 8px + 2.5rem + 0.25rem + 2.75rem + max(8px, env(safe-area-inset-bottom, 0px))
-  );
+  padding-bottom: calc(0.75rem + 8px + 2.5rem + 0.25rem + 2.75rem + 8px);
 }
 
 /* Tom logg: ikke vertikalsentrer i hele scroll-høyden (det så ut som enorm «død» sone). */
@@ -2571,9 +2604,6 @@ body.home-ai-panel-open .home-vegref {
   border-top: none;
   background: #212121;
   padding: 8px 10px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  padding-left: max(10px, env(safe-area-inset-left, 0px));
-  padding-right: max(10px, env(safe-area-inset-right, 0px));
   z-index: 2147483641;
 }
 
