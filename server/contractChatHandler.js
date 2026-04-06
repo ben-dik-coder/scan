@@ -58,6 +58,39 @@ const MAX_COMPLETION_TOKENS = Math.min(
   Math.max(400, Number(process.env.CONTRACT_RAG_MAX_COMPLETION_TOKENS || 1100)),
 )
 
+/**
+ * GPT-5 / o-modeller bruker resonneringstokens som trekkes fra samme `max_completion_tokens`.
+ * «Kort modus» (560) kan da bruke hele budsjettet før synlig tekst → tomt svar.
+ * @param {string} model
+ */
+function modelUsesReasoningOutputBudget(model) {
+  const m = String(model || '').toLowerCase()
+  if (m.includes('gpt-5')) return true
+  if (/^o[0-9]/.test(m)) return true
+  if (/\bo3\b|\bo1\b|\bo4-mini\b/.test(m)) return true
+  return false
+}
+
+/**
+ * @param {string} model
+ * @param {boolean} compactMode
+ */
+function getContractChatCompletionMaxTokens(model, compactMode) {
+  const base = MAX_COMPLETION_TOKENS
+  let cap = compactMode ? Math.min(560, base) : base
+  if (modelUsesReasoningOutputBudget(model)) {
+    const floor = Math.min(
+      16384,
+      Math.max(
+        4096,
+        Number(process.env.CONTRACT_RAG_REASONING_COMPLETION_TOKEN_FLOOR || 8192),
+      ),
+    )
+    cap = Math.max(cap, floor)
+  }
+  return Math.min(16384, cap)
+}
+
 /** Svarmodell: høyere = mer variert resonnement (gpt-5 ignorerer temperature). */
 function getContractChatTemperature() {
   const v = process.env.CONTRACT_RAG_TEMPERATURE
@@ -747,9 +780,7 @@ ${contextBlock}`
       }),
     ]
 
-    const maxTokens = compactMode
-      ? Math.min(560, MAX_COMPLETION_TOKENS)
-      : MAX_COMPLETION_TOKENS
+    const maxTokens = getContractChatCompletionMaxTokens(CHAT_MODEL, compactMode)
 
     const completionOpts = {
       model: CHAT_MODEL,
@@ -762,9 +793,12 @@ ${contextBlock}`
     }
 
     let reply = ''
+    /** @type {{ choices?: unknown[], usage?: unknown } | null} */
+    let lastCompletion = null
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const completion = await openai.chat.completions.create(completionOpts)
+        lastCompletion = completion
         const rawReply = textFromAssistantMessage(
           completion.choices?.[0]?.message,
         ).trim()
@@ -779,7 +813,22 @@ ${contextBlock}`
     }
 
     if (!reply) {
-      res.status(502).json({ error: 'Tomt svar fra modell.' })
+      if (lastCompletion) {
+        const ch = /** @type {{ finish_reason?: string }} */ (
+          Array.isArray(lastCompletion.choices) ? lastCompletion.choices[0] : null
+        )
+        console.warn('contract-chat: tomt synlig svar fra modell', {
+          model: CHAT_MODEL,
+          finish_reason: ch?.finish_reason,
+          max_completion_tokens: maxTokens,
+          compactMode,
+          usage: lastCompletion.usage,
+        })
+      }
+      res.status(502).json({
+        error:
+          'Tomt svar fra modell. Prøv igjen, eller øk CONTRACT_RAG_REASONING_COMPLETION_TOKEN_FLOOR / CONTRACT_RAG_MAX_COMPLETION_TOKENS på serveren.',
+      })
       return
     }
 
