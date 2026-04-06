@@ -897,6 +897,18 @@ ${visionHint}${quoteHint}${numberHint}
 ## Bruk av KONTEKST
 Utdragene under kan inneholde støy eller avsnitt som bare delvis treffer spørsmålet. **Ignorer** irrelevante deler og bruk **kun** det som trengs for et presist svar. Ikke gjengi eller oppsummer hele KONTEKST.
 
+## Struktur og flere prosesser
+Svar strukturert og dekk alle relevante prosesser.
+
+Hvis spørsmålet omhandler flere tema eller krav:
+- Del svaret opp i tydelige seksjoner per prosess eller kategori
+- Start med generell overordnet informasjon hvis relevant
+- List konkrete krav under hver seksjon (frekvens, tiltak, rapportering osv.)
+
+Unngå å la én prosess dominere svaret hvis flere er relevante.
+
+Vær kort, presis og bruk punktlister der det er naturlig.
+
 ---
 KONTEKST:
 ${contextBlock}`
