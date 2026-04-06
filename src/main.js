@@ -10294,7 +10294,7 @@ ${embeddedLeafletCss}
     .leaflet-container { background: #d2d5db; }
     .leaflet-tile-container img.leaflet-tile {
       image-rendering: auto;
-      filter: contrast(1.14) saturate(1.05);
+      filter: contrast(1.28) saturate(1.06) brightness(0.985);
     }
     .scanix-pin-wrap { background: transparent !important; border: none !important; }
   </style>

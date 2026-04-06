@@ -278,11 +278,15 @@ function textFromAssistantMessage(message) {
         if (!part || typeof part !== 'object') return ''
         const p = /** @type {Record<string, unknown>} */ (part)
         if (typeof p.text === 'string') return p.text
+        if (typeof p.output_text === 'string') return p.output_text
         return ''
       })
       .join('')
   }
-  if (c == null) return ''
+  if (c == null) {
+    if (typeof m.output_text === 'string') return m.output_text
+    return ''
+  }
   return String(c)
 }
 
@@ -623,8 +627,8 @@ ${quoteHint}${numberHint}
 - Ingen [SVAR], [LOGIKK], [KILDE], [FORSTÅELSE] eller lignende tagger.
 - Ingen «Utdrag 1/4» eller intern chunk-nummerering.
 
-## Intern sjekk (ikke vis brukeren)
-Skille mellom (a) fakta om kontrakttekst = må finnes i KONTEKST, (b) råd/tolkning = tydelig merket.
+## Før du svarer (internt — skal ikke erstatte brukersvaret)
+Tenk kort gjennom: (a) hva som er fakta fra KONTEKST, (b) hva som er egen vurdering. **Svaret du skriver i denne samtalen skal alltid være et fullstendig, synlig svar til brukeren** på norsk (konklusjon først). Ikke svar med kun stillhet, tom tekst eller «intern sjekk» uten faglig innhold.
 
 ---
 KONTEKST:
