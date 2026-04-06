@@ -1,0 +1,17 @@
+# Cloudflare Pages: la HTML og SW alltid revalideres, hashede assets kan caches lenge.
+# Uten dette kan telefonen henge igjen på gammel index.html som peker til gamle JS/CSS-bunter.
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
