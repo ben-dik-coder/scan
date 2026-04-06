@@ -320,6 +320,39 @@ function extractContractUserReply(raw) {
   return noTags || ''
 }
 
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * @param {unknown} e
+ * @returns {boolean}
+ */
+function isTransientOpenAIError(e) {
+  if (!e || typeof e !== 'object') return false
+  const rec = /** @type {Record<string, unknown>} */ (e)
+  const status = rec.status
+  if (status === 429 || status === 502 || status === 503 || status === 504)
+    return true
+  const code = rec.code
+  if (
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ENOTFOUND' ||
+    code === 'ECONNREFUSED'
+  ) {
+    return true
+  }
+  const msg = String(rec.message ?? '')
+  if (/timeout|timed out|ECONNRESET|socket|rate limit|overloaded/i.test(msg))
+    return true
+  return false
+}
+
 const NO_STOP = new Set(
   `alle andre bare ble bli blir brukt bør da de deg den der det din disse du eller en er et ett fra før får har her hva hvem hvilke hvilken hvis hvor hvordan ikke inn jeg kan kom kun litt man med meg men mer min mot mye nei noe noen nå og også om opp oss over på samme seg selv si sin sine sitt skal slik som så tid til under ut være vært var ved vi vil vår år`.split(
     /\s+/,
@@ -573,9 +606,26 @@ export async function handleContractChat(req, res) {
       .filter(Boolean)
       .join('\n\n---\n\n')
 
+    const trimmedLast = lastUserText.trim()
     const wantsQuote = /\b(sitat|sitere|ordrett|direkte\s+fra|hvor\s+står|pek\s+til|vis\s+meg|eksakt\s+ordlyd|siter|§\s*\d|paragraf)/i.test(
       lastUserText,
     )
+    const shortFollowUp =
+      /^ja\s*,?\s*(begge(\s+deler)?|sitater|råd)\b/i.test(trimmedLast) ||
+      /^(ja|jepp|jo|ok|gjerne|vis|begge|begge deler|sitater|råd|bare råd|bare sitater)(\s+(begge|sitater|råd|bare\s+råd|bare\s+sitater|delene?))?\s*\.?!?$/i.test(
+        trimmedLast,
+      )
+    const asksForExpanded =
+      /\b(ordrett|sitater|sitering|\bsiter\b|vis meg ordlyd|utdyp|mer detalj|lengre svar|full oversikt|praktiske råd|vurdering\s*\/\s*råd)\b/i.test(
+        trimmedLast,
+      ) ||
+      /\b(gi|ønsker|vil ha|trenger|vis)\s+(meg\s+)?(sitater|ordlyd|råd|utdyping)\b/i.test(
+        trimmedLast,
+      )
+    const wantsExpanded =
+      wantsQuote || shortFollowUp || asksForExpanded
+    const compactMode = !wantsExpanded
+
     const quoteHint = wantsQuote
       ? '\nSPESIELT NÅ: Brukeren vil ha ordlyd – **sitér ordrett** fra KONTEKST i «anførselstegn». Korte sitater; ikke parafraser når ordlyd er poenget.\n'
       : ''
@@ -588,47 +638,38 @@ export async function handleContractChat(req, res) {
       ? `\nSPESIELT NÅ – TALL I BRUKERENS MELDING:\nKonkrete tall eller mål er nevnt. Si **aldri** at kontrakten «sier» eller «fastsetter» disse tallene med mindre **samme verdi** står ordrett i KONTEKST (vis i «anførselstegn»). Finnes ikke tallet der: si at du **ikke ser det** i den teksten du har, og vis hva som faktisk står. Ikke gjenta brukerens tall som fakta uten sitat.\n`
       : ''
 
-    const systemPrompt = `Du er **fagassistent for kontraktsoppfølging** (vei, drift, vedlikehold, anskaffelse). Du svarer på **norsk**, praktisk og presist, for folk som jobber i felt eller drift.
+    const modeBlock = compactMode
+      ? `## Modus: KORT SVAR (gjelder nå)
+- Svar med **kun** en kort konklusjon: **maks om lag 50–90 ord**.
+- **Ikke** bruk egne seksjoner eller overskrifter som «Sitat», «I kontrakten», «Vurdering/råd», eller lange punktlister med ordrette sitater.
+- Oppsummer hva kontrakten sier **med egne ord**. Ikke ta med ordrette sitater i «anførselstegn» i dette svaret.
+- **Avslutt alltid** med én kort setning som spør hva brukeren vil ha videre, f.eks.: *Vil du ha **ordrette sitater** fra kontrakten, **praktiske råd**, eller **begge deler**?*
+- Hvis KONTEKST ikke dekker spørsmålet: si det kort og still likevel spørsmålet til slutt.`
+      : `## Modus: UTVIDET SVAR
+Brukeren har bedt om ordlyd/sitater, råd, utdyping, eller svart kort (f.eks. ja/begge) på tilbud om mer. Da kan du:
+- Bruke **korte sitater** i «anførselstegn» fra KONTEKST der det trengs.
+- Tydelig merke egne råd med **Vurdering/råd:** (ett avsnitt eller punktliste) — ikke bland med sitater.
+- Unngå tre gjentakelser av samme poeng; hold deg til det som trengs for å svare.`
 
-## Lengde og relevans (viktig)
-- Hold svaret **kort og treffsikkert**: som hovedregel **maks om lag 120–200 ord**, med mindre brukeren uttrykkelig ber om mer detaljer, full gjennomgang eller «alt som gjelder».
-- **Svar først** med konklusjon eller direkte svar i **1–3 korte setninger**; deretter bare **nødvendig** presisering (punktliste der det hjelper).
-- **Ikke gjenta** samme poeng; unngå lange innledninger og generelle oppsummeringer av hele kontrakten når spørsmålet er smalt.
-- Ta med **kun det som er relevant** for spørsmålet; ikke fyll med relatert stoff som ikke trengs for å svare.
+    const systemPrompt = `Du er **fagassistent for kontraktsoppfølging** (vei, drift, vedlikehold, anskaffelse). Du svarer på **norsk**, praktisk og presist.
 
-## To lag i svaret (bruk begge når det hjelper – men kompakt)
-1. **Kontrakten / dokumentet** – det som faktisk står i **KONTEKST** nedenfor (indekserte tekstbiter, skilt med \`---\`). Dette er **ikke** nødvendigvis hele kontrakten; det kan mangle sider og sammenheng.
-2. **Resonnement utenfor ordrett kontrakt** – du **kan** bruke sunn faglig fornuft og praktiske råd når det **kort** hjelper. **Merk tydelig** hva som er *fra kontrakten* vs *vurdering/råd* (f.eks. **I kontrakten** / **Vurdering**), men ikke skriv mer enn nødvendig.
+${modeBlock}
 
 ${quoteHint}${numberHint}
-## Streng regel bare for «hva står det i kontrakten»
-- Når du sier at kontrakten **krever**, **sier**, **fastsetter** eller **henviser til** noe konkret (§, prosess, tall, frist, kode, ordlyd): da skal det **kunne spores til KONTEKST** – sitér med «anførselstegn» eller parafraser nøyaktig. **Oppfinn ikke** §-numre, prosesser, beløp, datoer eller formuleringer som ikke finnes i KONTEKST.
-- Hvis brukeren bare spør «hva mener du», «hva bør vi gjøre», «er dette lurt»: du **trenger ikke** begrense deg til KONTEKST – gi et **kort** begrunnet svar og koble til kontrakten der det er relevant.
-
-## Fleksibilitet og resonnement
-- **Tolk** og **sammenlign** gjerne deler av KONTEKST når det er poenget; unngå lange steg-for-steg-forklaringer med mindre brukeren ber om det.
-- Du kan trekke inn **generell kunnskap** – merk det som egen vurdering, ikke som direkte sitat fra kontrakten.
-- **Ikke skjul usikkerhet**: «Jeg ser ikke dette i teksten jeg har», «Her er jeg mer usikker, men …»
+## Fakta vs tolkning
+- Når du i **utvidet modus** sier at kontrakten **krever**, **sier** eller **fastsetter** noe konkret (§, tall, frist): det må **kunne spores til KONTEKST** — sitér eller parafraser nøyaktig. **Oppfinn ikke** §, beløp eller datoer.
+- I **kort modus**: ikke påstå konkrete tall/§ som ikke er tydelig dekket; bruk egne ord og tilby sitater i neste melding.
 
 ## Motstrid og tidligere meldinger
-- Hvis KONTEKST er motstridende: forklar det **kort** i ett svar.
-- Tidligere assistentsvar i tråden kan være feil – verifiser mot KONTEKST når det gjelder **kontraktsinnhold**.
-
-## Sitater og tall (når ordlyd teller)
-- Ved spørsmål om *hvor det står*, eksakte krav eller grenser: **sitér** fra KONTEKST i «anførselstegn»; ikke referer til intern nummerering av utdrag.
-- Tall brukeren foreslår: si ikke at kontrakten «sier» disse tallene uten at **samme verdi** står i KONTEKST (sitér).
-
-## Svarstruktur
-1. **Kjernen først** – direkte svar.
-2. Deretter **maks nødvendig** kontrakthenvisning eller punktliste.
-3. Markdown tillatt (**fet**, korte lister, små overskrifter).
+- Ved motstrid i KONTEKST: si det **kort**.
+- Tidligere assistentsvar kan være feil — sjekk mot KONTEKST ved kontraktsinnhold.
 
 ## Ikke bruk disse formatene
 - Ingen [SVAR], [LOGIKK], [KILDE], [FORSTÅELSE] eller lignende tagger.
-- Ingen «Utdrag 1/4» eller intern chunk-nummerering.
+- Ingen intern chunk-nummerering («Utdrag 1/4»).
 
-## Før du svarer (internt — skal ikke erstatte brukersvaret)
-Tenk kort gjennom: (a) hva som er fakta fra KONTEKST, (b) hva som er egen vurdering. **Svaret du skriver i denne samtalen skal alltid være et fullstendig, synlig svar til brukeren** på norsk (konklusjon først). Ikke svar med kun stillhet, tom tekst eller «intern sjekk» uten faglig innhold.
+## Synlig svar
+**Svaret til brukeren skal alltid være fullstendig synlig tekst** (ikke tomt).
 
 ---
 KONTEKST:
@@ -642,21 +683,37 @@ ${contextBlock}`
       })),
     ]
 
+    const maxTokens = compactMode
+      ? Math.min(560, MAX_COMPLETION_TOKENS)
+      : MAX_COMPLETION_TOKENS
+
     const completionOpts = {
       model: CHAT_MODEL,
       messages: /** @type {any} */ (chatMessages),
-      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      max_completion_tokens: maxTokens,
     }
     if (modelSupportsCustomTemperature(CHAT_MODEL)) {
       completionOpts.temperature = getContractChatTemperature()
       completionOpts.top_p = 0.92
     }
-    const completion = await openai.chat.completions.create(completionOpts)
 
-    const rawReply = textFromAssistantMessage(
-      completion.choices?.[0]?.message,
-    ).trim()
-    const reply = extractContractUserReply(rawReply)
+    let reply = ''
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const completion = await openai.chat.completions.create(completionOpts)
+        const rawReply = textFromAssistantMessage(
+          completion.choices?.[0]?.message,
+        ).trim()
+        reply = extractContractUserReply(rawReply)
+        if (reply) break
+      } catch (e) {
+        if (!isTransientOpenAIError(e)) throw e
+        if (attempt === 3) throw e
+      }
+      if (reply) break
+      await sleep(450 * attempt)
+    }
+
     if (!reply) {
       res.status(502).json({ error: 'Tomt svar fra modell.' })
       return

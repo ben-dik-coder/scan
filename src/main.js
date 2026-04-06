@@ -6242,17 +6242,48 @@ async function sendHomeAiContractRagMessage() {
   startHomeAiThinkingUx()
   startHomeAiContractPillProgress()
   try {
-    const r = await fetch(apiUrl('/api/contract-chat'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: homeAiRagMessages }),
-    })
+    /** @type {Response | null} */
+    let r = null
     let data = /** @type {Record<string, unknown>} */ ({})
-    const ct = r.headers.get('content-type') || ''
-    if (ct.includes('application/json')) {
-      data = await r.json().catch(() => ({}))
-    } else {
-      await r.text().catch(() => '')
+    const maxAttempts = 2
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        r = await fetch(apiUrl('/api/contract-chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: homeAiRagMessages }),
+        })
+      } catch {
+        if (attempt === maxAttempts) {
+          throw new Error('Nettverksfeil. Prøv igjen.')
+        }
+        await new Promise((resolve) => setTimeout(resolve, 850 * attempt))
+        continue
+      }
+      const ct = r.headers.get('content-type') || ''
+      if (ct.includes('application/json')) {
+        data = await r.json().catch(() => ({}))
+      } else {
+        await r.text().catch(() => '')
+      }
+      if (
+        r.ok ||
+        ![502, 503, 504].includes(r.status) ||
+        attempt === maxAttempts
+      ) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 850 * attempt))
+    }
+
+    if (!r) {
+      homeAiRagMessages.pop()
+      finishHomeAiContractPillProgress(false)
+      if (statusEl) statusEl.textContent = 'Ingen respons fra serveren.'
+      const log = document.getElementById('home-ai-chat-log')
+      if (log?.lastElementChild) log.removeChild(log.lastElementChild)
+      if (input) input.value = textRaw
+      return
     }
 
     if (!r.ok) {
