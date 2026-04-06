@@ -4781,9 +4781,24 @@ function renderSessionHtml() {
             <h2 class="section-head__title">Kart</h2>
             <span class="section-head__meta" id="map-meta"></span>
           </div>
-          <div class="map-frame">
+          <div class="map-frame" id="session-map-frame">
             <div id="map" class="map"></div>
             <p id="gps-status" class="gps-status map-gps-chip" role="status"></p>
+            <button
+              type="button"
+              id="btn-map-fullscreen"
+              class="map-fullscreen-btn"
+              aria-label="Fullskjerm kart"
+              title="Fullskjerm"
+              aria-pressed="false"
+            >
+              <svg class="map-fullscreen-btn__icon map-fullscreen-btn__icon--enter" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+              </svg>
+              <svg class="map-fullscreen-btn__icon map-fullscreen-btn__icon--exit" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" hidden>
+                <path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+              </svg>
+            </button>
             <button
               type="button"
               id="btn-map-locate"
@@ -9294,6 +9309,31 @@ function bindSessionListeners() {
     { signal },
   )
 
+  document.getElementById('btn-map-fullscreen')?.addEventListener(
+    'click',
+    () => {
+      toggleSessionMapFullscreen()
+    },
+    { signal },
+  )
+
+  const onFsChange = () => {
+    syncSessionMapFullscreenUi()
+  }
+  document.addEventListener('fullscreenchange', onFsChange, { signal })
+  document.addEventListener('webkitfullscreenchange', onFsChange, { signal })
+
+  document.addEventListener(
+    'keydown',
+    (ev) => {
+      if (ev.key !== 'Escape') return
+      const frame = document.getElementById('session-map-frame')
+      if (!frame?.classList.contains('map-frame--pseudo-fullscreen')) return
+      exitSessionMapFullscreen()
+    },
+    { signal },
+  )
+
   document.getElementById('btn-export')?.addEventListener(
     'click',
     async () => {
@@ -9478,6 +9518,78 @@ window.addEventListener('beforeunload', () => {
   stopLocationWatch()
 })
 
+function getSessionMapFullscreenElement() {
+  return (
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    null
+  )
+}
+
+function isSessionMapFullscreenActive() {
+  const frame = document.getElementById('session-map-frame')
+  if (!frame) return false
+  if (frame.classList.contains('map-frame--pseudo-fullscreen')) return true
+  return getSessionMapFullscreenElement() === frame
+}
+
+function syncSessionMapFullscreenUi() {
+  const btn = document.getElementById('btn-map-fullscreen')
+  const active = isSessionMapFullscreenActive()
+  if (btn) {
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false')
+    btn.setAttribute(
+      'aria-label',
+      active ? 'Avslutt fullskjerm kart' : 'Fullskjerm kart',
+    )
+    btn.title = active ? 'Avslutt fullskjerm' : 'Fullskjerm'
+    btn.classList.toggle('map-fullscreen-btn--active', active)
+    const enterIc = btn.querySelector('.map-fullscreen-btn__icon--enter')
+    const exitIc = btn.querySelector('.map-fullscreen-btn__icon--exit')
+    if (enterIc instanceof SVGElement) enterIc.toggleAttribute('hidden', active)
+    if (exitIc instanceof SVGElement) exitIc.toggleAttribute('hidden', !active)
+  }
+  window.setTimeout(() => map?.invalidateSize(), 50)
+  window.setTimeout(() => map?.invalidateSize(), 280)
+}
+
+function exitSessionMapFullscreen() {
+  const frame = document.getElementById('session-map-frame')
+  if (!frame) return
+  frame.classList.remove('map-frame--pseudo-fullscreen')
+  document.body.classList.remove('session-map-pseudo-fullscreen')
+  const fsEl = getSessionMapFullscreenElement()
+  if (fsEl === frame) {
+    if (document.exitFullscreen) void document.exitFullscreen()
+    else if (document.webkitExitFullscreen) void document.webkitExitFullscreen()
+  }
+  syncSessionMapFullscreenUi()
+}
+
+function enterSessionMapPseudoFullscreen(frame) {
+  frame.classList.add('map-frame--pseudo-fullscreen')
+  document.body.classList.add('session-map-pseudo-fullscreen')
+  syncSessionMapFullscreenUi()
+}
+
+function toggleSessionMapFullscreen() {
+  const frame = document.getElementById('session-map-frame')
+  if (!frame) return
+  if (isSessionMapFullscreenActive()) {
+    exitSessionMapFullscreen()
+    return
+  }
+  const req = frame.requestFullscreen || frame.webkitRequestFullscreen
+  if (typeof req === 'function') {
+    Promise.resolve(req.call(frame))
+      .then(() => syncSessionMapFullscreenUi())
+      .catch(() => enterSessionMapPseudoFullscreen(frame))
+  } else {
+    enterSessionMapPseudoFullscreen(frame)
+  }
+}
+
 function centerMapWhenEmptyPins() {
   if (!map) return
   if (lastLiveCoords && Date.now() - lastLiveCoords.ts < 120000) {
@@ -9514,6 +9626,7 @@ function destroyMap() {
   userLocationMarker = null
   userAccuracyCircle = null
   markers.length = 0
+  exitSessionMapFullscreen()
   if (map) {
     map.remove()
     map = null
