@@ -2118,12 +2118,12 @@ body.home-ai-panel-open .home-vegref {
   align-self: stretch;
 }
 
-/* Én rad: tilbake + Kontraktskontroll (statisk tittel) */
+/* Tilbake | Kontraktskontroll (sentrert) | balanse – samme som tidligere, uten duplikat-topplinje */
 .home-ai-gpt__header {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0;
   padding: 0.4rem max(0.65rem, env(safe-area-inset-left)) 0.45rem
     max(0.65rem, env(safe-area-inset-right));
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -2133,19 +2133,41 @@ body.home-ai-panel-open .home-vegref {
   box-sizing: border-box;
 }
 
+.home-ai-gpt__header-center {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+}
+
 .home-ai-gpt__header-title {
   margin: 0;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   font-size: 1.0625rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
   color: #f5f5f5;
-  text-align: left;
+  text-align: center;
+}
+
+.home-ai-gpt__header-spacer {
+  grid-column: 3;
+  grid-row: 1;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .home-ai-gpt__close {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2606,9 +2628,42 @@ body.home-ai-panel-open .home-vegref {
   display: block;
 }
 
-/* «Tenker»-tilstand: nøytral ramme (ingen grønn puls på tittel/skall) */
+/* «Tenker»-tilstand (lyd i JS): grønn glød på skrivefelt + lett puls på tittel */
 .home-ai-gpt--thinking .home-ai-gpt__input-shell {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(25, 195, 125, 0.35);
+  animation: home-ai-shell-glow 1.65s ease-in-out infinite;
+}
+
+.home-ai-gpt--thinking .home-ai-gpt__header-title {
+  animation: home-ai-title-pulse 2.1s ease-in-out infinite;
+}
+
+@keyframes home-ai-shell-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.28),
+      0 0 0 2px rgba(25, 195, 125, 0.22),
+      0 0 8px rgba(25, 195, 125, 0.18);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(25, 195, 125, 0.42),
+      0 0 0 3px rgba(25, 195, 125, 0.28),
+      0 0 12px rgba(25, 195, 125, 0.22);
+  }
+}
+
+@keyframes home-ai-title-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.78;
+  }
 }
 
 .home-ai-gpt__typing-row {
@@ -2660,6 +2715,11 @@ body.home-ai-panel-open .home-vegref {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .home-ai-gpt--thinking .home-ai-gpt__input-shell,
+  .home-ai-gpt--thinking .home-ai-gpt__header-title {
+    animation: none;
+  }
+
   .home-ai-gpt__typing span {
     animation: none;
     opacity: 0.72;

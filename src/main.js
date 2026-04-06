@@ -3571,7 +3571,10 @@ function renderHomeHtml() {
               <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Tilbake">
                 <svg class="home-ai-gpt__close-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
-              <h1 class="home-ai-gpt__header-title">Kontraktskontroll</h1>
+              <div class="home-ai-gpt__header-center">
+                <h1 class="home-ai-gpt__header-title">Kontraktskontroll</h1>
+              </div>
+              <div class="home-ai-gpt__header-spacer" aria-hidden="true"></div>
             </header>
             <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note" hidden></p>
             <div class="home-ai-gpt__context">
@@ -5709,6 +5712,13 @@ function setHomeBildeSubTab(which) {
   syncHomeAiPanelBodyClass()
   updateHomeAiPanelVisualViewport()
   if (!isCam) {
+    const hasImg = Boolean(
+      typeof homeAiCapturedDataUrl === 'string' &&
+        homeAiCapturedDataUrl.trim().length > 32,
+    )
+    if (!hasImg) {
+      applyHomeAiContractRagUi(true)
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         captureHomeAiLayoutHeight()
@@ -5795,6 +5805,7 @@ function syncHomeAiModeHint() {
 }
 
 function applyHomeAiContractRagUi(on) {
+  homeAiContractRagMode = on
   const stage = document.getElementById('home-ai-stage-chat')
   const input = document.getElementById('home-ai-chat-input')
   const label = document.querySelector('label[for="home-ai-chat-input"]')
@@ -5822,7 +5833,6 @@ function setHomeAiContractRagEnabled(wantOn) {
   const log = document.getElementById('home-ai-chat-log')
   const st = document.getElementById('home-ai-status')
   if (wantOn) {
-    homeAiContractRagMode = true
     homeAiRagMessages = []
     homeAiApiMessages = []
     homeAiCapturedDataUrl = ''
@@ -5831,7 +5841,6 @@ function setHomeAiContractRagEnabled(wantOn) {
     if (st) st.textContent = ''
     applyHomeAiContractRagUi(true)
   } else {
-    homeAiContractRagMode = false
     homeAiRagMessages = []
     homeAiApiMessages = []
     if (log) log.innerHTML = ''
@@ -5849,7 +5858,6 @@ function openHomeAiAskContract() {
 
 function exitHomeAiContractRagUi() {
   if (!homeAiContractRagMode) return
-  homeAiContractRagMode = false
   homeAiRagMessages = []
   applyHomeAiContractRagUi(false)
 }
@@ -5883,6 +5891,7 @@ function retakeHomeAiDoc() {
   document.getElementById('home-ai-stage-chat')?.removeAttribute('hidden')
   const st = document.getElementById('home-ai-status')
   if (st) st.textContent = ''
+  applyHomeAiContractRagUi(true)
 }
 
 /**
@@ -6297,6 +6306,12 @@ function extractHomeAiFollowupReply(data) {
 }
 
 async function sendHomeAiChatMessage() {
+  const hasImage = Boolean(
+    homeAiCapturedDataUrl && String(homeAiCapturedDataUrl).trim().length > 0,
+  )
+  if (!hasImage) {
+    applyHomeAiContractRagUi(true)
+  }
   if (homeAiContractRagMode) {
     await sendHomeAiContractRagMessage()
     return
@@ -6305,9 +6320,6 @@ async function sendHomeAiChatMessage() {
   const input = document.getElementById('home-ai-chat-input')
   const sendBtn = document.getElementById('btn-home-ai-send')
   const textRaw = input?.value?.trim() ?? ''
-  const hasImage = Boolean(
-    homeAiCapturedDataUrl && String(homeAiCapturedDataUrl).trim().length > 0,
-  )
 
   const hadAssistantInThread = homeAiApiMessages.some(
     (m) => m.role === 'assistant',
