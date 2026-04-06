@@ -1365,7 +1365,7 @@ let homeAiCapturedDataUrl = ''
  */
 let homeAiApiMessages = []
 /** Tekstbasert kontrakt-RAG mot /api/contract-chat (skiller fra VeiAi-tråden). */
-let homeAiContractRagMode = false
+let homeAiContractRagMode = true
 /**
  * @type {Array<{ role: string, content: string }>}
  */
@@ -3553,7 +3553,7 @@ function renderHomeHtml() {
       <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde">
         <p class="home-bilde-panel__hint">Trykk kamera-ikonet nederst for å ta bilde til albumet.</p>
       </div>
-      <div id="panel-home-bilde-ai" class="home-bilde-panel" role="region" aria-label="AI dokumentering" hidden>
+      <div id="panel-home-bilde-ai" class="home-bilde-panel" role="region" aria-label="Kontraktskontroll" hidden>
         <div id="home-ai-fullscreen" class="home-ai-fullscreen ai-doc-container">
           <p id="home-ai-status" class="home-ai-fs-status" role="status" aria-live="polite"></p>
           <div id="home-ai-stage-camera" class="home-ai-stage home-ai-stage--camera home-ai-stage--fs" hidden>
@@ -3570,24 +3570,22 @@ function renderHomeHtml() {
           </div>
           <div id="home-ai-stage-chat" class="home-ai-stage home-ai-stage--chat home-ai-gpt home-ai-gpt--fs home-ai-gpt--chatgpt">
             <div class="home-ai-gpt__topbar">
-              <button type="button" class="home-ai-gpt__done" id="btn-home-ai-done">Ferdig</button>
-              <h1 class="home-ai-gpt__topbar-title">AI dokumentering</h1>
-              <span class="home-ai-gpt__topbar-spacer" aria-hidden="true"></span>
+              <h1 class="home-ai-gpt__topbar-title">Kontraktskontroll</h1>
             </div>
             <header class="home-ai-gpt__header">
               <button type="button" class="home-ai-gpt__close" id="btn-home-ai-close-fs" aria-label="Tilbake">
                 <svg class="home-ai-gpt__close-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
               <div class="home-ai-gpt__header-center">
-                <button type="button" class="home-ai-gpt__contract-pill" id="btn-home-ai-contract-rag" title="Still spørsmål om kontrakten til AI"><span class="home-ai-gpt__contract-pill-label">Kontrakt</span></button>
+                <span class="home-ai-gpt__contract-pill home-ai-gpt__brand-label" id="home-ai-contract-brand" role="presentation"><span class="home-ai-gpt__contract-pill-label">Kontraktskontroll</span></span>
               </div>
               <div class="home-ai-gpt__header-spacer" aria-hidden="true"></div>
             </header>
-            <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note"></p>
+            <p id="home-ai-mode-hint" class="home-ai-gpt__mode-hint" role="note" hidden></p>
             <div class="home-ai-gpt__context">
               <div class="home-ai-gpt__thumb-wrap" id="home-ai-thumb-wrap">
                 <img id="home-ai-preview-img" class="home-ai-gpt__thumb" alt="Valgt bilde" width="72" height="72" hidden />
-                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph">Du kan skrive med en gang, eller legge ved bilde med knappene over skrivefeltet.</p>
+                <p id="home-ai-thumb-placeholder" class="home-ai-gpt__thumb-ph" hidden></p>
               </div>
             </div>
             <div id="home-ai-chat-log" class="home-ai-gpt__scroll" role="log" aria-live="polite"></div>
@@ -3598,9 +3596,9 @@ function renderHomeHtml() {
                 <button type="button" class="home-ai-gpt__tool home-ai-gpt__composer-tool" id="btn-home-ai-pdf">PDF</button>
               </div>
               <div class="home-ai-gpt__input-shell">
-                <label class="visually-hidden" for="home-ai-chat-input">Send melding til VeiAi</label>
-                <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Send melding til VeiAi"></textarea>
-                <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding til VeiAi">
+                <label class="visually-hidden" for="home-ai-chat-input">Send melding til RoadMindAi</label>
+                <textarea id="home-ai-chat-input" class="home-ai-gpt__textarea" rows="1" placeholder="Skriv spørsmålet ditt …"></textarea>
+                <button type="button" class="home-ai-gpt__send" id="btn-home-ai-send" aria-label="Send melding til RoadMindAi">
                   <svg class="home-ai-gpt__send-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
               </div>
@@ -3632,7 +3630,7 @@ function renderHomeHtml() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </span>
       </button>
-      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="AI dokumentering">
+      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="Kontraktskontroll">
         <span class="home-bottom-nav__icon" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
         </span>
@@ -3651,7 +3649,7 @@ function renderHomeHtml() {
       </div>
       <nav class="home-drawer__nav home-drawer__nav--stack">
         <button type="button" class="home-drawer__link" id="home-drawer-session-hub">Økten</button>
-        <button type="button" class="home-drawer__link" id="home-drawer-contract-ai">Spør om kontrakten</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-contract-ai">Kontraktskontroll</button>
         <button type="button" class="home-drawer__link" id="home-drawer-user">Bruker</button>
         <button type="button" class="home-drawer__link" id="home-drawer-map">Kart</button>
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
@@ -5797,25 +5795,18 @@ function captureHomeAiFrameToDataUrl() {
   return canvas.toDataURL('image/jpeg', 0.88)
 }
 
-function syncHomeAiModeHint(on) {
+function syncHomeAiModeHint() {
   const el = document.getElementById('home-ai-mode-hint')
   if (!el) return
-  if (on) {
-    el.textContent =
-      'Kontraktmodus: svarene bygger på dokumentet på serveren. Skriv spørsmålet under.'
-    el.classList.add('home-ai-gpt__mode-hint--contract')
-  } else {
-    el.innerHTML =
-      'Bilde/tekst fra veien. <strong>Kontrakt:</strong> trykk «Kontrakt».'
-    el.classList.remove('home-ai-gpt__mode-hint--contract')
-  }
+  el.textContent = ''
+  el.hidden = true
 }
 
 function setHomeAiContractPillProgress(percent) {
-  const btn = document.getElementById('btn-home-ai-contract-rag')
-  if (!btn) return
+  const el = document.getElementById('home-ai-contract-brand')
+  if (!el) return
   const p = Math.max(0, Math.min(100, percent))
-  btn.style.setProperty('--contract-fill', `${p}%`)
+  el.style.setProperty('--contract-fill', `${p}%`)
 }
 
 function startHomeAiContractPillProgress() {
@@ -5850,29 +5841,24 @@ function finishHomeAiContractPillProgress(success) {
 }
 
 function applyHomeAiContractRagUi(on) {
-  const btn = document.getElementById('btn-home-ai-contract-rag')
+  const brand = document.getElementById('home-ai-contract-brand')
   const input = document.getElementById('home-ai-chat-input')
   const label = document.querySelector('label[for="home-ai-chat-input"]')
   const sendBtn = document.getElementById('btn-home-ai-send')
-  btn?.classList.toggle('home-ai-gpt__contract-pill--on', on)
+  brand?.classList.toggle('home-ai-gpt__contract-pill--on', on)
   if (!on) finishHomeAiContractPillProgress(false)
   if (input) {
     input.placeholder = on
-      ? 'Skriv spørsmålet ditt om kontrakten …'
-      : 'Send melding til VeiAi'
+      ? 'Skriv spørsmålet ditt …'
+      : 'Send melding til RoadMindAi …'
   }
   if (label) {
-    label.textContent = on
-      ? 'Send melding om kontrakten'
-      : 'Send melding til VeiAi'
+    label.textContent = 'Send melding til RoadMindAi'
   }
   if (sendBtn) {
-    sendBtn.setAttribute(
-      'aria-label',
-      on ? 'Send melding om kontrakten' : 'Send melding til VeiAi',
-    )
+    sendBtn.setAttribute('aria-label', 'Send melding til RoadMindAi')
   }
-  syncHomeAiModeHint(on)
+  syncHomeAiModeHint()
 }
 
 /**
@@ -6025,7 +6011,10 @@ function syncHomeAiPreviewThumb() {
       img.removeAttribute('src')
     }
   }
-  if (ph) ph.hidden = has
+  if (ph) {
+    ph.textContent = ''
+    ph.hidden = true
+  }
 }
 
 function openHomeAiCameraStage() {
@@ -6246,7 +6235,7 @@ async function sendHomeAiContractRagMessage() {
 
   homeAiRagMessages.push({ role: 'user', content: textRaw })
 
-  if (statusEl) statusEl.textContent = 'Kontrakt-AI tenker …'
+  if (statusEl) statusEl.textContent = 'RoadMindAi tenker …'
   if (sendBtn) sendBtn.disabled = true
   startHomeAiThinkingUx()
   startHomeAiContractPillProgress()
@@ -6329,7 +6318,7 @@ async function sendHomeAiContractRagMessage() {
     finishHomeAiContractPillProgress(true)
     stopHomeAiThinkingUx()
     await appendHomeAiAssistantPlainTextStreamed(reply)
-    if (statusEl) statusEl.textContent = 'Ferdig.'
+    if (statusEl) statusEl.textContent = ''
   } catch (e) {
     homeAiRagMessages.pop()
     finishHomeAiContractPillProgress(false)
@@ -6424,7 +6413,7 @@ async function sendHomeAiChatMessage() {
   /** Server: én user-melding = JSON-rapport; flere = { reply } */
   const requestWasFirstShot = homeAiApiMessages.length === 1
 
-  if (statusEl) statusEl.textContent = 'VeiAi tenker …'
+  if (statusEl) statusEl.textContent = 'RoadMindAi tenker …'
   if (sendBtn) sendBtn.disabled = true
   startHomeAiThinkingUx()
   try {
@@ -6482,7 +6471,7 @@ async function sendHomeAiChatMessage() {
         ),
         { appearIn: true },
       )
-      if (statusEl) statusEl.textContent = 'Ferdig.'
+      if (statusEl) statusEl.textContent = ''
       return
     }
 
@@ -6539,7 +6528,7 @@ async function sendHomeAiChatMessage() {
           ),
           { appearIn: true },
         )
-        if (statusEl) statusEl.textContent = 'Ferdig.'
+        if (statusEl) statusEl.textContent = ''
         return
       }
     }
@@ -6594,7 +6583,7 @@ async function sendHomeAiChatMessage() {
       stopHomeAiThinkingUx()
       await appendHomeAiAssistantPlainTextStreamed(reply)
     }
-    if (statusEl) statusEl.textContent = 'Ferdig.'
+    if (statusEl) statusEl.textContent = ''
   } catch (e) {
     const last = homeAiApiMessages[homeAiApiMessages.length - 1]
     if (last && last.role === 'user') {
@@ -6663,12 +6652,6 @@ function bindHomeAiDocumentationListeners(signal) {
     closeHomeAiPanel,
     { signal },
   )
-  document.getElementById('btn-home-ai-done')?.addEventListener(
-    'click',
-    closeHomeAiPanel,
-    { signal },
-  )
-
   document.getElementById('home-ai-image-fallback')?.addEventListener(
     'change',
     async (ev) => {
@@ -6693,16 +6676,7 @@ function bindHomeAiDocumentationListeners(signal) {
     { signal },
   )
 
-  document.getElementById('btn-home-ai-contract-rag')?.addEventListener(
-    'click',
-    () => {
-      setHomeAiContractRagEnabled(!homeAiContractRagMode)
-      document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
-    },
-    { signal },
-  )
-
-  syncHomeAiModeHint(false)
+  applyHomeAiContractRagUi(true)
 
   bindHomeAiPanelVisualViewport(signal)
   updateHomeAiPanelVisualViewport()
@@ -8424,7 +8398,7 @@ function collectHomeAiChatLinesForPdf() {
 
 function formatHomeAiPdfPreviewText(lines) {
   if (!lines.length) return 'Ingen meldinger i samtalen ennå.'
-  const assistantLabel = homeAiContractRagMode ? 'Kontrakt-AI' : 'VeiAi'
+  const assistantLabel = 'RoadMindAi'
   return lines
     .map((l) => {
       const who = l.role === 'user' ? 'Bruker' : assistantLabel
@@ -8535,8 +8509,8 @@ async function saveHomeAiPdfToDevice() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: homeAiContractRagMode
-          ? 'Kontrakt – samtale'
-          : 'VeiAi – dokumentering',
+          ? 'Kontraktskontroll – samtale'
+          : 'RoadMindAi – dokumentering',
         generatedAtLabel: new Date().toLocaleString('nb-NO', {
           dateStyle: 'long',
           timeStyle: 'short',
@@ -8555,8 +8529,8 @@ async function saveHomeAiPdfToDevice() {
     }
     const blob = await res.blob()
     const filename = homeAiContractRagMode
-      ? `kontrakt-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
-      : `veiai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+      ? `kontraktskontroll-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
+      : `roadmindai-samtale-${new Date().toISOString().slice(0, 10)}.pdf`
     await shareOrDownloadPdfBlob(blob, filename)
     if (statusEl) {
       statusEl.textContent =

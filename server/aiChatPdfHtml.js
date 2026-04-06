@@ -17,7 +17,7 @@ function esc(s) {
  * @param {{ title?: string, generatedAtLabel?: string, lines?: Array<{ role?: string, text?: string }>, conclusion?: string, highlights?: string[] }} data
  */
 export function buildAiChatPdfHtml(data) {
-  const title = esc(data.title || 'VeiAi – dokumentering')
+  const title = esc(data.title || 'RoadMindAi – dokumentering')
   const generatedAt = esc(
     typeof data.generatedAtLabel === 'string' && data.generatedAtLabel.trim()
       ? data.generatedAtLabel.trim()
@@ -94,7 +94,7 @@ export function buildAiChatPdfHtml(data) {
   const blocks = lines
     .map((line) => {
       const isUser = line.role === 'user'
-      const label = isUser ? 'Bruker' : 'VeiAi'
+      const label = isUser ? 'Bruker' : 'RoadMindAi'
       const raw = typeof line.text === 'string' ? line.text.trim() : ''
       if (!raw) return ''
       const safe = esc(raw).replace(/\r\n/g, '\n').replace(/\n/g, '<br />')

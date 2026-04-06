@@ -2122,43 +2122,21 @@ body.home-ai-panel-open .home-vegref {
   align-self: stretch;
 }
 
-/* iOS-lignende topp: Ferdig | tittel | balanse */
+/* Topp: kun tittel (Kontraktskontroll) */
 .home-ai-gpt__topbar {
-  display: grid;
-  grid-template-columns: 4.5rem 1fr 4.5rem;
+  display: flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   min-height: 2.75rem;
   padding: 0.35rem max(0.65rem, env(safe-area-inset-left)) 0.4rem
     max(0.65rem, env(safe-area-inset-right));
-  /* Notch: kun .home-ai-fullscreen har padding-top safe-area – unngå dobbel luft som presser alt opp. */
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   background: #212121;
   box-sizing: border-box;
 }
 
-.home-ai-gpt__done {
-  grid-column: 1;
-  justify-self: start;
-  padding: 0.35rem 0.25rem;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #5ac8fa;
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.home-ai-gpt__done:active {
-  opacity: 0.65;
-}
-
 .home-ai-gpt__topbar-title {
-  grid-column: 2;
   margin: 0;
   text-align: center;
   font-size: 1.0625rem;
@@ -2168,14 +2146,7 @@ body.home-ai-panel-open .home-vegref {
   color: #f5f5f5;
 }
 
-.home-ai-gpt__topbar-spacer {
-  grid-column: 3;
-  width: 100%;
-  height: 1.5rem;
-  pointer-events: none;
-}
-
-/* Rad 2: tilbake | Kontrakt | spacer */
+/* Rad 2: tilbake | merke (Kontraktskontroll) | spacer */
 .home-ai-gpt__header {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
@@ -2255,10 +2226,15 @@ body.home-ai-panel-open .home-vegref {
   font-size: 0.88rem;
   font-weight: 650;
   letter-spacing: 0.02em;
-  cursor: pointer;
+  cursor: default;
   -webkit-tap-highlight-color: transparent;
   --contract-fill: 0%;
   transition: border-color 0.2s ease;
+}
+
+.home-ai-gpt__brand-label {
+  pointer-events: none;
+  user-select: none;
 }
 
 .home-ai-gpt__contract-pill::before {
@@ -2285,7 +2261,7 @@ body.home-ai-panel-open .home-vegref {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.home-ai-gpt__contract-pill:hover {
+.home-ai-gpt__contract-pill:not(.home-ai-gpt__brand-label):hover {
   border-color: rgba(255, 255, 255, 0.22);
 }
 
@@ -2361,9 +2337,14 @@ body.home-ai-panel-open .home-vegref {
   box-sizing: border-box;
 }
 
-/* Kontrakt uten vedlagt bilde: skjul tom forhånds-rad (mindre luft over chat) */
-.home-ai-gpt:has(.home-ai-gpt__mode-hint--contract) .home-ai-gpt__context:has(#home-ai-preview-img[hidden]) {
+/* Kontraktskontroll uten vedlagt bilde: skjul tom forhånds-rad (mindre luft over chat) */
+.home-ai-gpt:has(#home-ai-contract-brand.home-ai-gpt__contract-pill--on)
+  .home-ai-gpt__context:has(#home-ai-preview-img[hidden]) {
   display: none;
+}
+
+.home-ai-gpt__mode-hint[hidden] {
+  display: none !important;
 }
 
 .home-ai-gpt__thumb-wrap {
@@ -2425,7 +2406,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 #home-ai-chat-log:empty::after {
-  content: 'Start samtalen med et spørsmål nedenfor.';
+  content: none;
 }
 
 .home-ai-gpt__row {
