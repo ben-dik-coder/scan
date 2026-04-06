@@ -1615,6 +1615,8 @@ form.auth-form[hidden] {
   max-height: none;
   margin: 0;
   padding: 0;
+  /* Samme som tidligere bottom på fixed composer: løfter innhold når tastatur er åpent (JS setter variabel) */
+  padding-bottom: var(--home-ai-keyboard-inset, 0px);
   z-index: 2147483640;
   box-sizing: border-box;
   display: flex;
@@ -1623,7 +1625,7 @@ form.auth-form[hidden] {
   overscroll-behavior: none;
   pointer-events: auto;
   /*
-   * IKKE transform/filter her: det gjør at fast bunnlinje i AI-dok. (position:fixed) forankres feil.
+   * IKKE transform/filter her: det gjør at fixed/flate forankres feil mot viewport.
    */
   isolation: isolate;
   background-color: #212121;
@@ -1632,11 +1634,6 @@ form.auth-form[hidden] {
 
 #panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-camera:not([hidden])) {
   background: #0e1422;
-}
-
-/* Chat: ikke overflow:hidden på panelet – ellers klipper WebKit ofte fixed composer nederst */
-#panel-home-bilde-ai:not([hidden]):has(#home-ai-stage-chat:not([hidden])) {
-  overflow: visible;
 }
 
 /*
@@ -1877,7 +1874,7 @@ body.home-ai-panel-open .home-vegref {
   padding-top: env(safe-area-inset-top, 0);
   padding-right: env(safe-area-inset-right, 0);
   padding-left: env(safe-area-inset-left, 0);
-  /* Tastatur-løft håndteres med --home-ai-keyboard-inset på .input-bar (bottom), ikke padding her – unngår feil luft når inset ble satt av Safari uten tastatur. */
+  /* Tastatur-løft: --home-ai-keyboard-inset på #panel-home-bilde-ai (padding-bottom), ikke her */
   padding-bottom: 0;
   pointer-events: auto;
 }
@@ -1929,14 +1926,13 @@ body.home-ai-panel-open .home-vegref {
   display: none !important;
 }
 
-/* Synlig chat-scene: kolonne-flex slik at scroll + composer fyller viewport (tastatur) */
+/* Synlig chat-scene: kolonne-flex – composer nederst i flyt (ikke fixed), scroll fyller resten */
 #home-ai-stage-chat:not([hidden]) {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
-  /* visible: overflow:hidden her + .home-ai-gpt klippet fixed composer (iOS/WebKit) */
-  overflow: visible;
+  overflow: hidden;
   align-self: stretch;
 }
 
@@ -2367,11 +2363,9 @@ body.home-ai-panel-open .home-vegref {
   overscroll-behavior: contain;
 }
 
-/* AI dokumentering: luft i logg = border + verktøyrad + gap + skrivefelt + composer-padding + safe area + liten buffer (subpixel) */
+/* Composer er i flyt under loggen – kun vanlig luft nederst i tråden */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
-  padding-bottom: calc(
-    0.75rem + 1px + 6px + 2.5rem + 0.25rem + 2.75rem + 4px + env(safe-area-inset-bottom, 0px) + 10px
-  );
+  padding-bottom: 0.75rem;
 }
 
 /* Tom logg: ikke vertikalsentrer i hele scroll-høyden (det så ut som enorm «død» sone). */
@@ -2551,29 +2545,23 @@ body.home-ai-panel-open .home-vegref {
 }
 
 /*
- * AI dokumentering: .input-bar – avrundet felt nederst (rett over safe area), faner over.
- * Ikke translateY(vh): fixed + bottom:0 + transform dyttet feltet under skjermkanten på mobil.
+ * AI dokumentering: verktøyrad + skrivefelt i flyt nederst (samme flate som chat – ingen mørk stripe).
+ * Tastatur: #panel-home-bilde-ai padding-bottom (--home-ai-keyboard-inset), ikke fixed bottom.
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
-  position: fixed;
-  bottom: var(--home-ai-keyboard-inset, 0px);
-  left: 0;
-  right: 0;
+  position: relative;
+  flex-shrink: 0;
+  margin-top: auto;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  /* egen compositor-lag: reduserer at WebKit klipper nederste kant på mobil */
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  z-index: 2147483641;
-  margin-top: 0;
   gap: 0.25rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
-  background-color: #1c1c1c;
-  padding: 6px 10px;
-  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
-  padding-left: max(8px, env(safe-area-inset-left, 0px));
-  padding-right: max(8px, env(safe-area-inset-right, 0px));
+  border-top: none;
+  background: #212121;
+  padding: 8px 10px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(10px, env(safe-area-inset-left, 0px));
+  padding-right: max(10px, env(safe-area-inset-right, 0px));
 }
 
 /* Kompaktere verktøyrad slik at skrivefeltet kommer nærmere skjermkanten */
@@ -2705,10 +2693,6 @@ body.home-ai-panel-open .home-vegref {
 
 .home-ai-gpt--thinking .home-ai-gpt__topbar-title {
   animation: home-ai-title-pulse 2.1s ease-in-out infinite;
-}
-
-.home-ai-gpt--thinking .home-ai-gpt__scroll {
-  opacity: 0.98;
 }
 
 /* Skarpere, mindre utflytende kant (pulserende glow) */
