@@ -6146,10 +6146,10 @@ body.session-map-fullscreen-open {
 }
 
 /* Skarpere kartfliser: Leaflet bruker @2x-CARTO på retina; unngå ekstra uskarphet */
-/* Voyager-raster: sterkere kontrast + lett nedtoning — hvite/småveier leses mørkere mot bakgrunn; gule hovedveier beholdes med saturate. */
+/* Voyager-raster: kontrast + metning — lyse veier skiller seg ut; ingen brightness-justering. */
 #app .leaflet-tile-container img.leaflet-tile {
   image-rendering: auto;
-  filter: contrast(1.28) saturate(1.06) brightness(0.985);
+  filter: contrast(1.28) saturate(1.06);
 }
 
 .map {
