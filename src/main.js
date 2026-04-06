@@ -4898,34 +4898,22 @@ function renderSessionHtml() {
         <button type="button" class="session-action-wheel-dialog__close" id="session-action-wheel-close" aria-label="Lukk">×</button>
         <div class="session-action-wheel" role="presentation">
           <div class="session-action-wheel__viewport">
-            <div class="session-action-wheel__pointer" aria-hidden="true"></div>
+            <div class="session-action-wheel__fade session-action-wheel__fade--top" aria-hidden="true"></div>
             <div
-              id="session-action-wheel-hit"
-              class="session-action-wheel__hit"
-              aria-label="Dra for å snurre hjulet, eller trykk på en handling"
+              id="session-action-wheel-rail"
+              class="session-action-wheel__rail"
+              role="listbox"
+              aria-label="Rull og velg handling"
               tabindex="0"
             >
-              <div id="session-action-wheel-disk" class="session-action-wheel-disk">
-                <div class="session-action-wheel-disk__ring" aria-hidden="true"></div>
-                <div class="session-action-wheel-spoke" style="--i: 0" data-seg-index="0">
-                  <button type="button" class="session-action-wheel__item session-action-wheel-seg" data-wheel-action="share">Del</button>
-                </div>
-                <div class="session-action-wheel-spoke" style="--i: 1" data-seg-index="1">
-                  <button type="button" class="session-action-wheel__item session-action-wheel-seg" data-wheel-action="save">Lagre</button>
-                </div>
-                <div class="session-action-wheel-spoke" style="--i: 2" data-seg-index="2">
-                  <button type="button" class="session-action-wheel__item session-action-wheel-seg" data-wheel-action="pdf">Generer PDF</button>
-                </div>
-                <div class="session-action-wheel-spoke" style="--i: 3" data-seg-index="3">
-                  <button type="button" class="session-action-wheel__item session-action-wheel-seg" data-wheel-action="ai">Send til AI</button>
-                </div>
-                <div class="session-action-wheel-spoke" style="--i: 4" data-seg-index="4">
-                  <button type="button" class="session-action-wheel__item session-action-wheel-seg" data-wheel-action="summary">Oppsummering</button>
-                </div>
-                <div class="session-action-wheel-disk__hub" aria-hidden="true"></div>
-              </div>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="share">Del</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="save">Lagre</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="pdf">Generer PDF</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="ai">Send til AI</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="summary">Oppsummering</button>
             </div>
-            <p class="session-action-wheel__hint">Dra for å snurre · trykk på valgt handling</p>
+            <div class="session-action-wheel__fade session-action-wheel__fade--bot" aria-hidden="true"></div>
+            <div class="session-action-wheel__cursor" aria-hidden="true"></div>
           </div>
         </div>
       </div>
@@ -8657,42 +8645,17 @@ function goHomeOpenVeiAi(opts = {}) {
 /**
  * @param {AbortSignal} signal
  */
-const SESSION_WHEEL_SEGMENTS = 5
-const SESSION_WHEEL_STEP = 360 / SESSION_WHEEL_SEGMENTS
-
-/**
- * @param {number} r
- */
-function sessionWheelSnapRotation(r) {
-  const k = Math.round(-r / SESSION_WHEEL_STEP)
-  return -k * SESSION_WHEEL_STEP
-}
-
-/**
- * Hvilket segment som ligger ved pilen (øverst) for gitt rotasjon.
- * @param {number} r
- */
-function sessionWheelPointerIndex(r) {
-  const k = Math.round(-r / SESSION_WHEEL_STEP)
-  return ((k % SESSION_WHEEL_SEGMENTS) + SESSION_WHEEL_SEGMENTS) % SESSION_WHEEL_SEGMENTS
-}
-
 function wireSessionActionWheel(signal) {
   const dock = document.getElementById('session-action-wheel-dock')
   const launcher = document.getElementById('session-action-wheel-launcher')
   const dlg = document.getElementById('session-action-wheel-dialog')
   const closeBtn = document.getElementById('session-action-wheel-close')
-  const hit = document.getElementById('session-action-wheel-hit')
-  const disk = document.getElementById('session-action-wheel-disk')
-  if (!dock || !launcher || !dlg || !hit || !disk) return
+  const rail = document.getElementById('session-action-wheel-rail')
+  if (!dock || !launcher || !dlg || !rail) return
 
   applySessionWheelLauncherPosition()
 
-  let rotationDeg = 0
-  /** @type {{ id: number, startRot: number, startAngle: number, cx: number, cy: number } | null} */
-  let diskDrag = null
-  /** @type {{ id: number, startRot: number, startAngle: number, cx: number, cy: number } | null} */
-  let diskPointerDown = null
+  const ITEM_HEIGHT = 52
   let drag = null
   let wheelDragMoved = false
 
@@ -8764,21 +8727,6 @@ function wireSessionActionWheel(signal) {
     true,
   )
 
-  function setDiskRotation(r, animate = false) {
-    rotationDeg = r
-    disk.style.transform = `rotate(${r}deg)`
-    disk.classList.toggle('session-action-wheel-disk--animating', animate)
-    updatePointerHighlight()
-  }
-
-  function updatePointerHighlight() {
-    const idx = sessionWheelPointerIndex(rotationDeg)
-    hit.querySelectorAll('.session-action-wheel-spoke').forEach((spoke) => {
-      const i = Number(spoke.getAttribute('data-seg-index'))
-      spoke.classList.toggle('session-action-wheel-spoke--at-pointer', i === idx)
-    })
-  }
-
   function openWheelDialog() {
     if (!(dlg instanceof HTMLDialogElement)) return
     dlg.showModal()
@@ -8788,12 +8736,12 @@ function wireSessionActionWheel(signal) {
       dlg.classList.add('session-action-wheel-dialog--visible')
     })
     queueMicrotask(() => {
-      hit.querySelectorAll('.session-action-wheel__item').forEach((el) => {
+      rail.querySelectorAll('.session-action-wheel__item').forEach((el) => {
         el.classList.remove('session-action-wheel__item--selected')
       })
+      rail.scrollTop = 0
       lastTickIndex = -1
-      setDiskRotation(0, false)
-      hit.focus()
+      rail.focus()
     })
   }
 
@@ -8835,125 +8783,21 @@ function wireSessionActionWheel(signal) {
   )
 
   let lastTickIndex = -1
-  let suppressWheelButtonClick = false
-
-  hit.addEventListener(
-    'click',
-    (ev) => {
-      if (suppressWheelButtonClick) {
-        ev.preventDefault()
-        ev.stopPropagation()
-        suppressWheelButtonClick = false
+  rail.addEventListener(
+    'scroll',
+    () => {
+      const idx = Math.round(rail.scrollTop / ITEM_HEIGHT)
+      const clamped = Math.max(0, Math.min(4, idx))
+      if (clamped !== lastTickIndex) {
+        lastTickIndex = clamped
+        playSessionWheelTick()
       }
     },
-    true,
-  )
-
-  /**
-   * @param {number} cx
-   * @param {number} cy
-   * @param {number} x
-   * @param {number} y
-   */
-  function clientAngleDeg(cx, cy, x, y) {
-    return (Math.atan2(y - cy, x - cx) * 180) / Math.PI
-  }
-
-  function applyDiskRotationFromDrag() {
-    const idx = sessionWheelPointerIndex(rotationDeg)
-    if (idx !== lastTickIndex) {
-      lastTickIndex = idx
-      playSessionWheelTick()
-    }
-    updatePointerHighlight()
-  }
-
-  hit.addEventListener(
-    'pointerdown',
-    (ev) => {
-      if (ev.button !== 0) return
-      const rect = disk.getBoundingClientRect()
-      const cx = rect.left + rect.width / 2
-      const cy = rect.top + rect.height / 2
-      diskPointerDown = {
-        id: ev.pointerId,
-        startRot: rotationDeg,
-        startAngle: clientAngleDeg(cx, cy, ev.clientX, ev.clientY),
-        cx,
-        cy,
-      }
-    },
-    { signal },
-  )
-
-  hit.addEventListener(
-    'pointermove',
-    (ev) => {
-      if (!diskPointerDown || ev.pointerId !== diskPointerDown.id) return
-      const dx = ev.clientX - diskPointerDown.cx
-      const dy = ev.clientY - diskPointerDown.cy
-      if (Math.abs(dx) + Math.abs(dy) < 8) return
-      if (!diskDrag) {
-        diskDrag = {
-          id: diskPointerDown.id,
-          startRot: diskPointerDown.startRot,
-          startAngle: diskPointerDown.startAngle,
-          cx: diskPointerDown.cx,
-          cy: diskPointerDown.cy,
-        }
-        if (ev.target instanceof Element && ev.target.closest('.session-action-wheel-seg')) {
-          suppressWheelButtonClick = true
-        }
-        try {
-          hit.setPointerCapture(ev.pointerId)
-        } catch {
-          /* ignore */
-        }
-      }
-      let a = clientAngleDeg(diskDrag.cx, diskDrag.cy, ev.clientX, ev.clientY)
-      let delta = a - diskDrag.startAngle
-      while (delta > 180) delta -= 360
-      while (delta < -180) delta += 360
-      rotationDeg = diskDrag.startRot + delta
-      disk.style.transform = `rotate(${rotationDeg}deg)`
-      disk.classList.remove('session-action-wheel-disk--animating')
-      applyDiskRotationFromDrag()
-    },
-    { signal },
-  )
-
-  function endDiskPointer(ev) {
-    if (!diskPointerDown || ev.pointerId !== diskPointerDown.id) return
-    const hadDrag = diskDrag && diskDrag.id === ev.pointerId
-    diskPointerDown = null
-    if (hadDrag) {
-      const snapped = sessionWheelSnapRotation(rotationDeg)
-      setDiskRotation(snapped, true)
-      lastTickIndex = sessionWheelPointerIndex(snapped)
-      try {
-        hit.releasePointerCapture(ev.pointerId)
-      } catch {
-        /* ignore */
-      }
-    }
-    diskDrag = null
-  }
-
-  hit.addEventListener('pointerup', endDiskPointer, { signal })
-  hit.addEventListener('pointercancel', endDiskPointer, { signal })
-
-  disk.addEventListener(
-    'transitionend',
-    (ev) => {
-      if (ev.propertyName === 'transform' && ev.target === disk) {
-        disk.classList.remove('session-action-wheel-disk--animating')
-      }
-    },
-    { signal },
+    { passive: true, signal },
   )
 
   function selectWheelItem(el) {
-    hit.querySelectorAll('.session-action-wheel__item').forEach((b) => {
+    rail.querySelectorAll('.session-action-wheel__item').forEach((b) => {
       b.classList.toggle('session-action-wheel__item--selected', b === el)
     })
   }
@@ -8996,7 +8840,7 @@ function wireSessionActionWheel(signal) {
     }, 180)
   }
 
-  hit.addEventListener(
+  rail.addEventListener(
     'click',
     (ev) => {
       const btn = ev.target.closest('[data-wheel-action]')
