@@ -4876,6 +4876,48 @@ function renderSessionHtml() {
       </details>
     </section>
     <div id="session-toast" class="session-toast" role="status" aria-live="polite" hidden></div>
+
+    <div id="session-action-wheel-dock" class="session-action-wheel-dock">
+      <button
+        type="button"
+        id="session-action-wheel-launcher"
+        class="session-action-wheel-launcher"
+        aria-label="Hurtighandlinger for oppdraget"
+        aria-expanded="false"
+        aria-controls="session-action-wheel-dialog"
+      >
+        <svg class="session-action-wheel-launcher__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h7"/>
+        </svg>
+      </button>
+    </div>
+
+    <dialog id="session-action-wheel-dialog" class="session-action-wheel-dialog" aria-labelledby="session-action-wheel-title">
+      <div class="session-action-wheel-dialog__panel">
+        <h2 id="session-action-wheel-title" class="session-action-wheel-dialog__title">Handlinger</h2>
+        <button type="button" class="session-action-wheel-dialog__close" id="session-action-wheel-close" aria-label="Lukk">×</button>
+        <div class="session-action-wheel" role="presentation">
+          <div class="session-action-wheel__viewport">
+            <div class="session-action-wheel__fade session-action-wheel__fade--top" aria-hidden="true"></div>
+            <div
+              id="session-action-wheel-rail"
+              class="session-action-wheel__rail"
+              role="listbox"
+              aria-label="Rull og velg handling"
+              tabindex="0"
+            >
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="share">Del</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="save">Lagre</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="pdf">Generer PDF</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="ai">Send til AI</button>
+              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="summary">Oppsummering</button>
+            </div>
+            <div class="session-action-wheel__fade session-action-wheel__fade--bot" aria-hidden="true"></div>
+            <div class="session-action-wheel__cursor" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </dialog>
   </div>`
 }
 
@@ -8496,6 +8538,321 @@ function sessionCounterReset(buttonEl) {
   persist()
 }
 
+const SESSION_WHEEL_POS_KEY = 'scanix-session-wheel-launcher-pos'
+
+/** @type {AudioContext | null} */
+let sessionWheelAudioCtx = null
+
+function playSessionWheelTick() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return
+    if (!sessionWheelAudioCtx) sessionWheelAudioCtx = new Ctx()
+    if (sessionWheelAudioCtx.state === 'suspended') {
+      void sessionWheelAudioCtx.resume()
+    }
+    const o = sessionWheelAudioCtx.createOscillator()
+    const g = sessionWheelAudioCtx.createGain()
+    o.type = 'sine'
+    o.frequency.value = 1320
+    o.connect(g)
+    g.connect(sessionWheelAudioCtx.destination)
+    const t0 = sessionWheelAudioCtx.currentTime
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.exponentialRampToValueAtTime(0.055, t0 + 0.008)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.045)
+    o.start(t0)
+    o.stop(t0 + 0.05)
+  } catch {
+    /* ignore */
+  }
+}
+
+function applySessionWheelLauncherPosition() {
+  const dock = document.getElementById('session-action-wheel-dock')
+  if (!dock) return
+  try {
+    const raw = localStorage.getItem(SESSION_WHEEL_POS_KEY)
+    if (!raw) return
+    const p = JSON.parse(raw)
+    if (typeof p.left === 'number' && typeof p.top === 'number') {
+      dock.style.left = `${p.left}px`
+      dock.style.top = `${p.top}px`
+      dock.style.right = 'auto'
+      dock.style.bottom = 'auto'
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveSessionWheelLauncherPosition(leftPx, topPx) {
+  try {
+    localStorage.setItem(
+      SESSION_WHEEL_POS_KEY,
+      JSON.stringify({ left: leftPx, top: topPx }),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+function prepSessionEndDialogForWheel() {
+  const sessionEndDialog = document.getElementById('session-end-dialog')
+  const sessionEndTitleInput = document.getElementById('session-end-title')
+  const sessionEndRegisteredNoteInput = document.getElementById(
+    'session-end-registered-note',
+  )
+  const sess = sessions.find((x) => x.id === currentSessionId)
+  if (sessionEndTitleInput) {
+    sessionEndTitleInput.value =
+      typeof sess?.title === 'string' && sess.title.trim()
+        ? sess.title.trim().slice(0, SESSION_TITLE_MAX_LEN)
+        : ''
+  }
+  if (sessionEndRegisteredNoteInput) {
+    sessionEndRegisteredNoteInput.value =
+      typeof sess?.registeredNote === 'string' && sess.registeredNote.trim()
+        ? sess.registeredNote.trim().slice(0, SESSION_REGISTERED_NOTE_MAX_LEN)
+        : ''
+  }
+  const pdfStatus = document.getElementById('session-end-pdf-status')
+  if (pdfStatus) pdfStatus.textContent = ''
+  return sessionEndDialog
+}
+
+function goHomeOpenVeiAi(opts = {}) {
+  const { summaryHint } = opts
+  flushCurrentSession()
+  destroyMap()
+  view = 'home'
+  saveAppState()
+  renderApp()
+  bindHomeListeners()
+  queueMicrotask(() => {
+    setHomeBildeSubTab('ai')
+    if (summaryHint) {
+      const inp = document.getElementById('home-ai-chat-input')
+      if (inp instanceof HTMLTextAreaElement) {
+        inp.value =
+          'Lag en kort, profesjonell oppsummering av dette oppdraget (registreringer og notater).'
+        inp.focus()
+      }
+    }
+  })
+}
+
+/**
+ * @param {AbortSignal} signal
+ */
+function wireSessionActionWheel(signal) {
+  const dock = document.getElementById('session-action-wheel-dock')
+  const launcher = document.getElementById('session-action-wheel-launcher')
+  const dlg = document.getElementById('session-action-wheel-dialog')
+  const closeBtn = document.getElementById('session-action-wheel-close')
+  const rail = document.getElementById('session-action-wheel-rail')
+  if (!dock || !launcher || !dlg || !rail) return
+
+  applySessionWheelLauncherPosition()
+
+  const ITEM_HEIGHT = 52
+  let drag = null
+  let wheelDragMoved = false
+
+  launcher.addEventListener(
+    'pointerdown',
+    (ev) => {
+      if (ev.button !== 0) return
+      const rect = dock.getBoundingClientRect()
+      drag = {
+        id: ev.pointerId,
+        startX: ev.clientX,
+        startY: ev.clientY,
+        origLeft: rect.left,
+        origTop: rect.top,
+      }
+      wheelDragMoved = false
+      try {
+        launcher.setPointerCapture(ev.pointerId)
+      } catch {
+        /* ignore */
+      }
+    },
+    { signal },
+  )
+
+  launcher.addEventListener(
+    'pointermove',
+    (ev) => {
+      if (!drag || ev.pointerId !== drag.id) return
+      const dx = ev.clientX - drag.startX
+      const dy = ev.clientY - drag.startY
+      if (Math.abs(dx) + Math.abs(dy) > 6) wheelDragMoved = true
+      let left = drag.origLeft + dx
+      let top = drag.origTop + dy
+      const maxL = window.innerWidth - dock.offsetWidth - 8
+      const maxT = window.innerHeight - dock.offsetHeight - 8
+      left = Math.max(8, Math.min(maxL, left))
+      top = Math.max(8, Math.min(maxT, top))
+      dock.style.left = `${left}px`
+      dock.style.top = `${top}px`
+      dock.style.right = 'auto'
+      dock.style.bottom = 'auto'
+    },
+    { signal },
+  )
+
+  const endDrag = (ev) => {
+    if (!drag || ev.pointerId !== drag.id) return
+    drag = null
+    try {
+      launcher.releasePointerCapture(ev.pointerId)
+    } catch {
+      /* ignore */
+    }
+    const rect = dock.getBoundingClientRect()
+    saveSessionWheelLauncherPosition(rect.left, rect.top)
+  }
+  launcher.addEventListener('pointerup', endDrag, { signal })
+  launcher.addEventListener('pointercancel', endDrag, { signal })
+
+  launcher.addEventListener(
+    'click',
+    (ev) => {
+      if (wheelDragMoved) {
+        ev.preventDefault()
+        ev.stopPropagation()
+      }
+    },
+    true,
+  )
+
+  function openWheelDialog() {
+    if (!(dlg instanceof HTMLDialogElement)) return
+    dlg.showModal()
+    launcher.setAttribute('aria-expanded', 'true')
+    dlg.classList.add('session-action-wheel-dialog--enter')
+    requestAnimationFrame(() => {
+      dlg.classList.add('session-action-wheel-dialog--visible')
+    })
+    queueMicrotask(() => {
+      rail.querySelectorAll('.session-action-wheel__item').forEach((el) => {
+        el.classList.remove('session-action-wheel__item--selected')
+      })
+      rail.scrollTop = 0
+      lastTickIndex = -1
+      rail.focus()
+    })
+  }
+
+  function closeWheelDialog() {
+    if (!(dlg instanceof HTMLDialogElement)) return
+    dlg.classList.remove('session-action-wheel-dialog--visible')
+    launcher.setAttribute('aria-expanded', 'false')
+    window.setTimeout(() => {
+      dlg.close()
+      dlg.classList.remove('session-action-wheel-dialog--enter')
+    }, 220)
+  }
+
+  launcher.addEventListener(
+    'click',
+    (ev) => {
+      if (wheelDragMoved) return
+      ev.preventDefault()
+      openWheelDialog()
+    },
+    { signal },
+  )
+
+  closeBtn?.addEventListener('click', () => closeWheelDialog(), { signal })
+  dlg.addEventListener(
+    'click',
+    (ev) => {
+      if (ev.target === dlg) closeWheelDialog()
+    },
+    { signal },
+  )
+  dlg.addEventListener(
+    'cancel',
+    (ev) => {
+      ev.preventDefault()
+      closeWheelDialog()
+    },
+    { signal },
+  )
+
+  let lastTickIndex = -1
+  rail.addEventListener(
+    'scroll',
+    () => {
+      const idx = Math.round(rail.scrollTop / ITEM_HEIGHT)
+      const clamped = Math.max(0, Math.min(4, idx))
+      if (clamped !== lastTickIndex) {
+        lastTickIndex = clamped
+        playSessionWheelTick()
+      }
+    },
+    { passive: true, signal },
+  )
+
+  function selectWheelItem(el) {
+    rail.querySelectorAll('.session-action-wheel__item').forEach((b) => {
+      b.classList.toggle('session-action-wheel__item--selected', b === el)
+    })
+  }
+
+  function runWheelAction(action) {
+    closeWheelDialog()
+    window.setTimeout(() => {
+      if (action === 'share') {
+        openShareSessionDialog()
+        return
+      }
+      if (action === 'save') {
+        prepSessionEndDialogForWheel()
+        setSessionEndDialogTab('quit')
+        const d = document.getElementById('session-end-dialog')
+        if (d instanceof HTMLDialogElement) d.showModal()
+        queueMicrotask(() =>
+          document.getElementById('session-end-title')?.focus(),
+        )
+        return
+      }
+      if (action === 'pdf') {
+        prepSessionEndDialogForWheel()
+        setSessionEndDialogTab('pdf')
+        const d = document.getElementById('session-end-dialog')
+        if (d instanceof HTMLDialogElement) d.showModal()
+        queueMicrotask(() =>
+          document.getElementById('session-end-pdf-comments')?.focus(),
+        )
+        return
+      }
+      if (action === 'ai') {
+        goHomeOpenVeiAi({ summaryHint: false })
+        return
+      }
+      if (action === 'summary') {
+        goHomeOpenVeiAi({ summaryHint: true })
+        return
+      }
+    }, 180)
+  }
+
+  rail.addEventListener(
+    'click',
+    (ev) => {
+      const btn = ev.target.closest('[data-wheel-action]')
+      if (!(btn instanceof HTMLButtonElement)) return
+      selectWheelItem(btn)
+      const action = btn.getAttribute('data-wheel-action') ?? ''
+      runWheelAction(action)
+    },
+    { signal },
+  )
+}
+
 function bindSessionListeners() {
   if (sessionAbort) sessionAbort.abort()
   sessionAbort = new AbortController()
@@ -8924,6 +9281,7 @@ function bindSessionListeners() {
 
   wireSessionBottomSheet(signal)
   wireSessionGpsSheetMirror(signal)
+  wireSessionActionWheel(signal)
 
   setupSessionShareInbox()
 }
