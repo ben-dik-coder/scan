@@ -52,6 +52,12 @@ const RERANK_INPUT_MAX = Math.min(
   Math.max(12, Number(process.env.CONTRACT_RAG_RERANK_INPUT_MAX || 32)),
 )
 
+/** Maks utdrag per prosess før backfill når multi-intent (post-rerank). */
+const PROCESS_CAP_PER_PROCESS = Math.min(
+  10,
+  Math.max(1, Number(process.env.CONTRACT_RAG_PROCESS_CAP_PER_PROCESS || 3)),
+)
+
 /** Lavere standard = kortere svar (kan økes med CONTRACT_RAG_MAX_COMPLETION_TOKENS). */
 const MAX_COMPLETION_TOKENS = Math.min(
   4096,
@@ -225,13 +231,127 @@ async function expandQueryForRetrieval(openai, query) {
 }
 
 /**
+ * Enkel heuristikk for flere delkrav i samme spørsmål (ingen LLM).
+ * @param {string} text
+ */
+function detectMultiIntentQuery(text) {
+  const t = String(text || '').trim()
+  if (t.length < 10) return false
+  if (/\balle\b/i.test(t)) return true
+  if (/\binkludert\b/i.test(t)) return true
+  if ((t.match(/,/g) || []).length >= 2) return true
+  if (/\bog\b[^.]{0,120}\bog\b/is.test(t)) return true
+  const lines = t.split(/\r?\n/)
+  let bulletish = 0
+  for (const line of lines) {
+    if (/^\s*(?:[-*•]|\d+\.)\s+\S/.test(line)) bulletish++
+  }
+  if (bulletish >= 2) return true
+  return false
+}
+
+/**
+ * Stabil nøkkel per «prosess» for diversitet. Leser metadata først, ellers start av innhold.
+ * @param {unknown} row
+ */
+function getChunkProcessKey(row) {
+  if (row && typeof row === 'object' && row !== null && 'metadata' in row) {
+    const m = /** @type {{ metadata?: unknown }} */ (row).metadata
+    if (m && typeof m === 'object') {
+      const o = /** @type {Record<string, unknown>} */ (m)
+      for (const k of [
+        'process_number',
+        'process_id',
+        'prosess',
+        'prosessnummer',
+        'section',
+      ]) {
+        const v = o[k]
+        if (v != null && String(v).trim()) return `meta:${k}:${String(v).trim()}`
+      }
+    }
+  }
+  const content =
+    row && typeof row === 'object' && row !== null && 'content' in row
+      ? String(/** @type {{ content?: string }} */ (row).content ?? '')
+      : ''
+  const head = content.trim().slice(0, 600)
+  const proc = head.match(/(?:^|[\n\r])\s*(?:§\s*)?(\d+(?:\.\d+)+)\b/)
+  if (proc) return `proc:${proc[1]}`
+  const sec = head.match(/(?:^|[\n\r])\s*§\s*(\d+)\b/)
+  if (sec) return `sec:${sec[1]}`
+  const id =
+    row && typeof row === 'object' && row !== null && 'id' in row
+      ? /** @type {{ id?: unknown }} */ (row).id
+      : null
+  return id != null ? `id:${String(id)}` : 'unknown'
+}
+
+/**
+ * @param {unknown} chunk
+ * @param {number} index
+ */
+function chunkSelectionId(chunk, index) {
+  if (
+    chunk &&
+    typeof chunk === 'object' &&
+    chunk !== null &&
+    'id' in chunk &&
+    /** @type {{ id?: unknown }} */ (chunk).id != null
+  ) {
+    return `id:${String(/** @type {{ id?: unknown }} */ (chunk).id)}`
+  }
+  return `idx:${index}:${getChunkProcessKey(chunk)}`
+}
+
+/**
+ * Cap per prosess i rangert rekkefølge, deretter backfill til finalK.
+ * @param {unknown[]} rankedChunks
+ * @param {number} finalK
+ * @param {number} capPerProcess
+ */
+function applyProcessDiversityAndBackfill(rankedChunks, finalK, capPerProcess) {
+  const list = /** @type {any[]} */ (Array.isArray(rankedChunks) ? rankedChunks : [])
+  if (!list.length || finalK <= 0) return []
+  const cap = Math.max(1, capPerProcess)
+  const selected = /** @type {any[]} */ ([])
+  const selectedIds = new Set()
+  const counts = new Map()
+
+  for (let i = 0; i < list.length; i++) {
+    if (selected.length >= finalK) break
+    const chunk = list[i]
+    const key = getChunkProcessKey(chunk)
+    if ((counts.get(key) ?? 0) >= cap) continue
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+    const sid = chunkSelectionId(chunk, i)
+    if (selectedIds.has(sid)) continue
+    selectedIds.add(sid)
+    selected.push(chunk)
+  }
+
+  for (let i = 0; i < list.length; i++) {
+    if (selected.length >= finalK) break
+    const chunk = list[i]
+    const sid = chunkSelectionId(chunk, i)
+    if (selectedIds.has(sid)) continue
+    selectedIds.add(sid)
+    selected.push(chunk)
+  }
+
+  return selected.slice(0, finalK)
+}
+
+/**
  * Velger de mest relevante utdragene for svarmodellen (reduserer støy og «nesten riktige» chunks).
  * @param {OpenAI} openai
  * @param {string} userQuery
  * @param {unknown[]} chunks rader med id, content, similarity, metadata
- * @param {number} targetK
+ * @param {number} targetK ønsket antall til svarmodell etter diversitet (multi-intent) eller direkte (vanlig)
+ * @param {{ multiIntent?: boolean }} [opts]
  */
-async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
+async function rerankRetrievalChunks(openai, userQuery, chunks, targetK, opts) {
+  const multiIntent = Boolean(opts && opts.multiIntent)
   if (!chunks.length || chunks.length <= targetK) {
     return /** @type {any[]} */ (chunks)
   }
@@ -239,6 +359,12 @@ async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
     0,
     Math.min(chunks.length, RERANK_INPUT_MAX),
   )
+  const maxAsk = multiIntent
+    ? Math.min(2 * targetK, RERANK_INPUT_MAX, pool.length)
+    : Math.min(targetK, pool.length)
+  const multiRerankHint = multiIntent
+    ? ' Spørsmålet kan kreve svar fra flere ulike deler av kontrakten. Ikke la én enkelt prosess eller paragraf dominere listen — prioriter **bred dekning** av ulike relevante utdrag når flere krav eller tema er implisitt. Inkluder gjerne flere indekser (opp til maks) slik at ulike prosesser kan komme med.'
+    : ''
   const previews = pool.map((row, i) => {
     const content =
       row && typeof row === 'object' && row !== null && 'content' in row
@@ -256,7 +382,7 @@ async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
     messages: [
       {
         role: 'system',
-        content: `Du rangerer utdrag fra et kontraktsdokument etter relevans for brukerens spørsmål. Returner JSON: {"indices":[...]} der indices er en liste av 0-baserte indekser (0–${pool.length - 1}), sortert fra mest til minst relevant. Inkluder maks ${targetK} indekser. Utelat indekser som ikke hjelper med å besvare spørsmålet. Ved tvil: inkluder utdrag som kan inneholde sitatbar ordlyd.`,
+        content: `Du rangerer utdrag fra et kontraktsdokument etter relevans for brukerens spørsmål. Returner JSON: {"indices":[...]} der indices er en liste av 0-baserte indekser (0–${pool.length - 1}), sortert fra mest til minst relevant. Inkluder maks ${maxAsk} indekser. Utelat indekser som ikke hjelper med å besvare spørsmålet. Ved tvil: inkluder utdrag som kan inneholde sitatbar ordlyd.${multiRerankHint}`,
       },
       {
         role: 'user',
@@ -274,7 +400,7 @@ async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
         .filter((n) => Number.isFinite(n) && n >= 0 && n < pool.length)
     }
   } catch {
-    return /** @type {any[]} */ (pool.slice(0, targetK))
+    return /** @type {any[]} */ (pool.slice(0, maxAsk))
   }
   const seen = new Set()
   const ordered = []
@@ -282,10 +408,10 @@ async function rerankRetrievalChunks(openai, userQuery, chunks, targetK) {
     if (seen.has(idx)) continue
     seen.add(idx)
     ordered.push(pool[idx])
-    if (ordered.length >= targetK) break
+    if (ordered.length >= maxAsk) break
   }
   if (ordered.length === 0) {
-    return /** @type {any[]} */ (pool.slice(0, targetK))
+    return /** @type {any[]} */ (pool.slice(0, maxAsk))
   }
   return ordered
 }
@@ -604,6 +730,7 @@ export async function handleContractChat(req, res) {
     }
 
     const retrievalQuery = buildRetrievalQuery(messages, lastUserText)
+    const multiIntentQuery = detectMultiIntentQuery(retrievalQuery)
     const queryExpandOn = isEnvEnabled('CONTRACT_RAG_QUERY_EXPAND', true)
     const textForEmbedding = queryExpandOn
       ? await expandQueryForRetrieval(openai, retrievalQuery)
@@ -670,7 +797,15 @@ export async function handleContractChat(req, res) {
           retrievalQuery,
           chunks,
           MAX_CONTEXT_CHUNKS,
+          { multiIntent: multiIntentQuery },
         )
+        if (multiIntentQuery) {
+          chunks = applyProcessDiversityAndBackfill(
+            chunks,
+            MAX_CONTEXT_CHUNKS,
+            PROCESS_CAP_PER_PROCESS,
+          )
+        }
       } catch (reErr) {
         console.warn('contract-chat rerank:', reErr)
         chunks = /** @type {any[]} */ (chunks).slice(0, MAX_CONTEXT_CHUNKS)
