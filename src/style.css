@@ -6145,6 +6145,11 @@ body.session-map-fullscreen-open {
   font-weight: 600;
 }
 
+/* Skarpere kartfliser: Leaflet bruker @2x-CARTO på retina; unngå ekstra uskarphet */
+#app .leaflet-tile-container img.leaflet-tile {
+  image-rendering: auto;
+}
+
 .map {
   height: min(52vh, 380px);
   width: 100%;

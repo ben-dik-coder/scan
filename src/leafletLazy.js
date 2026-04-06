@@ -4,18 +4,19 @@ export let Leaflet = null
 let loadPromise = null
 
 /**
- * CARTO Voyager – tydeligere veier og mer kontrast enn Positron (OSM-data).
+ * CARTO Voyager (OSM-data). `{r}` → `@2x` på HiDPI når detectRetina er på (skarpere fliser).
  * @param {import('leaflet').default} L
  * @returns {import('leaflet').TileLayer}
  */
 export function createAppMapTileLayer(L) {
   return L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions" rel="noreferrer">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 20,
+      detectRetina: true,
     },
   )
 }
