@@ -4781,6 +4781,7 @@ function renderSessionHtml() {
             <h2 class="section-head__title">Kart</h2>
             <span class="section-head__meta" id="map-meta"></span>
           </div>
+          <div id="session-map-slot-embedded" class="session-map-slot-embedded">
           <div class="map-frame" id="session-map-frame">
             <div id="map" class="map"></div>
             <p id="gps-status" class="gps-status map-gps-chip" role="status"></p>
@@ -4808,6 +4809,7 @@ function renderSessionHtml() {
             >
               <span class="map-locate-btn__icon" aria-hidden="true">⌂</span>
             </button>
+          </div>
           </div>
           <details class="map-section__more">
             <summary class="map-section__more-summary">Vis mer · kart og lenker</summary>
@@ -4934,6 +4936,29 @@ function renderSessionHtml() {
         </div>
       </div>
     </dialog>
+
+    <div
+      id="session-map-fullscreen-layer"
+      class="session-map-fullscreen-layer"
+      hidden
+      aria-hidden="true"
+    >
+      <header class="session-map-fullscreen-layer__bar">
+        <button
+          type="button"
+          id="btn-session-map-fullscreen-close"
+          class="session-map-fullscreen-layer__close"
+        >
+          ← Tilbake
+        </button>
+        <span class="session-map-fullscreen-layer__title">Kart</span>
+      </header>
+      <div
+        id="session-map-fullscreen-slot"
+        class="session-map-fullscreen-layer__map"
+        role="presentation"
+      ></div>
+    </div>
   </div>`
 }
 
@@ -9317,19 +9342,21 @@ function bindSessionListeners() {
     { signal },
   )
 
-  const onFsChange = () => {
-    syncSessionMapFullscreenUi()
-  }
-  document.addEventListener('fullscreenchange', onFsChange, { signal })
-  document.addEventListener('webkitfullscreenchange', onFsChange, { signal })
+  document.getElementById('btn-session-map-fullscreen-close')?.addEventListener(
+    'click',
+    () => {
+      exitSessionMapFullscreen()
+    },
+    { signal },
+  )
 
   document.addEventListener(
     'keydown',
     (ev) => {
       if (ev.key !== 'Escape') return
-      const frame = document.getElementById('session-map-frame')
-      if (!frame?.classList.contains('map-frame--pseudo-fullscreen')) return
+      if (!isSessionMapFullscreenActive()) return
       exitSessionMapFullscreen()
+      document.getElementById('btn-map-fullscreen')?.focus()
     },
     { signal },
   )
@@ -9518,20 +9545,9 @@ window.addEventListener('beforeunload', () => {
   stopLocationWatch()
 })
 
-function getSessionMapFullscreenElement() {
-  return (
-    document.fullscreenElement ||
-    document.webkitFullscreenElement ||
-    document.mozFullScreenElement ||
-    null
-  )
-}
-
 function isSessionMapFullscreenActive() {
-  const frame = document.getElementById('session-map-frame')
-  if (!frame) return false
-  if (frame.classList.contains('map-frame--pseudo-fullscreen')) return true
-  return getSessionMapFullscreenElement() === frame
+  const layer = document.getElementById('session-map-fullscreen-layer')
+  return Boolean(layer && !layer.hidden)
 }
 
 function syncSessionMapFullscreenUi() {
@@ -9541,9 +9557,9 @@ function syncSessionMapFullscreenUi() {
     btn.setAttribute('aria-pressed', active ? 'true' : 'false')
     btn.setAttribute(
       'aria-label',
-      active ? 'Avslutt fullskjerm kart' : 'Fullskjerm kart',
+      active ? 'Lukk fullskjerm kart' : 'Åpne kart i full skjerm',
     )
-    btn.title = active ? 'Avslutt fullskjerm' : 'Fullskjerm'
+    btn.title = active ? 'Lukk fullskjerm' : 'Full skjerm'
     btn.classList.toggle('map-fullscreen-btn--active', active)
     const enterIc = btn.querySelector('.map-fullscreen-btn__icon--enter')
     const exitIc = btn.querySelector('.map-fullscreen-btn__icon--exit')
@@ -9551,43 +9567,42 @@ function syncSessionMapFullscreenUi() {
     if (exitIc instanceof SVGElement) exitIc.toggleAttribute('hidden', !active)
   }
   window.setTimeout(() => map?.invalidateSize(), 50)
-  window.setTimeout(() => map?.invalidateSize(), 280)
+  window.setTimeout(() => map?.invalidateSize(), 320)
 }
 
 function exitSessionMapFullscreen() {
   const frame = document.getElementById('session-map-frame')
-  if (!frame) return
-  frame.classList.remove('map-frame--pseudo-fullscreen')
-  document.body.classList.remove('session-map-pseudo-fullscreen')
-  const fsEl = getSessionMapFullscreenElement()
-  if (fsEl === frame) {
-    if (document.exitFullscreen) void document.exitFullscreen()
-    else if (document.webkitExitFullscreen) void document.webkitExitFullscreen()
-  }
+  const embedded = document.getElementById('session-map-slot-embedded')
+  const layer = document.getElementById('session-map-fullscreen-layer')
+  if (!frame || !embedded || !layer) return
+  embedded.appendChild(frame)
+  layer.hidden = true
+  layer.setAttribute('aria-hidden', 'true')
+  document.body.classList.remove('session-map-fullscreen-open')
+  embedded.classList.remove('session-map-slot-embedded--empty')
   syncSessionMapFullscreenUi()
 }
 
-function enterSessionMapPseudoFullscreen(frame) {
-  frame.classList.add('map-frame--pseudo-fullscreen')
-  document.body.classList.add('session-map-pseudo-fullscreen')
+function openSessionMapFullscreen() {
+  const frame = document.getElementById('session-map-frame')
+  const embedded = document.getElementById('session-map-slot-embedded')
+  const slot = document.getElementById('session-map-fullscreen-slot')
+  const layer = document.getElementById('session-map-fullscreen-layer')
+  if (!frame || !embedded || !slot || !layer) return
+  slot.appendChild(frame)
+  layer.hidden = false
+  layer.setAttribute('aria-hidden', 'false')
+  document.body.classList.add('session-map-fullscreen-open')
+  embedded.classList.add('session-map-slot-embedded--empty')
   syncSessionMapFullscreenUi()
+  queueMicrotask(() => {
+    document.getElementById('btn-session-map-fullscreen-close')?.focus()
+  })
 }
 
 function toggleSessionMapFullscreen() {
-  const frame = document.getElementById('session-map-frame')
-  if (!frame) return
-  if (isSessionMapFullscreenActive()) {
-    exitSessionMapFullscreen()
-    return
-  }
-  const req = frame.requestFullscreen || frame.webkitRequestFullscreen
-  if (typeof req === 'function') {
-    Promise.resolve(req.call(frame))
-      .then(() => syncSessionMapFullscreenUi())
-      .catch(() => enterSessionMapPseudoFullscreen(frame))
-  } else {
-    enterSessionMapPseudoFullscreen(frame)
-  }
+  if (isSessionMapFullscreenActive()) exitSessionMapFullscreen()
+  else openSessionMapFullscreen()
 }
 
 function centerMapWhenEmptyPins() {

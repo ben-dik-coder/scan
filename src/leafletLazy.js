@@ -4,13 +4,13 @@ export let Leaflet = null
 let loadPromise = null
 
 /**
- * Lys «Google-lignende» bakgrunn (CARTO Positron, OSM-data).
+ * CARTO Voyager – tydeligere veier og mer kontrast enn Positron (OSM-data).
  * @param {import('leaflet').default} L
  * @returns {import('leaflet').TileLayer}
  */
 export function createAppMapTileLayer(L) {
   return L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
     {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions" rel="noreferrer">CARTO</a>',
