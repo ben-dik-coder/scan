@@ -2407,7 +2407,7 @@ body.home-ai-panel-open .home-vegref {
  * Fast bunnlinje: luft i logg = høyde på composer-rad + nudge (composer er litt under bottom:0).
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__scroll {
-  padding-bottom: calc(0.75rem + 8px + 2.5rem + 0.25rem + 2.75rem + 8px + 8px);
+  padding-bottom: calc(0.75rem + 8px + 2.5rem + 0.25rem + 2.75rem + 8px + 4px);
 }
 
 /* Tom logg: ikke vertikalsentrer i hele scroll-høyden (det så ut som enorm «død» sone). */
@@ -2588,14 +2588,14 @@ body.home-ai-panel-open .home-vegref {
 
 /*
  * AI dokumentering: faner + skrivefelt forankret til viewport-bunn.
- * Litt negativ offset ( −8px ) legger raden litt under «kanten»; tastatur-inset trekkes fra som før.
+ * Litt negativ offset ( −4px ) legger raden litt under «kanten»; tastatur-inset trekkes fra som før.
  * Ikke translateY(vh) – det dyttet hele blokken for langt ned.
  */
 #panel-home-bilde-ai:not([hidden]) #home-ai-stage-chat:not([hidden]) .home-ai-gpt__composer.input-bar {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--home-ai-keyboard-inset, 0px) - 8px);
+  bottom: calc(var(--home-ai-keyboard-inset, 0px) - 4px);
   flex-shrink: 0;
   width: 100%;
   max-width: 100%;
