@@ -122,6 +122,22 @@ function formatVegsystemShort(vs) {
 }
 
 /**
+ * Stabil nøkkel for NVDB-segment (sticky valg mellom parallelle gater).
+ * @param {object} seg
+ * @returns {string | number | null}
+ */
+export function segmentStableId(seg) {
+  if (!seg || typeof seg !== 'object') return null
+  const id = /** @type {{ id?: unknown }} */ (seg).id
+  if (typeof id === 'number' && Number.isFinite(id)) return id
+  if (typeof id === 'string' && id.trim()) return id.trim()
+  const kf = /** @type {{ vegsystemreferanse?: { kortform?: unknown } }} */ (seg)
+    .vegsystemreferanse?.kortform
+  if (typeof kf === 'string' && kf.trim()) return `kf:${kf.trim()}`
+  return null
+}
+
+/**
  * @param {object} seg NVDB segment-objekt
  * @param {number} lat
  * @param {number} lng
@@ -178,6 +194,7 @@ export function describeSegmentForPoint(seg, lat, lng) {
     m: meterVal != null ? String(meterVal) : '–',
     kortform: typeof vref?.kortform === 'string' ? vref.kortform : '',
     distToRoadM: close.distM,
+    nvdbId: segmentStableId(/** @type {object} */ (seg)),
   }
 }
 
@@ -189,32 +206,58 @@ function roadKindPenalty(seg) {
 }
 
 /**
+ * Velg segment: nærhet + vegtype, med hysterese mot forrige treff når GPS er ustabil
+ * (typisk tettbygd med parallelle kommunalveier / stedsnavn).
  * @param {object[]} objekter
  * @param {number} lat
  * @param {number} lng
+ * @param {{ accuracyM?: number, prevNvdbId?: string | number | null }} [opts]
  */
-function pickBestSegment(objekter, lat, lng) {
-  let best = null
-  let bestScore = Infinity
+function pickBestSegment(objekter, lat, lng, opts = {}) {
+  const accuracyM =
+    typeof opts.accuracyM === 'number' && !Number.isNaN(opts.accuracyM)
+      ? Math.min(120, Math.max(8, opts.accuracyM))
+      : 28
+  const prevNvdbId = opts.prevNvdbId ?? null
+
+  const scored = []
   for (const seg of objekter) {
     const d = describeSegmentForPoint(seg, lat, lng)
     if (!d) continue
-    const score = d.distToRoadM + roadKindPenalty(seg)
-    if (score < bestScore) {
-      bestScore = score
-      best = seg
+    const id = segmentStableId(seg)
+    let score = d.distToRoadM + roadKindPenalty(seg)
+    if (prevNvdbId != null && id !== null && id === prevNvdbId) {
+      score -= Math.min(52, 16 + accuracyM * 0.7)
     }
+    scored.push({ seg, score, d, id })
   }
-  return best
+  if (!scored.length) return null
+
+  scored.sort((a, b) => a.score - b.score)
+  const best = scored[0]
+  if (prevNvdbId == null || best.id === prevNvdbId) return best.seg
+
+  const prevRow = scored.find((r) => r.id === prevNvdbId)
+  if (!prevRow) return best.seg
+
+  const margin = Math.min(50, Math.max(9, accuracyM * 0.48))
+  if (accuracyM >= 20 && prevRow.score - best.score < margin) {
+    return prevRow.seg
+  }
+  return best.seg
 }
 
 /**
  * @param {number} lat
  * @param {number} lng
- * @param {{ signal?: AbortSignal }} [opts]
+ * @param {{
+ *   signal?: AbortSignal
+ *   accuracyM?: number
+ *   prevNvdbId?: string | number | null
+ * }} [opts]
  */
 export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
-  const { signal } = opts
+  const { signal, accuracyM, prevNvdbId } = opts
   const padLat = 0.0042
   const cos = Math.cos((lat * Math.PI) / 180) || 1
   const padLng = padLat / cos
@@ -247,7 +290,10 @@ export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
   const objs = data.objekter
   if (!Array.isArray(objs) || objs.length === 0) return null
 
-  const best = pickBestSegment(objs, lat, lng)
+  const best = pickBestSegment(objs, lat, lng, {
+    accuracyM,
+    prevNvdbId: prevNvdbId ?? null,
+  })
   if (!best) return null
 
   return describeSegmentForPoint(best, lat, lng)

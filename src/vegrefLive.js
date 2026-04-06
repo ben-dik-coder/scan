@@ -21,6 +21,12 @@
 export const VEGREF_MIN_INTERVAL_MS = 450
 export const VEGREF_MIN_MOVE_M = 2
 
+/**
+ * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
+ * Skaler litt med GPS-nøyaktighet.
+ */
+const VEGREF_INFLIGHT_COALESCE_BASE_M = 12
+
 /** Gjenbruk siste NVDB-treff når posisjon er i nærheten (offline / nettfeil). */
 const OFFLINE_REUSE_NVDB_M = 90
 
@@ -33,6 +39,9 @@ let lastFetchLng = /** @type {number | null} */ (null)
 /** @type {AbortController | null} */
 let nvdbAbort = null
 let fetchGeneration = 0
+/** Posisjon da siste NVDB-forespørsel startet (for å unngå avbrudd ved GPS-støy). */
+let inFlightAnchorLat = /** @type {number | null} */ (null)
+let inFlightAnchorLng = /** @type {number | null} */ (null)
 
 /** Siste vellykkede NVDB (for offline-gjenbruk). */
 let cacheLat = /** @type {number | null} */ (null)
@@ -64,6 +73,7 @@ function buildCoordFallback(lat, lng) {
     m: '–',
     kortform: '',
     distToRoadM: 0,
+    nvdbId: null,
   }
 }
 
@@ -152,6 +162,8 @@ export function vegrefStopPipeline() {
     nvdbAbort = null
   }
   fetchGeneration += 1
+  inFlightAnchorLat = null
+  inFlightAnchorLng = null
 }
 
 /** Etter navigasjon / nytt DOM: tegn siste kjente ref på nytt. */
@@ -179,6 +191,8 @@ export function vegrefResetSessionCache() {
   lastAppliedRes = null
   lastAppliedLat = null
   lastAppliedLng = null
+  inFlightAnchorLat = null
+  inFlightAnchorLng = null
 }
 
 /** Første oppslag etter åpning av KMT: ikke vent på throttling. */
@@ -191,7 +205,7 @@ export function vegrefResetThrottle() {
 /**
  * @param {number} lat
  * @param {number} lng
- * @param {{ forceImmediate?: boolean }} [opts]
+ * @param {{ forceImmediate?: boolean, accuracyM?: number }} [opts]
  */
 export function vegrefNotifyGps(lat, lng, opts = {}) {
   const h = hooks
@@ -200,15 +214,44 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   }
 
   const { forceImmediate = false } = opts
+  const accuracyM =
+    typeof opts.accuracyM === 'number' && !Number.isNaN(opts.accuracyM)
+      ? opts.accuracyM
+      : 28
+
+  if (nvdbAbort && inFlightAnchorLat != null && inFlightAnchorLng != null) {
+    const movedInflight = h.haversineM(
+      inFlightAnchorLat,
+      inFlightAnchorLng,
+      lat,
+      lng,
+    )
+    const coalesceRadius = Math.max(
+      VEGREF_INFLIGHT_COALESCE_BASE_M,
+      accuracyM * 0.42,
+    )
+    if (!forceImmediate && movedInflight < coalesceRadius) {
+      return
+    }
+  }
+
   const now = Date.now()
   const moved =
     lastFetchLat == null
       ? Infinity
       : h.haversineM(lastFetchLat, lastFetchLng, lat, lng)
+  const minInterval =
+    accuracyM > 48
+      ? VEGREF_MIN_INTERVAL_MS + 420
+      : accuracyM > 36
+        ? VEGREF_MIN_INTERVAL_MS + 220
+        : VEGREF_MIN_INTERVAL_MS
+  const minMove =
+    accuracyM > 48 ? 7 : accuracyM > 36 ? 5 : VEGREF_MIN_MOVE_M
   const throttled =
     !forceImmediate &&
-    now - lastFetchMs < VEGREF_MIN_INTERVAL_MS &&
-    moved < VEGREF_MIN_MOVE_M
+    now - lastFetchMs < minInterval &&
+    moved < minMove
   if (throttled) return
 
   lastFetchMs = now
@@ -220,10 +263,14 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   const { signal } = nvdbAbort
   const seq = fetchGeneration + 1
   fetchGeneration = seq
+  inFlightAnchorLat = lat
+  inFlightAnchorLng = lng
 
   const online = typeof navigator === 'undefined' || navigator.onLine !== false
 
   if (!online) {
+    inFlightAnchorLat = null
+    inFlightAnchorLng = null
     const off = offlineOrFallbackResult(lat, lng)
     applyToOpenUIs(off, lat, lng)
     return
@@ -233,7 +280,15 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
 
   void (async () => {
     try {
-      const res = await h.fetchRoadReferenceNear(lat, lng, { signal })
+      const prevId =
+        cacheRes && typeof cacheRes === 'object' && 'nvdbId' in cacheRes
+          ? /** @type {{ nvdbId?: string | number | null }} */ (cacheRes).nvdbId
+          : null
+      const res = await h.fetchRoadReferenceNear(lat, lng, {
+        signal,
+        accuracyM,
+        prevNvdbId: prevId ?? null,
+      })
       if (signal.aborted) return
       if (seq !== fetchGeneration) return
       if (res) {
@@ -247,6 +302,11 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       if (seq !== fetchGeneration) return
       const off = offlineOrFallbackResult(lat, lng)
       applyToOpenUIs(off, lat, lng)
+    } finally {
+      if (seq === fetchGeneration) {
+        inFlightAnchorLat = null
+        inFlightAnchorLng = null
+      }
     }
   })()
 }

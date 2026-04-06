@@ -2575,7 +2575,10 @@ function feedVegrefFromGps(lat, lng, accuracy, forceImmediate) {
     8,
   )
   lastLiveCoords = { lat, lng, accuracy: acc, ts: Date.now() }
-  vegrefNotifyGps(lat, lng, { forceImmediate: !!forceImmediate })
+  vegrefNotifyGps(lat, lng, {
+    forceImmediate: !!forceImmediate,
+    accuracyM: acc,
+  })
 }
 
 function scheduleHomeVegrefLookup(lat, lng, forceImmediate, accuracy) {
@@ -9185,6 +9188,7 @@ function bootstrap() {
       vegrefResetThrottle()
       vegrefNotifyGps(lastLiveCoords.lat, lastLiveCoords.lng, {
         forceImmediate: true,
+        accuracyM: lastLiveCoords.accuracy,
       })
     }
   })
