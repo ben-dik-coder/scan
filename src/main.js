@@ -8,7 +8,11 @@ import {
   vegrefResetSessionCache,
   vegrefResetThrottle,
 } from './vegrefLive.js'
-import { ensureLeaflet, Leaflet } from './leafletLazy.js'
+import {
+  ensureLeaflet,
+  Leaflet,
+  createAppMapTileLayer,
+} from './leafletLazy.js'
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
 import { syncLaunchSplash } from './launchTransition.js'
 import appPackage from '../package.json'
@@ -7137,12 +7141,10 @@ async function ensureReceivedPhotosMap() {
   if (!receivedPhotosMap) {
     await ensureLeaflet()
     receivedPhotosMap = Leaflet.map('received-photos-map', {
-      zoomControl: true,
+      zoomControl: false,
     }).setView([Number(withLoc[0].lat), Number(withLoc[0].lng)], 14)
-    Leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap-bidragsytere',
-      maxZoom: 19,
-    }).addTo(receivedPhotosMap)
+    Leaflet.control.zoom({ position: 'topright' }).addTo(receivedPhotosMap)
+    createAppMapTileLayer(Leaflet).addTo(receivedPhotosMap)
     const bounds = Leaflet.latLngBounds([])
     withLoc.forEach((ph, i) => {
       const lat = Number(ph.lat)
@@ -8188,19 +8190,17 @@ async function initSessionMapAndWatch() {
         ensureSessionPinIcons()
         followUserOnMap = true
         map = Leaflet.map(mapEl, {
-          zoomControl: true,
+          zoomControl: false,
           tapTolerance: 12,
         }).setView([59.9139, 10.7522], 13)
+        Leaflet.control.zoom({ position: 'topright' }).addTo(map)
         map.on('dragstart', () => {
           followUserOnMap = false
         })
         map.on('zoomstart', (ev) => {
           if (ev.originalEvent) followUserOnMap = false
         })
-        Leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap-bidragsytere',
-          maxZoom: 19,
-        }).addTo(map)
+        createAppMapTileLayer(Leaflet).addTo(map)
         setTimeout(() => map?.invalidateSize(), 100)
         rebuildMarkers()
         renderCount()
@@ -9535,14 +9535,12 @@ async function initMenuBrowseMap() {
   const el = document.getElementById('menu-browse-map')
   if (!el || menuBrowseMap) return
   await ensureLeaflet()
-  menuBrowseMap = Leaflet.map('menu-browse-map', { zoomControl: true }).setView(
+  menuBrowseMap = Leaflet.map('menu-browse-map', { zoomControl: false }).setView(
     [59.9139, 10.7522],
     13,
   )
-  Leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap-bidragsytere',
-    maxZoom: 19,
-  }).addTo(menuBrowseMap)
+  Leaflet.control.zoom({ position: 'topright' }).addTo(menuBrowseMap)
+  createAppMapTileLayer(Leaflet).addTo(menuBrowseMap)
   window.setTimeout(() => {
     try {
       menuBrowseMap?.invalidateSize()
