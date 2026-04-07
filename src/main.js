@@ -1117,6 +1117,10 @@ let frictionDistanceM = 0
 let frictionValueSaved = null
 /** Etter stopp: strekning klar for verdi / visning. */
 let frictionSegmentComplete = false
+/** @type {import('leaflet').LayerGroup | null} */
+let frictionHistoryLayerGroup = null
+/** @type {Map<string, import('leaflet').Polyline>} */
+let frictionHistoryPolylines = new Map()
 /** Rad i session_shares mens brukeren forhåndsviser en delt økt (før lagre / forkast). */
 let previewIncomingShareId = null
 /** @type {'login' | 'register'} */
@@ -4397,7 +4401,10 @@ function renderMenuFrictionHtml() {
       <div class="friction-list-dialog__inner">
         <div class="friction-list-dialog__head">
           <h2 id="friction-list-dialog-title" class="friction-list-dialog__title">Lagrede målinger</h2>
-          <button type="button" class="btn-text" id="friction-list-close">Lukk</button>
+          <div class="friction-list-dialog__head-actions">
+            <button type="button" class="btn-text friction-list-dialog__show-all" id="friction-list-show-all">Vis alle på kart</button>
+            <button type="button" class="btn-text" id="friction-list-close">Lukk</button>
+          </div>
         </div>
         <div id="friction-list-body" class="friction-list-dialog__body" role="list"></div>
       </div>
@@ -7370,9 +7377,21 @@ function bindMenuFrictionListeners() {
     },
     { signal },
   )
+  document.getElementById('friction-list-show-all')?.addEventListener(
+    'click',
+    () => frictionFitAllMeasurementsOnMap(),
+    { signal },
+  )
   document.getElementById('friction-list-body')?.addEventListener(
     'click',
     (ev) => {
+      const mapEl = /** @type {HTMLElement | null} */ (
+        ev.target?.closest?.('[data-friction-map]')
+      )
+      if (mapEl?.dataset?.frictionMap) {
+        frictionFocusMeasurementOnMap(mapEl.dataset.frictionMap)
+        return
+      }
       const t = /** @type {HTMLElement | null} */ (ev.target?.closest?.('[data-friction-del]'))
       if (!t?.dataset?.frictionDel) return
       frictionDeleteMeasurementById(t.dataset.frictionDel)
@@ -10354,6 +10373,7 @@ function frictionAppendMeasurementToList(value) {
   }
   saveAppState()
   frictionRefreshMeasurementsListBody()
+  frictionSyncHistoryOverlayToMap()
 }
 
 function frictionRefreshMeasurementsListBody() {
@@ -10377,7 +10397,10 @@ function frictionRefreshMeasurementsListBody() {
     <span class="friction-list-row__meta">${escapeHtml(dt)}</span>
     <span class="friction-list-row__detail">${escapeHtml(dist)} · ${escapeHtml(val)}</span>
   </div>
-  <button type="button" class="friction-list-row__del btn-text" data-friction-del="${escapeHtml(m.id)}" aria-label="Slett måling">Slett</button>
+  <div class="friction-list-row__actions">
+    <button type="button" class="friction-list-row__map btn-text" data-friction-map="${escapeHtml(m.id)}">Kart</button>
+    <button type="button" class="friction-list-row__del btn-text" data-friction-del="${escapeHtml(m.id)}" aria-label="Slett måling">Slett</button>
+  </div>
 </div>`
     })
     .join('')
@@ -10389,6 +10412,129 @@ function frictionDeleteMeasurementById(id) {
   frictionMeasurements = frictionMeasurements.filter((x) => x.id !== id)
   saveAppState()
   frictionRefreshMeasurementsListBody()
+  frictionSyncHistoryOverlayToMap()
+}
+
+/**
+ * @param {{ pathLatLngs?: number[][], startLat?: number | null, startLng?: number | null, endLat?: number | null, endLng?: number | null }} m
+ * @returns {[number, number][]}
+ */
+function frictionLatLngsFromMeasurement(m) {
+  const p = m.pathLatLngs
+  if (Array.isArray(p) && p.length >= 2) {
+    const out = []
+    for (const pair of p) {
+      if (!Array.isArray(pair) || pair.length < 2) continue
+      const lat = Number(pair[0])
+      const lng = Number(pair[1])
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+      out.push([lat, lng])
+    }
+    if (out.length >= 2) return out
+  }
+  if (
+    m.startLat != null &&
+    m.startLng != null &&
+    m.endLat != null &&
+    m.endLng != null &&
+    Number.isFinite(m.startLat) &&
+    Number.isFinite(m.startLng) &&
+    Number.isFinite(m.endLat) &&
+    Number.isFinite(m.endLng)
+  ) {
+    return [
+      [m.startLat, m.startLng],
+      [m.endLat, m.endLng],
+    ]
+  }
+  return []
+}
+
+function frictionSyncHistoryOverlayToMap() {
+  if (!frictionMap || !frictionHistoryLayerGroup || !Leaflet) return
+  frictionHistoryLayerGroup.clearLayers()
+  frictionHistoryPolylines.clear()
+  for (const m of frictionMeasurements) {
+    const latlngs = frictionLatLngsFromMeasurement(m)
+    if (latlngs.length < 2) continue
+    const poly = Leaflet.polyline(latlngs, {
+      color: '#334155',
+      weight: 6,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round',
+    })
+    poly.bindTooltip(
+      `${formatFrictionValueNb(m.value)} · ${formatFrictionDistanceShort(m.distanceM)}`,
+      {
+        sticky: true,
+        direction: 'top',
+        opacity: 0.96,
+        className: 'friction-history-tooltip',
+      },
+    )
+    poly.addTo(frictionHistoryLayerGroup)
+    frictionHistoryPolylines.set(m.id, poly)
+  }
+}
+
+/** @param {string | undefined} id */
+function frictionFocusMeasurementOnMap(id) {
+  if (!id || !frictionMap) return
+  frictionSyncHistoryOverlayToMap()
+  const poly = frictionHistoryPolylines.get(id)
+  const dlg = document.getElementById('friction-list-dialog')
+  if (dlg instanceof HTMLDialogElement) dlg.close()
+  const applyFit = () => {
+    try {
+      frictionMap?.invalidateSize({ animate: false })
+    } catch {
+      /* ignore */
+    }
+    if (poly) {
+      try {
+        frictionMap.fitBounds(poly.getBounds(), {
+          padding: [48, 48],
+          maxZoom: 17,
+        })
+      } catch {
+        /* ignore */
+      }
+      frictionSetStatus('Viser valgt måling på kartet.')
+      return
+    }
+    frictionSetStatus('Kunne ikke vise denne målingen på kartet (mangler rutedata).')
+  }
+  window.requestAnimationFrame(() => window.setTimeout(applyFit, 50))
+}
+
+function frictionFitAllMeasurementsOnMap() {
+  if (!frictionMap || !frictionHistoryLayerGroup || !Leaflet) return
+  frictionSyncHistoryOverlayToMap()
+  const layers = frictionHistoryLayerGroup.getLayers()
+  if (!layers.length) {
+    frictionSetStatus('Ingen lagrede målinger å vise.')
+    return
+  }
+  const fg = Leaflet.featureGroup(
+    /** @type {import('leaflet').Layer[]} */ (layers),
+  )
+  const dlg = document.getElementById('friction-list-dialog')
+  if (dlg instanceof HTMLDialogElement) dlg.close()
+  const applyFit = () => {
+    try {
+      frictionMap?.invalidateSize({ animate: false })
+    } catch {
+      /* ignore */
+    }
+    try {
+      frictionMap.fitBounds(fg.getBounds(), { padding: [52, 52], maxZoom: 16 })
+    } catch {
+      /* ignore */
+    }
+    frictionSetStatus('Viser alle lagrede målinger på kartet.')
+  }
+  window.requestAnimationFrame(() => window.setTimeout(applyFit, 50))
 }
 
 function frictionClearMapOverlays() {
@@ -10438,6 +10584,8 @@ function destroyFrictionMap() {
   frictionStartMarker = null
   frictionEndMarker = null
   frictionValueMarker = null
+  frictionHistoryLayerGroup = null
+  frictionHistoryPolylines.clear()
 }
 
 function frictionSetStatus(msg) {
@@ -10489,7 +10637,9 @@ async function initFrictionMap() {
     tapTolerance: 12,
   }).setView([59.9139, 10.7522], 13)
   Leaflet.control.zoom({ position: 'topright' }).addTo(frictionMap)
-  createAppMapTileLayer(Leaflet).addTo(frictionMap)
+  createAppMapTileLayer(Leaflet, { detectRetina: false }).addTo(frictionMap)
+  frictionHistoryLayerGroup = Leaflet.layerGroup().addTo(frictionMap)
+  frictionSyncHistoryOverlayToMap()
   window.setTimeout(() => {
     try {
       frictionMap?.invalidateSize()
@@ -11571,6 +11721,10 @@ window.addEventListener('storage', (ev) => {
         frictionMeasurements,
         normalizeFrictionMeasurementsList(p.frictionMeasurements),
       )
+    }
+    if (view === 'menuFriction' && frictionMap) {
+      frictionSyncHistoryOverlayToMap()
+      frictionRefreshMeasurementsListBody()
     }
     if (view === 'photoAlbum') {
       renderStandalonePhotoAlbumGallery()

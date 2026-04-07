@@ -2986,6 +2986,16 @@ body.home-ai-panel-open .home-vegref {
 .friction-view__map.leaflet-container {
   background: #d2d5db;
   font-family: var(--font);
+  /* Egen stable compositing – unngår at flis-filter (#app …) faller bort ved dialog/animasjon */
+  isolation: isolate;
+}
+
+/* Samme kontrast som øvrige kart; !important mot intermittent tap av filter på fliser */
+.friction-view__map.leaflet-container .leaflet-tile-container img.leaflet-tile {
+  filter: contrast(1.28) saturate(1.06) !important;
+  image-rendering: auto;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .friction-view__status {
@@ -3191,11 +3201,28 @@ body.home-ai-panel-open .home-vegref {
 
 .friction-list-dialog__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   padding: 1rem 1.1rem 0.65rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.friction-list-dialog__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.65rem;
+  margin-left: auto;
+}
+
+.friction-list-dialog__show-all {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+  white-space: nowrap;
 }
 
 .friction-list-dialog__title {
@@ -3223,9 +3250,23 @@ body.home-ai-panel-open .home-vegref {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.65rem;
+  gap: 0.5rem 0.65rem;
   padding: 0.55rem 0;
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.friction-list-row__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.friction-list-row__map {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+  padding: 0.2rem 0.35rem;
 }
 
 .friction-list-row:last-child {
@@ -3255,6 +3296,17 @@ body.home-ai-panel-open .home-vegref {
   flex-shrink: 0;
   font-size: 0.78rem;
   padding: 0.2rem 0.35rem;
+}
+
+.leaflet-tooltip.friction-history-tooltip {
+  padding: 0.35rem 0.55rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 600;
+  color: #f1f5f9 !important;
+  background: rgba(15, 23, 42, 0.94) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .leaflet-marker-icon.friction-value-marker {
