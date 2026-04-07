@@ -79,7 +79,7 @@ export async function buildCurrentUserFromSession(supabase, session) {
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} userId
- * @returns {Promise<{ sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[] } | null>}
+ * @returns {Promise<{ sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[], frictionMeasurements?: unknown[] } | null>}
  */
 export async function fetchUserAppState(supabase, userId) {
   const { data, error } = await supabase
@@ -99,13 +99,16 @@ export async function fetchUserAppState(supabase, userId) {
   const standalonePhotos = Array.isArray(p.standalonePhotos)
     ? p.standalonePhotos
     : []
-  return { sessions, currentSessionId, standalonePhotos }
+  const frictionMeasurements = Array.isArray(p.frictionMeasurements)
+    ? p.frictionMeasurements
+    : []
+  return { sessions, currentSessionId, standalonePhotos, frictionMeasurements }
 }
 
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} userId
- * @param {{ version: number, sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[] }} payload
+ * @param {{ version: number, sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[], frictionMeasurements?: unknown[] }} payload
  */
 export async function upsertUserAppState(supabase, userId, payload) {
   const row = {

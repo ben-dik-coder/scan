@@ -2928,6 +2928,355 @@ body.home-ai-panel-open .home-vegref {
     sans-serif;
 }
 
+/* —— Friksjonsmåling (hamburger → fullskjerm kart) —— */
+.friction-view {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  box-sizing: border-box;
+}
+
+.friction-view__top {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: max(0.5rem, env(safe-area-inset-top, 0px)) max(0.75rem, env(safe-area-inset-right, 0px)) 0.35rem
+    max(0.75rem, env(safe-area-inset-left, 0px));
+  background: linear-gradient(
+    180deg,
+    rgba(8, 12, 22, 0.96) 0%,
+    rgba(8, 12, 22, 0.88) 65%,
+    transparent 100%
+  );
+}
+
+.friction-view__back.btn-back {
+  margin-bottom: 0;
+}
+
+.friction-view__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.friction-view__list-open {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+  padding: 0.35rem 0.45rem;
+}
+
+.friction-view__map {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  z-index: 0;
+}
+
+.friction-view__map.leaflet-container {
+  background: #d2d5db;
+  font-family: var(--font);
+}
+
+.friction-view__status {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top, 0px) + 3.1rem);
+  z-index: 5;
+  max-width: min(92vw, 22rem);
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: center;
+  color: #e8eaef;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.friction-view__status[hidden] {
+  display: none !important;
+}
+
+.friction-view__dock {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+}
+
+.friction-view__dock-grad {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 4.5rem;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(6, 8, 14, 0.72) 42%,
+    rgba(6, 8, 14, 0.96) 100%
+  );
+}
+
+.friction-view__hud {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 1rem 0.5rem;
+  margin: 0 auto;
+  max-width: 28rem;
+}
+
+.friction-view__hud-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(186, 198, 220, 0.75);
+}
+
+.friction-view__hud-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+}
+
+.friction-view__tabs {
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 0.35rem;
+  padding: 0 0.75rem 0.5rem;
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+.friction-tab {
+  flex: 1 1 0;
+  min-height: 2.85rem;
+  padding: 0.45rem 0.5rem;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .friction-tab:hover {
+    background: rgba(96, 165, 250, 0.12);
+    border-color: rgba(96, 165, 250, 0.35);
+  }
+}
+
+.friction-tab:active {
+  transform: scale(0.98);
+}
+
+.friction-tab[aria-selected='true'] {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: rgba(147, 197, 253, 0.45);
+  box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.2) inset;
+}
+
+.friction-value-dialog {
+  border: none;
+  padding: 0;
+  max-width: min(94vw, 22rem);
+  width: 100%;
+  border-radius: 16px;
+  background: #181c27;
+  color: var(--text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.friction-value-dialog::backdrop {
+  background: rgba(4, 6, 12, 0.62);
+}
+
+.friction-value-dialog__inner {
+  padding: 1.15rem 1.2rem 1.2rem;
+}
+
+.friction-value-dialog__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.friction-value-dialog__lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.friction-value-dialog__label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.9);
+}
+
+.friction-value-dialog__input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.7rem;
+  font-size: 1.05rem;
+  border-radius: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.friction-value-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.friction-list-dialog {
+  border: none;
+  padding: 0;
+  max-width: min(94vw, 24rem);
+  width: 100%;
+  max-height: min(78vh, 32rem);
+  border-radius: 16px;
+  background: #181c27;
+  color: var(--text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.friction-list-dialog::backdrop {
+  background: rgba(4, 6, 12, 0.62);
+}
+
+.friction-list-dialog__inner {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  padding: 0;
+}
+
+.friction-list-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 0.65rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.friction-list-dialog__title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.friction-list-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.65rem 1rem 1.1rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.friction-list-dialog__empty {
+  margin: 0.5rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.friction-list-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.friction-list-row:last-child {
+  border-bottom: none;
+}
+
+.friction-list-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.friction-list-row__meta {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.friction-list-row__detail {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.friction-list-row__del {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.35rem;
+}
+
+.leaflet-marker-icon.friction-value-marker {
+  border: none;
+  background: transparent;
+}
+
+.friction-value-marker__inner {
+  display: inline-block;
+  min-width: 2.5rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+  background: rgba(10, 10, 12, 0.92);
+  border: 2px solid rgba(250, 250, 250, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
 .menu-info-card {
   margin: 0.75rem 0;
   padding: 1rem 1.05rem;
