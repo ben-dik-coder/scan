@@ -827,6 +827,10 @@ function mergeStoredSessionsPair(local, remote) {
     local.clickHistory,
     remote.clickHistory,
   )
+  const mergedPhotos = mergeStandalonePhotoLists(
+    normalizeStandalonePhotosList(local.photos),
+    normalizeStandalonePhotosList(remote.photos),
+  )
   const tLocal = new Date(local.updatedAt || 0).getTime()
   const tRemote = new Date(remote.updatedAt || 0).getTime()
   const base = tRemote >= tLocal ? { ...remote } : { ...local }
@@ -834,7 +838,31 @@ function mergeStoredSessionsPair(local, remote) {
     ...base,
     clickHistory: mergedClicks,
     count: mergedClicks.length,
+    photos: mergedPhotos,
   })
+}
+
+/**
+ * Sky + disk: samme økt-id kan ha ulikt innhold (synk-feil, avbrudd). Vi mister aldri bilder ved å slå sammen per id.
+ * @param {ReturnType<typeof normalizeSession>[]} remoteSessions
+ * @param {ReturnType<typeof normalizeSession>[]} diskSessions
+ */
+function mergeRemoteAndDiskSessions(remoteSessions, diskSessions) {
+  const diskById = new Map(diskSessions.map((s) => [s.id, s]))
+  const remoteById = new Map(remoteSessions.map((s) => [s.id, s]))
+  const allIds = new Set([...diskById.keys(), ...remoteById.keys()])
+  const merged = []
+  for (const id of allIds) {
+    const d = diskById.get(id)
+    const r = remoteById.get(id)
+    if (!d) merged.push(/** @type {NonNullable<typeof r>} */ (r))
+    else if (!r) merged.push(d)
+    else merged.push(mergeStoredSessionsPair(d, r))
+  }
+  return merged.sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  )
 }
 
 function normalizeSession(p) {
@@ -1312,7 +1340,9 @@ async function hydrateUserAppStateFromRemote() {
   if (!remote) return
 
   const diskApp = loadAppStateFromStorageForUser(currentUser.id)
-  const nextSessions = remote.sessions.map(normalizeSession).filter(Boolean)
+  const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
+  const diskSessions = diskApp.sessions.map(normalizeSession).filter(Boolean)
+  const nextSessions = mergeRemoteAndDiskSessions(remoteSessions, diskSessions)
   let nextSessionId = remote.currentSessionId
   const nextStandalone = mergeStandalonePhotoLists(
     normalizeStandalonePhotosList(remote.standalonePhotos),
@@ -1324,7 +1354,11 @@ async function hydrateUserAppStateFromRemote() {
   )
 
   if (nextSessionId && !nextSessions.some((s) => s.id === nextSessionId)) {
-    nextSessionId = null
+    nextSessionId =
+      typeof diskApp.currentSessionId === 'string' &&
+      nextSessions.some((s) => s.id === diskApp.currentSessionId)
+        ? diskApp.currentSessionId
+        : null
   }
 
   const prevSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}`
@@ -1358,6 +1392,9 @@ async function hydrateUserAppStateFromRemote() {
   if (dataChanged || view !== viewBefore) {
     renderApp()
     bindListenersForCurrentView()
+  }
+  if (dataChanged) {
+    saveAppState()
   }
 }
 
@@ -3892,7 +3929,6 @@ function compressDataUrlToDataUrl(dataUrl, maxDim, quality) {
   })
 }
 
-const MAX_SESSION_PHOTOS = 32
 /** Maks kant på lagrede bilder (album / opplasting). */
 const PHOTO_MAX_DIM = 1920
 const PHOTO_JPEG_QUALITY = 0.9
@@ -3958,28 +3994,16 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
 
   if (kmtStandaloneFlow) {
     standalonePhotos.push(entry)
-    let didShift = false
-    while (standalonePhotos.length > MAX_SESSION_PHOTOS) {
-      standalonePhotos.shift()
-      didShift = true
-    }
     saveAppState()
     if (view === 'photoAlbum') {
-      if (didShift) {
-        renderStandalonePhotoAlbumGallery()
-      } else {
-        appendStandalonePhotoAlbumCell(entry)
-        syncPhotoAlbumChrome()
-      }
+      appendStandalonePhotoAlbumCell(entry)
+      syncPhotoAlbumChrome()
     }
     return
   }
 
   if (!state.photos) state.photos = []
   state.photos.push(entry)
-  while (state.photos.length > MAX_SESSION_PHOTOS) {
-    state.photos.shift()
-  }
 
   if (lat != null && lng != null) {
     addLogEntry(state, {
@@ -4520,8 +4544,6 @@ function renderMenuSupportHtml() {
 function syncPhotoAlbumChrome() {
   const share = document.getElementById('btn-photo-album-share')
   const marker = document.getElementById('btn-photo-album-marker')
-  const deleteWrap = document.getElementById('photo-album-delete-wrap')
-  const deleteBtn = document.getElementById('btn-photo-album-delete')
   if (marker) {
     marker.classList.toggle('photo-album__marker--on', photoAlbumMarkerMode)
     marker.setAttribute(
@@ -4535,43 +4557,10 @@ function syncPhotoAlbumChrome() {
     share.disabled = n === 0
     share.classList.toggle('photo-album__share--active', green)
   }
-  if (deleteWrap && deleteBtn) {
-    if (photoAlbumMarkerMode) {
-      deleteWrap.hidden = false
-      const sel = photoAlbumSelectedIds.size
-      deleteBtn.disabled = sel === 0
-      deleteBtn.textContent =
-        sel <= 1 ? 'Slett bilde' : 'Slett bilder'
-    } else {
-      deleteWrap.hidden = true
-      deleteBtn.disabled = true
-      deleteBtn.textContent = 'Slett bilde'
-    }
-  }
   document.querySelector('.view-photo-album-wrap')?.classList.toggle(
     'view-photo-album-wrap--marker-mode',
     photoAlbumMarkerMode,
   )
-}
-
-function deleteSelectedStandalonePhotos() {
-  if (!photoAlbumMarkerMode || photoAlbumSelectedIds.size === 0) return
-  const ids = new Set(photoAlbumSelectedIds)
-  const n = ids.size
-  const ok =
-    n === 1
-      ? window.confirm(
-          'Slette dette bildet? Det fjernes fra appen og kan ikke angres.',
-        )
-      : window.confirm(
-          `Slette ${n} bilder? De fjernes fra appen og kan ikke angres.`,
-        )
-  if (!ok) return
-  standalonePhotos = standalonePhotos.filter((p) => !ids.has(p.id))
-  photoAlbumSelectedIds = new Set()
-  saveAppState()
-  renderStandalonePhotoAlbumGallery()
-  syncPhotoAlbumChrome()
 }
 
 function renderStandalonePhotoAlbumGallery() {
@@ -4922,12 +4911,6 @@ function bindPhotoAlbumListeners() {
     { signal },
   )
 
-  document.getElementById('btn-photo-album-delete')?.addEventListener(
-    'click',
-    () => deleteSelectedStandalonePhotos(),
-    { signal },
-  )
-
   const sharePhotosDlg = document.getElementById('share-photos-dialog')
   sharePhotosDlg?.addEventListener(
     'close',
@@ -5056,9 +5039,6 @@ function renderPhotoAlbumHtml() {
         <p id="standalone-photos-folders-summary" class="session-photos-folders-summary" hidden aria-live="polite"></p>
         <div id="standalone-photos-gallery" class="photo-album__grid" aria-live="polite"></div>
       </div>
-    </div>
-    <div class="photo-album__delete-wrap" id="photo-album-delete-wrap" hidden>
-      <button type="button" class="btn-text btn-logout photo-album__delete-btn" id="btn-photo-album-delete" disabled>Slett bilde</button>
     </div>
     ${renderShareStandalonePhotosDialogHtml()}
   </div>`
@@ -5783,7 +5763,9 @@ async function applySupabaseSessionAndNavigate(sb, session) {
   const remote = await fetchUserAppState(sb, session.user.id)
   const diskApp = loadAppStateFromStorageForUser(currentUser.id)
   if (remote) {
-    sessions = remote.sessions.map(normalizeSession).filter(Boolean)
+    const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
+    const diskSessions = diskApp.sessions.map(normalizeSession).filter(Boolean)
+    sessions = mergeRemoteAndDiskSessions(remoteSessions, diskSessions)
     currentSessionId = remote.currentSessionId
     standalonePhotos = mergeStandalonePhotoLists(
       normalizeStandalonePhotosList(remote.standalonePhotos),
@@ -5800,7 +5782,11 @@ async function applySupabaseSessionAndNavigate(sb, session) {
     frictionMeasurements = diskApp.frictionMeasurements
   }
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
-    currentSessionId = null
+    currentSessionId =
+      typeof diskApp.currentSessionId === 'string' &&
+      sessions.some((s) => s.id === diskApp.currentSessionId)
+        ? diskApp.currentSessionId
+        : null
   }
   state = loadCurrentSessionState()
   if (currentSessionId) {
@@ -5815,6 +5801,7 @@ async function applySupabaseSessionAndNavigate(sb, session) {
   } else {
     bindHomeListeners()
   }
+  saveAppState()
 }
 
 function bindAuthListeners() {

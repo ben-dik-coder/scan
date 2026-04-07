@@ -821,47 +821,6 @@ form.auth-form[hidden] {
   padding-bottom: 1rem;
 }
 
-/* Luft til fastsatt slettefelt nederst (synlig i marker-modus) */
-.view-photo-album-wrap--marker-mode .photo-album__body {
-  padding-bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
-}
-
-.photo-album__delete-wrap {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 200;
-  padding: 0.65rem max(1rem, env(safe-area-inset-left, 0px)) calc(0.75rem + env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-right, 0px));
-  max-width: 100vw;
-  box-sizing: border-box;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(14, 18, 34, 0.94);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.photo-album__delete-wrap[hidden] {
-  display: none !important;
-}
-
-/* Samme kolonne som #app (720px); farger som .btn-text.btn-logout */
-.photo-album__delete-btn {
-  display: block;
-  width: 100%;
-  max-width: 720px;
-  margin-left: auto;
-  margin-right: auto;
-  box-sizing: border-box;
-  min-height: 2.75rem;
-  touch-action: manipulation;
-}
-
-.photo-album__delete-btn:disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
-}
-
 .photo-album__top {
   display: flex;
   align-items: center;
