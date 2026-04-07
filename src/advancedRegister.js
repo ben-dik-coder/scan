@@ -74,6 +74,15 @@ function destroyAdvMap() {
   advUserMarker = null
 }
 
+/** Etter at appen har vært i bakgrunn (mobil): kart trenger ofte invalidateSize. */
+export function invalidateAdvRegMapSize() {
+  try {
+    advMap?.invalidateSize({ animate: false })
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * @returns {Promise<{ lat: number, lng: number, accuracy: number }>}
  */

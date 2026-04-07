@@ -6477,9 +6477,10 @@ body.session-map-fullscreen-open {
 
 /* Skarpere kartfliser: Leaflet bruker @2x-CARTO på retina; unngå ekstra uskarphet */
 /* Voyager-raster: kontrast + metning — lyse veier skiller seg ut; ingen brightness-justering. */
+/* !important + samme verdi inline i leafletLazy (tileload): iOS mister ofte filter etter resume. */
 #app .leaflet-tile-container img.leaflet-tile {
-  image-rendering: auto;
-  filter: contrast(1.28) saturate(1.06);
+  image-rendering: auto !important;
+  filter: contrast(1.28) saturate(1.06) !important;
 }
 
 .map {

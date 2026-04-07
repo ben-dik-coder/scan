@@ -16,6 +16,7 @@ import {
   ensureLeaflet,
   Leaflet,
   createAppMapTileLayer,
+  applyAppMapTileContrastToDom,
 } from './leafletLazy.js'
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
 import { syncLaunchSplash } from './launchTransition.js'
@@ -35,6 +36,7 @@ import {
   renderAdvancedRegisterSessionHtml,
   renderAdvancedRegisterReportHtml,
   bindAdvancedRegister,
+  invalidateAdvRegMapSize,
 } from './advancedRegister.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
@@ -10067,6 +10069,34 @@ function bindListenersForCurrentView() {
   }
 }
 
+/**
+ * På iOS/WebKit forsvinner ofte stylesheet-`filter` på CARTO-fliser etter at appen har vært
+ * i bakgrunn (låseskjerm). Inline-filter (se leafletLazy tileload) + dette kallet ved resume
+ * gjenoppretter lesbar kontrast. invalidateSize() unngår feil flislayout etter resume.
+ */
+function refreshLeafletMapsAfterResume() {
+  applyAppMapTileContrastToDom()
+  const inv = (m) => {
+    try {
+      m?.invalidateSize({ animate: false })
+    } catch {
+      /* ignore */
+    }
+  }
+  inv(map)
+  inv(menuBrowseMap)
+  inv(frictionMap)
+  inv(receivedPhotosMap)
+  invalidateAdvRegMapSize()
+}
+
+function queueRefreshLeafletAfterResume() {
+  requestAnimationFrame(() => {
+    refreshLeafletMapsAfterResume()
+    window.setTimeout(refreshLeafletMapsAfterResume, 120)
+  })
+}
+
 function bootstrap() {
   configureAdvancedRegister({
     navigate: (nextView) => {
@@ -10107,6 +10137,12 @@ function bootstrap() {
     if (document.visibilityState === 'hidden' && currentUser?.id) {
       void backupAuthToIdb(loadUsersFromStorage(), currentUser)
     }
+    if (document.visibilityState === 'visible') {
+      queueRefreshLeafletAfterResume()
+    }
+  })
+  window.addEventListener('pageshow', (ev) => {
+    if (ev.persisted) queueRefreshLeafletAfterResume()
   })
   const sbBoot = getSupabase()
   if (sbBoot) {
