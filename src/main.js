@@ -9,6 +9,8 @@ import {
   vegrefResetThrottle,
   vegrefClearSegmentLock,
   vegrefIsStationary,
+  vegrefGetLastSpeed,
+  vegrefGetSegmentConfidence,
 } from './vegrefLive.js'
 import {
   ensureLeaflet,
@@ -2778,6 +2780,17 @@ function applyHomeVegrefResult(res) {
     homeVegrefCompactD = res.d
     const segKey = `${longOfficial}|${res.s}|${res.d}`
     const segChanged = segKey !== homeVegrefSegKey
+    const mInt = parseKmtMeterInt(res.m)
+    const isStill =
+      vegrefGetLastSpeed() < 1 &&
+      homeVegrefDisplayedMeter != null &&
+      vegrefGetSegmentConfidence() > 5
+    if (isStill) {
+      homeVegrefSegKey = segKey
+      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+      comp.hidden = false
+      return
+    }
     if (skipM && homeVegrefHasDisplayedResult) {
       homeVegrefSegKey = segKey
       if (homeVegrefDisplayedMeter != null) {
@@ -2785,13 +2798,6 @@ function applyHomeVegrefResult(res) {
       } else {
         setHomeVegrefCompactDom(res.s, res.d, res.m)
       }
-      comp.hidden = false
-      return
-    }
-    const mInt = parseKmtMeterInt(res.m)
-    if (vegrefIsStationary() && homeVegrefDisplayedMeter != null) {
-      homeVegrefSegKey = segKey
-      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
       comp.hidden = false
       return
     }

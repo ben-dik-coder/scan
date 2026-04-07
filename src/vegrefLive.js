@@ -249,6 +249,14 @@ export function vegrefIsStationary() {
   return isStationary(lastSpeed, segmentConfidence)
 }
 
+export function vegrefGetLastSpeed() {
+  return lastSpeed
+}
+
+export function vegrefGetSegmentConfidence() {
+  return segmentConfidence
+}
+
 /**
  * @param {number} speedMps
  * @returns {number}
