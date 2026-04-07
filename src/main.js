@@ -2154,7 +2154,8 @@ function stopKmtCameraStream() {
     kmtMediaStream = null
   }
   kmtCameraMode = false
-  document.getElementById('kmt-dialog')?.classList.remove('kmt-dialog--camera')
+  const kmtDlg = document.getElementById('kmt-dialog')
+  kmtDlg?.classList.remove('kmt-dialog--camera', 'kmt-dialog--camera-warmup')
 }
 
 /**
@@ -3020,6 +3021,7 @@ async function openKmtDialog() {
     navigator.mediaDevices?.getUserMedia &&
     video
   ) {
+    dlg.classList.add('kmt-dialog--camera-warmup')
     try {
       let stream
       try {
@@ -3056,10 +3058,11 @@ async function openKmtDialog() {
         if (vt && vid) void applyKmtNormalizedPointFocus(vt, 0.5, 0.26)
       }, 520)
       kmtCameraMode = true
+      dlg.classList.remove('kmt-dialog--camera-warmup')
       dlg.classList.add('kmt-dialog--camera')
     } catch {
       kmtCameraMode = false
-      dlg.classList.remove('kmt-dialog--camera')
+      dlg.classList.remove('kmt-dialog--camera-warmup', 'kmt-dialog--camera')
       const st = document.getElementById('kmt-status')
       if (st) {
         st.textContent = 'Kamera ikke tilgjengelig.'
@@ -4874,6 +4877,11 @@ function renderKmtDialogHtml() {
                 autoplay
                 aria-label="Kameravisning"
               ></video>
+              <div
+                class="kmt-camera-warmup"
+                id="kmt-camera-warmup"
+                aria-hidden="true"
+              ></div>
               <div
                 class="kmt-tap-focus-layer"
                 id="kmt-tap-focus-layer"

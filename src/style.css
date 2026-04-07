@@ -3646,7 +3646,8 @@ body.home-ai-panel-open .home-vegref {
   box-shadow: 0 20px 56px rgba(0, 0, 0, 0.55);
 }
 
-.kmt-dialog.kmt-dialog--camera {
+.kmt-dialog.kmt-dialog--camera,
+.kmt-dialog.kmt-dialog--camera-warmup {
   width: 100vw;
   max-width: 100vw;
   height: 100dvh;
@@ -3656,7 +3657,8 @@ body.home-ai-panel-open .home-vegref {
   background: #000;
 }
 
-.kmt-dialog--camera .kmt-dialog__inner {
+.kmt-dialog--camera .kmt-dialog__inner,
+.kmt-dialog--camera-warmup .kmt-dialog__inner {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -3665,7 +3667,8 @@ body.home-ai-panel-open .home-vegref {
   box-sizing: border-box;
 }
 
-.kmt-dialog--camera .kmt-dialog__head--nav {
+.kmt-dialog--camera .kmt-dialog__head--nav,
+.kmt-dialog--camera-warmup .kmt-dialog__head--nav {
   position: absolute;
   top: 0;
   left: 0;
@@ -3684,7 +3687,8 @@ body.home-ai-panel-open .home-vegref {
   align-items: center;
 }
 
-.kmt-dialog--camera #kmt-panel-main {
+.kmt-dialog--camera #kmt-panel-main,
+.kmt-dialog--camera-warmup #kmt-panel-main {
   position: relative;
   flex: 1;
   min-height: 0;
@@ -3709,7 +3713,7 @@ body.home-ai-panel-open .home-vegref {
   overflow: hidden;
 }
 
-.kmt-dialog:not(.kmt-dialog--camera) .kmt-video-stage {
+.kmt-dialog:not(.kmt-dialog--camera):not(.kmt-dialog--camera-warmup) .kmt-video-stage {
   border-radius: 14px;
   border: 1px solid rgba(96, 165, 250, 0.2);
   aspect-ratio: 4 / 3;
@@ -3717,7 +3721,8 @@ body.home-ai-panel-open .home-vegref {
   max-height: 52vh;
 }
 
-.kmt-dialog--camera .kmt-video-stage {
+.kmt-dialog--camera .kmt-video-stage,
+.kmt-dialog--camera-warmup .kmt-video-stage {
   position: absolute;
   inset: 0;
   min-height: 0;
@@ -3731,6 +3736,59 @@ body.home-ai-panel-open .home-vegref {
   transform: scaleX(1);
 }
 
+.kmt-camera-warmup {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    155deg,
+    #0a0e18 0%,
+    #141a2e 38%,
+    #0d1222 72%,
+    #0a0e18 100%
+  );
+  background-size: 240% 240%;
+  animation: kmt-warmup-shimmer 2.4s ease-in-out infinite;
+}
+
+.kmt-dialog--camera-warmup .kmt-camera-warmup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kmt-dialog--camera-warmup .kmt-video {
+  opacity: 0;
+}
+
+.kmt-dialog--camera .kmt-video {
+  opacity: 1;
+  transition: opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes kmt-warmup-shimmer {
+  0%,
+  100% {
+    background-position: 0% 40%;
+  }
+
+  50% {
+    background-position: 100% 60%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kmt-camera-warmup {
+    animation: none;
+  }
+
+  .kmt-dialog--camera .kmt-video {
+    transition: opacity 0.2s ease;
+  }
+}
+
 .kmt-tap-focus-layer {
   position: absolute;
   inset: 0;
@@ -3740,7 +3798,7 @@ body.home-ai-panel-open .home-vegref {
   -webkit-tap-highlight-color: transparent;
 }
 
-.kmt-dialog:not(.kmt-dialog--camera) .kmt-tap-focus-layer {
+.kmt-dialog:not(.kmt-dialog--camera):not(.kmt-dialog--camera-warmup) .kmt-tap-focus-layer {
   display: none;
 }
 
@@ -3796,7 +3854,7 @@ body.home-ai-panel-open .home-vegref {
   pointer-events: none;
 }
 
-.kmt-dialog:not(.kmt-dialog--camera) .kmt-ref-overlay {
+.kmt-dialog:not(.kmt-dialog--camera):not(.kmt-dialog--camera-warmup) .kmt-ref-overlay {
   position: relative;
   padding: 0.65rem 0.75rem 0.75rem;
   margin-top: 0.5rem;
@@ -3853,7 +3911,7 @@ body.home-ai-panel-open .home-vegref {
   touch-action: manipulation;
 }
 
-.kmt-dialog:not(.kmt-dialog--camera) .kmt-capture-fab {
+.kmt-dialog:not(.kmt-dialog--camera):not(.kmt-dialog--camera-warmup) .kmt-capture-fab {
   position: relative;
   bottom: auto;
   left: auto;
@@ -3960,7 +4018,7 @@ body.home-ai-panel-open .home-vegref {
   text-align: center;
 }
 
-.kmt-dialog:not(.kmt-dialog--camera) .kmt-dialog__status--floating {
+.kmt-dialog:not(.kmt-dialog--camera):not(.kmt-dialog--camera-warmup) .kmt-dialog__status--floating {
   position: relative;
   top: auto;
   left: auto;
