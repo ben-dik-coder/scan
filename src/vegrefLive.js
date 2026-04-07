@@ -236,6 +236,20 @@ export function vegrefClearSegmentLock() {
 }
 
 /**
+ * Stillestående: lav fart og høy segment-confidence (meter skal ikke jittere).
+ * @param {number} speed
+ * @param {number} segmentConfidence
+ */
+export function isStationary(speed, segmentConfidence) {
+  return speed < 1 && segmentConfidence > 5
+}
+
+/** Bruker siste fart og confidence fra vegref-pipelinen. */
+export function vegrefIsStationary() {
+  return isStationary(lastSpeed, segmentConfidence)
+}
+
+/**
  * @param {number} speedMps
  * @returns {number}
  */

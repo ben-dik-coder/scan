@@ -8,6 +8,7 @@ import {
   vegrefResetSessionCache,
   vegrefResetThrottle,
   vegrefClearSegmentLock,
+  vegrefIsStationary,
 } from './vegrefLive.js'
 import {
   ensureLeaflet,
@@ -2741,7 +2742,12 @@ function applyHomeVegrefResult(res) {
       homeVegrefDisplayedMeter != null
     if (!willTweenSegChange) cancelHomeVegrefMeterTween()
   }
-  if (!skipM && homeVegrefDisplayedMeter != null && mIntEarly != null) {
+  if (
+    !vegrefIsStationary() &&
+    !skipM &&
+    homeVegrefDisplayedMeter != null &&
+    mIntEarly != null
+  ) {
     const delta = mIntEarly - homeVegrefDisplayedMeter
     if (delta < -15) {
       return
@@ -2783,6 +2789,12 @@ function applyHomeVegrefResult(res) {
       return
     }
     const mInt = parseKmtMeterInt(res.m)
+    if (vegrefIsStationary() && homeVegrefDisplayedMeter != null) {
+      homeVegrefSegKey = segKey
+      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+      comp.hidden = false
+      return
+    }
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
       homeVegrefSegKey = segKey
