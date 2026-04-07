@@ -7,6 +7,7 @@ import {
   vegrefHasLastDisplay,
   vegrefResetSessionCache,
   vegrefResetThrottle,
+  vegrefClearSegmentLock,
 } from './vegrefLive.js'
 import {
   ensureLeaflet,
@@ -1340,8 +1341,14 @@ let homeVegrefCompactD = '–'
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
-/** Ikke bytt ut god visning med treff langt fra veikanten (sannsynlig støy). */
-const HOME_VEGREF_MAX_DIST_SKIP_M = 95
+/** Dynamisk terskel: dårligere GPS → tillat litt større avstand før vi ignorerer treff. */
+function getHomeVegrefMaxDistSkipM(accuracyM) {
+  const a =
+    typeof accuracyM === 'number' && !Number.isNaN(accuracyM) ? accuracyM : 28
+  return a > 30 ? 80 : 50
+}
+/** Siste nøyaktighet brukt til dist-skip (oppdateres i feedVegrefFromGps). */
+let lastVegrefGpsAccuracyM = 28
 const HOME_VEGREF_METER_TWEEN_MS = 220
 /** Hopp mellom metertall oftere = færre tween-rammer (jevnere ved rask kjøring). */
 const HOME_VEGREF_METER_SNAP = 240
@@ -2427,8 +2434,10 @@ function applyKmtResult(res) {
     st.hidden = true
   }
   kmtHasDisplayedResult = true
+  const skipM = Boolean(
+    /** @type {{ skipMeterUpdate?: boolean }} */ (res).skipMeterUpdate,
+  )
   const segKey = `${res.roadLine}|${res.s}|${res.d}`
-  const mInt = parseKmtMeterInt(res.m)
   const segmentChanged = segKey !== kmtRefSegmentKey
   kmtRefSegmentKey = segKey
   line.textContent = res.roadLine
@@ -2439,6 +2448,12 @@ function applyKmtResult(res) {
     syncKmtCompactLine()
     return
   }
+  if (skipM && kmtHasDisplayedResult && kmtDisplayedMeter != null) {
+    mEl.textContent = String(kmtDisplayedMeter)
+    syncKmtCompactLine()
+    return
+  }
+  const mInt = parseKmtMeterInt(res.m)
   if (mInt == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
@@ -2447,10 +2462,21 @@ function applyKmtResult(res) {
     return
   }
   if (segmentChanged || kmtDisplayedMeter == null) {
-    cancelKmtMeterTween()
-    kmtDisplayedMeter = mInt
-    mEl.textContent = String(mInt)
-    syncKmtCompactLine()
+    if (segmentChanged && kmtDisplayedMeter != null && mInt != null) {
+      if (Math.abs(mInt - kmtDisplayedMeter) > 200) {
+        cancelKmtMeterTween()
+        kmtDisplayedMeter = mInt
+        mEl.textContent = String(mInt)
+        syncKmtCompactLine()
+      } else {
+        startKmtMeterTweenTo(mInt)
+      }
+    } else {
+      cancelKmtMeterTween()
+      kmtDisplayedMeter = mInt
+      mEl.textContent = String(mInt)
+      syncKmtCompactLine()
+    }
     return
   }
   const prev = kmtDisplayedMeter
@@ -2574,28 +2600,71 @@ function stopHomeVegrefTracking() {
  * @param {number} lng
  * @param {number} [accuracy]
  * @param {boolean} [forceImmediate]
+ * @param {number} [timestamp] GPS-fix tid (GeolocationPosition.timestamp)
+ * @param {number | null} [userHeadingDeg] retning i grader [0,360), fra coords.heading
  */
-function feedVegrefFromGps(lat, lng, accuracy, forceImmediate) {
+function feedVegrefFromGps(
+  lat,
+  lng,
+  accuracy,
+  forceImmediate,
+  timestamp,
+  userHeadingDeg,
+) {
   if (lat == null || lng == null) return
   const acc = Math.max(
     typeof accuracy === 'number' && !Number.isNaN(accuracy) ? accuracy : 20,
     8,
   )
+  lastVegrefGpsAccuracyM = acc
   lastLiveCoords = { lat, lng, accuracy: acc, ts: Date.now() }
   vegrefNotifyGps(lat, lng, {
     forceImmediate: !!forceImmediate,
     accuracyM: acc,
+    timestamp,
+    userHeadingDeg:
+      typeof userHeadingDeg === 'number' && !Number.isNaN(userHeadingDeg)
+        ? userHeadingDeg
+        : null,
   })
 }
 
-function scheduleHomeVegrefLookup(lat, lng, forceImmediate, accuracy) {
+function scheduleHomeVegrefLookup(
+  lat,
+  lng,
+  forceImmediate,
+  accuracy,
+  timestamp,
+  userHeadingDeg,
+) {
   if (view !== 'home' || lat == null || lng == null) return
-  feedVegrefFromGps(lat, lng, accuracy, forceImmediate)
+  feedVegrefFromGps(
+    lat,
+    lng,
+    accuracy,
+    forceImmediate,
+    timestamp,
+    userHeadingDeg,
+  )
 }
 
-function scheduleKmtVegrefLookup(lat, lng, forceImmediate, accuracy) {
+function scheduleKmtVegrefLookup(
+  lat,
+  lng,
+  forceImmediate,
+  accuracy,
+  timestamp,
+  userHeadingDeg,
+) {
   if (!kmtDialogOpen || lat == null || lng == null) return
-  feedVegrefFromGps(lat, lng, accuracy, forceImmediate)
+  feedVegrefFromGps(
+    lat,
+    lng,
+    accuracy,
+    forceImmediate,
+    timestamp,
+    userHeadingDeg,
+  )
 }
 
 function setHomeVegrefPlaceholder(msg) {
@@ -2631,11 +2700,16 @@ function applyHomeVegrefResult(res) {
     return
   }
 
+  const skipM = Boolean(
+    /** @type {{ skipMeterUpdate?: boolean }} */ (res).skipMeterUpdate,
+  )
+
   const dist = res.distToRoadM
+  const maxDistSkip = getHomeVegrefMaxDistSkipM(lastVegrefGpsAccuracyM)
   if (
     typeof dist === 'number' &&
     !Number.isNaN(dist) &&
-    dist > HOME_VEGREF_MAX_DIST_SKIP_M &&
+    dist > maxDistSkip &&
     homeVegrefHasDisplayedResult
   ) {
     /* Tvilsomt treff etter vi allerede viser noe – ignorer (unngår hopp/glitch). */
@@ -2653,6 +2727,29 @@ function applyHomeVegrefResult(res) {
   ).trim()
   const officialShort = String(res.roadLineShort || longOfficial || '').trim()
   if (!display && !officialShort) return
+
+  const segKeyEarly = `${longOfficial}|${res.s}|${res.d}`
+  const mIntEarly = skipM
+    ? homeVegrefDisplayedMeter
+    : parseKmtMeterInt(res.m)
+  const segChangedEarly = segKeyEarly !== homeVegrefSegKey
+  if (segChangedEarly) {
+    vegrefClearSegmentLock()
+    const willTweenSegChange =
+      !skipM &&
+      parseKmtMeterInt(res.m) != null &&
+      homeVegrefDisplayedMeter != null
+    if (!willTweenSegChange) cancelHomeVegrefMeterTween()
+  }
+  if (!skipM && homeVegrefDisplayedMeter != null && mIntEarly != null) {
+    const delta = mIntEarly - homeVegrefDisplayedMeter
+    if (delta < -15) {
+      return
+    }
+    if (Math.abs(delta) > 100 && !segChangedEarly) {
+      return
+    }
+  }
 
   homeVegrefHasDisplayedResult = true
   prim.textContent = display || officialShort
@@ -2674,6 +2771,17 @@ function applyHomeVegrefResult(res) {
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
     const segKey = `${longOfficial}|${res.s}|${res.d}`
+    const segChanged = segKey !== homeVegrefSegKey
+    if (skipM && homeVegrefHasDisplayedResult) {
+      homeVegrefSegKey = segKey
+      if (homeVegrefDisplayedMeter != null) {
+        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+      } else {
+        setHomeVegrefCompactDom(res.s, res.d, res.m)
+      }
+      comp.hidden = false
+      return
+    }
     const mInt = parseKmtMeterInt(res.m)
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
@@ -2681,12 +2789,25 @@ function applyHomeVegrefResult(res) {
       homeVegrefDisplayedMeter = null
       setHomeVegrefCompactDom(res.s, res.d, res.m)
     } else {
-      const segChanged = segKey !== homeVegrefSegKey
       homeVegrefSegKey = segKey
       if (segChanged || homeVegrefDisplayedMeter == null) {
-        cancelHomeVegrefMeterTween()
-        homeVegrefDisplayedMeter = mInt
-        setHomeVegrefCompactDom(res.s, res.d, mInt)
+        if (
+          segChanged &&
+          homeVegrefDisplayedMeter != null &&
+          mInt != null
+        ) {
+          if (Math.abs(mInt - homeVegrefDisplayedMeter) > 200) {
+            cancelHomeVegrefMeterTween()
+            homeVegrefDisplayedMeter = mInt
+            setHomeVegrefCompactDom(res.s, res.d, mInt)
+          } else {
+            startHomeVegrefMeterTweenTo(mInt)
+          }
+        } else {
+          cancelHomeVegrefMeterTween()
+          homeVegrefDisplayedMeter = mInt
+          setHomeVegrefCompactDom(res.s, res.d, mInt)
+        }
       } else {
         const prev = homeVegrefDisplayedMeter
         if (Math.abs(mInt - prev) > HOME_VEGREF_METER_SNAP) {
@@ -2721,9 +2842,18 @@ function startHomeVegrefTracking() {
   homeVegrefWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       if (view !== 'home') return
-      const { latitude, longitude, accuracy } = pos.coords
+      const { latitude, longitude, accuracy, heading } = pos.coords
       if (accuracy > GPS_REJECT_M) return
-      scheduleHomeVegrefLookup(latitude, longitude, false, accuracy)
+      const hdg =
+        heading != null && Number.isFinite(heading) ? heading : null
+      scheduleHomeVegrefLookup(
+        latitude,
+        longitude,
+        false,
+        accuracy,
+        pos.timestamp,
+        hdg,
+      )
     },
     (err) => {
       if (view !== 'home') return
@@ -2811,7 +2941,14 @@ async function openKmtDialog() {
   const lat0 = lastLiveCoords?.lat
   const lng0 = lastLiveCoords?.lng
   if (lat0 != null && lng0 != null) {
-    scheduleKmtVegrefLookup(lat0, lng0, true)
+    scheduleKmtVegrefLookup(
+      lat0,
+      lng0,
+      true,
+      lastLiveCoords?.accuracy ?? 28,
+      lastLiveCoords?.ts,
+      null,
+    )
   } else {
     const st = document.getElementById('kmt-status')
     if (st) {
@@ -2828,7 +2965,7 @@ async function openKmtDialog() {
           ts: Date.now(),
         }
         if (!kmtDialogOpen) return
-        scheduleKmtVegrefLookup(p.lat, p.lng, true)
+        scheduleKmtVegrefLookup(p.lat, p.lng, true, p.accuracy, Date.now(), null)
       } catch {
         if (!kmtDialogOpen) return
         const st2 = document.getElementById('kmt-status')
@@ -2893,7 +3030,14 @@ async function handleDrivingPosition(pos, seq, gpsStatusEl, firstFixRef) {
       )} m) – kartet følger posisjonen din; prøv utendørs med fri sikt for bedre treff.`
     }
     if (kmtDialogOpen) {
-      scheduleKmtVegrefLookup(latitude, longitude, false, acc)
+      scheduleKmtVegrefLookup(
+        latitude,
+        longitude,
+        false,
+        acc,
+        pos.timestamp,
+        headingDeg,
+      )
     }
     return
   }
@@ -2911,7 +3055,14 @@ async function handleDrivingPosition(pos, seq, gpsStatusEl, firstFixRef) {
   if (kmtDialogOpen) {
     const refLat = snapped ? snapped.lat : latitude
     const refLng = snapped ? snapped.lng : longitude
-    scheduleKmtVegrefLookup(refLat, refLng, false, acc)
+    scheduleKmtVegrefLookup(
+      refLat,
+      refLng,
+      false,
+      acc,
+      pos.timestamp,
+      headingDeg,
+    )
   }
 }
 
@@ -9229,6 +9380,7 @@ function bootstrap() {
       vegrefNotifyGps(lastLiveCoords.lat, lastLiveCoords.lng, {
         forceImmediate: true,
         accuracyM: lastLiveCoords.accuracy,
+        timestamp: Date.now(),
       })
     }
   })

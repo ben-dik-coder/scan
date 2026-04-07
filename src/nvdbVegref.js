@@ -36,12 +36,45 @@ export function parseLineStringLatLngWkt(wkt) {
 }
 
 /**
- * Avstand punkt → linjestykke + t langs [0,1].
+ * Bearing fra (lat1,lng1) til (lat2,lng2) i grader [0,360), nord = 0, med klokka.
  */
+export function bearingDeg(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180
+  const φ1 = toRad(lat1)
+  const φ2 = toRad(lat2)
+  const Δλ = toRad(lng2 - lng1)
+  const y = Math.sin(Δλ) * Math.cos(φ2)
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  let θ = Math.atan2(y, x)
+  θ = (θ * 180) / Math.PI
+  return (θ + 360) % 360
+}
+
+/**
+ * Minste vinkelavstand mellom to retninger i grader [0, 180].
+ */
+export function headingDiffDeg(h1, h2) {
+  if (
+    h1 == null ||
+    h2 == null ||
+    typeof h1 !== 'number' ||
+    typeof h2 !== 'number' ||
+    Number.isNaN(h1) ||
+    Number.isNaN(h2)
+  ) {
+    return 0
+  }
+  let d = Math.abs(h1 - h2) % 360
+  if (d > 180) d = 360 - d
+  return d
+}
+
 function pointToSegmentClosest(lat, lng, a, b) {
   let bestD = Infinity
   let bestT = 0
-  const steps = 24
+  const steps = 50
   for (let i = 0; i <= steps; i++) {
     const t = i / steps
     const plat = a.lat + t * (b.lat - a.lat)
@@ -157,32 +190,32 @@ export function describeSegmentForPoint(seg, lat, lng) {
   const fraM = str?.fra_meter
   const tilM = str?.til_meter
   let meterVal = null
+  const distM = close.distM
   if (
+    distM <= 25 &&
     typeof fraM === 'number' &&
     typeof tilM === 'number' &&
     tilM > fraM &&
     geomLen != null &&
     geomLen > 0
   ) {
+    /* Projisert punkt langs WKT (close.alongM); ved <12 m er treffet «snappet» til vei. */
     const frac = Math.min(1, Math.max(0, close.alongM / geomLen))
     meterVal = Math.round(fraM + frac * (tilM - fraM))
   }
 
   const baseRoad = formatVegsystemLine(vref?.vegsystem)
   const baseRoadShort = formatVegsystemShort(vref?.vegsystem)
-  const cat = vref?.vegsystem?.vegkategori
   const addrName =
     seg &&
     typeof seg.adresse === 'object' &&
     typeof seg.adresse.navn === 'string'
       ? seg.adresse.navn.trim()
       : ''
-  /** På forsiden: vis vegens navn i stedet for «Kommunal veg …» når NVDB har adressenavn. */
-  const roadLineDisplay =
-    cat === 'K' && addrName ? addrName : baseRoad
-  /** Forkortet hovedvisning (EV 6, KV 12, eller gatenavn). */
-  const roadLineDisplayShort =
-    cat === 'K' && addrName ? addrName : baseRoadShort
+  /** Når NVDB har adressenavn: alltid primær visning = navn (stabil UI); vegtype i sekundær linje. */
+  const hasAddr = Boolean(addrName)
+  const roadLineDisplay = hasAddr ? addrName : baseRoad
+  const roadLineDisplayShort = hasAddr ? addrName : baseRoadShort
 
   return {
     roadLine: baseRoad,
@@ -193,7 +226,9 @@ export function describeSegmentForPoint(seg, lat, lng) {
     d: str?.delstrekning != null ? String(str.delstrekning) : '–',
     m: meterVal != null ? String(meterVal) : '–',
     kortform: typeof vref?.kortform === 'string' ? vref.kortform : '',
-    distToRoadM: close.distM,
+    distToRoadM: distM,
+    /** Langt fra projected linje: UI skal ikke oppdatere metertall (behold forrige). */
+    skipMeterUpdate: distM > 25,
     nvdbId: segmentStableId(/** @type {object} */ (seg)),
   }
 }
@@ -206,12 +241,32 @@ function roadKindPenalty(seg) {
 }
 
 /**
+ * Retning langs segment (første → siste punkt i WKT), grader [0,360).
+ * @param {object} seg
+ * @returns {number | null}
+ */
+function segmentRoadHeadingDeg(seg) {
+  const wkt = seg?.geometri?.wkt
+  const pts = parseLineStringLatLngWkt(wkt)
+  if (pts.length < 2) return null
+  const a = pts[0]
+  const b = pts[pts.length - 1]
+  return bearingDeg(a.lat, a.lng, b.lat, b.lng)
+}
+
+/**
  * Velg segment: nærhet + vegtype, med hysterese mot forrige treff når GPS er ustabil
  * (typisk tettbygd med parallelle kommunalveier / stedsnavn).
  * @param {object[]} objekter
  * @param {number} lat
  * @param {number} lng
- * @param {{ accuracyM?: number, prevNvdbId?: string | number | null }} [opts]
+ * @param {{ accuracyM?: number, prevNvdbId?: string | number | null, userHeadingDeg?: number | null, speed?: number }} [opts]
+ * @returns {{
+ *   seg: object
+ *   chosenScore: number
+ *   bestScore: number
+ *   prevSegScore: number | null
+ * } | null}
  */
 function pickBestSegment(objekter, lat, lng, opts = {}) {
   const accuracyM =
@@ -219,32 +274,67 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       ? Math.min(120, Math.max(8, opts.accuracyM))
       : 28
   const prevNvdbId = opts.prevNvdbId ?? null
+  const speed = typeof opts.speed === 'number' && !Number.isNaN(opts.speed) ? opts.speed : 0
+  const speedFactor = Math.min(1.5, speed / 10)
+  const userHeadingDeg =
+    typeof opts.userHeadingDeg === 'number' &&
+    !Number.isNaN(opts.userHeadingDeg)
+      ? opts.userHeadingDeg
+      : null
 
   const scored = []
   for (const seg of objekter) {
     const d = describeSegmentForPoint(seg, lat, lng)
     if (!d) continue
     const id = segmentStableId(seg)
-    let score = d.distToRoadM + roadKindPenalty(seg)
-    if (prevNvdbId != null && id !== null && id === prevNvdbId) {
-      score -= Math.min(52, 16 + accuracyM * 0.7)
+    const dist = Math.min(d.distToRoadM, 100)
+    let score = dist + roadKindPenalty(seg)
+    if (prevNvdbId != null && id !== null) {
+      if (id === prevNvdbId) {
+        score -= 80 * speedFactor
+        if (speed < 2) score += 20
+      } else {
+        score += 40 * speedFactor
+      }
     }
+    const roadH = segmentRoadHeadingDeg(seg)
+    if (userHeadingDeg != null && roadH != null) {
+      const hd = headingDiffDeg(userHeadingDeg, roadH)
+      if (speed >= 3) score += hd * 0.5
+      if (hd < 25 && d.distToRoadM < 20) score -= 15
+      if (hd < 10) score += dist * 0.5
+    }
+    if (speed < 2) score -= 20
     scored.push({ seg, score, d, id })
   }
   if (!scored.length) return null
 
   scored.sort((a, b) => a.score - b.score)
   const best = scored[0]
-  if (prevNvdbId == null || best.id === prevNvdbId) return best.seg
+  const bestScore = best.score
+  const prevRow =
+    prevNvdbId != null ? scored.find((r) => r.id === prevNvdbId) : null
+  const prevSegScore =
+    prevRow != null && typeof prevRow.score === 'number' ? prevRow.score : null
 
-  const prevRow = scored.find((r) => r.id === prevNvdbId)
-  if (!prevRow) return best.seg
+  if (prevNvdbId == null || best.id === prevNvdbId) {
+    return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore }
+  }
+
+  if (!prevRow) {
+    return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore: null }
+  }
 
   const margin = Math.min(50, Math.max(9, accuracyM * 0.48))
   if (accuracyM >= 20 && prevRow.score - best.score < margin) {
-    return prevRow.seg
+    return {
+      seg: prevRow.seg,
+      chosenScore: prevRow.score,
+      bestScore,
+      prevSegScore,
+    }
   }
-  return best.seg
+  return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore }
 }
 
 /**
@@ -254,10 +344,12 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
  *   signal?: AbortSignal
  *   accuracyM?: number
  *   prevNvdbId?: string | number | null
+ *   userHeadingDeg?: number | null
+ *   speed?: number
  * }} [opts]
  */
 export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
-  const { signal, accuracyM, prevNvdbId } = opts
+  const { signal, accuracyM, prevNvdbId, userHeadingDeg, speed } = opts
   const padLat = 0.0042
   const cos = Math.cos((lat * Math.PI) / 180) || 1
   const padLng = padLat / cos
@@ -290,11 +382,25 @@ export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
   const objs = data.objekter
   if (!Array.isArray(objs) || objs.length === 0) return null
 
-  const best = pickBestSegment(objs, lat, lng, {
+  const picked = pickBestSegment(objs, lat, lng, {
     accuracyM,
     prevNvdbId: prevNvdbId ?? null,
+    userHeadingDeg: userHeadingDeg ?? null,
+    speed: speed ?? 0,
   })
-  if (!best) return null
+  if (!picked) return null
 
-  return describeSegmentForPoint(best, lat, lng)
+  const described = describeSegmentForPoint(picked.seg, lat, lng)
+  if (!described) return null
+  if (
+    typeof picked.chosenScore === 'number' &&
+    (picked.prevSegScore == null || typeof picked.prevSegScore === 'number')
+  ) {
+    described._vegrefMeta = {
+      newSegScore: picked.chosenScore,
+      prevSegScore: picked.prevSegScore,
+      bestScore: picked.bestScore,
+    }
+  }
+  return described
 }
