@@ -6149,9 +6149,21 @@ body.session-map-fullscreen-open {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.menu-photos-folder-row:hover {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.35);
+/* Unngå «fastlåst» hover på siste rad på touch (ghost hover) – kun ekte musepeker */
+@media (hover: hover) and (pointer: fine) {
+  .menu-photos-folder-row:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.35);
+  }
+}
+
+.menu-photos-folder-row:focus {
+  outline: none;
+}
+
+.menu-photos-folder-row:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.5);
+  outline-offset: 2px;
 }
 
 .menu-photos-folder-row:active {
