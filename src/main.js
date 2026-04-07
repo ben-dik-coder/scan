@@ -4374,7 +4374,6 @@ function renderMenuFrictionHtml() {
     <div id="friction-map" class="friction-view__map" role="application" aria-label="Kart"></div>
     <p id="friction-status" class="friction-view__status" role="status" aria-live="polite" hidden></p>
     <div class="friction-view__dock">
-      <div class="friction-view__dock-grad" aria-hidden="true"></div>
       <div class="friction-view__hud">
         <span class="friction-view__hud-label">Strekning</span>
         <span class="friction-view__hud-value" id="friction-distance-display">0 m</span>
