@@ -503,7 +503,9 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   useLat = smoothLat
   useLng = smoothLng
 
-  if (lastSpeed < 1 && segmentConfidence > 5) {
+  /* Stillestående: ikke spam NVDB på vanlige GPS-tikk (unngår meter-jitter). */
+  /* KMT åpning bruker forceImmediate — da må oppslag/stille reapply fortsatt gå igjennom. */
+  if (lastSpeed < 1 && segmentConfidence > 5 && !forceImmediate) {
     return
   }
 

@@ -3007,6 +3007,13 @@ async function openKmtDialog() {
   stopKmtCameraStream()
   dlg.showModal()
 
+  /* Som forsiden: vis siste NVDB-treff med é gang; ellers tydelig lasting mens nytt oppslag kjører. */
+  if (vegrefHasLastDisplay()) {
+    vegrefReapplyLastToDom()
+  } else {
+    setKmtLoading()
+  }
+
   const video = document.getElementById('kmt-video')
   if (
     isKmtCameraUiPreferred() &&
@@ -3072,7 +3079,7 @@ async function openKmtDialog() {
       lng0,
       true,
       lastLiveCoords?.accuracy ?? 28,
-      lastLiveCoords?.ts,
+      Date.now(),
       null,
     )
   } else {
