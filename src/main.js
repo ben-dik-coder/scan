@@ -3572,6 +3572,15 @@ function groupPhotosByRoadFolder(photos) {
   return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 }
 
+/** Finder-lignende mappeikon (blå mappe med «fane»). */
+function menuPhotosMacFolderIconSvg() {
+  return `<svg class="menu-photos-folder-svg" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <path fill="#6eb6ff" d="M6 7c0-1.1.9-2 2-2h7.2l1.6 1.6L26 7c1.66 0 3 1.34 3 3v1H5V9c0-1.1.9-2 2-2h-.5z"/>
+  <path fill="#3b82f6" d="M5 11h26c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V13c0-1.1.9-2 2-2z"/>
+  <path fill="#1d4ed8" opacity=".35" d="M5 11h26v2.5H5z"/>
+</svg>`
+}
+
 function renderPhotosGallery() {
   const el = document.getElementById('photos-gallery')
   if (!el) return
@@ -4135,46 +4144,62 @@ function renderMenuMapHtml() {
 function renderMenuPhotosHtml() {
   const all = getAllPhotosFlat()
   if (!all.length) {
+    menuPhotosOpenFolderKey = null
     return `<div class="view-sub view-menu-photos surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-photos">← Meny</button>
     <h2 class="subview-title">Bilder</h2>
     <p class="menu-session-panel__lead">Ingen bilder ennå. Ta bilde fra forsiden eller i en økt.</p>
-    <p class="sub-empty">Når du har bilder, grupperes de her etter vei (virtuell mappe <code>images/FV7560/</code> osv.).</p>
+    <p class="sub-empty">Når du har bilder, vises de i mapper etter sted/vei.</p>
   </div>`
   }
   const grouped = groupPhotosByRoadFolder(all)
-  const foldersHtml = grouped
-    .map(([folderKey, items]) => {
-      const path = `images/${folderKey}/`
-      const thumbs = items
-        .map((ph) => {
-          const v = ph.vegref && normalizePhotoVegref(ph.vegref)
-          const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
-          return `<button type="button" class="menu-photos-thumb" data-photo-id="${escapeHtml(ph.id)}">
+
+  if (menuPhotosOpenFolderKey != null) {
+    const row = grouped.find(([k]) => k === menuPhotosOpenFolderKey)
+    if (!row) {
+      menuPhotosOpenFolderKey = null
+      return renderMenuPhotosHtml()
+    }
+    const [folderKey, items] = row
+    const path = `images/${folderKey}/`
+    const thumbs = items
+      .map((ph) => {
+        const v = ph.vegref && normalizePhotoVegref(ph.vegref)
+        const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+        return `<button type="button" class="menu-photos-thumb" data-photo-id="${escapeHtml(ph.id)}">
         <span class="menu-photos-thumb__frame">
           <img src="${ph.dataUrl}" alt="" class="menu-photos-thumb__img" loading="lazy" decoding="async" />
           ${ov}
         </span>
       </button>`
-        })
-        .join('')
-      return `<details class="menu-photos-folder" open>
-      <summary class="menu-photos-folder__summary">
-        <span class="menu-photos-folder__title">
-          <span class="menu-photos-folder__name">${escapeHtml(folderKey)}</span>
-          <code class="menu-photos-folder__path">${escapeHtml(path)}</code>
-        </span>
-        <span class="menu-photos-folder__count">${items.length}</span>
-      </summary>
-      <div class="menu-photos-folder__grid">${thumbs}</div>
-    </details>`
+      })
+      .join('')
+    return `<div class="view-sub view-menu-photos surface view-panel-enter">
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos" aria-label="Tilbake til mapper">← Mapper</button>
+    <h2 class="subview-title menu-photos-detail__heading"><span class="menu-photos-detail__heading-icon" aria-hidden="true">${menuPhotosMacFolderIconSvg()}</span><span class="menu-photos-detail__heading-text">${escapeHtml(folderKey)}</span></h2>
+    <p class="menu-photos-detail__path"><code>${escapeHtml(path)}</code> · ${items.length} ${items.length === 1 ? 'bilde' : 'bilder'}</p>
+    <div class="menu-photos-folder__grid" id="menu-photos-folders">${thumbs}</div>
+  </div>`
+  }
+
+  const foldersHtml = grouped
+    .map(([folderKey, items]) => {
+      const path = `images/${folderKey}/`
+      return `<button type="button" class="menu-photos-folder-row" data-folder-key="${escapeHtml(folderKey)}">
+      <span class="menu-photos-folder-row__icon">${menuPhotosMacFolderIconSvg()}</span>
+      <span class="menu-photos-folder-row__text">
+        <span class="menu-photos-folder-row__name">${escapeHtml(folderKey)}</span>
+        <span class="menu-photos-folder-row__path">${escapeHtml(path)}</span>
+      </span>
+      <span class="menu-photos-folder-row__chevron" aria-hidden="true">›</span>
+    </button>`
     })
     .join('')
   return `<div class="view-sub view-menu-photos surface view-panel-enter">
-    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos">← Meny</button>
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos" aria-label="Tilbake til meny">← Meny</button>
     <h2 class="subview-title">Bilder</h2>
-    <p class="menu-session-panel__lead">Gruppert etter vei. Hvert bilde ligger logisk under <code>images/&lt;vei&gt;/</code>.</p>
-    <div class="menu-photos-folders" id="menu-photos-folders">${foldersHtml}</div>
+    <p class="menu-session-panel__lead">Åpne en mappe for å se bildene. Navnet følger vei/sted.</p>
+    <div class="menu-photos-folder-list" id="menu-photos-folders">${foldersHtml}</div>
   </div>`
 }
 
@@ -5424,6 +5449,8 @@ let menuSessionAbort = null
 let menuUserAbort = null
 let menuMapAbort = null
 let menuPhotosAbort = null
+/** Når satt: vis bilder i denne mappen; null = kun mappeoversikt. */
+let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
 let menuContactsAbort = null
 let menuInfoAbort = null
 let inboxAbort = null
@@ -5836,6 +5863,7 @@ function openMenuMapView() {
 
 function openMenuPhotosView() {
   closeHomeDrawer()
+  menuPhotosOpenFolderKey = null
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -6997,11 +7025,33 @@ function bindMenuPhotosListeners() {
   const { signal } = menuPhotosAbort
   document
     .getElementById('btn-back-from-menu-photos')
-    ?.addEventListener('click', () => goHome(), { signal })
+    ?.addEventListener(
+      'click',
+      () => {
+        if (menuPhotosOpenFolderKey != null) {
+          menuPhotosOpenFolderKey = null
+          renderApp()
+          bindMenuPhotosListeners()
+        } else {
+          goHome()
+        }
+      },
+      { signal },
+    )
   const root = document.getElementById('menu-photos-folders')
   root?.addEventListener(
     'click',
     (ev) => {
+      const row = ev.target.closest('.menu-photos-folder-row')
+      if (row) {
+        const key = row.getAttribute('data-folder-key')
+        if (key) {
+          menuPhotosOpenFolderKey = key
+          renderApp()
+          bindMenuPhotosListeners()
+        }
+        return
+      }
       const btn = ev.target.closest('.menu-photos-thumb')
       if (!btn) return
       const id = btn.getAttribute('data-photo-id')
