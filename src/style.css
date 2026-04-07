@@ -6073,6 +6073,43 @@ body.session-map-fullscreen-open {
   display: none !important;
 }
 
+.session-photos-folders-summary {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(42, 49, 66, 0.65);
+}
+
+.session-photos-folders-summary[hidden] {
+  display: none !important;
+}
+
+.photo-thumb-folder,
+.photo-album__folder {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.72),
+    rgba(0, 0, 0, 0.2)
+  );
+  text-align: center;
+  pointer-events: none;
+  line-height: 1.2;
+}
+
 .photos-gallery--session {
   gap: 0.5rem;
 }

@@ -3513,25 +3513,60 @@ function persist() {
   updateMapSharePanel()
 }
 
+/**
+ * Tekstlinje som viser virtuell mappestruktur (images/FV7560/ …) for økt/album.
+ * @param {Array<{ imageFolder?: string | null }>} photos
+ */
+function formatPhotosFolderSummaryLine(photos) {
+  const counts = new Map()
+  for (const p of photos) {
+    if (p.imageFolder) {
+      counts.set(p.imageFolder, (counts.get(p.imageFolder) || 0) + 1)
+    }
+  }
+  if (!counts.size) return ''
+  return [...counts.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([f, n]) => `images/${f}/ (${n})`)
+    .join(' · ')
+}
+
 function renderPhotosGallery() {
   const el = document.getElementById('photos-gallery')
   if (!el) return
   const strip = document.getElementById('session-photos-strip')
+  const summaryEl = document.getElementById('session-photos-folders-summary')
   const compact = el.classList.contains('photos-gallery--session')
   if (!state.photos.length) {
     el.innerHTML = ''
     if (strip) strip.hidden = true
+    if (summaryEl) {
+      summaryEl.textContent = ''
+      summaryEl.hidden = true
+    }
     return
   }
   if (strip) strip.hidden = false
+  const folderLine = formatPhotosFolderSummaryLine(state.photos)
+  if (summaryEl) {
+    if (folderLine) {
+      summaryEl.textContent = `Bildemapper (lagring): ${folderLine}`
+      summaryEl.hidden = false
+    } else {
+      summaryEl.textContent = ''
+      summaryEl.hidden = true
+    }
+  }
   el.innerHTML = state.photos
     .map((ph, i) => {
       const v = ph.vegref && normalizePhotoVegref(ph.vegref)
       const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
-      const folderBit =
-        ph.imageFolder && !compact
-          ? ` · ${escapeHtml(ph.imageFolder)}`
-          : ''
+      const folderBadge = ph.imageFolder
+        ? `<span class="photo-thumb-folder" title="images/${escapeHtml(ph.imageFolder)}/">${escapeHtml(ph.imageFolder)}</span>`
+        : ''
+      const folderBit = ph.imageFolder
+        ? ` · ${escapeHtml(ph.imageFolder)}`
+        : ''
       const meta = compact
         ? ''
         : `<span class="photo-thumb-meta">#${i + 1} · ${formatNb(new Date(ph.timestamp))}${folderBit}</span>`
@@ -3540,6 +3575,7 @@ function renderPhotosGallery() {
         <span class="photo-thumb-frame">
           <img src="${ph.dataUrl}" alt="" class="photo-thumb-img" loading="lazy" decoding="async" />
           ${ov}
+          ${folderBadge}
         </span>
         ${meta}
       </button>`
@@ -4158,12 +4194,27 @@ function deleteSelectedStandalonePhotos() {
 
 function renderStandalonePhotoAlbumGallery() {
   const el = document.getElementById('standalone-photos-gallery')
+  const summaryEl = document.getElementById('standalone-photos-folders-summary')
   if (!el) return
   if (!standalonePhotos.length) {
     el.innerHTML =
       '<p class="photo-album__empty">Ingen bilder ennå. Bruk «Ta bilde» på forsiden.</p>'
+    if (summaryEl) {
+      summaryEl.textContent = ''
+      summaryEl.hidden = true
+    }
     syncPhotoAlbumChrome()
     return
+  }
+  const folderLine = formatPhotosFolderSummaryLine(standalonePhotos)
+  if (summaryEl) {
+    if (folderLine) {
+      summaryEl.textContent = `Bildemapper (lagring): ${folderLine}`
+      summaryEl.hidden = false
+    } else {
+      summaryEl.textContent = ''
+      summaryEl.hidden = true
+    }
   }
   el.innerHTML = standalonePhotos
     .map((ph) => {
@@ -4173,10 +4224,14 @@ function renderStandalonePhotoAlbumGallery() {
         : 'photo-album__cell'
       const v = ph.vegref && normalizePhotoVegref(ph.vegref)
       const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+      const folderBadge = ph.imageFolder
+        ? `<span class="photo-album__folder" title="images/${escapeHtml(ph.imageFolder)}/">${escapeHtml(ph.imageFolder)}</span>`
+        : ''
       return `<button type="button" class="${cls}" data-photo-id="${escapeHtml(ph.id)}" aria-pressed="${sel ? 'true' : 'false'}">
         <span class="photo-album__thumb-wrap">
           <img src="${ph.dataUrl}" alt="" class="photo-album__thumb" loading="lazy" decoding="async" />
           ${ov}
+          ${folderBadge}
         </span>
       </button>`
     })
@@ -4216,6 +4271,13 @@ function appendStandalonePhotoAlbumCell(photo) {
     tmp.innerHTML = formatPhotoVegrefOverlayHtml(v, 'thumb')
     const overlay = tmp.firstElementChild
     if (overlay) wrap.appendChild(overlay)
+  }
+  if (photo.imageFolder) {
+    const fb = document.createElement('span')
+    fb.className = 'photo-album__folder'
+    fb.title = `images/${photo.imageFolder}/`
+    fb.textContent = photo.imageFolder
+    wrap.appendChild(fb)
   }
   btn.appendChild(wrap)
   el.appendChild(btn)
@@ -4609,6 +4671,7 @@ function renderPhotoAlbumHtml() {
         </div>
       </header>
       <div class="photo-album__body">
+        <p id="standalone-photos-folders-summary" class="session-photos-folders-summary" hidden aria-live="polite"></p>
         <div id="standalone-photos-gallery" class="photo-album__grid" aria-live="polite"></div>
       </div>
     </div>
@@ -5120,6 +5183,7 @@ function renderSessionHtml() {
       hidden
       aria-label="Bilder fra oppdraget"
     >
+      <p id="session-photos-folders-summary" class="session-photos-folders-summary" hidden aria-live="polite"></p>
       <div id="photos-gallery" class="photos-gallery photos-gallery--session"></div>
     </section>
 
