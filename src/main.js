@@ -4221,7 +4221,6 @@ function renderMenuPhotosHtml() {
       return renderMenuPhotosHtml()
     }
     const [folderKey, items] = row
-    const path = `images/${folderKey}/`
     const thumbs = items
       .map((ph) => {
         const v = ph.vegref && normalizePhotoVegref(ph.vegref)
@@ -4237,19 +4236,17 @@ function renderMenuPhotosHtml() {
     return `<div class="view-sub view-menu-photos surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-photos" aria-label="Tilbake til mapper">← Mapper</button>
     <h2 class="subview-title menu-photos-detail__heading"><span class="menu-photos-detail__heading-icon" aria-hidden="true">${menuPhotosMacFolderIconSvg()}</span><span class="menu-photos-detail__heading-text">${escapeHtml(folderKey)}</span></h2>
-    <p class="menu-photos-detail__path"><code>${escapeHtml(path)}</code> · ${items.length} ${items.length === 1 ? 'bilde' : 'bilder'}</p>
+    <p class="menu-photos-detail__meta">${items.length} ${items.length === 1 ? 'bilde' : 'bilder'}</p>
     <div class="menu-photos-folder__grid" id="menu-photos-folders">${thumbs}</div>
   </div>`
   }
 
   const foldersHtml = grouped
-    .map(([folderKey, items]) => {
-      const path = `images/${folderKey}/`
+    .map(([folderKey]) => {
       return `<button type="button" class="menu-photos-folder-row" data-folder-key="${escapeHtml(folderKey)}">
       <span class="menu-photos-folder-row__icon">${menuPhotosMacFolderIconSvg()}</span>
       <span class="menu-photos-folder-row__text">
         <span class="menu-photos-folder-row__name">${escapeHtml(folderKey)}</span>
-        <span class="menu-photos-folder-row__path">${escapeHtml(path)}</span>
       </span>
       <span class="menu-photos-folder-row__chevron" aria-hidden="true">›</span>
     </button>`

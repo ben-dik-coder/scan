@@ -6179,19 +6179,13 @@ body.session-map-fullscreen-open {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  justify-content: center;
 }
 
 .menu-photos-folder-row__name {
   font-weight: 650;
   font-size: 0.95rem;
   letter-spacing: 0.02em;
-}
-
-.menu-photos-folder-row__path {
-  font-size: 0.72rem;
-  color: var(--muted);
-  word-break: break-all;
 }
 
 .menu-photos-folder-row__chevron {
@@ -6225,14 +6219,10 @@ body.session-map-fullscreen-open {
   word-break: break-word;
 }
 
-.menu-photos-detail__path {
+.menu-photos-detail__meta {
   margin: 0.25rem 0 0.75rem;
   font-size: 0.8rem;
   color: var(--muted);
-}
-
-.menu-photos-detail__path code {
-  font-size: 0.78rem;
 }
 
 .menu-photos-folder__grid {
