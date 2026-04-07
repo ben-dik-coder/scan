@@ -976,7 +976,7 @@ let sessions = []
 let currentSessionId = null
 /** Bilder fra «Ta bilde» på forsiden (uten aktiv økt). */
 let standalonePhotos = []
-/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
+/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuPhotos' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
 let view = 'home'
 /** Faner under «Økten»: oversikt, gjenoppta, last ned, importer. */
 let menuSessionTab = 'sessions'
@@ -3531,6 +3531,47 @@ function formatPhotosFolderSummaryLine(photos) {
     .join(' · ')
 }
 
+/**
+ * Alle bilder på enheten: standalone + alle økter; aktiv økt overstyrer evt. duplikat-id.
+ * @returns {NonNullable<ReturnType<typeof normalizePhoto>>[]}
+ */
+function getAllPhotosFlat() {
+  const byId = new Map()
+  const add = (raw) => {
+    const n = normalizePhoto(raw)
+    if (n) byId.set(n.id, n)
+  }
+  for (const p of standalonePhotos) add(p)
+  for (const s of sessions) {
+    if (!Array.isArray(s.photos)) continue
+    for (const ph of s.photos) add(ph)
+  }
+  if (currentSessionId && Array.isArray(state?.photos)) {
+    for (const ph of state.photos) add(ph)
+  }
+  return [...byId.values()].sort(
+    (a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  )
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof normalizePhoto>>[]} photos
+ * @returns {[string, NonNullable<ReturnType<typeof normalizePhoto>>[]][]}
+ */
+function groupPhotosByRoadFolder(photos) {
+  const map = new Map()
+  for (const p of photos) {
+    const key =
+      typeof p.imageFolder === 'string' && p.imageFolder.trim()
+        ? p.imageFolder
+        : 'UKJENT_VEG'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push(p)
+  }
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+}
+
 function renderPhotosGallery() {
   const el = document.getElementById('photos-gallery')
   if (!el) return
@@ -3923,6 +3964,7 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-contract-ai">Kontraktskontroll</button>
         <button type="button" class="home-drawer__link" id="home-drawer-user">Bruker</button>
         <button type="button" class="home-drawer__link" id="home-drawer-map">Kart</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-photos">Bilder</button>
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
         <button type="button" class="home-drawer__link" id="home-drawer-messages">Meldinger</button>
         <button type="button" class="home-drawer__link" id="home-drawer-settings">Innstillinger</button>
@@ -4087,6 +4129,52 @@ function renderMenuMapHtml() {
     <div class="menu-browse-map-wrap">
       <div id="menu-browse-map" class="menu-browse-map" aria-label="Kart"></div>
     </div>
+  </div>`
+}
+
+function renderMenuPhotosHtml() {
+  const all = getAllPhotosFlat()
+  if (!all.length) {
+    return `<div class="view-sub view-menu-photos surface view-panel-enter">
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos">← Meny</button>
+    <h2 class="subview-title">Bilder</h2>
+    <p class="menu-session-panel__lead">Ingen bilder ennå. Ta bilde fra forsiden eller i en økt.</p>
+    <p class="sub-empty">Når du har bilder, grupperes de her etter vei (virtuell mappe <code>images/FV7560/</code> osv.).</p>
+  </div>`
+  }
+  const grouped = groupPhotosByRoadFolder(all)
+  const foldersHtml = grouped
+    .map(([folderKey, items]) => {
+      const path = `images/${folderKey}/`
+      const thumbs = items
+        .map((ph) => {
+          const v = ph.vegref && normalizePhotoVegref(ph.vegref)
+          const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+          return `<button type="button" class="menu-photos-thumb" data-photo-id="${escapeHtml(ph.id)}">
+        <span class="menu-photos-thumb__frame">
+          <img src="${ph.dataUrl}" alt="" class="menu-photos-thumb__img" loading="lazy" decoding="async" />
+          ${ov}
+        </span>
+      </button>`
+        })
+        .join('')
+      return `<details class="menu-photos-folder" open>
+      <summary class="menu-photos-folder__summary">
+        <span class="menu-photos-folder__title">
+          <span class="menu-photos-folder__name">${escapeHtml(folderKey)}</span>
+          <code class="menu-photos-folder__path">${escapeHtml(path)}</code>
+        </span>
+        <span class="menu-photos-folder__count">${items.length}</span>
+      </summary>
+      <div class="menu-photos-folder__grid">${thumbs}</div>
+    </details>`
+    })
+    .join('')
+  return `<div class="view-sub view-menu-photos surface view-panel-enter">
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos">← Meny</button>
+    <h2 class="subview-title">Bilder</h2>
+    <p class="menu-session-panel__lead">Gruppert etter vei. Hvert bilde ligger logisk under <code>images/&lt;vei&gt;/</code>.</p>
+    <div class="menu-photos-folders" id="menu-photos-folders">${foldersHtml}</div>
   </div>`
 }
 
@@ -5297,6 +5385,7 @@ function renderApp() {
   else if (view === 'menuSession') main = renderMenuSessionHtml()
   else if (view === 'menuUser') main = renderMenuUserHtml()
   else if (view === 'menuMap') main = renderMenuMapHtml()
+  else if (view === 'menuPhotos') main = renderMenuPhotosHtml()
   else if (view === 'menuContacts') main = renderMenuContactsHtml()
   else if (view === 'menuSettings') main = renderMenuSettingsHtml()
   else if (view === 'menuPrivacy') main = renderMenuPrivacyHtml()
@@ -5334,6 +5423,7 @@ let authAbort = null
 let menuSessionAbort = null
 let menuUserAbort = null
 let menuMapAbort = null
+let menuPhotosAbort = null
 let menuContactsAbort = null
 let menuInfoAbort = null
 let inboxAbort = null
@@ -5744,6 +5834,18 @@ function openMenuMapView() {
   bindMenuMapListeners()
 }
 
+function openMenuPhotosView() {
+  closeHomeDrawer()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuPhotos'
+  saveAppState()
+  renderApp()
+  bindMenuPhotosListeners()
+}
+
 function openMenuContactsView() {
   closeHomeDrawer()
   flushCurrentSession()
@@ -5848,6 +5950,11 @@ function bindHomeListeners() {
   document.getElementById('home-drawer-map')?.addEventListener(
     'click',
     () => openMenuMapView(),
+    { signal },
+  )
+  document.getElementById('home-drawer-photos')?.addEventListener(
+    'click',
+    () => openMenuPhotosView(),
     { signal },
   )
   document.getElementById('home-drawer-contacts')?.addEventListener(
@@ -6882,6 +6989,28 @@ function bindMenuMapListeners() {
   document
     .getElementById('btn-back-from-menu-map')
     ?.addEventListener('click', () => goHome(), { signal })
+}
+
+function bindMenuPhotosListeners() {
+  if (menuPhotosAbort) menuPhotosAbort.abort()
+  menuPhotosAbort = new AbortController()
+  const { signal } = menuPhotosAbort
+  document
+    .getElementById('btn-back-from-menu-photos')
+    ?.addEventListener('click', () => goHome(), { signal })
+  const root = document.getElementById('menu-photos-folders')
+  root?.addEventListener(
+    'click',
+    (ev) => {
+      const btn = ev.target.closest('.menu-photos-thumb')
+      if (!btn) return
+      const id = btn.getAttribute('data-photo-id')
+      if (!id) return
+      const ph = getAllPhotosFlat().find((p) => p.id === id)
+      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref)
+    },
+    { signal },
+  )
 }
 
 function bindMenuContactsListeners() {
@@ -9476,6 +9605,8 @@ function bindListenersForCurrentView() {
     bindMenuUserListeners()
   } else if (view === 'menuMap') {
     bindMenuMapListeners()
+  } else if (view === 'menuPhotos') {
+    bindMenuPhotosListeners()
   } else if (view === 'menuContacts') {
     bindMenuContactsListeners()
   } else if (view === 'menuSettings' || view === 'menuPrivacy' || view === 'menuSupport') {

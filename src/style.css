@@ -6088,6 +6088,110 @@ body.session-map-fullscreen-open {
   display: none !important;
 }
 
+/* Meny → Bilder: mapper per vei */
+.view-menu-photos .subview-title {
+  margin-bottom: 0.35rem;
+}
+
+.menu-photos-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  padding-bottom: 1.5rem;
+}
+
+.menu-photos-folder {
+  border: 1px solid rgba(42, 49, 66, 0.75);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.menu-photos-folder__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.92rem;
+}
+
+.menu-photos-folder__summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-photos-folder__title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.menu-photos-folder__name {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.menu-photos-folder__path {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.menu-photos-folder__count {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.menu-photos-folder__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.5rem;
+  padding: 0 0.75rem 0.85rem;
+}
+
+.menu-photos-thumb {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: zoom-in;
+  background: rgba(0, 0, 0, 0.25);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menu-photos-thumb__frame {
+  position: relative;
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.menu-photos-thumb__img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  vertical-align: middle;
+}
+
+.menu-photos-thumb:focus-visible {
+  outline: 2px solid rgba(147, 197, 253, 0.65);
+  outline-offset: 2px;
+}
+
 .photo-thumb-folder,
 .photo-album__folder {
   position: absolute;
