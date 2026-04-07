@@ -567,7 +567,7 @@ function normalizeRoadFolderName(name) {
 }
 
 /**
- * NVDB-kilde for mappe (KMT): roadLineShort først, deretter roadLine — fra skjult felt satt i applyKmtResult.
+ * NVDB-kilde for mappe (KMT): samme korte kjede som getVegrefHomeMirrorStrings.folderSeed — fra skjult felt satt i applyKmtResult.
  * @param {{ vegref?: { road: string, compact: string, kortform: string } | null }} [opts]
  */
 function resolveKmtPhotoFolderSeed(opts = {}) {
@@ -2085,14 +2085,14 @@ function tickKmtMeterTween(now) {
   const u = Math.min(1, (now - kmtMeterT0) / KMT_METER_TWEEN_MS)
   const ease = 1 - (1 - u) ** 3
   const v = Math.round(kmtMeterFrom + (kmtMeterTo - kmtMeterFrom) * ease)
-  el.textContent = String(v)
+  el.textContent = formatHomeVegrefMeterText(v)
   kmtDisplayedMeter = v
   syncKmtCompactLine()
   if (u < 1) {
     kmtMeterAnim = requestAnimationFrame(tickKmtMeterTween)
   } else {
     kmtMeterAnim = null
-    el.textContent = String(kmtMeterTo)
+    el.textContent = formatHomeVegrefMeterText(kmtMeterTo)
     kmtDisplayedMeter = kmtMeterTo
     syncKmtCompactLine()
   }
@@ -2120,7 +2120,7 @@ function startKmtMeterTweenTo(targetInt) {
   if (!el) return
   const from = kmtDisplayedMeter != null ? kmtDisplayedMeter : targetInt
   if (from === targetInt) {
-    el.textContent = String(targetInt)
+    el.textContent = formatHomeVegrefMeterText(targetInt)
     kmtDisplayedMeter = targetInt
     syncKmtCompactLine()
     cancelKmtMeterTween()
@@ -2434,6 +2434,41 @@ async function captureKmtCameraPhoto() {
   }
 }
 
+/**
+ * Samme strengavledning som applyHomeVegrefResult (primær, type, mappe) — for KMT-speil.
+ * @param {unknown} res
+ * @returns {{ primary: string, typeLine: string, folderSeed: string } | null}
+ */
+function getVegrefHomeMirrorStrings(res) {
+  if (!res || typeof res !== 'object') return null
+  const r = /** @type {{ roadLineDisplay?: unknown, roadLine?: unknown, roadLineDisplayShort?: unknown, roadLineShort?: unknown }} */ (
+    res
+  )
+  const longDisplay = String(r.roadLineDisplay || '').trim()
+  const longOfficial = String(r.roadLine || '').trim()
+  const display = String(
+    r.roadLineDisplayShort ||
+      r.roadLineShort ||
+      r.roadLineDisplay ||
+      r.roadLine ||
+      '',
+  ).trim()
+  const officialShort = String(r.roadLineShort || longOfficial || '').trim()
+  if (!display && !officialShort) return null
+  const primary = display || officialShort
+  const isStreet =
+    longDisplay &&
+    longOfficial &&
+    longDisplay !== longOfficial &&
+    officialShort
+  const typeLine = isStreet ? officialShort : ''
+  const folderSeed =
+    String(
+      r.roadLineShort || r.roadLineDisplayShort || r.roadLine || '',
+    ).trim() || longOfficial
+  return { primary, typeLine, folderSeed }
+}
+
 function setKmtLoading() {
   const st = document.getElementById('kmt-status')
   const line = document.getElementById('kmt-road-line')
@@ -2451,7 +2486,10 @@ function setKmtLoading() {
   if (s) s.textContent = '–'
   if (d) d.textContent = '–'
   if (m) m.textContent = '–'
-  if (kf) kf.textContent = ''
+  if (kf) {
+    kf.textContent = ''
+    kf.hidden = true
+  }
   syncKmtCompactLine()
 }
 
@@ -2477,7 +2515,10 @@ function applyKmtResult(res) {
     if (sEl) sEl.textContent = '–'
     if (dEl) dEl.textContent = '–'
     if (mEl) mEl.textContent = '–'
-    if (kf) kf.textContent = ''
+    if (kf) {
+      kf.textContent = ''
+      kf.hidden = true
+    }
     syncKmtCompactLine()
     return
   }
@@ -2492,25 +2533,31 @@ function applyKmtResult(res) {
   const segKey = `${res.roadLine}|${res.s}|${res.d}`
   const segmentChanged = segKey !== kmtRefSegmentKey
   kmtRefSegmentKey = segKey
-  line.textContent = res.roadLine
+  const mirror = getVegrefHomeMirrorStrings(res)
   const folderSrcEl = document.getElementById('kmt-road-folder-src')
-  if (folderSrcEl) {
-    folderSrcEl.textContent = String(
-      /** @type {{ roadLineShort?: string, roadLine?: string }} */ (res)
-        .roadLineShort ||
-        res.roadLine ||
-        '',
-    ).trim()
+  if (mirror) {
+    line.textContent = mirror.primary
+    if (folderSrcEl) folderSrcEl.textContent = mirror.folderSeed
+    if (kf) {
+      kf.textContent = mirror.typeLine
+      kf.hidden = !mirror.typeLine
+    }
+  } else {
+    line.textContent = '–'
+    if (folderSrcEl) folderSrcEl.textContent = ''
+    if (kf) {
+      kf.textContent = ''
+      kf.hidden = true
+    }
   }
   if (sEl) sEl.textContent = res.s
   if (dEl) dEl.textContent = res.d
-  if (kf) kf.textContent = res.kortform || ''
   if (!mEl) {
     syncKmtCompactLine()
     return
   }
   if (skipM && kmtHasDisplayedResult && kmtDisplayedMeter != null) {
-    mEl.textContent = String(kmtDisplayedMeter)
+    mEl.textContent = formatHomeVegrefMeterText(kmtDisplayedMeter)
     syncKmtCompactLine()
     return
   }
@@ -2518,7 +2565,7 @@ function applyKmtResult(res) {
   if (mInt == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
-    mEl.textContent = res.m
+    mEl.textContent = formatHomeVegrefMeterText(res.m)
     syncKmtCompactLine()
     return
   }
@@ -2527,7 +2574,7 @@ function applyKmtResult(res) {
       if (Math.abs(mInt - kmtDisplayedMeter) > 200) {
         cancelKmtMeterTween()
         kmtDisplayedMeter = mInt
-        mEl.textContent = String(mInt)
+        mEl.textContent = formatHomeVegrefMeterText(mInt)
         syncKmtCompactLine()
       } else {
         startKmtMeterTweenTo(mInt)
@@ -2535,7 +2582,7 @@ function applyKmtResult(res) {
     } else {
       cancelKmtMeterTween()
       kmtDisplayedMeter = mInt
-      mEl.textContent = String(mInt)
+      mEl.textContent = formatHomeVegrefMeterText(mInt)
       syncKmtCompactLine()
     }
     return
@@ -2544,7 +2591,7 @@ function applyKmtResult(res) {
   if (Math.abs(mInt - prev) > KMT_METER_SNAP_IF_DELTA) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = mInt
-    mEl.textContent = String(mInt)
+    mEl.textContent = formatHomeVegrefMeterText(mInt)
     syncKmtCompactLine()
     return
   }
@@ -2570,7 +2617,10 @@ function applyKmtError(err) {
   if (sEl) sEl.textContent = '–'
   if (dEl) dEl.textContent = '–'
   if (mEl) mEl.textContent = '–'
-  if (kf) kf.textContent = ''
+  if (kf) {
+    kf.textContent = ''
+    kf.hidden = true
+  }
   syncKmtCompactLine()
 }
 
