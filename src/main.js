@@ -554,6 +554,37 @@ function normalizePhotoVegref(vr) {
 }
 
 /**
+ * Mappe-navn per vei for album / eksport (virtuell sti: images/NAME/).
+ * @param {string} [name]
+ */
+function normalizeRoadFolderName(name) {
+  if (!name) return 'UKJENT_VEG'
+
+  return String(name)
+    .replace(/\s+/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+}
+
+/**
+ * NVDB-kilde for mappe (KMT): roadLineShort først, deretter roadLine — fra skjult felt satt i applyKmtResult.
+ * @param {{ vegref?: { road: string, compact: string, kortform: string } | null }} [opts]
+ */
+function resolveKmtPhotoFolderSeed(opts = {}) {
+  const el =
+    typeof document !== 'undefined'
+      ? document.getElementById('kmt-road-folder-src')
+      : null
+  const fromDom = el?.textContent?.trim() || ''
+  if (fromDom) return fromDom
+  if (opts.vegref) {
+    const v = normalizePhotoVegref(opts.vegref)
+    if (v?.road) return v.road
+  }
+  return ''
+}
+
+/**
  * @param {{ road: string, compact: string, kortform: string }} v
  */
 function formatPhotoVegrefOverlayLinesHtml(v) {
@@ -602,6 +633,14 @@ function normalizePhoto(p) {
   const vegref = normalizePhotoVegref(
     /** @type {{ vegref?: unknown }} */ (p).vegref,
   )
+  const hasFolderKey = 'imageFolder' in p
+  const rawFolder = /** @type {{ imageFolder?: unknown }} */ (p).imageFolder
+  const imageFolder =
+    hasFolderKey && typeof rawFolder === 'string'
+      ? normalizeRoadFolderName(rawFolder)
+      : null
+  const imagePath =
+    imageFolder != null ? `images/${imageFolder}/` : null
   return {
     id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
     timestamp: typeof p.timestamp === 'string' ? p.timestamp : nowIso(),
@@ -611,6 +650,9 @@ function normalizePhoto(p) {
       rawLng != null && !Number.isNaN(Number(rawLng)) ? Number(rawLng) : null,
     dataUrl,
     ...(vegref ? { vegref } : {}),
+    ...(imageFolder != null && imagePath != null
+      ? { imageFolder, imagePath }
+      : {}),
   }
 }
 
@@ -2366,7 +2408,10 @@ async function captureKmtCameraPhoto() {
     return
   }
   try {
-    await addPhotoFromCompressedDataUrl(dataUrl, vegref ? { vegref } : {})
+    await addPhotoFromCompressedDataUrl(
+    dataUrl,
+    vegref ? { vegref } : {},
+  )
   } catch (err) {
     console.error(err)
     const stErr = document.getElementById('kmt-status')
@@ -2401,6 +2446,8 @@ function setKmtLoading() {
     st.hidden = false
   }
   if (line) line.textContent = '…'
+  const folderSrcEl = document.getElementById('kmt-road-folder-src')
+  if (folderSrcEl) folderSrcEl.textContent = ''
   if (s) s.textContent = '–'
   if (d) d.textContent = '–'
   if (m) m.textContent = '–'
@@ -2425,6 +2472,8 @@ function applyKmtResult(res) {
     kmtDisplayedMeter = null
     kmtRefSegmentKey = ''
     line.textContent = '–'
+    const folderSrcEl = document.getElementById('kmt-road-folder-src')
+    if (folderSrcEl) folderSrcEl.textContent = ''
     if (sEl) sEl.textContent = '–'
     if (dEl) dEl.textContent = '–'
     if (mEl) mEl.textContent = '–'
@@ -2444,6 +2493,15 @@ function applyKmtResult(res) {
   const segmentChanged = segKey !== kmtRefSegmentKey
   kmtRefSegmentKey = segKey
   line.textContent = res.roadLine
+  const folderSrcEl = document.getElementById('kmt-road-folder-src')
+  if (folderSrcEl) {
+    folderSrcEl.textContent = String(
+      /** @type {{ roadLineShort?: string, roadLine?: string }} */ (res)
+        .roadLineShort ||
+        res.roadLine ||
+        '',
+    ).trim()
+  }
   if (sEl) sEl.textContent = res.s
   if (dEl) dEl.textContent = res.d
   if (kf) kf.textContent = res.kortform || ''
@@ -3470,9 +3528,13 @@ function renderPhotosGallery() {
     .map((ph, i) => {
       const v = ph.vegref && normalizePhotoVegref(ph.vegref)
       const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+      const folderBit =
+        ph.imageFolder && !compact
+          ? ` · ${escapeHtml(ph.imageFolder)}`
+          : ''
       const meta = compact
         ? ''
-        : `<span class="photo-thumb-meta">#${i + 1} · ${formatNb(new Date(ph.timestamp))}</span>`
+        : `<span class="photo-thumb-meta">#${i + 1} · ${formatNb(new Date(ph.timestamp))}${folderBit}</span>`
       return `
       <button type="button" class="photo-thumb-card" data-photo-id="${escapeHtml(ph.id)}">
         <span class="photo-thumb-frame">
@@ -3529,7 +3591,11 @@ const KMT_CAPTURE_MAX_DIM = 2560
 
 /**
  * @param {string} dataUrl
- * @param {{ lat?: number | null, lng?: number | null, vegref?: { road: string, compact: string, kortform: string } | null }} [opts] Eksplisitte koord (f.eks. EXIF) brukes først. `vegref` vises som HTML-overlay (skarp ved zoom), ikke innprintet i pikslene.
+ * @param {{
+ *   lat?: number | null
+ *   lng?: number | null
+ *   vegref?: { road: string, compact: string, kortform: string } | null
+ * }} [opts] Eksplisitte koord (f.eks. EXIF) brukes først. `vegref` vises som HTML-overlay (skarp ved zoom), ikke innprintet i pikslene. Mappe (`images/…/`) utledes fra KMT-feltet `kmt-road-folder-src` + evt. vegref.
  */
 async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
   let lat = null
@@ -3568,6 +3634,7 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
     }
   }
 
+  const folderSeed = resolveKmtPhotoFolderSeed(opts)
   const entry = normalizePhoto({
     id: crypto.randomUUID(),
     timestamp: nowIso(),
@@ -3575,6 +3642,7 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
     lng,
     dataUrl,
     ...(opts.vegref ? { vegref: opts.vegref } : {}),
+    imageFolder: folderSeed,
   })
   if (!entry) return
 
@@ -4169,6 +4237,8 @@ function standalonePhotosToShareSessionPayload(photos) {
     }
     const vr = p.vegref && normalizePhotoVegref(p.vegref)
     if (vr) o.vegref = vr
+    if (p.imageFolder) o.imageFolder = p.imageFolder
+    if (p.imagePath) o.imagePath = p.imagePath
     return o
   })
   return {
@@ -4579,6 +4649,7 @@ function renderKmtDialogHtml() {
               ></div>
               <div class="kmt-ref-overlay" id="kmt-ref-overlay">
                 <div class="kmt-ref-overlay__road" id="kmt-road-line">–</div>
+                <span class="visually-hidden" id="kmt-road-folder-src" aria-hidden="true"></span>
                 <div class="kmt-ref-overlay__compact" id="kmt-ref-compact">S – · D – · m –</div>
                 <span class="visually-hidden" id="kmt-s">–</span>
                 <span class="visually-hidden" id="kmt-d">–</span>
