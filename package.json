@@ -12,10 +12,12 @@
     "build:watch": "npm run watch:dist",
     "preview": "vite preview",
     "pdf-server": "npm run start --prefix server",
-    "ingest-contract": "npm run ingest-contract-pdf --prefix server --"
+    "ingest-contract": "npm run ingest-contract-pdf --prefix server --",
+    "fix:registrering-icon": "node scripts/fix-registrering-alpha.mjs"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "sharp": "^0.34.5",
     "vite": "^8.0.1"
   },
   "dependencies": {
