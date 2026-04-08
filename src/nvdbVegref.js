@@ -92,12 +92,13 @@ function pointToSegmentClosest(lat, lng, a, b) {
  * @param {{ lat: number, lng: number }[]} pts
  * @param {number} lat
  * @param {number} lng
- * @returns {{ distM: number, alongM: number, totalM: number } | null}
+ * @returns {{ distM: number, alongM: number, totalM: number, closestIdx: number } | null}
  */
 function closestOnPolyline(pts, lat, lng) {
   if (pts.length < 2) return null
   let bestDist = Infinity
   let alongBest = 0
+  let bestIdx = 0
   let alongAcc = 0
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i]
@@ -107,10 +108,11 @@ function closestOnPolyline(pts, lat, lng) {
     if (distM < bestDist) {
       bestDist = distM
       alongBest = alongAcc + t * segLen
+      bestIdx = i
     }
     alongAcc += segLen
   }
-  return { distM: bestDist, alongM: alongBest, totalM: alongAcc }
+  return { distM: bestDist, alongM: alongBest, totalM: alongAcc, closestIdx: bestIdx }
 }
 
 const KATEGORI_LABEL = {
@@ -191,15 +193,15 @@ export function describeSegmentForPoint(seg, lat, lng) {
   const tilM = str?.til_meter
   let meterVal = null
   const distM = close.distM
+  const meterDistThreshold = 40
   if (
-    distM <= 25 &&
+    distM <= meterDistThreshold &&
     typeof fraM === 'number' &&
     typeof tilM === 'number' &&
     tilM > fraM &&
     geomLen != null &&
     geomLen > 0
   ) {
-    /* Projisert punkt langs WKT (close.alongM); ved <12 m er treffet «snappet» til vei. */
     const frac = Math.min(1, Math.max(0, close.alongM / geomLen))
     meterVal = Math.round(fraM + frac * (tilM - fraM))
   }
@@ -227,8 +229,7 @@ export function describeSegmentForPoint(seg, lat, lng) {
     m: meterVal != null ? String(meterVal) : '–',
     kortform: typeof vref?.kortform === 'string' ? vref.kortform : '',
     distToRoadM: distM,
-    /** Langt fra projected linje: UI skal ikke oppdatere metertall (behold forrige). */
-    skipMeterUpdate: distM > 25,
+    skipMeterUpdate: distM > meterDistThreshold,
     nvdbId: segmentStableId(/** @type {object} */ (seg)),
   }
 }
@@ -241,14 +242,26 @@ function roadKindPenalty(seg) {
 }
 
 /**
- * Retning langs segment (første → siste punkt i WKT), grader [0,360).
+ * Retning langs segment ved nærmeste punkt (tangent), grader [0,360).
+ * Bruker segment-indeks fra closestOnPolyline for lokal retning.
  * @param {object} seg
+ * @param {number} lat
+ * @param {number} lng
  * @returns {number | null}
  */
-function segmentRoadHeadingDeg(seg) {
+function segmentRoadHeadingDeg(seg, lat, lng) {
   const wkt = seg?.geometri?.wkt
   const pts = parseLineStringLatLngWkt(wkt)
   if (pts.length < 2) return null
+  if (lat != null && lng != null) {
+    const close = closestOnPolyline(pts, lat, lng)
+    if (close) {
+      const i = close.closestIdx
+      const a = pts[i]
+      const b = pts[Math.min(i + 1, pts.length - 1)]
+      return bearingDeg(a.lat, a.lng, b.lat, b.lng)
+    }
+  }
   const a = pts[0]
   const b = pts[pts.length - 1]
   return bearingDeg(a.lat, a.lng, b.lat, b.lng)
@@ -297,10 +310,10 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
         score += 40 * speedFactor
       }
     }
-    const roadH = segmentRoadHeadingDeg(seg)
-    if (userHeadingDeg != null && roadH != null) {
+    const roadH = segmentRoadHeadingDeg(seg, lat, lng)
+    if (userHeadingDeg != null && roadH != null && speed >= 5) {
       const hd = headingDiffDeg(userHeadingDeg, roadH)
-      if (speed >= 3) score += hd * 0.5
+      score += hd * 0.5
       if (hd < 25 && d.distToRoadM < 20) score -= 15
       if (hd < 10) score += dist * 0.5
     }
@@ -325,7 +338,7 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore: null }
   }
 
-  const margin = Math.min(50, Math.max(9, accuracyM * 0.48))
+  const margin = Math.min(30, Math.max(6, accuracyM * 0.3))
   if (accuracyM >= 20 && prevRow.score - best.score < margin) {
     return {
       seg: prevRow.seg,

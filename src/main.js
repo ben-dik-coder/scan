@@ -1584,6 +1584,8 @@ let homeVegrefMeterT0 = 0
 let homeVegrefDisplayedMeter = null
 let homeVegrefCompactS = '–'
 let homeVegrefCompactD = '–'
+let homeVegrefLastDistSkipAt = 0
+const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -2901,10 +2903,9 @@ function stopHomeVegrefTracking() {
     navigator.geolocation.clearWatch(homeVegrefWatchId)
     homeVegrefWatchId = null
   }
-  vegrefStopPipeline()
   cancelHomeVegrefMeterTween()
-  homeVegrefSegKey = ''
-  homeVegrefDisplayedMeter = null
+  /* Don't reset vegref pipeline or UI state — preserve last known position so
+     returning to home doesn't trigger a cold-start freeze. */
 }
 
 /**
@@ -3025,8 +3026,15 @@ function applyHomeVegrefResult(res) {
     dist > maxDistSkip &&
     homeVegrefHasDisplayedResult
   ) {
-    /* Tvilsomt treff etter vi allerede viser noe – ignorer (unngår hopp/glitch). */
-    return
+    const now3 = Date.now()
+    if (homeVegrefLastDistSkipAt === 0) homeVegrefLastDistSkipAt = now3
+    if (now3 - homeVegrefLastDistSkipAt < HOME_VEGREF_DIST_SKIP_TIMEOUT_MS) {
+      return
+    }
+    /* Timeout: accept the result to avoid permanent freeze. */
+    homeVegrefLastDistSkipAt = 0
+  } else {
+    homeVegrefLastDistSkipAt = 0
   }
 
   const longDisplay = String(res.roadLineDisplay || '').trim()
@@ -3058,13 +3066,14 @@ function applyHomeVegrefResult(res) {
     !vegrefIsStationary() &&
     !skipM &&
     homeVegrefDisplayedMeter != null &&
-    mIntEarly != null
+    mIntEarly != null &&
+    !segChangedEarly
   ) {
     const delta = mIntEarly - homeVegrefDisplayedMeter
-    if (delta < -15) {
+    if (delta < -50) {
       return
     }
-    if (Math.abs(delta) > 100 && !segChangedEarly) {
+    if (Math.abs(delta) > 200) {
       return
     }
   }
@@ -3095,7 +3104,7 @@ function applyHomeVegrefResult(res) {
       vegrefGetLastSpeed() < 1 &&
       homeVegrefDisplayedMeter != null &&
       vegrefGetSegmentConfidence() > 5
-    if (isStill) {
+    if (isStill && !segChanged && !skipM) {
       homeVegrefSegKey = segKey
       setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
       comp.hidden = false
@@ -3152,8 +3161,11 @@ function applyHomeVegrefResult(res) {
 }
 
 function startHomeVegrefTracking() {
-  stopHomeVegrefTracking()
-  homeVegrefHasDisplayedResult = false
+  if (homeVegrefWatchId != null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(homeVegrefWatchId)
+    homeVegrefWatchId = null
+  }
+  cancelHomeVegrefMeterTween()
   if (!window.isSecureContext || !navigator.geolocation) {
     setHomeVegrefPlaceholder(
       window.isSecureContext
@@ -3162,7 +3174,7 @@ function startHomeVegrefTracking() {
     )
     return
   }
-  if (vegrefHasLastDisplay()) {
+  if (homeVegrefHasDisplayedResult || vegrefHasLastDisplay()) {
     vegrefReapplyLastToDom()
   } else {
     setHomeVegrefPlaceholder('Henter posisjon …')

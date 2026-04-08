@@ -35,6 +35,11 @@ const OFFLINE_REUSE_NVDB_M = 90
 /** Monoton tid fra GPS (unngår out-of-order fixes som gir bakover-meter). */
 let lastGpsTimestamp = 0
 
+/** Siste gang NVDB ble kalt mens stillestående (periodisk refresh). */
+let lastStationaryFetchMs = 0
+/** Intervall for NVDB-kall når stillestående (ms). */
+const STATIONARY_REFRESH_MS = 8000
+
 /** Eksponentiell glatting av posisjon før NVDB (reduserer jitter). */
 let smoothLat = /** @type {number | null} */ (null)
 let smoothLng = /** @type {number | null} */ (null)
@@ -211,6 +216,7 @@ export function vegrefStopPipeline() {
   fetchGeneration += 1
   inFlightAnchorLat = null
   inFlightAnchorLng = null
+  lastStationaryFetchMs = 0
 }
 
 /** Etter navigasjon / nytt DOM: tegn siste kjente ref på nytt. */
@@ -366,7 +372,9 @@ function shouldDeferSegmentChange(res, speedMps) {
   if (Date.now() - candidateSince < lockMs) {
     return true
   }
+  /* Lock expired — accept the segment change instead of resetting. */
   candidateSegmentId = null
+  candidateSince = 0
   return false
 }
 
@@ -431,7 +439,7 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     wallNow - lastNvdbSegmentApplyAt > 2000 &&
     wallNow - lastConfidenceDecayAt >= 2000
   ) {
-    segmentConfidence = Math.max(0, segmentConfidence - 0.1)
+    segmentConfidence = Math.max(0, segmentConfidence - 0.5)
     lastConfidenceDecayAt = wallNow
   }
 
@@ -455,6 +463,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     : null
   const lastSpeedBefore = lastSpeed
   const speedMps = computeSpeed(lat, lng, tsForSpeed, h.haversineM)
+  let gpsLat = lat
+  let gpsLng = lng
   if (posBeforeSpeed && speedMps < 0.5) {
     const jump = h.haversineM(
       posBeforeSpeed.lat,
@@ -463,9 +473,12 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       lng,
     )
     if (jump > 10) {
+      /* GPS jump detected — restore speed AND use previous position for
+         smoothing/heading so the jump doesn't pollute downstream. */
       lastPosForSpeed = posBeforeSpeed
       lastSpeed = lastSpeedBefore
-      return
+      gpsLat = posBeforeSpeed.lat
+      gpsLng = posBeforeSpeed.lng
     }
   }
 
@@ -477,8 +490,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     effHeadingDeg = bearingDeg(
       prevForHeading.lat,
       prevForHeading.lng,
-      lat,
-      lng,
+      gpsLat,
+      gpsLng,
     )
   }
 
@@ -491,22 +504,25 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   const aSmooth = highSpeed ? 0.5 : 0.3
   const aKeep = 1 - aSmooth
 
-  let useLat = lat
-  let useLng = lng
+  let useLat = gpsLat
+  let useLng = gpsLng
   if (smoothLat == null || smoothLng == null) {
-    smoothLat = lat
-    smoothLng = lng
+    smoothLat = gpsLat
+    smoothLng = gpsLng
   } else {
-    smoothLat = smoothLat * aKeep + lat * aSmooth
-    smoothLng = smoothLng * aKeep + lng * aSmooth
+    smoothLat = smoothLat * aKeep + gpsLat * aSmooth
+    smoothLng = smoothLng * aKeep + gpsLng * aSmooth
   }
   useLat = smoothLat
   useLng = smoothLng
 
-  /* Stillestående: ikke spam NVDB på vanlige GPS-tikk (unngår meter-jitter). */
-  /* KMT åpning bruker forceImmediate — da må oppslag/stille reapply fortsatt gå igjennom. */
+  /* Stillestående: reduser frekvens men IKKE stopp helt (unngår permanent frys). */
   if (lastSpeed < 1 && segmentConfidence > 5 && !forceImmediate) {
-    return
+    const now2 = Date.now()
+    if (now2 - lastStationaryFetchMs < STATIONARY_REFRESH_MS) {
+      return
+    }
+    lastStationaryFetchMs = now2
   }
 
   if (nvdbAbort && inFlightAnchorLat != null && inFlightAnchorLng != null) {
