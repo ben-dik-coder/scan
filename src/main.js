@@ -4162,6 +4162,19 @@ function renderHomeHtml() {
         </span>
         <span class="home-app-icon-btn__label">KontraktAi</span>
       </button>
+      <button type="button" class="home-app-icon-btn" id="btn-home-album">
+        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
+          <img
+            class="home-app-icon-btn__icon"
+            src="/icons/album.png"
+            alt=""
+            width="96"
+            height="96"
+            decoding="async"
+          />
+        </span>
+        <span class="home-app-icon-btn__label">Album</span>
+      </button>
     </div>
     <div class="home-main">
     <div class="home-bilde-stack">
@@ -6290,6 +6303,9 @@ function bindHomeListeners() {
   document
     .getElementById('btn-home-kontraktai')
     ?.addEventListener('click', () => openHomeAiAskContract(), { signal })
+  document
+    .getElementById('btn-home-album')
+    ?.addEventListener('click', () => openMenuPhotosView(), { signal })
   document.getElementById('btn-home-drawer-open')?.addEventListener(
     'click',
     () => openHomeDrawer(),

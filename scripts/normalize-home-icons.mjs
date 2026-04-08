@@ -9,7 +9,12 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = 512;
-const ICONS = ['registrering.png', 'kamera.png', 'kontraktai.png'];
+const ICONS = [
+  'registrering.png',
+  'kamera.png',
+  'kontraktai.png',
+  'album.png',
+];
 
 async function run() {
   for (const name of ICONS) {
