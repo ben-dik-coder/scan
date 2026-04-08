@@ -1475,16 +1475,16 @@ form.auth-form[hidden] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 7.75rem;
-  height: 7.75rem;
+  width: 6.75rem;
+  height: 6.75rem;
 }
 
 .home-registrering-btn__icon {
   display: block;
-  width: 7.25rem;
-  height: 7.25rem;
-  max-width: min(7.25rem, 42vw);
-  max-height: min(7.25rem, 42vw);
+  width: 6.25rem;
+  height: 6.25rem;
+  max-width: min(6.25rem, 38vw);
+  max-height: min(6.25rem, 38vw);
   object-fit: contain;
   pointer-events: none;
 }

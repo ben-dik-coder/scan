@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "pdf-server": "npm run start --prefix server",
     "ingest-contract": "npm run ingest-contract-pdf --prefix server --",
-    "fix:registrering-icon": "node scripts/fix-registrering-alpha.mjs"
+    "fix:registrering-icon": "node scripts/fix-registrering-alpha.mjs",
+    "registrering:white-alpha": "node scripts/registrering-white-to-alpha.mjs"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
