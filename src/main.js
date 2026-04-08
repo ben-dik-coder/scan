@@ -4122,19 +4122,32 @@ function renderHomeHtml() {
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
-    <div class="home-registrering-wrap">
-      <button type="button" class="home-registrering-btn" id="btn-home-registrering">
-        <span class="home-registrering-btn__icon-wrap" aria-hidden="true">
+    <div class="home-app-shortcuts">
+      <button type="button" class="home-app-icon-btn" id="btn-home-registrering">
+        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
           <img
-            class="home-registrering-btn__icon"
+            class="home-app-icon-btn__icon"
             src="/icons/registrering.png"
             alt=""
-            width="116"
-            height="116"
+            width="100"
+            height="100"
             decoding="async"
           />
         </span>
-        <span class="home-registrering-btn__label">Registrering</span>
+        <span class="home-app-icon-btn__label">Registrering</span>
+      </button>
+      <button type="button" class="home-app-icon-btn home-app-icon-btn--compact" id="btn-home-kamera">
+        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
+          <img
+            class="home-app-icon-btn__icon"
+            src="/icons/kamera.png"
+            alt=""
+            width="92"
+            height="92"
+            decoding="async"
+          />
+        </span>
+        <span class="home-app-icon-btn__label">Kamera</span>
       </button>
     </div>
     <div class="home-main">
@@ -6258,6 +6271,9 @@ function bindHomeListeners() {
     },
     { signal },
   )
+  document
+    .getElementById('btn-home-kamera')
+    ?.addEventListener('click', () => openTaBildeFromHome(), { signal })
   document.getElementById('btn-home-drawer-open')?.addEventListener(
     'click',
     () => openHomeDrawer(),

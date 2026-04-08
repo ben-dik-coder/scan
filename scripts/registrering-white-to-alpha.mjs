@@ -8,8 +8,9 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const input = join(__dirname, '../public/icons/registrering.png');
-const output = join(__dirname, '../public/icons/registrering.png');
+const rel = process.argv[2] || 'public/icons/registrering.png';
+const input = join(__dirname, '..', rel);
+const output = input;
 
 /** True if pixel counts as "background" connected from image border */
 function isBg(r, g, b) {
