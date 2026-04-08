@@ -4149,6 +4149,19 @@ function renderHomeHtml() {
         </span>
         <span class="home-app-icon-btn__label">Kamera</span>
       </button>
+      <button type="button" class="home-app-icon-btn home-app-icon-btn--compact" id="btn-home-kontraktai">
+        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
+          <img
+            class="home-app-icon-btn__icon"
+            src="/icons/kontraktai.png"
+            alt=""
+            width="92"
+            height="92"
+            decoding="async"
+          />
+        </span>
+        <span class="home-app-icon-btn__label">KontraktAi</span>
+      </button>
     </div>
     <div class="home-main">
     <div class="home-bilde-stack">
@@ -6274,6 +6287,9 @@ function bindHomeListeners() {
   document
     .getElementById('btn-home-kamera')
     ?.addEventListener('click', () => openTaBildeFromHome(), { signal })
+  document
+    .getElementById('btn-home-kontraktai')
+    ?.addEventListener('click', () => openHomeAiAskContract(), { signal })
   document.getElementById('btn-home-drawer-open')?.addEventListener(
     'click',
     () => openHomeDrawer(),

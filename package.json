@@ -15,7 +15,8 @@
     "ingest-contract": "npm run ingest-contract-pdf --prefix server --",
     "fix:registrering-icon": "node scripts/fix-registrering-alpha.mjs",
     "registrering:white-alpha": "node scripts/registrering-white-to-alpha.mjs",
-    "kamera:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/kamera.png"
+    "kamera:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/kamera.png",
+    "kontraktai:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/kontraktai.png"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
