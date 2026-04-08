@@ -4129,34 +4129,34 @@ function renderHomeHtml() {
             class="home-app-icon-btn__icon"
             src="/icons/registrering.png"
             alt=""
-            width="100"
-            height="100"
+            width="96"
+            height="96"
             decoding="async"
           />
         </span>
         <span class="home-app-icon-btn__label">Registrering</span>
       </button>
-      <button type="button" class="home-app-icon-btn home-app-icon-btn--compact" id="btn-home-kamera">
+      <button type="button" class="home-app-icon-btn" id="btn-home-kamera">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
           <img
             class="home-app-icon-btn__icon"
             src="/icons/kamera.png"
             alt=""
-            width="92"
-            height="92"
+            width="96"
+            height="96"
             decoding="async"
           />
         </span>
         <span class="home-app-icon-btn__label">Kamera</span>
       </button>
-      <button type="button" class="home-app-icon-btn home-app-icon-btn--compact" id="btn-home-kontraktai">
+      <button type="button" class="home-app-icon-btn" id="btn-home-kontraktai">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
           <img
             class="home-app-icon-btn__icon"
             src="/icons/kontraktai.png"
             alt=""
-            width="92"
-            height="92"
+            width="96"
+            height="96"
             decoding="async"
           />
         </span>
