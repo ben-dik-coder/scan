@@ -17,7 +17,8 @@
     "registrering:white-alpha": "node scripts/registrering-white-to-alpha.mjs",
     "kamera:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/kamera.png",
     "kontraktai:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/kontraktai.png",
-    "icons:normalize-home": "node scripts/normalize-home-icons.mjs"
+    "icons:normalize-home": "node scripts/normalize-home-icons.mjs",
+    "kamera:edge-dark-alpha": "node scripts/edge-dark-to-alpha.mjs public/icons/kamera.png"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
