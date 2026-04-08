@@ -1493,7 +1493,7 @@ form.auth-form[hidden] {
   max-width: min(var(--home-app-icon-slot), 30vw);
   max-height: min(var(--home-app-icon-slot), 30vw);
   object-fit: contain;
-  object-position: center bottom;
+  object-position: center center;
   pointer-events: none;
 }
 
