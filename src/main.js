@@ -4129,8 +4129,8 @@ function renderHomeHtml() {
             class="home-registrering-btn__icon"
             src="/icons/registrering.png"
             alt=""
-            width="56"
-            height="56"
+            width="116"
+            height="116"
             decoding="async"
           />
         </span>
