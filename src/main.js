@@ -4122,6 +4122,21 @@ function renderHomeHtml() {
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
+    <div class="home-registrering-wrap">
+      <button type="button" class="home-registrering-btn" id="btn-home-registrering">
+        <span class="home-registrering-btn__icon-wrap" aria-hidden="true">
+          <img
+            class="home-registrering-btn__icon"
+            src="/icons/registrering.png"
+            alt=""
+            width="56"
+            height="56"
+            decoding="async"
+          />
+        </span>
+        <span class="home-registrering-btn__label">Registrering</span>
+      </button>
+    </div>
     <div class="home-main">
     <div class="home-bilde-stack">
       <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde"></div>
@@ -6234,6 +6249,15 @@ function bindHomeListeners() {
   document
     .getElementById('btn-home-nav-history')
     ?.addEventListener('click', () => openMenuSession('sessions'), { signal })
+  document.getElementById('btn-home-registrering')?.addEventListener(
+    'click',
+    () => {
+      view = 'advRegIntro'
+      renderApp()
+      bindListenersForCurrentView()
+    },
+    { signal },
+  )
   document.getElementById('btn-home-drawer-open')?.addEventListener(
     'click',
     () => openHomeDrawer(),

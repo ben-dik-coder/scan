@@ -1432,6 +1432,73 @@ form.auth-form[hidden] {
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.5);
 }
 
+/* App-knapp under vegreferanse: ikon uten «svart plate» — screen mot mørk bakgrunn */
+.home-registrering-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: min(36rem, 100%);
+  margin: 0.5rem auto 0;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
+}
+
+.home-registrering-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.25rem 0.5rem 0.15rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: rgba(226, 232, 245, 0.92);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.home-registrering-btn:active {
+  transform: scale(0.97);
+  opacity: 0.92;
+}
+
+.home-registrering-btn:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.65);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+.home-registrering-btn__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.75rem;
+  height: 3.75rem;
+}
+
+.home-registrering-btn__icon {
+  display: block;
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: contain;
+  /* Svart / mørk raster bakgrunn i PNG → viser app-bakgrunnen gjennom på mørk UI */
+  mix-blend-mode: screen;
+  filter: saturate(1.05);
+  pointer-events: none;
+}
+
+.home-registrering-btn__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(186, 198, 220, 0.92);
+  line-height: 1.2;
+}
+
 .home-action-split {
   display: flex;
   flex-direction: column;
