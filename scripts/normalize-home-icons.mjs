@@ -14,6 +14,7 @@ const ICONS = [
   'kamera.png',
   'kontraktai.png',
   'album.png',
+  'delsky.png',
 ];
 
 async function run() {

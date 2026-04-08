@@ -19,6 +19,8 @@
     "kontraktai:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/kontraktai.png",
     "album:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/album.png",
     "album:edge-dark-alpha": "node scripts/edge-dark-to-alpha.mjs public/icons/album.png",
+    "delsky:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/delsky.png",
+    "delsky:edge-dark-alpha": "node scripts/edge-dark-to-alpha.mjs public/icons/delsky.png",
     "icons:normalize-home": "node scripts/normalize-home-icons.mjs",
     "kamera:edge-dark-alpha": "node scripts/edge-dark-to-alpha.mjs public/icons/kamera.png"
   },
