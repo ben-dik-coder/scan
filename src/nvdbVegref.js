@@ -305,9 +305,10 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     if (prevNvdbId != null && id !== null) {
       if (id === prevNvdbId) {
         score -= 80 * speedFactor
-        if (speed < 2) score += 20
+        if (speed < 2) score -= 40
       } else {
         score += 40 * speedFactor
+        if (speed < 2) score += 30
       }
     }
     const roadH = segmentRoadHeadingDeg(seg, lat, lng)
@@ -317,7 +318,6 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       if (hd < 25 && d.distToRoadM < 20) score -= 15
       if (hd < 10) score += dist * 0.5
     }
-    if (speed < 2) score -= 20
     scored.push({ seg, score, d, id })
   }
   if (!scored.length) return null

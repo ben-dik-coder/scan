@@ -601,7 +601,6 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       if (seq !== fetchGeneration) return
       if (
         res &&
-        lastSpeed >= 2 &&
         shouldDeferSegmentChange(res, lastSpeed)
       ) {
         if (seq !== fetchGeneration) return
