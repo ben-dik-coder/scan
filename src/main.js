@@ -10754,7 +10754,10 @@ function bootstrap() {
     haversineM,
     fetchRoadReferenceNear: fetchRoadReferenceNearForApp,
     fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
-    shouldPreferOfflineResolver: () => offlineVegrefReady,
+    shouldPreferOfflineResolver: () =>
+      offlineVegrefReady &&
+      typeof navigator !== 'undefined' &&
+      navigator.onLine === false,
     getViewHome: () => view === 'home',
     getKmtOpen: () => kmtDialogOpen,
     applyHome: applyHomeVegrefResult,
