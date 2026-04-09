@@ -176,8 +176,9 @@ export function segmentStableId(seg) {
  * @param {object} seg NVDB segment-objekt
  * @param {number} lat
  * @param {number} lng
+ * @param {number} [accuracyM]
  */
-export function describeSegmentForPoint(seg, lat, lng) {
+export function describeSegmentForPoint(seg, lat, lng, accuracyM = 28) {
   const wkt = seg?.geometri?.wkt
   const pts = parseLineStringLatLngWkt(wkt)
   const geomLen =
@@ -193,7 +194,11 @@ export function describeSegmentForPoint(seg, lat, lng) {
   const tilM = str?.til_meter
   let meterVal = null
   const distM = close.distM
-  const meterDistThreshold = 40
+  const acc =
+    typeof accuracyM === 'number' && !Number.isNaN(accuracyM)
+      ? Math.min(60, Math.max(8, accuracyM))
+      : 28
+  const meterDistThreshold = Math.min(65, Math.max(30, Math.round(acc * 1.1)))
   if (
     distM <= meterDistThreshold &&
     typeof fraM === 'number' &&
@@ -297,7 +302,7 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
 
   const scored = []
   for (const seg of objekter) {
-    const d = describeSegmentForPoint(seg, lat, lng)
+    const d = describeSegmentForPoint(seg, lat, lng, accuracyM)
     if (!d) continue
     const id = segmentStableId(seg)
     const dist = Math.min(d.distToRoadM, 100)
@@ -338,8 +343,9 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore: null }
   }
 
-  const margin = Math.min(30, Math.max(6, accuracyM * 0.3))
-  if (accuracyM >= 20 && prevRow.score - best.score < margin) {
+  const baseMargin = Math.min(30, Math.max(6, accuracyM * 0.3))
+  const margin = speed < 2 ? Math.max(baseMargin, 24) : baseMargin
+  if ((accuracyM >= 20 || speed < 2) && prevRow.score - best.score < margin) {
     return {
       seg: prevRow.seg,
       chosenScore: prevRow.score,
@@ -355,6 +361,55 @@ function sleepMs(ms) {
 }
 
 /**
+ * Løser vegreferanse fra en liste kandidatsegmenter.
+ * @param {object[]} objekter
+ * @param {number} lat
+ * @param {number} lng
+ * @param {{
+ *   accuracyM?: number
+ *   prevNvdbId?: string | number | null
+ *   userHeadingDeg?: number | null
+ *   speed?: number
+ * }} [opts]
+ */
+export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) {
+  const { accuracyM, prevNvdbId, userHeadingDeg, speed } = opts
+  const objs = Array.isArray(objekter) ? objekter : []
+  if (!Array.isArray(objs) || objs.length === 0) return null
+
+  const picked = pickBestSegment(objs, lat, lng, {
+    accuracyM,
+    prevNvdbId: prevNvdbId ?? null,
+    userHeadingDeg: userHeadingDeg ?? null,
+    speed: speed ?? 0,
+  })
+  if (!picked) return null
+
+  const described = describeSegmentForPoint(
+    picked.seg,
+    lat,
+    lng,
+    accuracyM,
+  )
+  if (!described) return null
+  if (
+    typeof picked.chosenScore === 'number' &&
+    (picked.prevSegScore == null || typeof picked.prevSegScore === 'number')
+  ) {
+    described._vegrefMeta = {
+      newSegScore: picked.chosenScore,
+      prevSegScore: picked.prevSegScore,
+      bestScore: picked.bestScore,
+      scoreDelta:
+        picked.prevSegScore != null
+          ? picked.prevSegScore - picked.chosenScore
+          : null,
+    }
+  }
+  return described
+}
+
+/**
  * Én NVDB-runde (nettverksfeil kastes; tomt treff returnerer null uten kast).
  * @param {number} lat
  * @param {number} lng
@@ -366,8 +421,8 @@ function sleepMs(ms) {
  *   speed?: number
  * }} [opts]
  */
-async function fetchRoadReferenceNearOnce(lat, lng, opts = {}) {
-  const { signal, accuracyM, prevNvdbId, userHeadingDeg, speed } = opts
+export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
+  const { signal } = opts
   const padLat = 0.0042
   const cos = Math.cos((lat * Math.PI) / 180) || 1
   const padLng = padLat / cos
@@ -402,30 +457,7 @@ async function fetchRoadReferenceNearOnce(lat, lng, opts = {}) {
   } catch {
     throw new Error('NVDB: ugyldig JSON')
   }
-  const objs = data.objekter
-  if (!Array.isArray(objs) || objs.length === 0) return null
-
-  const picked = pickBestSegment(objs, lat, lng, {
-    accuracyM,
-    prevNvdbId: prevNvdbId ?? null,
-    userHeadingDeg: userHeadingDeg ?? null,
-    speed: speed ?? 0,
-  })
-  if (!picked) return null
-
-  const described = describeSegmentForPoint(picked.seg, lat, lng)
-  if (!described) return null
-  if (
-    typeof picked.chosenScore === 'number' &&
-    (picked.prevSegScore == null || typeof picked.prevSegScore === 'number')
-  ) {
-    described._vegrefMeta = {
-      newSegScore: picked.chosenScore,
-      prevSegScore: picked.prevSegScore,
-      bestScore: picked.bestScore,
-    }
-  }
-  return described
+  return resolveRoadReferenceFromSegments(data.objekter, lat, lng, opts)
 }
 
 /**
@@ -440,7 +472,7 @@ async function fetchRoadReferenceNearOnce(lat, lng, opts = {}) {
  *   speed?: number
  * }} [opts]
  */
-export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
+export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {
   const { signal } = opts
   /** @type {unknown} */
   let lastErr = null
@@ -449,7 +481,7 @@ export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
       throw new DOMException('Aborted', 'AbortError')
     }
     try {
-      return await fetchRoadReferenceNearOnce(lat, lng, opts)
+      return await fetchRoadReferenceNearOnlineOnce(lat, lng, opts)
     } catch (e) {
       lastErr = e
       const name = e && typeof e === 'object' && 'name' in e ? String(e.name) : ''
@@ -463,3 +495,5 @@ export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
     ? lastErr
     : new Error('NVDB: oppslag feilet')
 }
+
+export const fetchRoadReferenceNear = fetchRoadReferenceNearOnline

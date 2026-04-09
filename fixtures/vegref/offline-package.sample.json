@@ -1,0 +1,78 @@
+{
+  "version": "sample-v1",
+  "generatedAt": "2026-04-09T00:00:00.000Z",
+  "segments": [
+    {
+      "id": "rv80-main-1",
+      "geometri": {
+        "wkt": "LINESTRING Z (68.43500 17.43000 0, 68.43555 17.43210 0, 68.43605 17.43440 0)",
+        "lengde": 250
+      },
+      "vegsystemreferanse": {
+        "kortform": "RV 80 S1D1 m1000-1250",
+        "vegsystem": {
+          "vegkategori": "R",
+          "nummer": 80
+        },
+        "strekning": {
+          "strekning": 1,
+          "delstrekning": 1,
+          "fra_meter": 1000,
+          "til_meter": 1250
+        }
+      },
+      "adresse": {
+        "navn": ""
+      },
+      "typeVeg": "Bilveg"
+    },
+    {
+      "id": "kv-beisfjordveien-1",
+      "geometri": {
+        "wkt": "LINESTRING Z (68.43515 17.42985 0, 68.43570 17.43195 0, 68.43620 17.43420 0)",
+        "lengde": 245
+      },
+      "vegsystemreferanse": {
+        "kortform": "KV 5012 S2D1 m50-295",
+        "vegsystem": {
+          "vegkategori": "K",
+          "nummer": 5012
+        },
+        "strekning": {
+          "strekning": 2,
+          "delstrekning": 1,
+          "fra_meter": 50,
+          "til_meter": 295
+        }
+      },
+      "adresse": {
+        "navn": "Beisfjordveien"
+      },
+      "typeVeg": "Bilveg"
+    },
+    {
+      "id": "rv80-main-2",
+      "geometri": {
+        "wkt": "LINESTRING Z (68.43605 17.43440 0, 68.43640 17.43620 0, 68.43690 17.43810 0)",
+        "lengde": 205
+      },
+      "vegsystemreferanse": {
+        "kortform": "RV 80 S1D1 m1250-1455",
+        "vegsystem": {
+          "vegkategori": "R",
+          "nummer": 80
+        },
+        "strekning": {
+          "strekning": 1,
+          "delstrekning": 1,
+          "fra_meter": 1250,
+          "til_meter": 1455
+        }
+      },
+      "adresse": {
+        "navn": ""
+      },
+      "typeVeg": "Bilveg"
+    }
+  ]
+}

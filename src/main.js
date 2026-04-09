@@ -1,5 +1,12 @@
 import { fetchRoadReferenceNear } from './nvdbVegref.js'
 import {
+  clearOfflineVegrefPackage,
+  getOfflineVegrefMeta,
+  hasOfflineVegrefPackage,
+  importOfflineVegrefPackage,
+  resolveOfflineRoadReferenceNear,
+} from './vegrefLocal.js'
+import {
   initVegrefLive,
   vegrefNotifyGps,
   vegrefStopPipeline,
@@ -54,6 +61,12 @@ const SESSION_REGISTERED_NOTE_MAX_LEN = 2000
 const AUTH_PASSWORD_MIN_LEN = 8
 const AUTH_NAME_MAX_LEN = 120
 const AUTH_SHORT_ID_LEN = 5
+const OFFLINE_VEGREF_MANIFEST_URL = '/offline/vegref-manifest.json'
+let offlineVegrefReady = false
+let offlineVegrefMeta = null
+let offlineVegrefSyncBusy = false
+let offlineVegrefSyncError = ''
+let offlineVegrefSyncStatus = 'Ikke lastet ned'
 
 
 /**
@@ -201,6 +214,86 @@ function uint8ToB64(u8) {
   let bin = ''
   for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i])
   return btoa(bin)
+}
+
+async function refreshOfflineVegrefState() {
+  offlineVegrefMeta = await getOfflineVegrefMeta().catch(() => null)
+  offlineVegrefReady = Boolean(offlineVegrefMeta)
+  if (offlineVegrefMeta) {
+    const version =
+      typeof offlineVegrefMeta.version === 'string'
+        ? offlineVegrefMeta.version
+        : 'ukjent'
+    const count =
+      typeof offlineVegrefMeta.count === 'number' ? offlineVegrefMeta.count : 0
+    offlineVegrefSyncStatus = `Klar (${version}, ${count} segmenter)`
+  } else {
+    offlineVegrefSyncStatus = 'Ikke lastet ned'
+  }
+}
+
+function rerenderIfViewingSettings() {
+  if (view !== 'menuSettings') return
+  renderApp()
+  bindListenersForCurrentView()
+}
+
+async function ensureOfflineVegrefPackage() {
+  await refreshOfflineVegrefState()
+  if (offlineVegrefReady) return offlineVegrefMeta
+  offlineVegrefSyncBusy = true
+  offlineVegrefSyncError = ''
+  offlineVegrefSyncStatus = 'Laster ned offline vegreferanse ...'
+  rerenderIfViewingSettings()
+  let manifest = null
+  try {
+    const r = await fetch(OFFLINE_VEGREF_MANIFEST_URL, { cache: 'no-store' })
+    if (!r.ok) {
+      offlineVegrefSyncStatus = 'Offline-pakke ikke tilgjengelig'
+      rerenderIfViewingSettings()
+      return null
+    }
+    manifest = await r.json()
+  } catch {
+    offlineVegrefSyncStatus = 'Kunne ikke hente offline-manifest'
+    rerenderIfViewingSettings()
+    return null
+  }
+  const dataUrl =
+    manifest && typeof manifest.dataUrl === 'string' ? manifest.dataUrl : ''
+  if (!dataUrl) {
+    offlineVegrefSyncStatus = 'Manifest mangler datafil'
+    rerenderIfViewingSettings()
+    return null
+  }
+  try {
+    const dataRes = await fetch(dataUrl, { cache: 'no-store' })
+    if (!dataRes.ok) {
+      offlineVegrefSyncStatus = 'Kunne ikke laste offline-data'
+      rerenderIfViewingSettings()
+      return null
+    }
+    const pkg = await dataRes.json()
+    await clearOfflineVegrefPackage()
+    await importOfflineVegrefPackage({
+      version:
+        typeof manifest.version === 'string' ? manifest.version : pkg?.version,
+      generatedAt:
+        typeof manifest.generatedAt === 'string'
+          ? manifest.generatedAt
+          : pkg?.generatedAt,
+      segments: Array.isArray(pkg?.segments) ? pkg.segments : [],
+    })
+    await refreshOfflineVegrefState()
+    return offlineVegrefMeta
+  } catch {
+    offlineVegrefSyncError = 'Nedlasting eller import av offline-data feilet.'
+    offlineVegrefSyncStatus = 'Offline-import feilet'
+    return null
+  } finally {
+    offlineVegrefSyncBusy = false
+    rerenderIfViewingSettings()
+  }
 }
 
 function b64ToUint8(b64) {
@@ -1751,13 +1844,73 @@ let lastSnapResult = null
 let traceBuffer = []
 const TRACE_MAX = 16
 
-function pushTracePoint(lat, lng) {
-  traceBuffer.push({ lat, lng })
+function normalizeTraceTimestampMs(timestamp) {
+  const ts =
+    typeof timestamp === 'number' && Number.isFinite(timestamp)
+      ? Math.round(timestamp)
+      : Date.now()
+  return ts > 0 ? ts : Date.now()
+}
+
+function buildTraceTimestampsSec(trace) {
+  const out = []
+  let prev = 0
+  for (const p of trace) {
+    const sec = Math.max(prev + 1, Math.floor(p.timestampMs / 1000))
+    out.push(sec)
+    prev = sec
+  }
+  return out.join(';')
+}
+
+function mapMatchRadiusM(accuracy) {
+  const a =
+    typeof accuracy === 'number' && Number.isFinite(accuracy)
+      ? Math.max(8, accuracy)
+      : 25
+  return Math.min(80, Math.max(20, Math.round(a * 1.15)))
+}
+
+function getMapboxAccessToken() {
+  const raw = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : ''
+}
+
+function pushTracePoint(lat, lng, timestamp, accuracy) {
+  const tsMs = normalizeTraceTimestampMs(timestamp)
+  const last = traceBuffer[traceBuffer.length - 1]
+  if (last) {
+    const d = haversineM(last.lat, last.lng, lat, lng)
+    const dtMs = Math.max(0, tsMs - last.timestampMs)
+    const mergeDist = Math.max(
+      2,
+      Math.min(8, mapMatchRadiusM(accuracy ?? last.accuracy) * 0.12),
+    )
+    if (d < mergeDist && dtMs < 2500) {
+      last.lat = lat
+      last.lng = lng
+      last.timestampMs = Math.max(last.timestampMs + 1, tsMs)
+      last.accuracy =
+        typeof accuracy === 'number' && Number.isFinite(accuracy)
+          ? accuracy
+          : last.accuracy
+      return
+    }
+  }
+  traceBuffer.push({
+    lat,
+    lng,
+    timestampMs: last ? Math.max(last.timestampMs + 1, tsMs) : tsMs,
+    accuracy:
+      typeof accuracy === 'number' && Number.isFinite(accuracy)
+        ? accuracy
+        : null,
+  })
   while (traceBuffer.length > TRACE_MAX) traceBuffer.shift()
 }
 
-function parseLastTracepoint(j) {
-  const tps = j.tracepoints
+function parseLastMatchedPoint(j) {
+  const tps = j?.tracepoints
   if (!tps?.length) return null
   for (let i = tps.length - 1; i >= 0; i--) {
     const tp = tps[i]
@@ -1775,8 +1928,7 @@ function osrmBasePath() {
   return 'https://router.project-osrm.org'
 }
 
-async function fetchOsrmJson(path) {
-  const url = `${osrmBasePath()}${path}`
+async function fetchJsonWithRetry(url) {
   const timeoutMs = 12_000
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController()
@@ -1807,8 +1959,16 @@ async function fetchOsrmJson(path) {
   return null
 }
 
+async function fetchOsrmJson(path) {
+  return fetchJsonWithRetry(`${osrmBasePath()}${path}`)
+}
+
+async function fetchMapboxJson(path) {
+  return fetchJsonWithRetry(`https://api.mapbox.com${path}`)
+}
+
 /**
- * Snapper rå GPS til veikart (OSRM). Bruker alltid rå koordinater – ikke glattet,
+ * Snapper rå GPS til veikart (Mapbox/OSRM). Bruker alltid rå koordinater – ikke glattet,
  * ellers kan punktet dras inn på bygning/tomt. Match med store radiuses tåler typisk ±30–50 m GPS-feil.
  */
 async function snapToRoadNetwork(lat, lng, accuracy) {
@@ -1824,19 +1984,33 @@ async function snapToRoadNetwork(lat, lng, accuracy) {
   lastSnapFromLat = lat
   lastSnapFromLng = lng
 
-  const rad = Math.min(65, Math.max(25, Math.round(accuracy * 1.2)))
+  const rad = mapMatchRadiusM(accuracy)
 
-  const traceForMatch = traceBuffer.slice(-8)
+  const traceForMatch = traceBuffer.slice(-10)
   if (traceForMatch.length >= 2) {
     const pts = traceForMatch.map((p) => `${p.lng},${p.lat}`).join(';')
-    const radii = traceForMatch.map(() => rad).join(';')
+    const radii = traceForMatch
+      .map((p) => mapMatchRadiusM(p.accuracy ?? rad))
+      .join(';')
+    const timestamps = buildTraceTimestampsSec(traceForMatch)
+    const mapboxToken = getMapboxAccessToken()
+    if (mapboxToken) {
+      const jm = await fetchMapboxJson(
+        `/matching/v5/mapbox/driving/${pts}?radiuses=${radii}&timestamps=${timestamps}&tidy=true&steps=false&overview=false&access_token=${encodeURIComponent(mapboxToken)}`,
+      )
+      const matchedMapbox = jm && parseLastMatchedPoint(jm)
+      if (matchedMapbox) {
+        lastSnapResult = matchedMapbox
+        return matchedMapbox
+      }
+    }
     const j = await fetchOsrmJson(
-      `/match/v1/driving/${pts}?radiuses=${radii}&overview=false&steps=false`,
+      `/match/v1/driving/${pts}?radiuses=${radii}&timestamps=${timestamps}&gaps=ignore&tidy=true&overview=false&steps=false`,
     )
-    const matched = j && parseLastTracepoint(j)
-    if (matched) {
-      lastSnapResult = matched
-      return matched
+    const matchedOsrm = j && parseLastMatchedPoint(j)
+    if (matchedOsrm) {
+      lastSnapResult = matchedOsrm
+      return matchedOsrm
     }
   }
 
@@ -3219,28 +3393,31 @@ function startHomeVegrefTracking() {
     homeVegrefWatchId = null
   }
   cancelHomeVegrefMeterTween()
-  const offlineAtStart =
-    typeof navigator !== 'undefined' && navigator.onLine === false
-  if (offlineAtStart) {
-    try {
-      const raw = localStorage.getItem(VEGREF_PERSIST_KEY)
-      if (raw) {
-        const p = JSON.parse(raw)
-        if (
-          p &&
-          typeof p.lat === 'number' &&
-          typeof p.lng === 'number' &&
-          p.res &&
-          typeof p.res === 'object'
-        ) {
-          vegrefHydrateFromPersisted(p.lat, p.lng, p.res)
-          vegrefReapplyLastToDom()
+  void (async () => {
+    const offlineAtStart =
+      typeof navigator !== 'undefined' && navigator.onLine === false
+    if (offlineAtStart) {
+      await ensureOfflineVegrefPackage().catch(() => null)
+      try {
+        const raw = localStorage.getItem(VEGREF_PERSIST_KEY)
+        if (raw) {
+          const p = JSON.parse(raw)
+          if (
+            p &&
+            typeof p.lat === 'number' &&
+            typeof p.lng === 'number' &&
+            p.res &&
+            typeof p.res === 'object'
+          ) {
+            vegrefHydrateFromPersisted(p.lat, p.lng, p.res)
+            vegrefReapplyLastToDom()
+          }
         }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
-  }
+  })()
   if (!window.isSecureContext || !navigator.geolocation) {
     setHomeVegrefPlaceholder(
       window.isSecureContext
@@ -3261,7 +3438,7 @@ function startHomeVegrefTracking() {
       if (accuracy > GPS_REJECT_M) return
       homeVegrefGpsSeq += 1
       const seq = homeVegrefGpsSeq
-      pushTracePoint(latitude, longitude)
+      pushTracePoint(latitude, longitude, pos.timestamp, accuracy)
       const hdg =
         heading != null && Number.isFinite(heading) ? heading : null
       /* Uten nett: ikke vent på OSRM — gå rett til NVDB-cache / koordinat-fallback i pipelinen. */
@@ -3457,7 +3634,7 @@ async function handleDrivingPosition(pos, seq, gpsStatusEl, firstFixRef) {
   const headingDeg =
     heading != null && !Number.isNaN(heading) ? heading : null
 
-  pushTracePoint(latitude, longitude)
+  pushTracePoint(latitude, longitude, pos.timestamp, acc)
 
   /**
    * Blå posisjon = samme rå GPS som «Registrer» bruker (via watch / getCurrentPosition).
@@ -4715,10 +4892,24 @@ function renderMenuContactsHtml() {
 }
 
 function renderMenuSettingsHtml() {
+  const generatedAt =
+    offlineVegrefMeta && typeof offlineVegrefMeta.generatedAt === 'string'
+      ? escapeHtml(offlineVegrefMeta.generatedAt)
+      : '–'
+  const offlineError = offlineVegrefSyncError
+    ? `<p class="menu-info-prose" role="alert">${escapeHtml(offlineVegrefSyncError)}</p>`
+    : ''
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-settings">← Meny</button>
     <h2 class="subview-title">Innstillinger</h2>
     <p class="menu-info-prose">Her kommer app-innstillinger (språk, varsler, lagring) i en senere versjon.</p>
+    <div class="menu-card">
+      <h3 class="menu-card__title">Offline vegreferanse</h3>
+      <p class="menu-info-prose">Status: ${escapeHtml(offlineVegrefSyncStatus)}</p>
+      <p class="menu-info-prose">Generert: ${generatedAt}</p>
+      ${offlineError}
+      <button type="button" class="btn btn-primary" id="btn-settings-download-offline-vegref"${offlineVegrefSyncBusy ? ' disabled' : ''}>${offlineVegrefReady ? 'Oppdater offline-pakke' : 'Last ned offline-pakke'}</button>
+    </div>
   </div>`
 }
 
@@ -7672,6 +7863,15 @@ function bindMenuInfoListeners() {
   document
     .getElementById('btn-back-from-menu-support')
     ?.addEventListener('click', () => goHome(), { signal })
+  document
+    .getElementById('btn-settings-download-offline-vegref')
+    ?.addEventListener(
+      'click',
+      () => {
+        void ensureOfflineVegrefPackage()
+      },
+      { signal },
+    )
 }
 
 async function logoutUser() {
@@ -10313,6 +10513,8 @@ function bootstrap() {
   initVegrefLive({
     haversineM,
     fetchRoadReferenceNear,
+    fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
+    shouldPreferOfflineResolver: () => offlineVegrefReady,
     getViewHome: () => view === 'home',
     getKmtOpen: () => kmtDialogOpen,
     applyHome: applyHomeVegrefResult,
@@ -10338,6 +10540,7 @@ function bootstrap() {
       })
     }
   })
+  void ensureOfflineVegrefPackage()
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && currentUser?.id) {
       void backupAuthToIdb(loadUsersFromStorage(), currentUser)

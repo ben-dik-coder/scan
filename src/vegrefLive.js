@@ -11,6 +11,8 @@ import { bearingDeg } from './nvdbVegref.js'
  * @typedef {{
  *   haversineM: (lat1: number, lng1: number, lat2: number, lng2: number) => number
  *   fetchRoadReferenceNear: typeof import('./nvdbVegref.js').fetchRoadReferenceNear
+ *   fetchRoadReferenceNearOffline?: typeof import('./vegrefLocal.js').resolveOfflineRoadReferenceNear
+ *   shouldPreferOfflineResolver?: () => boolean
  *   getViewHome: () => boolean
  *   getKmtOpen: () => boolean
  *   applyHome: (res: VegrefDescribeResult) => void
@@ -47,6 +49,7 @@ let smoothLng = /** @type {number | null} */ (null)
 /** Må bekreftes dynamisk (fart) + confidence før UI bytter segment (anti-hopping). */
 let candidateSegmentId = /** @type {string | number | null} */ (null)
 let candidateSince = 0
+let candidateWins = 0
 
 /** @type {number} */
 let segmentConfidence = 0
@@ -255,6 +258,7 @@ export function vegrefHasLastDisplay() {
 export function vegrefClearSegmentLock() {
   candidateSegmentId = null
   candidateSince = 0
+  candidateWins = 0
 }
 
 /**
@@ -348,13 +352,17 @@ function shouldDeferSegmentChange(res, speedMps) {
       : null
   if (lastId == null) {
     candidateSegmentId = null
+    candidateSince = 0
+    candidateWins = 0
     return false
   }
   if (String(newId) === String(lastId)) {
     candidateSegmentId = null
+    candidateSince = 0
+    candidateWins = 0
     return false
   }
-  const meta = /** @type {{ _vegrefMeta?: { newSegScore?: number, prevSegScore?: number | null } }} */ (
+  const meta = /** @type {{ _vegrefMeta?: { newSegScore?: number, prevSegScore?: number | null, scoreDelta?: number | null, source?: string } }} */ (
     res
   )._vegrefMeta
   if (
@@ -366,6 +374,7 @@ function shouldDeferSegmentChange(res, speedMps) {
     if (meta.newSegScore < meta.prevSegScore * 0.7) {
       candidateSegmentId = null
       candidateSince = 0
+      candidateWins = 0
       return false
     }
     if (
@@ -374,23 +383,40 @@ function shouldDeferSegmentChange(res, speedMps) {
     ) {
       candidateSegmentId = null
       candidateSince = 0
+      candidateWins = 0
       return false
     }
   }
   if (candidateSegmentId !== newId) {
     candidateSegmentId = newId
     candidateSince = Date.now()
+    candidateWins = 1
     return true
   }
+  candidateWins += 1
   const baseLock = getHardSegmentLockMs(speedMps)
   const confFactor = 1 + segmentConfidence * 0.1
   const lockMs = Math.min(2800, baseLock * confFactor)
-  if (Date.now() - candidateSince < lockMs) {
+  const stableForMs = Date.now() - candidateSince
+  let requiredWins =
+    speedMps < 1 ? 4 : speedMps < 3 ? 3 : speedMps < 8 ? 2 : 1
+  const source = meta && typeof meta.source === 'string' ? meta.source : null
+  if (source === 'offline') requiredWins += 1
+  if (
+    meta &&
+    typeof meta.scoreDelta === 'number' &&
+    Number.isFinite(meta.scoreDelta) &&
+    meta.scoreDelta > 25
+  ) {
+    requiredWins = Math.max(1, requiredWins - 1)
+  }
+  if (stableForMs < lockMs || candidateWins < requiredWins) {
     return true
   }
   /* Lock expired — accept the segment change instead of resetting. */
   candidateSegmentId = null
   candidateSince = 0
+  candidateWins = 0
   return false
 }
 
@@ -412,6 +438,7 @@ export function vegrefResetSessionCache() {
   smoothLng = null
   candidateSegmentId = null
   candidateSince = 0
+  candidateWins = 0
   segmentConfidence = 0
   lastNvdbSegmentApplyAt = 0
   lastConfidenceDecayAt = 0
@@ -589,8 +616,13 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   inFlightAnchorLng = useLng
 
   const online = typeof navigator === 'undefined' || navigator.onLine !== false
+  const preferOffline =
+    Boolean(h.fetchRoadReferenceNearOffline) &&
+    (typeof h.shouldPreferOfflineResolver === 'function'
+      ? h.shouldPreferOfflineResolver()
+      : !online)
 
-  if (!online) {
+  if (!online && !h.fetchRoadReferenceNearOffline) {
     inFlightAnchorLat = null
     inFlightAnchorLng = null
     const off = offlineOrFallbackResult(useLat, useLng)
@@ -606,18 +638,28 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
           ? /** @type {{ nvdbId?: string | number | null }} */ (lastAppliedRes).nvdbId
           : null
-      const res = await h.fetchRoadReferenceNear(useLat, useLng, {
+      const fetchOpts = {
         signal,
         accuracyM,
         prevNvdbId: prevId ?? null,
         userHeadingDeg: effHeadingDeg,
         speed: speedMps,
-      })
+      }
+      let res = null
+      if (preferOffline && h.fetchRoadReferenceNearOffline) {
+        res = await h.fetchRoadReferenceNearOffline(useLat, useLng, fetchOpts)
+      }
+      if (!res && online) {
+        res = await h.fetchRoadReferenceNear(useLat, useLng, fetchOpts)
+      }
+      if (!res && !online && h.fetchRoadReferenceNearOffline) {
+        res = await h.fetchRoadReferenceNearOffline(useLat, useLng, fetchOpts)
+      }
       if (signal.aborted) return
       if (seq !== fetchGeneration) return
       if (
         res &&
-        shouldDeferSegmentChange(res, lastSpeed)
+        shouldDeferSegmentChange(res, speedMps)
       ) {
         if (seq !== fetchGeneration) return
         return

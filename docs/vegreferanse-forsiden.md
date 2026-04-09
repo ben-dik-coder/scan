@@ -7,15 +7,20 @@ Dette dokumentet beskriver hvordan vegreferansen på forsiden hentes og vises, o
 ```mermaid
 flowchart LR
   GPS[geolocation.watchPosition] --> feed[feedVegrefFromGps / vegrefNotifyGps]
-  feed --> vegrefLive[vegrefLive.js throttling + fetch]
-  vegrefLive --> nvdb[fetchRoadReferenceNear nvdbVegref.js]
+  feed --> vegrefLive[vegrefLive.js throttling + resolvervalg]
+  vegrefLive --> local[resolveOfflineRoadReferenceNear vegrefLocal.js]
+  vegrefLive --> nvdb[fetchRoadReferenceNearOnline nvdbVegref.js]
+  local --> core[resolveRoadReferenceFromSegments]
+  nvdb --> core
   nvdb --> apply[applyHomeVegrefResult main.js]
+  local --> apply
   apply --> dom[#home-vegref-* DOM]
 ```
 
 - **Inngang:** [`src/main.js`](../src/main.js) starter `startHomeVegrefTracking()` når forsiden vises. `navigator.geolocation.watchPosition` kaller `scheduleHomeVegrefLookup` → `feedVegrefFromGps` → `vegrefNotifyGps` i [`src/vegrefLive.js`](../src/vegrefLive.js).
-- **Én felles kø** for forsiden og KMT (ta bilde): `initVegrefLive({ fetchRoadReferenceNear, applyHome, applyKmt, ... })` (søk etter `initVegrefLive` i `main.js`).
-- **NVDB-kall:** `fetchRoadReferenceNear` i [`src/nvdbVegref.js`](../src/nvdbVegref.js) – nettleseren kaller Statens vegvesen direkte (ingen egen app-server for dette i flyten).
+- **Én felles kø** for forsiden og KMT (ta bilde): `initVegrefLive({ fetchRoadReferenceNear, fetchRoadReferenceNearOffline, ... })` (søk etter `initVegrefLive` i `main.js`).
+- **Online-kall:** `fetchRoadReferenceNearOnline` i [`src/nvdbVegref.js`](../src/nvdbVegref.js) – nettleseren kaller Statens vegvesen direkte.
+- **Offline-kall:** `resolveOfflineRoadReferenceNear` i [`src/vegrefLocal.js`](../src/vegrefLocal.js) – leser kandidatsegmenter fra lokal IndexedDB-pakke og sender dem gjennom samme scorer som online.
 
 ## NVDB API (nettverk)
 
@@ -42,7 +47,7 @@ Retur fra NVDB-laget er ett objekt med bl.a.:
 | `distToRoadM` | Avstand punkt → nærmeste punkt på polylinje (meter) |
 | `nvdbId` | Stabil segment-ID (for «sticky» valg ved ustabil GPS) |
 
-Kilde: `describeSegmentForPoint` i [`src/nvdbVegref.js`](../src/nvdbVegref.js).
+Kilde: `describeSegmentForPoint` og `resolveRoadReferenceFromSegments` i [`src/nvdbVegref.js`](../src/nvdbVegref.js).
 
 ## Vegkategori-bokstaver (kompakt «kode»)
 
@@ -73,7 +78,7 @@ Se `applyHomeVegrefResult` og `setHomeVegrefCompactDom` i [`src/main.js`](../src
 ## Logikk som påvirker oppførsel
 
 1. **Throttling** (`vegrefLive.js`): minimum intervall (~450 ms + avhengig av nøyaktighet), minimum bevegelse før ny fetch – kan gi forsinket oppdatering.
-2. **Offline / feil:** gjenbruk av siste cache innen ~90 m, ellers koordinat-fallback (`Posisjon …°N …°Ø`, `s`/`d`/`m` som `–`).
+2. **Offline / feil:** appen prøver først lokal offline-pakke hvis den er lastet ned. Hvis ingen lokal pakke finnes, gjenbrukes siste cache innen ~200 m, ellers koordinat-fallback (`Posisjon …°N …°Ø`, `s`/`d`/`m` som `–`).
 3. **Ingen NVDB-treff (`null`):** forsiden **tømmes ikke** bevisst – siste gode visning beholdes.
 4. **Stor avstand til veg:** hvis `distToRoadM > 95` m og det allerede finnes et resultat, ignoreres nytt treff (`HOME_VEGREF_MAX_DIST_SKIP_M` i `main.js`) – mot «hopp» ved dårlig GPS.
 5. **Segmentvalg:** `pickBestSegment` i `nvdbVegref.js` scorer avstand + vegtype-straff (gang/sykkel +45 m); **hysterese** mot forrige `prevNvdbId` for å unngå hopp mellom parallelle veier.
@@ -85,5 +90,6 @@ CSS under `.home-vegref` i [`src/style.css`](../src/style.css) (søk etter `home
 ## Oppsummering for diagnose
 
 - Verifiser **HTTPS** og **geolocation** (ellers placeholder om sikker kontekst).
-- I **Network**: NVDB-kallet til `nvdbapiles.atlas.vegvesen.no`, respons JSON og `objekter.length`.
+- I **Innstillinger**: sjekk status for `Offline vegreferanse` og at manifest/datafil er lastet ned ved behov.
+- I **Network**: NVDB-kallet til `nvdbapiles.atlas.vegvesen.no`, eller offline-manifestet `/offline/vegref-manifest.json` når lokal pakke importeres.
 - I **logikk**: **`s` / `d` / `m`** kommer fra NVDB `vegsystemreferanse` + geometri; **`roadLine*`** fra `vegkategori` + nummer eller adressenavn for K-veger.

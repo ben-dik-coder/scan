@@ -11,6 +11,8 @@
     "watch:dist": "VITE_WATCH_DIST=1 vite build",
     "build:watch": "npm run watch:dist",
     "preview": "vite preview",
+    "generate:offline-vegref": "node scripts/generate-offline-vegref-package.mjs",
+    "validate:vegref-parity": "node scripts/validate-vegref-parity.mjs",
     "pdf-server": "npm run start --prefix server",
     "ingest-contract": "npm run ingest-contract-pdf --prefix server --",
     "fix:registrering-icon": "node scripts/fix-registrering-alpha.mjs",
@@ -27,7 +29,7 @@
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "sharp": "^0.34.5",
-    "vite": "^8.0.1"
+    "vite": "^7.3.2"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
