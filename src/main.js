@@ -2037,16 +2037,18 @@ function osrmBasePath() {
   return 'https://router.project-osrm.org'
 }
 
-async function fetchJsonWithRetry(url) {
-  const timeoutMs = 12_000
-  for (let attempt = 0; attempt < 3; attempt++) {
+async function fetchJsonWithRetry(
+  url,
+  { timeoutMs = 12_000, maxAttempts = 3 } = {},
+) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const controller = new AbortController()
     const to = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const r = await fetch(url, { signal: controller.signal })
       clearTimeout(to)
       if (!r.ok) {
-        if (attempt < 2) {
+        if (attempt < maxAttempts - 1) {
           await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
         }
         continue
@@ -2054,13 +2056,13 @@ async function fetchJsonWithRetry(url) {
       try {
         return await r.json()
       } catch {
-        if (attempt < 2) {
+        if (attempt < maxAttempts - 1) {
           await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
         }
       }
     } catch {
       clearTimeout(to)
-      if (attempt < 2) {
+      if (attempt < maxAttempts - 1) {
         await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
       }
     }
@@ -2069,7 +2071,11 @@ async function fetchJsonWithRetry(url) {
 }
 
 async function fetchOsrmJson(path) {
-  return fetchJsonWithRetry(`${osrmBasePath()}${path}`)
+  return fetchJsonWithRetry(`${osrmBasePath()}${path}`, {
+    // OSRM er kun "nice to have" for refsnap; aldri la dette fryse meteren.
+    timeoutMs: 2200,
+    maxAttempts: 1,
+  })
 }
 
 async function fetchMapboxJson(path) {
