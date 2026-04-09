@@ -51,6 +51,8 @@ let smoothLng = /** @type {number | null} */ (null)
 let candidateSegmentId = /** @type {string | number | null} */ (null)
 let candidateSince = 0
 let candidateWins = 0
+/** Samlet tid vi har utsatt segmentbytte (anti-freeze ved høy fart/churn). */
+let segmentDeferSince = 0
 
 /** @type {number} */
 let segmentConfidence = 0
@@ -375,12 +377,14 @@ function shouldDeferSegmentChange(res, speedMps) {
     candidateSegmentId = null
     candidateSince = 0
     candidateWins = 0
+    segmentDeferSince = 0
     return false
   }
   if (String(newId) === String(lastId)) {
     candidateSegmentId = null
     candidateSince = 0
     candidateWins = 0
+    segmentDeferSince = 0
     return false
   }
   const meta = /** @type {{ _vegrefMeta?: { newSegScore?: number, prevSegScore?: number | null, scoreDelta?: number | null, source?: string } }} */ (
@@ -412,6 +416,7 @@ function shouldDeferSegmentChange(res, speedMps) {
     candidateSegmentId = newId
     candidateSince = Date.now()
     candidateWins = 1
+    if (segmentDeferSince === 0) segmentDeferSince = Date.now()
     return true
   }
   candidateWins += 1
@@ -432,12 +437,29 @@ function shouldDeferSegmentChange(res, speedMps) {
     requiredWins = Math.max(1, requiredWins - 1)
   }
   if (stableForMs < lockMs || candidateWins < requiredWins) {
+    if (segmentDeferSince === 0) segmentDeferSince = Date.now()
+    const deferForMs = Date.now() - segmentDeferSince
+    if (deferForMs > 4500) {
+      logVegrefMetric({
+        type: 'segment-defer-override',
+        deferForMs,
+        speedMps,
+        requiredWins,
+        candidateWins,
+      })
+      candidateSegmentId = null
+      candidateSince = 0
+      candidateWins = 0
+      segmentDeferSince = 0
+      return false
+    }
     return true
   }
   /* Lock expired — accept the segment change instead of resetting. */
   candidateSegmentId = null
   candidateSince = 0
   candidateWins = 0
+  segmentDeferSince = 0
   return false
 }
 

@@ -3491,18 +3491,22 @@ function applyHomeVegrefResult(res) {
       vegrefGetSegmentConfidence() > 5
     if (isStill && !segChanged && !skipM) {
       const stillMeterInt = parseKmtMeterInt(res.m)
-      const stillDelta =
+      const stillDeltaSigned =
         stillMeterInt != null && homeVegrefDisplayedMeter != null
-          ? Math.abs(stillMeterInt - homeVegrefDisplayedMeter)
+          ? stillMeterInt - homeVegrefDisplayedMeter
           : 0
+      const stillDelta = Math.abs(stillDeltaSigned)
       // Tidligere returnerte vi alltid her, som kunne låse meteren permanent
       // hvis fart-estimatet ble hengende lavt. Slipp gjennom tydelige meterendringer.
-      if (stillMeterInt == null || stillDelta <= 6) {
+      // Viktig: ikke blokker små positive steg (f.eks. +1 m), det ga "frys" i kjøring.
+      const shouldHoldStill =
+        stillMeterInt == null || (stillDeltaSigned <= 0 && stillDelta <= 6)
+      if (shouldHoldStill) {
         logVegrefMetric({
           type: 'home-meter-skip',
           reason: 'still-lock',
           speedMps: speedNow2,
-          deltaM: stillDelta,
+          deltaM: stillDeltaSigned,
         })
         homeVegrefSegKey = segKey
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
@@ -3514,7 +3518,7 @@ function applyHomeVegrefResult(res) {
         type: 'home-meter-override',
         reason: 'still-lock-delta',
         speedMps: speedNow2,
-        deltaM: stillDelta,
+        deltaM: stillDeltaSigned,
       })
     }
     if (skipM && homeVegrefHasDisplayedResult) {
