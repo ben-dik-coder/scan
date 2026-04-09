@@ -30,7 +30,7 @@ export const VEGREF_MIN_MOVE_M = 2
 const VEGREF_INFLIGHT_COALESCE_BASE_M = 12
 
 /** Gjenbruk siste NVDB-treff når posisjon er i nærheten (offline / nettfeil). */
-const OFFLINE_REUSE_NVDB_M = 90
+const OFFLINE_REUSE_NVDB_M = 200
 
 /** Monoton tid fra GPS (unngår out-of-order fixes som gir bakover-meter). */
 let lastGpsTimestamp = 0
@@ -204,6 +204,22 @@ function applyNvdbNullable(res, lat, lng) {
 /**
  * @param {VegrefHooks} h
  */
+/**
+ * Gjenopprett pipeline-cache fra localStorage (offline / rask første visning).
+ * @param {number} lat
+ * @param {number} lng
+ * @param {VegrefDescribeResult} res
+ */
+export function vegrefHydrateFromPersisted(lat, lng, res) {
+  if (lat == null || lng == null || !res || typeof res !== 'object') return
+  cacheLat = lat
+  cacheLng = lng
+  cacheRes = res
+  lastAppliedRes = res
+  lastAppliedLat = lat
+  lastAppliedLng = lng
+}
+
 export function initVegrefLive(h) {
   hooks = h
 }

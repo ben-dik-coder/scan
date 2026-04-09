@@ -94,13 +94,43 @@ app.use(
 )
 app.use(express.json({ limit: '48mb' }))
 
+/** OSRM match/nearest – proxy til offentlig instans (samme som Vite dev). Klient bruker VITE_API_BASE + /api/osrm. */
+const OSRM_UPSTREAM = (
+  process.env.OSRM_UPSTREAM || 'https://router.project-osrm.org'
+).replace(/\/$/, '')
+app.use('/api/osrm', async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.status(405).end()
+    return
+  }
+  const suffix = req.url.startsWith('/') ? req.url : `/${req.url}`
+  const url = `${OSRM_UPSTREAM}${suffix}`
+  try {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 15_000)
+    const r = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    clearTimeout(t)
+    res.status(r.status)
+    const ct = r.headers.get('content-type')
+    if (ct) res.setHeader('Content-Type', ct)
+    res.send(Buffer.from(await r.arrayBuffer()))
+  } catch (e) {
+    console.error('api/osrm proxy:', e)
+    res.status(502).json({ error: 'OSRM utilgjengelig' })
+  }
+})
+
 /** Ruter utenom health registreres etter dynamisk import (kan ta tid på treg disk). */
 let routesReady = false
 
 app.use((req, res, next) => {
   const p = req.path
   const needsRoutes =
-    p.startsWith('/api') || p === '/analyze'
+    (p.startsWith('/api') && !p.startsWith('/api/osrm')) || p === '/analyze'
   if (routesReady || !needsRoutes || p === '/api/health') {
     next()
     return
@@ -118,6 +148,7 @@ app.get('/api/health', (_req, res) => {
     version: readAppVersion(),
     routesReady,
     endpoints: [
+      '/api/osrm',
       '/api/generate-report',
       '/api/generate-ai-chat-pdf',
       '/api/ai-chat-pdf-summary',

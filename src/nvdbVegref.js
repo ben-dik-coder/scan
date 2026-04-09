@@ -350,7 +350,12 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
   return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore }
 }
 
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /**
+ * Én NVDB-runde (nettverksfeil kastes; tomt treff returnerer null uten kast).
  * @param {number} lat
  * @param {number} lng
  * @param {{
@@ -361,7 +366,7 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
  *   speed?: number
  * }} [opts]
  */
-export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
+async function fetchRoadReferenceNearOnce(lat, lng, opts = {}) {
   const { signal, accuracyM, prevNvdbId, userHeadingDeg, speed } = opts
   const padLat = 0.0042
   const cos = Math.cos((lat * Math.PI) / 180) || 1
@@ -391,7 +396,12 @@ export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
     throw new Error(`NVDB ${r.status}${t ? `: ${t.slice(0, 120)}` : ''}`)
   }
 
-  const data = await r.json()
+  let data
+  try {
+    data = await r.json()
+  } catch {
+    throw new Error('NVDB: ugyldig JSON')
+  }
   const objs = data.objekter
   if (!Array.isArray(objs) || objs.length === 0) return null
 
@@ -416,4 +426,40 @@ export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
     }
   }
   return described
+}
+
+/**
+ * Flere forsøk ved midlertidige nettfeil (mobil, tunnel, 5xx).
+ * @param {number} lat
+ * @param {number} lng
+ * @param {{
+ *   signal?: AbortSignal
+ *   accuracyM?: number
+ *   prevNvdbId?: string | number | null
+ *   userHeadingDeg?: number | null
+ *   speed?: number
+ * }} [opts]
+ */
+export async function fetchRoadReferenceNear(lat, lng, opts = {}) {
+  const { signal } = opts
+  /** @type {unknown} */
+  let lastErr = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+    try {
+      return await fetchRoadReferenceNearOnce(lat, lng, opts)
+    } catch (e) {
+      lastErr = e
+      const name = e && typeof e === 'object' && 'name' in e ? String(e.name) : ''
+      if (name === 'AbortError' || signal?.aborted) throw e
+      if (attempt < 2) {
+        await sleepMs(400 * (attempt + 1))
+      }
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('NVDB: oppslag feilet')
 }

@@ -11,6 +11,7 @@ import {
   vegrefIsStationary,
   vegrefGetLastSpeed,
   vegrefGetSegmentConfidence,
+  vegrefHydrateFromPersisted,
 } from './vegrefLive.js'
 import {
   ensureLeaflet,
@@ -1573,7 +1574,11 @@ function clearDrivingGpsStuckPoll() {
   }
 }
 
+/** Siste lagrede NVDB-treff for forsiden (offline / rask gjenoppretting). */
+const VEGREF_PERSIST_KEY = 'scanix-vegref-last-v1'
+
 /** Forside: GPS-watch som mater felles vegref-pipeline. */
+let homeVegrefGpsSeq = 0
 let homeVegrefWatchId = null
 let homeVegrefHasDisplayedResult = false
 let homeVegrefSegKey = ''
@@ -1744,7 +1749,7 @@ let lastSnapFromLng = 0
 let lastSnapResult = null
 /** Rå punkter for OSRM match (bedre å ligge på veikrysset enn nearest alene). */
 let traceBuffer = []
-const TRACE_MAX = 12
+const TRACE_MAX = 16
 
 function pushTracePoint(lat, lng) {
   traceBuffer.push({ lat, lng })
@@ -1764,24 +1769,42 @@ function parseLastTracepoint(j) {
 }
 
 function osrmBasePath() {
-  return import.meta.env.DEV
-    ? '/api/osrm'
-    : 'https://router.project-osrm.org'
+  if (import.meta.env.DEV) return '/api/osrm'
+  const raw = import.meta.env.VITE_API_BASE
+  if (typeof raw === 'string' && raw.trim()) return apiUrl('/api/osrm')
+  return 'https://router.project-osrm.org'
 }
 
 async function fetchOsrmJson(path) {
   const url = `${osrmBasePath()}${path}`
-  const controller = new AbortController()
-  const to = setTimeout(() => controller.abort(), 8000)
-  try {
-    const r = await fetch(url, { signal: controller.signal })
-    if (!r.ok) return null
-    return await r.json()
-  } catch {
-    return null
-  } finally {
-    clearTimeout(to)
+  const timeoutMs = 12_000
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController()
+    const to = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const r = await fetch(url, { signal: controller.signal })
+      clearTimeout(to)
+      if (!r.ok) {
+        if (attempt < 2) {
+          await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
+        }
+        continue
+      }
+      try {
+        return await r.json()
+      } catch {
+        if (attempt < 2) {
+          await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
+        }
+      }
+    } catch {
+      clearTimeout(to)
+      if (attempt < 2) {
+        await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
+      }
+    }
   }
+  return null
 }
 
 /**
@@ -2981,6 +3004,33 @@ function scheduleKmtVegrefLookup(
   )
 }
 
+function shouldPersistHomeVegrefRes(res) {
+  if (!res || typeof res !== 'object') return false
+  const line = String(res.roadLine || '').trim()
+  if (/^Posisjon\s+[\d.]+°N/i.test(line)) return false
+  return true
+}
+
+function maybePersistHomeVegref(res) {
+  if (!res || view !== 'home' || !homeVegrefHasDisplayedResult || !lastLiveCoords) {
+    return
+  }
+  if (!shouldPersistHomeVegrefRes(res)) return
+  try {
+    localStorage.setItem(
+      VEGREF_PERSIST_KEY,
+      JSON.stringify({
+        lat: lastLiveCoords.lat,
+        lng: lastLiveCoords.lng,
+        res,
+        savedAt: Date.now(),
+      }),
+    )
+  } catch {
+    /* quota / privat modus */
+  }
+}
+
 function setHomeVegrefPlaceholder(msg) {
   cancelHomeVegrefMeterTween()
   const prim = document.getElementById('home-vegref-primary')
@@ -3108,6 +3158,7 @@ function applyHomeVegrefResult(res) {
       homeVegrefSegKey = segKey
       setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
       comp.hidden = false
+      maybePersistHomeVegref(res)
       return
     }
     if (skipM && homeVegrefHasDisplayedResult) {
@@ -3118,6 +3169,7 @@ function applyHomeVegrefResult(res) {
         setHomeVegrefCompactDom(res.s, res.d, res.m)
       }
       comp.hidden = false
+      maybePersistHomeVegref(res)
       return
     }
     if (mInt == null) {
@@ -3158,6 +3210,7 @@ function applyHomeVegrefResult(res) {
     }
     comp.hidden = false
   }
+  maybePersistHomeVegref(res)
 }
 
 function startHomeVegrefTracking() {
@@ -3166,6 +3219,28 @@ function startHomeVegrefTracking() {
     homeVegrefWatchId = null
   }
   cancelHomeVegrefMeterTween()
+  const offlineAtStart =
+    typeof navigator !== 'undefined' && navigator.onLine === false
+  if (offlineAtStart) {
+    try {
+      const raw = localStorage.getItem(VEGREF_PERSIST_KEY)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (
+          p &&
+          typeof p.lat === 'number' &&
+          typeof p.lng === 'number' &&
+          p.res &&
+          typeof p.res === 'object'
+        ) {
+          vegrefHydrateFromPersisted(p.lat, p.lng, p.res)
+          vegrefReapplyLastToDom()
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   if (!window.isSecureContext || !navigator.geolocation) {
     setHomeVegrefPlaceholder(
       window.isSecureContext
@@ -3184,16 +3259,40 @@ function startHomeVegrefTracking() {
       if (view !== 'home') return
       const { latitude, longitude, accuracy, heading } = pos.coords
       if (accuracy > GPS_REJECT_M) return
+      homeVegrefGpsSeq += 1
+      const seq = homeVegrefGpsSeq
+      pushTracePoint(latitude, longitude)
       const hdg =
         heading != null && Number.isFinite(heading) ? heading : null
-      scheduleHomeVegrefLookup(
-        latitude,
-        longitude,
-        false,
-        accuracy,
-        pos.timestamp,
-        hdg,
-      )
+      /* Uten nett: ikke vent på OSRM — gå rett til NVDB-cache / koordinat-fallback i pipelinen. */
+      const offline =
+        typeof navigator !== 'undefined' && navigator.onLine === false
+      if (offline) {
+        scheduleHomeVegrefLookup(
+          latitude,
+          longitude,
+          false,
+          accuracy,
+          pos.timestamp,
+          hdg,
+        )
+        return
+      }
+      void (async () => {
+        const snapped = await snapToRoadNetwork(latitude, longitude, accuracy)
+        if (seq !== homeVegrefGpsSeq) return
+        if (view !== 'home') return
+        const refLat = snapped ? snapped.lat : latitude
+        const refLng = snapped ? snapped.lng : longitude
+        scheduleHomeVegrefLookup(
+          refLat,
+          refLng,
+          false,
+          accuracy,
+          pos.timestamp,
+          hdg,
+        )
+      })()
     },
     (err) => {
       if (view !== 'home') return
@@ -3377,6 +3476,25 @@ async function handleDrivingPosition(pos, seq, gpsStatusEl, firstFixRef) {
       gpsStatusEl.textContent = `Svakt signal (ca. ±${Math.round(
         acc,
       )} m) – kartet følger posisjonen din; prøv utendørs med fri sikt for bedre treff.`
+    }
+    if (kmtDialogOpen) {
+      scheduleKmtVegrefLookup(
+        latitude,
+        longitude,
+        false,
+        acc,
+        pos.timestamp,
+        headingDeg,
+      )
+    }
+    return
+  }
+
+  const offlineNav =
+    typeof navigator !== 'undefined' && navigator.onLine === false
+  if (offlineNav) {
+    if (gpsStatusEl) {
+      gpsStatusEl.textContent = `Kjøring · ca. ±${Math.round(acc)} m · uten nett (siste vegreferanse der det finnes)`
     }
     if (kmtDialogOpen) {
       scheduleKmtVegrefLookup(
@@ -10226,6 +10344,19 @@ function bootstrap() {
     }
     if (document.visibilityState === 'visible') {
       queueRefreshLeafletAfterResume()
+      if (
+        currentUser &&
+        lastLiveCoords &&
+        Date.now() - lastLiveCoords.ts < 120_000 &&
+        (view === 'home' || kmtDialogOpen)
+      ) {
+        vegrefResetThrottle()
+        vegrefNotifyGps(lastLiveCoords.lat, lastLiveCoords.lng, {
+          forceImmediate: true,
+          accuracyM: lastLiveCoords.accuracy,
+          timestamp: Date.now(),
+        })
+      }
     }
   })
   window.addEventListener('pageshow', (ev) => {
