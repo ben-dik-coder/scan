@@ -3478,16 +3478,38 @@ function applyHomeVegrefResult(res) {
     const segKey = `${longOfficial}|${res.s}|${res.d}`
     const segChanged = segKey !== homeVegrefSegKey
     const mInt = parseKmtMeterInt(res.m)
+    const speedNow2 = vegrefGetLastSpeed()
     const isStill =
-      vegrefGetLastSpeed() < 1 &&
+      speedNow2 < 1 &&
       homeVegrefDisplayedMeter != null &&
       vegrefGetSegmentConfidence() > 5
     if (isStill && !segChanged && !skipM) {
-      homeVegrefSegKey = segKey
-      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-      comp.hidden = false
-      maybePersistHomeVegref(res)
-      return
+      const stillMeterInt = parseKmtMeterInt(res.m)
+      const stillDelta =
+        stillMeterInt != null && homeVegrefDisplayedMeter != null
+          ? Math.abs(stillMeterInt - homeVegrefDisplayedMeter)
+          : 0
+      // Tidligere returnerte vi alltid her, som kunne låse meteren permanent
+      // hvis fart-estimatet ble hengende lavt. Slipp gjennom tydelige meterendringer.
+      if (stillMeterInt == null || stillDelta <= 6) {
+        logVegrefMetric({
+          type: 'home-meter-skip',
+          reason: 'still-lock',
+          speedMps: speedNow2,
+          deltaM: stillDelta,
+        })
+        homeVegrefSegKey = segKey
+        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+        comp.hidden = false
+        maybePersistHomeVegref(res)
+        return
+      }
+      logVegrefMetric({
+        type: 'home-meter-override',
+        reason: 'still-lock-delta',
+        speedMps: speedNow2,
+        deltaM: stillDelta,
+      })
     }
     if (skipM && homeVegrefHasDisplayedResult) {
       homeVegrefSegKey = segKey
