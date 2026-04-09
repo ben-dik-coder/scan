@@ -361,6 +361,51 @@ function sleepMs(ms) {
 }
 
 /**
+ * Flytter punkt langs kompassretning (grader, 0 = nord) for å legge NVDB-søket tyngre «foran» bilen.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number} headingDeg
+ * @param {number} meters
+ */
+function shiftLatLngAlongHeading(lat, lng, headingDeg, meters) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || meters <= 0) {
+    return { lat, lng }
+  }
+  const rad = (headingDeg * Math.PI) / 180
+  const cosLat = Math.cos((lat * Math.PI) / 180) || 1
+  const dLat = (meters * Math.cos(rad)) / 111111
+  const dLng = (meters * Math.sin(rad)) / (111111 * cosLat)
+  return { lat: lat + dLat, lng: lng + dLng }
+}
+
+/**
+ * @param {object[]} rows
+ */
+function dedupeNvdbObjekter(rows) {
+  const seen = new Set()
+  const out = []
+  for (let i = 0; i < rows.length; i++) {
+    const s = rows[i]
+    if (!s || typeof s !== 'object') continue
+    const id = 'id' in s && s.id != null ? String(s.id) : null
+    const kf =
+      s.vegsystemreferanse &&
+      typeof s.vegsystemreferanse.kortform === 'string'
+        ? s.vegsystemreferanse.kortform
+        : ''
+    const wkt =
+      s.geometri && typeof s.geometri.wkt === 'string'
+        ? s.geometri.wkt.slice(0, 80)
+        : ''
+    const key = id ?? (kf ? `kf:${kf}` : `i:${i}:${wkt}`)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(s)
+  }
+  return out
+}
+
+/**
  * Løser vegreferanse fra en liste kandidatsegmenter.
  * @param {object[]} objekter
  * @param {number} lat
@@ -419,17 +464,42 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
  *   prevNvdbId?: string | number | null
  *   userHeadingDeg?: number | null
  *   speed?: number
+ *   onRawSegments?: (objekter: object[]) => void
  * }} [opts]
  */
 export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
-  const { signal } = opts
-  const padLat = 0.0042
-  const cos = Math.cos((lat * Math.PI) / 180) || 1
+  const { signal, onRawSegments } = opts
+  const speedMps =
+    typeof opts.speed === 'number' && !Number.isNaN(opts.speed) ? opts.speed : 0
+  const accM =
+    typeof opts.accuracyM === 'number' && !Number.isNaN(opts.accuracyM)
+      ? opts.accuracyM
+      : 28
+  const hd = opts.userHeadingDeg
+
+  let qLat = lat
+  let qLng = lng
+  if (
+    typeof hd === 'number' &&
+    Number.isFinite(hd) &&
+    speedMps >= 6
+  ) {
+    const forwardM = Math.min(450, 8 + speedMps * 17)
+    const sh = shiftLatLngAlongHeading(lat, lng, hd, forwardM)
+    qLat = sh.lat
+    qLng = sh.lng
+  }
+
+  const speedPadFactor =
+    speedMps > 28 ? 1.22 : speedMps > 15 ? 1.12 : speedMps > 8 ? 1.06 : 1
+  const accPadFactor = accM > 55 ? 1.08 : accM > 42 ? 1.04 : 1
+  const padLat = 0.0042 * speedPadFactor * accPadFactor
+  const cos = Math.cos((qLat * Math.PI) / 180) || 1
   const padLng = padLat / cos
-  const minLat = lat - padLat
-  const maxLat = lat + padLat
-  const minLng = lng - padLng
-  const maxLng = lng + padLng
+  const minLat = qLat - padLat
+  const maxLat = qLat + padLat
+  const minLng = qLng - padLng
+  const maxLng = qLng + padLng
   const kartutsnitt = `${minLng},${minLat},${maxLng},${maxLat}`
 
   const url = new URL(NVDB_SEGMENTERT)
@@ -457,7 +527,50 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   } catch {
     throw new Error('NVDB: ugyldig JSON')
   }
-  return resolveRoadReferenceFromSegments(data.objekter, lat, lng, opts)
+  let allObjs = dedupeNvdbObjekter(
+    Array.isArray(data?.objekter) ? data.objekter : [],
+  )
+
+  const nesteHref =
+    data &&
+    typeof data === 'object' &&
+    data.metadata &&
+    typeof data.metadata === 'object' &&
+    typeof data.metadata.neste?.href === 'string'
+      ? data.metadata.neste.href
+      : ''
+  const wantExtraPage =
+    nesteHref &&
+    speedMps > 12 &&
+    (allObjs.length >= 92 || speedMps > 22)
+
+  if (wantExtraPage && !signal?.aborted) {
+    try {
+      const r2 = await fetch(nesteHref, {
+        signal,
+        headers: {
+          'X-Client': 'Scanix',
+          Accept: 'application/json',
+        },
+      })
+      if (r2.ok) {
+        const data2 = await r2.json()
+        const o2 = Array.isArray(data2?.objekter) ? data2.objekter : []
+        allObjs = dedupeNvdbObjekter([...allObjs, ...o2])
+      }
+    } catch {
+      /* valgfri side 2 */
+    }
+  }
+
+  if (typeof onRawSegments === 'function' && allObjs.length) {
+    try {
+      onRawSegments(allObjs)
+    } catch {
+      /* ikke blokker vegreferanse ved cache-feil */
+    }
+  }
+  return resolveRoadReferenceFromSegments(allObjs, lat, lng, opts)
 }
 
 /**
@@ -470,6 +583,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
  *   prevNvdbId?: string | number | null
  *   userHeadingDeg?: number | null
  *   speed?: number
+ *   onRawSegments?: (objekter: object[]) => void
  * }} [opts]
  */
 export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {

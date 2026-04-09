@@ -1,9 +1,11 @@
-import { fetchRoadReferenceNear } from './nvdbVegref.js'
+import { registerSW } from 'virtual:pwa-register'
+import { fetchRoadReferenceNearOnline } from './nvdbVegref.js'
 import {
   clearOfflineVegrefPackage,
   getOfflineVegrefMeta,
   hasOfflineVegrefPackage,
   importOfflineVegrefPackage,
+  mergeNvdbSegmentsIntoOfflineDb,
   resolveOfflineRoadReferenceNear,
 } from './vegrefLocal.js'
 import {
@@ -238,58 +240,91 @@ function rerenderIfViewingSettings() {
   bindListenersForCurrentView()
 }
 
-async function ensureOfflineVegrefPackage() {
+/**
+ * @param {{ force?: boolean }} [options]
+ *   `force: true` laster ned på nytt selv om pakke finnes (knappen «Oppdater offline-pakke»).
+ */
+async function ensureOfflineVegrefPackage(options = {}) {
+  const force = Boolean(options.force)
   await refreshOfflineVegrefState()
-  if (offlineVegrefReady) return offlineVegrefMeta
+  if (offlineVegrefReady && !force) return offlineVegrefMeta
+
   offlineVegrefSyncBusy = true
   offlineVegrefSyncError = ''
   offlineVegrefSyncStatus = 'Laster ned offline vegreferanse ...'
   rerenderIfViewingSettings()
-  let manifest = null
   try {
-    const r = await fetch(OFFLINE_VEGREF_MANIFEST_URL, { cache: 'no-store' })
-    if (!r.ok) {
-      offlineVegrefSyncStatus = 'Offline-pakke ikke tilgjengelig'
-      rerenderIfViewingSettings()
+    /** @type {object | null} */
+    let manifest = null
+    try {
+      const r = await fetch(OFFLINE_VEGREF_MANIFEST_URL, { cache: 'no-store' })
+      if (!r.ok) {
+        offlineVegrefSyncStatus = 'Offline-pakke ikke tilgjengelig'
+        return null
+      }
+      manifest = await r.json()
+    } catch {
+      offlineVegrefSyncStatus = 'Kunne ikke hente offline-manifest'
       return null
     }
-    manifest = await r.json()
-  } catch {
-    offlineVegrefSyncStatus = 'Kunne ikke hente offline-manifest'
-    rerenderIfViewingSettings()
-    return null
-  }
-  const dataUrl =
-    manifest && typeof manifest.dataUrl === 'string' ? manifest.dataUrl : ''
-  if (!dataUrl) {
-    offlineVegrefSyncStatus = 'Manifest mangler datafil'
-    rerenderIfViewingSettings()
-    return null
-  }
-  try {
-    const dataRes = await fetch(dataUrl, { cache: 'no-store' })
-    if (!dataRes.ok) {
-      offlineVegrefSyncStatus = 'Kunne ikke laste offline-data'
-      rerenderIfViewingSettings()
+    const dataUrl =
+      manifest && typeof manifest.dataUrl === 'string' ? manifest.dataUrl : ''
+    const regionTiles = Array.isArray(manifest.regionTiles)
+      ? manifest.regionTiles
+      : []
+    const tileUrls = regionTiles
+      .map((t) =>
+        t && typeof t.dataUrl === 'string' ? t.dataUrl.trim() : '',
+      )
+      .filter(Boolean)
+    if (!dataUrl && tileUrls.length === 0) {
+      offlineVegrefSyncStatus = 'Manifest mangler datafil'
       return null
     }
-    const pkg = await dataRes.json()
-    await clearOfflineVegrefPackage()
-    await importOfflineVegrefPackage({
-      version:
-        typeof manifest.version === 'string' ? manifest.version : pkg?.version,
-      generatedAt:
-        typeof manifest.generatedAt === 'string'
-          ? manifest.generatedAt
-          : pkg?.generatedAt,
-      segments: Array.isArray(pkg?.segments) ? pkg.segments : [],
-    })
-    await refreshOfflineVegrefState()
-    return offlineVegrefMeta
-  } catch {
-    offlineVegrefSyncError = 'Nedlasting eller import av offline-data feilet.'
-    offlineVegrefSyncStatus = 'Offline-import feilet'
-    return null
+    try {
+      /** @type {object[]} */
+      const allSegments = []
+      if (dataUrl) {
+        const dataRes = await fetch(dataUrl, { cache: 'no-store' })
+        if (!dataRes.ok) {
+          offlineVegrefSyncStatus = 'Kunne ikke laste offline-data'
+          return null
+        }
+        const pkg = await dataRes.json()
+        if (Array.isArray(pkg?.segments)) allSegments.push(...pkg.segments)
+      }
+      for (const url of tileUrls) {
+        const dataRes = await fetch(url, { cache: 'no-store' })
+        if (!dataRes.ok) {
+          offlineVegrefSyncStatus = 'Kunne ikke laste offline-flis'
+          return null
+        }
+        const pkg = await dataRes.json()
+        if (Array.isArray(pkg?.segments)) allSegments.push(...pkg.segments)
+      }
+      if (!allSegments.length) {
+        offlineVegrefSyncStatus = 'Offline-data er tom'
+        return null
+      }
+      await clearOfflineVegrefPackage()
+      await importOfflineVegrefPackage({
+        version:
+          typeof manifest.version === 'string' && manifest.version.trim()
+            ? manifest.version.trim()
+            : 'unknown',
+        generatedAt:
+          typeof manifest.generatedAt === 'string'
+            ? manifest.generatedAt
+            : null,
+        segments: allSegments,
+      })
+      await refreshOfflineVegrefState()
+      return offlineVegrefMeta
+    } catch {
+      offlineVegrefSyncError = 'Nedlasting eller import av offline-data feilet.'
+      offlineVegrefSyncStatus = 'Offline-import feilet'
+      return null
+    }
   } finally {
     offlineVegrefSyncBusy = false
     rerenderIfViewingSettings()
@@ -1670,6 +1705,16 @@ function clearDrivingGpsStuckPoll() {
 /** Siste lagrede NVDB-treff for forsiden (offline / rask gjenoppretting). */
 const VEGREF_PERSIST_KEY = 'scanix-vegref-last-v1'
 
+/** Throttle for inkrementell lagring av vegnett mens brukeren kjører (samme NVDB-kall som vegreferanse). */
+let lastDrivingVegnetMergeAt = 0
+/** @type {number | null} */
+let lastDrivingVegnetMergeLat = null
+/** @type {number | null} */
+let lastDrivingVegnetMergeLng = null
+const DRIVING_VEGNET_MERGE_MIN_MS = 90_000
+const DRIVING_VEGNET_MERGE_MIN_MOVE_M = 450
+const DRIVING_VEGNET_MERGE_MIN_SPEED_MPS = 2.5
+
 /** Forside: GPS-watch som mater felles vegref-pipeline. */
 let homeVegrefGpsSeq = 0
 let homeVegrefWatchId = null
@@ -1776,6 +1821,61 @@ function haversineM(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)))
 }
 
+/**
+ * @param {object[]} segments
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number | undefined} speedMps
+ */
+function maybeMergeNvdbSegmentsWhileDriving(segments, lat, lng, speedMps) {
+  if (!Array.isArray(segments) || segments.length === 0) return
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+  const s =
+    typeof speedMps === 'number' && !Number.isNaN(speedMps) ? speedMps : 0
+  if (s < DRIVING_VEGNET_MERGE_MIN_SPEED_MPS) return
+
+  const now = Date.now()
+  if (lastDrivingVegnetMergeAt > 0) {
+    const dt = now - lastDrivingVegnetMergeAt
+    if (dt < DRIVING_VEGNET_MERGE_MIN_MS) {
+      if (lastDrivingVegnetMergeLat == null || lastDrivingVegnetMergeLng == null) {
+        return
+      }
+      const moved = haversineM(
+        lastDrivingVegnetMergeLat,
+        lastDrivingVegnetMergeLng,
+        lat,
+        lng,
+      )
+      if (moved < DRIVING_VEGNET_MERGE_MIN_MOVE_M) return
+    }
+  }
+
+  void mergeNvdbSegmentsIntoOfflineDb(segments)
+    .then(() => {
+      lastDrivingVegnetMergeAt = Date.now()
+      lastDrivingVegnetMergeLat = lat
+      lastDrivingVegnetMergeLng = lng
+      void refreshOfflineVegrefState()
+    })
+    .catch(() => {})
+}
+
+/**
+ * NVDB-oppslag for vegreferanse + valgfri lokal cache av rå segmenter under kjøring.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {Parameters<typeof fetchRoadReferenceNearOnline>[2]} opts
+ */
+function fetchRoadReferenceNearForApp(lat, lng, opts) {
+  return fetchRoadReferenceNearOnline(lat, lng, {
+    ...opts,
+    onRawSegments: (objs) => {
+      maybeMergeNvdbSegmentsWhileDriving(objs, lat, lng, opts.speed)
+    },
+  })
+}
+
 function resetDrivingFilters() {
   navTargetLat = null
   navTargetLng = null
@@ -1842,7 +1942,7 @@ let lastSnapFromLng = 0
 let lastSnapResult = null
 /** Rå punkter for OSRM match (bedre å ligge på veikrysset enn nearest alene). */
 let traceBuffer = []
-const TRACE_MAX = 16
+const TRACE_MAX = 22
 
 function normalizeTraceTimestampMs(timestamp) {
   const ts =
@@ -1868,7 +1968,10 @@ function mapMatchRadiusM(accuracy) {
     typeof accuracy === 'number' && Number.isFinite(accuracy)
       ? Math.max(8, accuracy)
       : 25
-  return Math.min(80, Math.max(20, Math.round(a * 1.15)))
+  /* God GPS: strammere radius → renere match. Dårlig GPS: større radius → færre bom-treff. */
+  if (a <= 18) return Math.min(52, Math.max(18, Math.round(a * 0.95)))
+  if (a <= 35) return Math.min(68, Math.max(22, Math.round(a * 1.05)))
+  return Math.min(78, Math.max(24, Math.round(a * 1.12)))
 }
 
 function getMapboxAccessToken() {
@@ -1972,9 +2075,15 @@ async function fetchMapboxJson(path) {
  * ellers kan punktet dras inn på bygning/tomt. Match med store radiuses tåler typisk ±30–50 m GPS-feil.
  */
 async function snapToRoadNetwork(lat, lng, accuracy) {
+  const acc =
+    typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : 50
+  /* Ved svært grov posisjon: ikke trekk punktet inn på feil vei — bruk rå posisjon / siste treff. */
+  if (acc > 95) {
+    return lastSnapResult
+  }
   const now = Date.now()
   const moved = haversineM(lastSnapFromLat, lastSnapFromLng, lat, lng)
-  const poorGps = accuracy > 28
+  const poorGps = acc > 28
   const minInterval = poorGps ? 350 : 750
   const minMove = poorGps ? 3 : 12
   if (now - lastSnapAt < minInterval && moved < minMove) {
@@ -1984,10 +2093,11 @@ async function snapToRoadNetwork(lat, lng, accuracy) {
   lastSnapFromLat = lat
   lastSnapFromLng = lng
 
-  const rad = mapMatchRadiusM(accuracy)
+  const rad = mapMatchRadiusM(acc)
 
-  const traceForMatch = traceBuffer.slice(-10)
-  if (traceForMatch.length >= 2) {
+  const traceForMatch = traceBuffer.slice(-12)
+  /* Match kan gi grovt feil treff når ± er stor — nearest er ofte tryggere da. */
+  if (traceForMatch.length >= 2 && acc <= 88) {
     const pts = traceForMatch.map((p) => `${p.lng},${p.lat}`).join(';')
     const radii = traceForMatch
       .map((p) => mapMatchRadiusM(p.accuracy ?? rad))
@@ -7868,7 +7978,7 @@ function bindMenuInfoListeners() {
     ?.addEventListener(
       'click',
       () => {
-        void ensureOfflineVegrefPackage()
+        void ensureOfflineVegrefPackage({ force: true })
       },
       { signal },
     )
@@ -10512,7 +10622,7 @@ function bootstrap() {
   })
   initVegrefLive({
     haversineM,
-    fetchRoadReferenceNear,
+    fetchRoadReferenceNear: fetchRoadReferenceNearForApp,
     fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
     shouldPreferOfflineResolver: () => offlineVegrefReady,
     getViewHome: () => view === 'home',
@@ -10602,14 +10712,7 @@ function bootstrap() {
 
 bootstrap()
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js', { updateViaCache: 'none', scope: '/' })
-      .then((reg) => reg.update())
-      .catch(() => {})
-  })
-}
+registerSW({ immediate: true })
 
 window.addEventListener('beforeunload', () => {
   flushCurrentSession()

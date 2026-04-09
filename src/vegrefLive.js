@@ -4,6 +4,7 @@
  */
 
 import { bearingDeg } from './nvdbVegref.js'
+import { logVegrefMetric } from './vegrefMetrics.js'
 
 /** @typedef {ReturnType<import('./nvdbVegref.js').fetchRoadReferenceNear> extends Promise<infer R> ? R : never} VegrefDescribeResult */
 
@@ -163,8 +164,9 @@ function applyToOpenUIs(res, lat, lng) {
  * @param {VegrefDescribeResult | null} res
  * @param {number} lat
  * @param {number} lng
+ * @param {{ accuracyM?: number, speedMps?: number, online?: boolean }} [ctx]
  */
-function applyNvdbNullable(res, lat, lng) {
+function applyNvdbNullable(res, lat, lng, ctx = {}) {
   const h = hooks
   if (!h) return
 
@@ -180,6 +182,25 @@ function applyNvdbNullable(res, lat, lng) {
       res && typeof res === 'object' && 'nvdbId' in res
         ? /** @type {{ nvdbId?: string | number | null }} */ (res).nvdbId
         : null
+    const segmentChanged =
+      oid != null &&
+      nid != null &&
+      String(oid) !== String(nid)
+    logVegrefMetric({
+      accuracyM: ctx.accuracyM,
+      speedMps: ctx.speedMps,
+      online: ctx.online !== false,
+      source:
+        res._vegrefMeta?.source === 'offline' ? 'offline' : 'online',
+      distToRoadM:
+        typeof res.distToRoadM === 'number' && Number.isFinite(res.distToRoadM)
+          ? res.distToRoadM
+          : null,
+      nvdbId: nid,
+      segmentChanged,
+      lat: Math.round(lat * 1e5) / 1e5,
+      lng: Math.round(lng * 1e5) / 1e5,
+    })
     if (nid != null) {
       if (oid != null && String(nid) === String(oid)) {
         segmentConfidence = Math.min(10, segmentConfidence + 1)
@@ -575,10 +596,12 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       useLat,
       useLng,
     )
-    const coalesceRadius = Math.max(
+    let coalesceRadius = Math.max(
       VEGREF_INFLIGHT_COALESCE_BASE_M,
       accuracyM * 0.42,
     )
+    if (lastSpeed > 28) coalesceRadius *= 0.68
+    else if (lastSpeed > 18) coalesceRadius *= 0.82
     if (!forceImmediate && movedInflight < coalesceRadius) {
       return
     }
@@ -589,14 +612,21 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     lastFetchLat == null
       ? Infinity
       : h.haversineM(lastFetchLat, lastFetchLng, useLat, useLng)
-  const minInterval =
+  let minInterval =
     accuracyM > 48
       ? VEGREF_MIN_INTERVAL_MS + 420
       : accuracyM > 36
         ? VEGREF_MIN_INTERVAL_MS + 220
         : VEGREF_MIN_INTERVAL_MS
-  const minMove =
+  let minMove =
     accuracyM > 48 ? 7 : accuracyM > 36 ? 5 : VEGREF_MIN_MOVE_M
+  if (lastSpeed > 32) {
+    minInterval = Math.max(260, minInterval - 110)
+    minMove = Math.max(1, minMove - 2)
+  } else if (lastSpeed > 22) {
+    minInterval = Math.max(300, minInterval - 70)
+    minMove = Math.max(1, minMove - 1)
+  }
   const throttled =
     !forceImmediate &&
     now - lastFetchMs < minInterval &&
@@ -672,7 +702,11 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         cacheRes = res
       }
       if (seq !== fetchGeneration) return
-      applyNvdbNullable(res, useLat, useLng)
+      applyNvdbNullable(res, useLat, useLng, {
+        accuracyM,
+        speedMps,
+        online,
+      })
     } catch (e) {
       if (/** @type {{ name?: string }} */ (e).name === 'AbortError') return
       if (seq !== fetchGeneration) return

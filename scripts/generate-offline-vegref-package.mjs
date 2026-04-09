@@ -38,6 +38,12 @@ function usageAndExit(message = '') {
       '    --version "beisfjord-2026-04-09" \\',
       '    --out "public/offline/vegref-data.json" \\',
       '    --manifest "public/offline/vegref-manifest.json"',
+      '',
+      'Fliser (flere små JSON-filer + regionTiles i manifest):',
+      '  ... \\',
+      '    --tile-split "2x2" \\',
+      '    --out-dir "public/offline" \\',
+      '    --tile-prefix "vegref-tile"',
     ].join('\n'),
   )
   process.exit(1)
@@ -58,6 +64,42 @@ function parseBbox(raw) {
 
 function formatBbox(bbox) {
   return `${bbox.minLng},${bbox.minLat},${bbox.maxLng},${bbox.maxLat}`
+}
+
+/**
+ * @param {{ minLng: number, minLat: number, maxLng: number, maxLat: number }} bbox
+ * @param {number} cols
+ * @param {number} rows
+ */
+function splitBbox(bbox, cols, rows) {
+  const { minLng, minLat, maxLng, maxLat } = bbox
+  const dLng = (maxLng - minLng) / cols
+  const dLat = (maxLat - minLat) / rows
+  /** @type {{ minLng: number, minLat: number, maxLng: number, maxLat: number }[]} */
+  const tiles = []
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      tiles.push({
+        minLng: minLng + c * dLng,
+        minLat: minLat + r * dLat,
+        maxLng: minLng + (c + 1) * dLng,
+        maxLat: minLat + (r + 1) * dLat,
+      })
+    }
+  }
+  return tiles
+}
+
+/**
+ * @param {string | undefined} raw e.g. "2x2"
+ */
+function parseTileSplit(raw) {
+  if (typeof raw !== 'string' || !raw.includes('x')) return null
+  const parts = raw.split('x').map((v) => Number(v.trim()))
+  if (parts.length !== 2 || parts.some((v) => !Number.isFinite(v))) return null
+  const [cols, rows] = parts
+  if (cols < 1 || rows < 1 || cols > 12 || rows > 12) return null
+  return { cols: Math.floor(cols), rows: Math.floor(rows) }
 }
 
 function normalizeSegment(seg) {
@@ -151,11 +193,74 @@ async function main() {
     typeof args.version === 'string' && args.version.trim()
       ? args.version.trim()
       : `offline-${new Date().toISOString().slice(0, 10)}`
-  const outPath = resolvePath(args.out || 'public/offline/vegref-data.json')
   const manifestPath = resolvePath(
     args.manifest || 'public/offline/vegref-manifest.json',
   )
   const generatedAt = new Date().toISOString()
+  const tileSplit = parseTileSplit(args['tile-split'] || args.tileSplit)
+
+  if (tileSplit) {
+    const outDir = resolvePath(args['out-dir'] || 'public/offline')
+    const tilePrefix =
+      typeof args['tile-prefix'] === 'string' && args['tile-prefix'].trim()
+        ? args['tile-prefix'].trim()
+        : 'vegref-tile'
+    const tiles = splitBbox(bbox, tileSplit.cols, tileSplit.rows)
+    /** @type {{ name: string, tileIndex: number, bbox: object, dataUrl: string }[]} */
+    const regionTiles = []
+    let total = 0
+    for (let i = 0; i < tiles.length; i += 1) {
+      const tb = tiles[i]
+      console.log(
+        `Tile ${i + 1}/${tiles.length}: fetching NVDB for ${formatBbox(tb)} ...`,
+      )
+      const segments = await fetchAllSegments(tb)
+      total += segments.length
+      const tilePath = path.join(outDir, `${tilePrefix}-${i}.json`)
+      const pkg = {
+        version,
+        generatedAt,
+        source: {
+          type: 'nvdb-segmentert',
+          bbox: tb,
+        },
+        segments,
+      }
+      await writeJson(tilePath, pkg)
+      const relTile = `/${path.relative(path.join(rootDir, 'public'), tilePath).replaceAll(path.sep, '/')}`
+      regionTiles.push({
+        name: `${tilePrefix}-${i}`,
+        tileIndex: i,
+        bbox: tb,
+        dataUrl: relTile,
+      })
+    }
+    const manifest = {
+      version,
+      generatedAt,
+      regionTiles,
+    }
+    await writeJson(manifestPath, manifest)
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          mode: 'tiles',
+          version,
+          generatedAt,
+          tileSplit: `${tileSplit.cols}x${tileSplit.rows}`,
+          segmentCount: total,
+          regionTiles: regionTiles.length,
+          manifest: path.relative(rootDir, manifestPath),
+        },
+        null,
+        2,
+      ),
+    )
+    return
+  }
+
+  const outPath = resolvePath(args.out || 'public/offline/vegref-data.json')
 
   console.log(`Fetching NVDB segments for bbox ${formatBbox(bbox)} ...`)
   const segments = await fetchAllSegments(bbox)
@@ -186,6 +291,7 @@ async function main() {
     JSON.stringify(
       {
         ok: true,
+        mode: 'single',
         version,
         generatedAt,
         count: segments.length,

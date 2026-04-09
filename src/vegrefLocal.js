@@ -4,16 +4,20 @@ import {
 } from './nvdbVegref.js'
 
 const OFFLINE_DB_NAME = 'scanix-vegref-offline-v1'
-const OFFLINE_DB_VERSION = 1
+const OFFLINE_DB_VERSION = 2
 const OFFLINE_STORE_SEGMENTS = 'segments'
 const OFFLINE_STORE_META = 'meta'
 const OFFLINE_META_KEY = 'offline-package'
+
+/** Maks antall segmentrader i IndexedDB; eldste (storedAt) slettes ved overskudd. */
+export const MAX_OFFLINE_SEGMENTS = 28000
 
 /**
  * @typedef {{
  *   id: string
  *   bbox: [number, number, number, number]
  *   segment: object
+ *   storedAt?: number
  * }} OfflineSegmentRow
  */
 
@@ -23,13 +27,30 @@ function openOfflineDb() {
   if (offlineDbPromise) return offlineDbPromise
   offlineDbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
+    req.onupgradeneeded = (event) => {
+      const db = event.target.result
+      const oldV = event.oldVersion
       if (!db.objectStoreNames.contains(OFFLINE_STORE_SEGMENTS)) {
         db.createObjectStore(OFFLINE_STORE_SEGMENTS, { keyPath: 'id' })
       }
       if (!db.objectStoreNames.contains(OFFLINE_STORE_META)) {
         db.createObjectStore(OFFLINE_STORE_META)
+      }
+      if (oldV < 2) {
+        const tx = event.target.transaction
+        const store = tx.objectStore(OFFLINE_STORE_SEGMENTS)
+        const cur = store.openCursor()
+        cur.onsuccess = () => {
+          const cursor = cur.result
+          if (cursor) {
+            const v = cursor.value
+            if (v && typeof v === 'object' && v.storedAt == null) {
+              v.storedAt = Date.now()
+              cursor.update(v)
+            }
+            cursor.continue()
+          }
+        }
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -90,6 +111,64 @@ function intersectsBbox(a, b) {
   return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3])
 }
 
+/**
+ * @param {IDBDatabase} db
+ */
+async function finalizeOfflineMetaCount(db) {
+  const meta = await getOfflineVegrefMeta()
+  const tx = db.transaction(segmentsStoreName(), 'readonly')
+  const req = tx.objectStore(segmentsStoreName()).count()
+  const n = await new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error || new Error('Kunne ikke telle offline segmenter'))
+  })
+  await txDone(tx)
+  const tx2 = db.transaction(metaStoreName(), 'readwrite')
+  tx2.objectStore(metaStoreName()).put(
+    {
+      ...(meta && typeof meta === 'object' ? meta : {}),
+      count: n,
+    },
+    OFFLINE_META_KEY,
+  )
+  await txDone(tx2)
+}
+
+/**
+ * @param {IDBDatabase} db
+ */
+async function enforceOfflineSegmentQuota(db) {
+  const meta = await getOfflineVegrefMeta()
+  const tx = db.transaction(segmentsStoreName(), 'readonly')
+  const req = tx.objectStore(segmentsStoreName()).getAll()
+  const rows = await new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : [])
+    req.onerror = () => reject(req.error || new Error('Kunne ikke lese offline segmenter'))
+  })
+  await txDone(tx)
+  if (rows.length <= MAX_OFFLINE_SEGMENTS) return
+  const sorted = [...rows].sort((a, b) => {
+    const ta = typeof a.storedAt === 'number' ? a.storedAt : 0
+    const tb = typeof b.storedAt === 'number' ? b.storedAt : 0
+    if (ta !== tb) return ta - tb
+    return String(a.id).localeCompare(String(b.id))
+  })
+  const excess = rows.length - MAX_OFFLINE_SEGMENTS
+  const toDelete = sorted.slice(0, excess).map((r) => r.id)
+  const tx2 = db.transaction([segmentsStoreName(), metaStoreName()], 'readwrite')
+  const segStore = tx2.objectStore(segmentsStoreName())
+  for (const id of toDelete) segStore.delete(id)
+  tx2.objectStore(metaStoreName()).put(
+    {
+      ...(meta && typeof meta === 'object' ? meta : {}),
+      count: rows.length - excess,
+      quotaTrimmedAt: new Date().toISOString(),
+    },
+    OFFLINE_META_KEY,
+  )
+  await txDone(tx2)
+}
+
 export async function clearOfflineVegrefPackage() {
   const db = await openOfflineDb()
   const tx = db.transaction([segmentsStoreName(), metaStoreName()], 'readwrite')
@@ -112,8 +191,10 @@ export async function importOfflineVegrefPackage(pkg) {
   clearTx.objectStore(metaStoreName()).delete(OFFLINE_META_KEY)
   await txDone(clearTx)
 
+  const baseTs = Date.now()
   const tx = db.transaction([segmentsStoreName(), metaStoreName()], 'readwrite')
   const segStore = tx.objectStore(segmentsStoreName())
+  let i = 0
   for (const seg of segments) {
     const idBase = segmentStableId(seg)
     const id =
@@ -121,19 +202,22 @@ export async function importOfflineVegrefPackage(pkg) {
     const bbox = bboxForSegment(seg)
     if (!bbox) continue
     /** @type {OfflineSegmentRow} */
-    const row = { id, bbox, segment: seg }
+    const row = { id, bbox, segment: seg, storedAt: baseTs + i }
+    i += 1
     segStore.put(row)
   }
   tx.objectStore(metaStoreName()).put(
     {
       version,
       generatedAt,
-      count: segments.length,
+      count: i,
       importedAt: new Date().toISOString(),
     },
     OFFLINE_META_KEY,
   )
   await txDone(tx)
+  await enforceOfflineSegmentQuota(db)
+  await finalizeOfflineMetaCount(db)
 }
 
 export async function getOfflineVegrefMeta() {
@@ -184,3 +268,68 @@ export async function resolveOfflineRoadReferenceNear(lat, lng, opts = {}) {
   return res
 }
 
+/**
+ * Legg til / oppdater segmenter fra NVDB uten å tømme eksisterende offline-pakke.
+ * Brukes for inkrementell lagring mens brukeren kjører (samme nettverkskall som vegreferanse).
+ * @param {object[]} segments
+ */
+export async function mergeNvdbSegmentsIntoOfflineDb(segments) {
+  if (!Array.isArray(segments) || segments.length === 0) return
+
+  const db = await openOfflineDb()
+  const existingRows = await new Promise((resolve, reject) => {
+    const tx = db.transaction(segmentsStoreName(), 'readonly')
+    const req = tx.objectStore(segmentsStoreName()).getAll()
+    req.onsuccess = () => resolve(req.result || [])
+    req.onerror = () => reject(req.error || new Error('Kunne ikke lese offline segmenter'))
+  })
+  const existingIds = new Set(
+    existingRows.map((/** @type {{ id?: string }} */ r) => r.id).filter(Boolean),
+  )
+
+  let added = 0
+  /** @type {OfflineSegmentRow[]} */
+  const rows = []
+  for (const seg of segments) {
+    const idBase = segmentStableId(seg)
+    if (idBase == null) continue
+    const id = String(idBase)
+    const bbox = bboxForSegment(seg)
+    if (!bbox) continue
+    if (!existingIds.has(id)) {
+      existingIds.add(id)
+      added += 1
+    }
+    rows.push({ id, bbox, segment: seg })
+  }
+  if (!rows.length) return
+
+  const prevMeta = await getOfflineVegrefMeta()
+  const prevCount = typeof prevMeta?.count === 'number' ? prevMeta.count : 0
+
+  const touchTs = Date.now()
+  const tx = db.transaction([segmentsStoreName(), metaStoreName()], 'readwrite')
+  const segStore = tx.objectStore(segmentsStoreName())
+  rows.forEach((row, idx) => {
+    segStore.put({ ...row, storedAt: touchTs + idx })
+  })
+  tx.objectStore(metaStoreName()).put(
+    {
+      version:
+        typeof prevMeta?.version === 'string' && prevMeta.version.trim()
+          ? prevMeta.version
+          : 'live-build',
+      generatedAt:
+        typeof prevMeta?.generatedAt === 'string'
+          ? prevMeta.generatedAt
+          : new Date().toISOString(),
+      count: prevCount + added,
+      lastLiveMergeAt: new Date().toISOString(),
+      liveMerge: true,
+    },
+    OFFLINE_META_KEY,
+  )
+  await txDone(tx)
+  await enforceOfflineSegmentQuota(db)
+  await finalizeOfflineMetaCount(db)
+}

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // USE_HTTP=1 → kun HTTP (LAN/mobil). VITE_POLL_WATCH=1 → iCloud/nettverksdisk (unngå ETIMEDOUT).
 const usePlainHttp = process.env.USE_HTTP === '1'
@@ -28,7 +29,25 @@ const watchDist =
     : {}
 
 export default defineConfig({
-  plugins: usePlainHttp ? [] : [basicSsl()],
+  plugins: [
+    ...(usePlainHttp ? [] : [basicSsl()]),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: false,
+      injectRegister: false,
+      devOptions: { enabled: false },
+      workbox: {
+        globPatterns: [
+          '**/*.{js,css,html,ico,png,svg,woff2,webp,webmanifest}',
+        ],
+        globIgnores: ['**/offline/**'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+      },
+    }),
+  ],
   build: {
     ...watchDist,
   },
