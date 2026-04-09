@@ -30,6 +30,7 @@ import {
 } from './leafletLazy.js'
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
 import { syncLaunchSplash } from './launchTransition.js'
+import { getVegrefMetrics, logVegrefMetric } from './vegrefMetrics.js'
 import appPackage from '../package.json'
 import {
   buildCurrentUserFromSession,
@@ -1729,6 +1730,11 @@ let homeVegrefCompactS = '–'
 let homeVegrefCompactD = '–'
 let homeVegrefLastDistSkipAt = 0
 const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
+/** Hindrer permanent meter-frys når vi ser flere "umulige" hopp på rad. */
+let homeVegrefMeterRejectSince = 0
+let homeVegrefMeterRejectCount = 0
+const HOME_VEGREF_METER_REJECT_MAX_MS = 2600
+const HOME_VEGREF_METER_REJECT_MAX_COUNT = 4
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -3351,10 +3357,13 @@ function applyHomeVegrefResult(res) {
   const skipM = Boolean(
     /** @type {{ skipMeterUpdate?: boolean }} */ (res).skipMeterUpdate,
   )
+  const speedNow = vegrefGetLastSpeed()
 
   const dist = res.distToRoadM
   const maxDistSkip = getHomeVegrefMaxDistSkipM(lastVegrefGpsAccuracyM)
+  const allowDistSkip = speedNow < 4
   if (
+    allowDistSkip &&
     typeof dist === 'number' &&
     !Number.isNaN(dist) &&
     dist > maxDistSkip &&
@@ -3363,6 +3372,13 @@ function applyHomeVegrefResult(res) {
     const now3 = Date.now()
     if (homeVegrefLastDistSkipAt === 0) homeVegrefLastDistSkipAt = now3
     if (now3 - homeVegrefLastDistSkipAt < HOME_VEGREF_DIST_SKIP_TIMEOUT_MS) {
+      logVegrefMetric({
+        type: 'home-meter-skip',
+        reason: 'dist-to-road',
+        speedMps: speedNow,
+        distToRoadM: dist,
+        maxDistSkipM: maxDistSkip,
+      })
       return
     }
     /* Timeout: accept the result to avoid permanent freeze. */
@@ -3404,12 +3420,40 @@ function applyHomeVegrefResult(res) {
     !segChangedEarly
   ) {
     const delta = mIntEarly - homeVegrefDisplayedMeter
-    if (delta < -50) {
-      return
+    if (delta < -50 || Math.abs(delta) > 200) {
+      const nowReject = Date.now()
+      if (homeVegrefMeterRejectSince === 0) homeVegrefMeterRejectSince = nowReject
+      homeVegrefMeterRejectCount += 1
+      logVegrefMetric({
+        type: 'home-meter-skip',
+        reason: delta < -50 ? 'backward-jump' : 'large-jump',
+        speedMps: speedNow,
+        deltaM: delta,
+        rejectCount: homeVegrefMeterRejectCount,
+      })
+      if (
+        homeVegrefMeterRejectCount < HOME_VEGREF_METER_REJECT_MAX_COUNT &&
+        nowReject - homeVegrefMeterRejectSince < HOME_VEGREF_METER_REJECT_MAX_MS
+      ) {
+        return
+      }
+      /* Vedvarende avvik: ikke lås UI permanent, aksepter ny meterverdi. */
+      logVegrefMetric({
+        type: 'home-meter-override',
+        reason: 'reject-timeout',
+        speedMps: speedNow,
+        deltaM: delta,
+        rejectCount: homeVegrefMeterRejectCount,
+      })
+      homeVegrefMeterRejectSince = 0
+      homeVegrefMeterRejectCount = 0
+    } else {
+      homeVegrefMeterRejectSince = 0
+      homeVegrefMeterRejectCount = 0
     }
-    if (Math.abs(delta) > 200) {
-      return
-    }
+  } else {
+    homeVegrefMeterRejectSince = 0
+    homeVegrefMeterRejectCount = 0
   }
 
   homeVegrefHasDisplayedResult = true
@@ -5019,8 +5063,53 @@ function renderMenuSettingsHtml() {
       <p class="menu-info-prose">Generert: ${generatedAt}</p>
       ${offlineError}
       <button type="button" class="btn btn-primary" id="btn-settings-download-offline-vegref"${offlineVegrefSyncBusy ? ' disabled' : ''}>${offlineVegrefReady ? 'Oppdater offline-pakke' : 'Last ned offline-pakke'}</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings-copy-vegref-debug">Kopier vegref-debug</button>
     </div>
   </div>`
+}
+
+function buildVegrefDebugReportText() {
+  const rows = getVegrefMetrics()
+  const meterRows = rows.filter((r) => {
+    const t = String(r?.type || '')
+    return t.startsWith('home-meter') || t === 'home-meter-override'
+  })
+  const byReason = {}
+  for (const r of meterRows) {
+    const key = `${String(r.type || 'unknown')}:${String(r.reason || 'n/a')}`
+    byReason[key] = (byReason[key] || 0) + 1
+  }
+  return JSON.stringify(
+    {
+      generatedAt: new Date().toISOString(),
+      appVersion: String(appPackage?.version || 'unknown'),
+      offlineVegrefReady,
+      offlineVegrefStatus: offlineVegrefSyncStatus,
+      totalMetrics: rows.length,
+      meterMetrics: meterRows.length,
+      byReason,
+      lastMeterEvents: meterRows.slice(-30),
+    },
+    null,
+    2,
+  )
+}
+
+async function copyVegrefDebugReport() {
+  const text = buildVegrefDebugReportText()
+  if (
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === 'function'
+  ) {
+    try {
+      await navigator.clipboard.writeText(text)
+      alert('Vegref-debug kopiert. Lim inn i chatten.')
+      return
+    } catch {
+      /* fallback below */
+    }
+  }
+  window.prompt('Kopier vegref-debug og lim inn i chatten:', text)
 }
 
 function renderMenuPrivacyHtml() {
@@ -7979,6 +8068,15 @@ function bindMenuInfoListeners() {
       'click',
       () => {
         void ensureOfflineVegrefPackage({ force: true })
+      },
+      { signal },
+    )
+  document
+    .getElementById('btn-settings-copy-vegref-debug')
+    ?.addEventListener(
+      'click',
+      () => {
+        void copyVegrefDebugReport()
       },
       { signal },
     )
