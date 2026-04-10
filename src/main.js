@@ -3484,43 +3484,7 @@ function applyHomeVegrefResult(res) {
     const segKey = `${longOfficial}|${res.s}|${res.d}`
     const segChanged = segKey !== homeVegrefSegKey
     const mInt = parseKmtMeterInt(res.m)
-    const speedNow2 = vegrefGetLastSpeed()
-    const isStill =
-      speedNow2 < 0.12 &&
-      homeVegrefDisplayedMeter != null &&
-      vegrefGetSegmentConfidence() > 7
-    if (isStill && !segChanged && !skipM) {
-      const stillMeterInt = parseKmtMeterInt(res.m)
-      const stillDeltaSigned =
-        stillMeterInt != null && homeVegrefDisplayedMeter != null
-          ? stillMeterInt - homeVegrefDisplayedMeter
-          : 0
-      const stillDelta = Math.abs(stillDeltaSigned)
-      // Tidligere returnerte vi alltid her, som kunne låse meteren permanent
-      // hvis fart-estimatet ble hengende lavt. Slipp gjennom tydelige meterendringer.
-      // Viktig: ikke blokker små positive steg (f.eks. +1 m), det ga "frys" i kjøring.
-      const shouldHoldStill =
-        stillMeterInt == null || (stillDeltaSigned <= 0 && stillDelta <= 1)
-      if (shouldHoldStill) {
-        logVegrefMetric({
-          type: 'home-meter-skip',
-          reason: 'still-lock',
-          speedMps: speedNow2,
-          deltaM: stillDeltaSigned,
-        })
-        homeVegrefSegKey = segKey
-        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-        comp.hidden = false
-        maybePersistHomeVegref(res)
-        return
-      }
-      logVegrefMetric({
-        type: 'home-meter-override',
-        reason: 'still-lock-delta',
-        speedMps: speedNow2,
-        deltaM: stillDeltaSigned,
-      })
-    }
+    // Still-lock deaktivert: den har i praksis gitt falske "frys" i felt.
     if (skipM && homeVegrefHasDisplayedResult) {
       homeVegrefSegKey = segKey
       if (homeVegrefDisplayedMeter != null) {
