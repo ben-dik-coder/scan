@@ -3605,16 +3605,29 @@ function startHomeVegrefTracking() {
         )
         return
       }
+      // Kritisk: oppdater vegref umiddelbart på rå GPS.
+      // Hvis OSRM er treg/timeout skal ikke meteren stå og vente.
+      scheduleHomeVegrefLookup(
+        latitude,
+        longitude,
+        false,
+        accuracy,
+        pos.timestamp,
+        hdg,
+      )
       void (async () => {
         const snapped = await snapToRoadNetwork(latitude, longitude, accuracy)
         if (seq !== homeVegrefGpsSeq) return
         if (view !== 'home') return
-        const refLat = snapped ? snapped.lat : latitude
-        const refLng = snapped ? snapped.lng : longitude
+        if (!snapped) return
+        const refLat = snapped.lat
+        const refLng = snapped.lng
+        const snapMoved = haversineM(latitude, longitude, refLat, refLng)
+        if (snapMoved < 1) return
         scheduleHomeVegrefLookup(
           refLat,
           refLng,
-          false,
+          true,
           accuracy,
           pos.timestamp,
           hdg,
