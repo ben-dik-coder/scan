@@ -3486,9 +3486,9 @@ function applyHomeVegrefResult(res) {
     const mInt = parseKmtMeterInt(res.m)
     const speedNow2 = vegrefGetLastSpeed()
     const isStill =
-      speedNow2 < 0.35 &&
+      speedNow2 < 0.12 &&
       homeVegrefDisplayedMeter != null &&
-      vegrefGetSegmentConfidence() > 6
+      vegrefGetSegmentConfidence() > 7
     if (isStill && !segChanged && !skipM) {
       const stillMeterInt = parseKmtMeterInt(res.m)
       const stillDeltaSigned =
@@ -3500,7 +3500,7 @@ function applyHomeVegrefResult(res) {
       // hvis fart-estimatet ble hengende lavt. Slipp gjennom tydelige meterendringer.
       // Viktig: ikke blokker små positive steg (f.eks. +1 m), det ga "frys" i kjøring.
       const shouldHoldStill =
-        stillMeterInt == null || (stillDeltaSigned <= 0 && stillDelta <= 2)
+        stillMeterInt == null || (stillDeltaSigned <= 0 && stillDelta <= 1)
       if (shouldHoldStill) {
         logVegrefMetric({
           type: 'home-meter-skip',
