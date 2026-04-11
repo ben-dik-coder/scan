@@ -3768,6 +3768,25 @@ body.home-ai-panel-open .home-vegref {
   padding: 1.25rem 1.15rem 1.75rem;
 }
 
+.excel-sheet-vegref-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 0.85rem;
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.excel-sheet-vegref-toggle input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.excel-sheet-input--vegref {
+  opacity: 0.92;
+  font-size: 0.88rem;
+}
+
 .excel-sheet-card .excel-sheet-actions {
   display: flex;
   flex-wrap: wrap;

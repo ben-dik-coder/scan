@@ -51,8 +51,10 @@ import {
 } from './advancedRegister.js'
 import {
   downloadExcelSheet,
+  loadExcelIncludeVegref,
   loadExcelSheetRows,
   resetExcelSheetRows,
+  saveExcelIncludeVegref,
   saveExcelSheetRows,
 } from './excelSheetExport.js'
 
@@ -1734,6 +1736,9 @@ let homeVegrefMeterT0 = 0
 let homeVegrefDisplayedMeter = null
 let homeVegrefCompactS = '–'
 let homeVegrefCompactD = '–'
+/** Speiler siste NVDB-linjer for Excel-kolonner (Vegvei / Vegnr). */
+let homeVegrefExcelVegvei = ''
+let homeVegrefExcelVegnr = ''
 let homeVegrefLastDistSkipAt = 0
 const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
 /** Hindrer permanent meter-frys når vi ser flere "umulige" hopp på rad. */
@@ -3276,7 +3281,12 @@ function scheduleHomeVegrefLookup(
   timestamp,
   userHeadingDeg,
 ) {
-  if (view !== 'home' || lat == null || lng == null) return
+  if (
+    (view !== 'home' && view !== 'menuExcelExport') ||
+    lat == null ||
+    lng == null
+  )
+    return
   feedVegrefFromGps(
     lat,
     lng,
@@ -3333,6 +3343,69 @@ function maybePersistHomeVegref(res) {
   }
 }
 
+function syncHomeVegrefExcelFromRes(res) {
+  const mir = getVegrefHomeMirrorStrings(res)
+  if (!mir) return
+  const longDisplay = String(
+    /** @type {{ roadLineDisplay?: unknown }} */ (res).roadLineDisplay || '',
+  ).trim()
+  homeVegrefExcelVegvei = longDisplay || mir.primary
+  homeVegrefExcelVegnr =
+    mir.typeLine ||
+    String(
+      /** @type {{ roadLineShort?: unknown, roadLine?: unknown }} */ (res)
+        .roadLineShort ||
+        res.roadLine ||
+        '',
+    ).trim() ||
+    ''
+}
+
+function getHomeVegrefExcelSnapshot() {
+  const s =
+    homeVegrefCompactS === '–' || homeVegrefCompactS == null
+      ? ''
+      : String(homeVegrefCompactS)
+  const d =
+    homeVegrefCompactD === '–' || homeVegrefCompactD == null
+      ? ''
+      : String(homeVegrefCompactD)
+  let meter = ''
+  if (
+    homeVegrefDisplayedMeter != null &&
+    Number.isFinite(Number(homeVegrefDisplayedMeter))
+  ) {
+    meter = String(Math.round(homeVegrefDisplayedMeter))
+  }
+  return {
+    vegvei: homeVegrefExcelVegvei || '',
+    vegnr: homeVegrefExcelVegnr || '',
+    s,
+    d,
+    meter,
+  }
+}
+
+function refreshExcelSheetVegrefCells() {
+  if (view !== 'menuExcelExport') return
+  const cb = document.getElementById('excel-sheet-include-vegref')
+  if (!cb || !(cb instanceof HTMLInputElement) || !cb.checked) return
+  const snap = getHomeVegrefExcelSnapshot()
+  const tbody = document.getElementById('excel-sheet-tbody')
+  if (!tbody) return
+  for (const tr of tbody.querySelectorAll('tr')) {
+    for (const key of ['vegvei', 'vegnr', 's', 'd', 'meter']) {
+      const el = tr.querySelector(`input[data-excel-field="${key}"]`)
+      if (el instanceof HTMLInputElement) {
+        el.value = String(
+          snap[/** @type {'vegvei' | 'vegnr' | 's' | 'd' | 'meter'} */ (key)] ??
+            '',
+        )
+      }
+    }
+  }
+}
+
 function setHomeVegrefPlaceholder(msg) {
   cancelHomeVegrefMeterTween()
   const prim = document.getElementById('home-vegref-primary')
@@ -3355,12 +3428,6 @@ function setHomeVegrefPlaceholder(msg) {
 }
 
 function applyHomeVegrefResult(res) {
-  if (view !== 'home') return
-  const prim = document.getElementById('home-vegref-primary')
-  const typeEl = document.getElementById('home-vegref-type')
-  const comp = document.getElementById('home-vegref-compact')
-  if (!prim) return
-
   if (!res) {
     /* Ingen treff: ikke tøm eller vis feil – behold siste gode visning. */
     return
@@ -3386,12 +3453,30 @@ function applyHomeVegrefResult(res) {
   const officialShort = String(res.roadLineShort || longOfficial || '').trim()
   if (!display && !officialShort) return
 
+  syncHomeVegrefExcelFromRes(res)
+
   const segKeyEarly = `${longOfficial}|${res.s}|${res.d}`
   const segChangedEarly = segKeyEarly !== homeVegrefSegKey
   if (segChangedEarly) {
     vegrefClearSegmentLock()
     cancelHomeVegrefMeterTween()
   }
+
+  if (view !== 'home') {
+    homeVegrefHasDisplayedResult = true
+    homeVegrefCompactS = res.s
+    homeVegrefCompactD = res.d
+    const mInt = parseKmtMeterInt(res.m)
+    if (mInt != null) homeVegrefDisplayedMeter = mInt
+    homeVegrefSegKey = `${longOfficial}|${res.s}|${res.d}`
+    if (view === 'menuExcelExport') refreshExcelSheetVegrefCells()
+    return
+  }
+
+  const prim = document.getElementById('home-vegref-primary')
+  const typeEl = document.getElementById('home-vegref-type')
+  const comp = document.getElementById('home-vegref-compact')
+  if (!prim) return
 
   homeVegrefHasDisplayedResult = true
   prim.textContent = display || officialShort
@@ -5075,17 +5160,26 @@ function renderMenuExcelExportHtml() {
     <h2 class="subview-title">Eksporter til Excel</h2>
     <p class="menu-info-prose">Fyll inn beskrivelse og verdi for hver rad. Rader lagres lokalt i nettleseren til du tømmer skjemaet eller sletter nettleserdata.</p>
     <div class="menu-card excel-sheet-card">
+      <label class="excel-sheet-vegref-toggle menu-info-prose">
+        <input type="checkbox" id="excel-sheet-include-vegref" />
+        Ta med vegreferanse (Vegvei, vegnummer, S, D, meter) – fylles automatisk fra siste posisjon
+      </label>
       <div class="excel-sheet-actions">
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm</button>
         <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Eksporter til Excel (.xlsx)</button>
       </div>
       <div class="excel-sheet-table-wrap">
-        <table class="excel-sheet-table" aria-label="Egne data">
+        <table class="excel-sheet-table" id="excel-sheet-table" aria-label="Egne data">
           <thead>
             <tr>
               <th scope="col">Beskrivelse</th>
               <th scope="col">Verdi</th>
+              <th scope="col" class="excel-sheet-veg-col" hidden>Vegvei</th>
+              <th scope="col" class="excel-sheet-veg-col" hidden>Vegnr</th>
+              <th scope="col" class="excel-sheet-veg-col" hidden>S</th>
+              <th scope="col" class="excel-sheet-veg-col" hidden>D</th>
+              <th scope="col" class="excel-sheet-veg-col" hidden>Meter</th>
               <th scope="col" class="excel-sheet-col-remove"><span class="visually-hidden">Fjern rad</span></th>
             </tr>
           </thead>
@@ -5098,8 +5192,9 @@ function renderMenuExcelExportHtml() {
 
 /**
  * @param {{ id: string, label: string, value: string }} row
+ * @param {boolean} includeVegref
  */
-function createExcelSheetRowTr(row) {
+function createExcelSheetRowTr(row, includeVegref) {
   const tr = document.createElement('tr')
   tr.dataset.rowId = row.id
   const td1 = document.createElement('td')
@@ -5120,14 +5215,39 @@ function createExcelSheetRowTr(row) {
   inp2.placeholder = 'Verdi'
   inp2.autocomplete = 'off'
   td2.appendChild(inp2)
-  const td3 = document.createElement('td')
+  const vegSpec = [
+    ['vegvei', 'Vegvei'],
+    ['vegnr', 'Vegnr'],
+    ['s', 'S'],
+    ['d', 'D'],
+    ['meter', 'Meter'],
+  ]
+  const tdRm = document.createElement('td')
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'btn btn-ghost excel-sheet-remove'
   btn.textContent = '×'
   btn.setAttribute('aria-label', 'Fjern rad')
-  td3.appendChild(btn)
-  tr.append(td1, td2, td3)
+  tdRm.appendChild(btn)
+  tr.appendChild(td1)
+  tr.appendChild(td2)
+  for (const [field, ph] of vegSpec) {
+    const tdV = document.createElement('td')
+    tdV.className = 'excel-sheet-veg-col'
+    if (!includeVegref) tdV.setAttribute('hidden', '')
+    const vInp = document.createElement('input')
+    vInp.type = 'text'
+    vInp.className = 'excel-sheet-input excel-sheet-input--vegref'
+    vInp.readOnly = true
+    vInp.tabIndex = -1
+    vInp.dataset.excelField = field
+    vInp.placeholder = ph
+    vInp.autocomplete = 'off'
+    vInp.setAttribute('aria-readonly', 'true')
+    tdV.appendChild(vInp)
+    tr.appendChild(tdV)
+  }
+  tr.appendChild(tdRm)
   return tr
 }
 
@@ -5152,10 +5272,12 @@ function persistExcelSheetFromTbody(tbody) {
 /**
  * @param {HTMLTableSectionElement} tbody
  * @param {{ id: string, label: string, value: string }[]} rows
+ * @param {boolean} includeVegref
  */
-function fillExcelSheetTbody(tbody, rows) {
+function fillExcelSheetTbody(tbody, rows, includeVegref) {
   tbody.replaceChildren()
-  for (const row of rows) tbody.appendChild(createExcelSheetRowTr(row))
+  for (const row of rows)
+    tbody.appendChild(createExcelSheetRowTr(row, includeVegref))
 }
 
 function bindMenuExcelExportListeners() {
@@ -5163,16 +5285,54 @@ function bindMenuExcelExportListeners() {
   menuExcelExportAbort = new AbortController()
   const { signal } = menuExcelExportAbort
 
+  if (menuExcelVegrefPollId) {
+    clearInterval(menuExcelVegrefPollId)
+    menuExcelVegrefPollId = null
+  }
+
   const tbody = document.getElementById('excel-sheet-tbody')
   if (!tbody || !(tbody instanceof HTMLTableSectionElement)) return
 
-  fillExcelSheetTbody(tbody, loadExcelSheetRows())
+  const table = document.getElementById('excel-sheet-table')
+  const vegCb = document.getElementById('excel-sheet-include-vegref')
+  let includeVegref = loadExcelIncludeVegref()
+  if (vegCb instanceof HTMLInputElement) vegCb.checked = includeVegref
+
+  const applyVegrefColumnVisibility = (on) => {
+    for (const el of document.querySelectorAll('.excel-sheet-veg-col')) {
+      if (on) el.removeAttribute('hidden')
+      else el.setAttribute('hidden', '')
+    }
+    if (table) table.classList.toggle('excel-sheet-table--vegref', on)
+  }
+  applyVegrefColumnVisibility(includeVegref)
+  fillExcelSheetTbody(tbody, loadExcelSheetRows(), includeVegref)
+  refreshExcelSheetVegrefCells()
+
+  vegCb?.addEventListener(
+    'change',
+    () => {
+      if (!(vegCb instanceof HTMLInputElement)) return
+      includeVegref = vegCb.checked
+      saveExcelIncludeVegref(includeVegref)
+      applyVegrefColumnVisibility(includeVegref)
+      fillExcelSheetTbody(tbody, loadExcelSheetRows(), includeVegref)
+      refreshExcelSheetVegrefCells()
+    },
+    { signal },
+  )
+
+  menuExcelVegrefPollId = window.setInterval(() => {
+    refreshExcelSheetVegrefCells()
+  }, 900)
 
   tbody.addEventListener(
     'input',
     (e) => {
-      if (e.target instanceof HTMLInputElement && e.target.dataset.excelField)
+      if (e.target instanceof HTMLInputElement && e.target.dataset.excelField) {
         persistExcelSheetFromTbody(tbody)
+        refreshExcelSheetVegrefCells()
+      }
     },
     { signal },
   )
@@ -5203,7 +5363,10 @@ function bindMenuExcelExportListeners() {
       const rows = loadExcelSheetRows()
       rows.push(row)
       saveExcelSheetRows(rows)
-      tbody.appendChild(createExcelSheetRowTr(row))
+      tbody.appendChild(
+        createExcelSheetRowTr(row, loadExcelIncludeVegref()),
+      )
+      refreshExcelSheetVegrefCells()
     },
     { signal },
   )
@@ -5218,7 +5381,8 @@ function bindMenuExcelExportListeners() {
       )
         return
       const rows = resetExcelSheetRows()
-      fillExcelSheetTbody(tbody, rows)
+      fillExcelSheetTbody(tbody, rows, loadExcelIncludeVegref())
+      refreshExcelSheetVegrefCells()
     },
     { signal },
   )
@@ -5227,14 +5391,29 @@ function bindMenuExcelExportListeners() {
     'click',
     () => {
       persistExcelSheetFromTbody(tbody)
-      const rows = loadExcelSheetRows().map((r) => ({
-        label: r.label,
-        value: r.value,
-      }))
-      void downloadExcelSheet(rows)
+      const useVeg =
+        loadExcelIncludeVegref() &&
+        vegCb instanceof HTMLInputElement &&
+        vegCb.checked
+      const base = loadExcelSheetRows()
+      const snap = getHomeVegrefExcelSnapshot()
+      const rows = useVeg
+        ? base.map((r) => ({
+            label: r.label,
+            value: r.value,
+            vegvei: snap.vegvei,
+            vegnr: snap.vegnr,
+            s: snap.s,
+            d: snap.d,
+            meter: snap.meter,
+          }))
+        : base.map((r) => ({ label: r.label, value: r.value }))
+      void downloadExcelSheet(rows, { includeVegref: useVeg })
     },
     { signal },
   )
+
+  startHomeVegrefTracking()
 }
 
 function syncPhotoAlbumChrome() {
@@ -6412,6 +6591,8 @@ let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
 let menuContactsAbort = null
 let menuInfoAbort = null
 let menuExcelExportAbort = null
+/** @type {ReturnType<typeof setInterval> | null} */
+let menuExcelVegrefPollId = null
 let inboxAbort = null
 let sessionAbort = null
 /** Avansert registering (egen flyt). */
@@ -10765,7 +10946,14 @@ function bindListenersForCurrentView() {
     advRegAbort.abort()
     advRegAbort = null
   }
-  if (view !== 'home' || !currentUser) {
+  if (menuExcelVegrefPollId) {
+    clearInterval(menuExcelVegrefPollId)
+    menuExcelVegrefPollId = null
+  }
+  if (
+    (view !== 'home' && view !== 'menuExcelExport') ||
+    !currentUser
+  ) {
     stopHomeVegrefTracking()
   }
   if (!currentUser) {

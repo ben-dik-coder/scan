@@ -1,4 +1,27 @@
 export const EXCEL_SHEET_STORAGE_KEY = 'scanix-excel-sheet-v1'
+export const EXCEL_INCLUDE_VEGREF_KEY = 'scanix-excel-include-vegref-v1'
+
+/**
+ * @returns {boolean}
+ */
+export function loadExcelIncludeVegref() {
+  try {
+    return localStorage.getItem(EXCEL_INCLUDE_VEGREF_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * @param {boolean} on
+ */
+export function saveExcelIncludeVegref(on) {
+  try {
+    localStorage.setItem(EXCEL_INCLUDE_VEGREF_KEY, on ? '1' : '0')
+  } catch {
+    /* quota */
+  }
+}
 
 /**
  * @returns {{ id: string, label: string, value: string }[]}
@@ -48,11 +71,35 @@ export function resetExcelSheetRows() {
 }
 
 /**
- * @param {{ label: string, value: string }[]} rows
+ * @param {Array<{
+ *   label: string,
+ *   value: string,
+ *   vegvei?: string,
+ *   vegnr?: string,
+ *   s?: string,
+ *   d?: string,
+ *   meter?: string,
+ * }>} rows
+ * @param {{ includeVegref?: boolean }} [opts]
  */
-export async function downloadExcelSheet(rows) {
+export async function downloadExcelSheet(rows, opts = {}) {
+  const includeVegref = Boolean(opts.includeVegref)
   const XLSX = await import('xlsx')
-  const aoa = [['Beskrivelse', 'Verdi'], ...rows.map((r) => [r.label ?? '', r.value ?? ''])]
+  const head = includeVegref
+    ? ['Beskrivelse', 'Verdi', 'Vegvei', 'Vegnr', 'S', 'D', 'Meter']
+    : ['Beskrivelse', 'Verdi']
+  const body = includeVegref
+    ? rows.map((r) => [
+        r.label ?? '',
+        r.value ?? '',
+        r.vegvei ?? '',
+        r.vegnr ?? '',
+        r.s ?? '',
+        r.d ?? '',
+        r.meter ?? '',
+      ])
+    : rows.map((r) => [r.label ?? '', r.value ?? ''])
+  const aoa = [head, ...body]
   const ws = XLSX.utils.aoa_to_sheet(aoa)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Data')
