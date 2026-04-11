@@ -4694,7 +4694,7 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
         <button type="button" class="home-drawer__link" id="home-drawer-messages">Meldinger</button>
         <button type="button" class="home-drawer__link" id="home-drawer-settings">Innstillinger</button>
-        <button type="button" class="home-drawer__link" id="home-drawer-excel-export">Excel-ark</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-excel-export">Eksporter til Excel</button>
         <button type="button" class="home-drawer__link" id="home-drawer-privacy">Personvern</button>
         <button type="button" class="home-drawer__link" id="home-drawer-support">Support</button>
       </nav>
@@ -5072,7 +5072,7 @@ function renderMenuSupportHtml() {
 function renderMenuExcelExportHtml() {
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
-    <h2 class="subview-title">Excel-ark</h2>
+    <h2 class="subview-title">Eksporter til Excel</h2>
     <p class="menu-info-prose">Fyll inn beskrivelse og verdi for hver rad. Rader lagres lokalt i nettleseren til du tømmer skjemaet eller sletter nettleserdata.</p>
     <div class="menu-card excel-sheet-card">
       <div class="excel-sheet-actions">
