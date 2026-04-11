@@ -3363,35 +3363,10 @@ function applyHomeVegrefResult(res) {
   const skipM = Boolean(
     /** @type {{ skipMeterUpdate?: boolean }} */ (res).skipMeterUpdate,
   )
-  const speedNow = vegrefGetLastSpeed()
 
-  const dist = res.distToRoadM
-  const maxDistSkip = getHomeVegrefMaxDistSkipM(lastVegrefGpsAccuracyM)
-  const allowDistSkip = speedNow < 4
-  if (
-    allowDistSkip &&
-    typeof dist === 'number' &&
-    !Number.isNaN(dist) &&
-    dist > maxDistSkip &&
-    homeVegrefHasDisplayedResult
-  ) {
-    const now3 = Date.now()
-    if (homeVegrefLastDistSkipAt === 0) homeVegrefLastDistSkipAt = now3
-    if (now3 - homeVegrefLastDistSkipAt < HOME_VEGREF_DIST_SKIP_TIMEOUT_MS) {
-      logVegrefMetric({
-        type: 'home-meter-skip',
-        reason: 'dist-to-road',
-        speedMps: speedNow,
-        distToRoadM: dist,
-        maxDistSkipM: maxDistSkip,
-      })
-      return
-    }
-    /* Timeout: accept the result to avoid permanent freeze. */
-    homeVegrefLastDistSkipAt = 0
-  } else {
-    homeVegrefLastDistSkipAt = 0
-  }
+  // Alle aggressive meter-filtre (dist-to-road, large-jump, backward-jump,
+  // still-lock) er fjernet — de ga i praksis mer frys enn nytte.
+  // Meteren oppdateres alltid med siste NVDB-treff.
 
   const longDisplay = String(res.roadLineDisplay || '').trim()
   const longOfficial = String(res.roadLine || '').trim()
@@ -3406,60 +3381,10 @@ function applyHomeVegrefResult(res) {
   if (!display && !officialShort) return
 
   const segKeyEarly = `${longOfficial}|${res.s}|${res.d}`
-  const mIntEarly = skipM
-    ? homeVegrefDisplayedMeter
-    : parseKmtMeterInt(res.m)
   const segChangedEarly = segKeyEarly !== homeVegrefSegKey
   if (segChangedEarly) {
     vegrefClearSegmentLock()
-    const willTweenSegChange =
-      !skipM &&
-      parseKmtMeterInt(res.m) != null &&
-      homeVegrefDisplayedMeter != null
-    if (!willTweenSegChange) cancelHomeVegrefMeterTween()
-  }
-  if (
-    !vegrefIsStationary() &&
-    !skipM &&
-    homeVegrefDisplayedMeter != null &&
-    mIntEarly != null &&
-    !segChangedEarly
-  ) {
-    const delta = mIntEarly - homeVegrefDisplayedMeter
-    if (delta < -50 || Math.abs(delta) > 200) {
-      const nowReject = Date.now()
-      if (homeVegrefMeterRejectSince === 0) homeVegrefMeterRejectSince = nowReject
-      homeVegrefMeterRejectCount += 1
-      logVegrefMetric({
-        type: 'home-meter-skip',
-        reason: delta < -50 ? 'backward-jump' : 'large-jump',
-        speedMps: speedNow,
-        deltaM: delta,
-        rejectCount: homeVegrefMeterRejectCount,
-      })
-      if (
-        homeVegrefMeterRejectCount < HOME_VEGREF_METER_REJECT_MAX_COUNT &&
-        nowReject - homeVegrefMeterRejectSince < HOME_VEGREF_METER_REJECT_MAX_MS
-      ) {
-        return
-      }
-      /* Vedvarende avvik: ikke lås UI permanent, aksepter ny meterverdi. */
-      logVegrefMetric({
-        type: 'home-meter-override',
-        reason: 'reject-timeout',
-        speedMps: speedNow,
-        deltaM: delta,
-        rejectCount: homeVegrefMeterRejectCount,
-      })
-      homeVegrefMeterRejectSince = 0
-      homeVegrefMeterRejectCount = 0
-    } else {
-      homeVegrefMeterRejectSince = 0
-      homeVegrefMeterRejectCount = 0
-    }
-  } else {
-    homeVegrefMeterRejectSince = 0
-    homeVegrefMeterRejectCount = 0
+    cancelHomeVegrefMeterTween()
   }
 
   homeVegrefHasDisplayedResult = true
