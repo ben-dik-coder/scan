@@ -3768,6 +3768,61 @@ body.home-ai-panel-open .home-vegref {
   padding: 1.25rem 1.15rem 1.75rem;
 }
 
+.excel-sheet-card .excel-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.excel-sheet-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.excel-sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.excel-sheet-table th,
+.excel-sheet-table td {
+  padding: 0.45rem 0.35rem;
+  border-bottom: 1px solid rgba(42, 49, 66, 0.85);
+  vertical-align: middle;
+}
+
+.excel-sheet-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.excel-sheet-col-remove {
+  width: 2.5rem;
+  text-align: center;
+}
+
+.excel-sheet-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(42, 49, 66, 0.9);
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font: inherit;
+}
+
+.excel-sheet-remove {
+  min-width: 2.25rem;
+  padding: 0.25rem 0.35rem;
+  line-height: 1;
+}
+
 .subview-title {
   margin: 0.5rem 0 1rem;
   font-size: 1.1rem;

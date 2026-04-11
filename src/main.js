@@ -49,6 +49,12 @@ import {
   bindAdvancedRegister,
   invalidateAdvRegMapSize,
 } from './advancedRegister.js'
+import {
+  downloadExcelSheet,
+  loadExcelSheetRows,
+  resetExcelSheetRows,
+  saveExcelSheetRows,
+} from './excelSheetExport.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
 const LEGACY_STORAGE_KEY = 'count-clicker-v1'
@@ -1249,7 +1255,7 @@ let currentSessionId = null
 let standalonePhotos = []
 /** Lagrede friksjonsmålinger (start–stopp + verdi), per bruker i app-lagring. */
 let frictionMeasurements = []
-/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
+/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'menuExcelExport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
 let view = 'home'
 /** Faner under «Økten»: oversikt, gjenoppta, last ned, importer. */
 let menuSessionTab = 'sessions'
@@ -4688,6 +4694,7 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
         <button type="button" class="home-drawer__link" id="home-drawer-messages">Meldinger</button>
         <button type="button" class="home-drawer__link" id="home-drawer-settings">Innstillinger</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-excel-export">Excel-ark</button>
         <button type="button" class="home-drawer__link" id="home-drawer-privacy">Personvern</button>
         <button type="button" class="home-drawer__link" id="home-drawer-support">Support</button>
       </nav>
@@ -5060,6 +5067,174 @@ function renderMenuSupportHtml() {
     <h2 class="subview-title">Support</h2>
     <p class="menu-info-prose">Trenger du hjelp? Beskriv problemet og enhet/nettleser i en e-post til appens leverandør, eller se dokumentasjonen som følger prosjektet.</p>
   </div>`
+}
+
+function renderMenuExcelExportHtml() {
+  return `<div class="view-sub surface view-panel-enter">
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
+    <h2 class="subview-title">Excel-ark</h2>
+    <p class="menu-info-prose">Fyll inn beskrivelse og verdi for hver rad. Rader lagres lokalt i nettleseren til du tømmer skjemaet eller sletter nettleserdata.</p>
+    <div class="menu-card excel-sheet-card">
+      <div class="excel-sheet-actions">
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm</button>
+        <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Eksporter til Excel (.xlsx)</button>
+      </div>
+      <div class="excel-sheet-table-wrap">
+        <table class="excel-sheet-table" aria-label="Egne data">
+          <thead>
+            <tr>
+              <th scope="col">Beskrivelse</th>
+              <th scope="col">Verdi</th>
+              <th scope="col" class="excel-sheet-col-remove"><span class="visually-hidden">Fjern rad</span></th>
+            </tr>
+          </thead>
+          <tbody id="excel-sheet-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>`
+}
+
+/**
+ * @param {{ id: string, label: string, value: string }} row
+ */
+function createExcelSheetRowTr(row) {
+  const tr = document.createElement('tr')
+  tr.dataset.rowId = row.id
+  const td1 = document.createElement('td')
+  const inp1 = document.createElement('input')
+  inp1.type = 'text'
+  inp1.className = 'excel-sheet-input'
+  inp1.dataset.excelField = 'label'
+  inp1.value = row.label
+  inp1.placeholder = 'Beskrivelse'
+  inp1.autocomplete = 'off'
+  td1.appendChild(inp1)
+  const td2 = document.createElement('td')
+  const inp2 = document.createElement('input')
+  inp2.type = 'text'
+  inp2.className = 'excel-sheet-input'
+  inp2.dataset.excelField = 'value'
+  inp2.value = row.value
+  inp2.placeholder = 'Verdi'
+  inp2.autocomplete = 'off'
+  td2.appendChild(inp2)
+  const td3 = document.createElement('td')
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'btn btn-ghost excel-sheet-remove'
+  btn.textContent = '×'
+  btn.setAttribute('aria-label', 'Fjern rad')
+  td3.appendChild(btn)
+  tr.append(td1, td2, td3)
+  return tr
+}
+
+/**
+ * @param {HTMLTableSectionElement} tbody
+ */
+function persistExcelSheetFromTbody(tbody) {
+  const rows = []
+  for (const tr of tbody.querySelectorAll('tr')) {
+    const id = tr.dataset.rowId
+    const labelEl = tr.querySelector('input[data-excel-field="label"]')
+    const valueEl = tr.querySelector('input[data-excel-field="value"]')
+    const label =
+      labelEl instanceof HTMLInputElement ? labelEl.value : ''
+    const value =
+      valueEl instanceof HTMLInputElement ? valueEl.value : ''
+    if (id) rows.push({ id, label, value })
+  }
+  saveExcelSheetRows(rows)
+}
+
+/**
+ * @param {HTMLTableSectionElement} tbody
+ * @param {{ id: string, label: string, value: string }[]} rows
+ */
+function fillExcelSheetTbody(tbody, rows) {
+  tbody.replaceChildren()
+  for (const row of rows) tbody.appendChild(createExcelSheetRowTr(row))
+}
+
+function bindMenuExcelExportListeners() {
+  if (menuExcelExportAbort) menuExcelExportAbort.abort()
+  menuExcelExportAbort = new AbortController()
+  const { signal } = menuExcelExportAbort
+
+  const tbody = document.getElementById('excel-sheet-tbody')
+  if (!tbody || !(tbody instanceof HTMLTableSectionElement)) return
+
+  fillExcelSheetTbody(tbody, loadExcelSheetRows())
+
+  tbody.addEventListener(
+    'input',
+    (e) => {
+      if (e.target instanceof HTMLInputElement && e.target.dataset.excelField)
+        persistExcelSheetFromTbody(tbody)
+    },
+    { signal },
+  )
+
+  tbody.addEventListener(
+    'click',
+    (e) => {
+      const t = e.target
+      if (!(t instanceof Element)) return
+      const btn = t.closest('.excel-sheet-remove')
+      if (!btn || !tbody.contains(btn)) return
+      const tr = btn.closest('tr')
+      if (!tr || !tbody.contains(tr)) return
+      tr.remove()
+      persistExcelSheetFromTbody(tbody)
+    },
+    { signal },
+  )
+
+  document
+    .getElementById('btn-back-from-menu-excel-export')
+    ?.addEventListener('click', () => goHome(), { signal })
+
+  document.getElementById('btn-excel-sheet-add-row')?.addEventListener(
+    'click',
+    () => {
+      const row = { id: crypto.randomUUID(), label: '', value: '' }
+      const rows = loadExcelSheetRows()
+      rows.push(row)
+      saveExcelSheetRows(rows)
+      tbody.appendChild(createExcelSheetRowTr(row))
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-excel-sheet-clear')?.addEventListener(
+    'click',
+    () => {
+      if (
+        !confirm(
+          'Tømme alle rader og starte på nytt med fem tomme rader?',
+        )
+      )
+        return
+      const rows = resetExcelSheetRows()
+      fillExcelSheetTbody(tbody, rows)
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-excel-sheet-export')?.addEventListener(
+    'click',
+    () => {
+      persistExcelSheetFromTbody(tbody)
+      const rows = loadExcelSheetRows().map((r) => ({
+        label: r.label,
+        value: r.value,
+      }))
+      void downloadExcelSheet(rows)
+    },
+    { signal },
+  )
 }
 
 function syncPhotoAlbumChrome() {
@@ -6191,6 +6366,7 @@ function renderApp() {
   else if (view === 'menuSettings') main = renderMenuSettingsHtml()
   else if (view === 'menuPrivacy') main = renderMenuPrivacyHtml()
   else if (view === 'menuSupport') main = renderMenuSupportHtml()
+  else if (view === 'menuExcelExport') main = renderMenuExcelExportHtml()
   else if (view === 'inbox') main = renderInboxHtml()
   else if (view === 'photoAlbum') main = renderPhotoAlbumHtml()
   else if (view === 'receivedPhotos') main = renderReceivedPhotosHtml()
@@ -6235,6 +6411,7 @@ let menuPhotosAbort = null
 let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
 let menuContactsAbort = null
 let menuInfoAbort = null
+let menuExcelExportAbort = null
 let inboxAbort = null
 let sessionAbort = null
 /** Avansert registering (egen flyt). */
@@ -6732,6 +6909,18 @@ function openMenuSupportView() {
   bindMenuInfoListeners()
 }
 
+function openMenuExcelExportView() {
+  closeHomeDrawer()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuExcelExport'
+  saveAppState()
+  renderApp()
+  bindMenuExcelExportListeners()
+}
+
 function bindHomeListeners() {
   if (homeAbort) homeAbort.abort()
   homeAbort = new AbortController()
@@ -6837,6 +7026,11 @@ function bindHomeListeners() {
   document.getElementById('home-drawer-settings')?.addEventListener(
     'click',
     () => openMenuSettingsView(),
+    { signal },
+  )
+  document.getElementById('home-drawer-excel-export')?.addEventListener(
+    'click',
+    () => openMenuExcelExportView(),
     { signal },
   )
   document.getElementById('home-drawer-privacy')?.addEventListener(
@@ -10595,6 +10789,8 @@ function bindListenersForCurrentView() {
     bindMenuContactsListeners()
   } else if (view === 'menuSettings' || view === 'menuPrivacy' || view === 'menuSupport') {
     bindMenuInfoListeners()
+  } else if (view === 'menuExcelExport') {
+    bindMenuExcelExportListeners()
   } else if (view === 'inbox') {
     bindInboxListeners()
   } else if (view === 'photoAlbum') {
