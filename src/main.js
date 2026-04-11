@@ -7084,6 +7084,18 @@ function openMenuExcelExportView() {
   bindMenuExcelExportListeners()
 }
 
+/** Spør om vegreferanse før Excel-siden åpnes (fra hamburger-meny). */
+function openMenuExcelExportViewWithVegrefPrompt() {
+  closeHomeDrawer()
+  const includeVegref = window.confirm(
+    'Vil du legge ved vegreferanse i Excel-filen?\n\n' +
+      'Da legges det inn kolonner for Vegvei, vegnummer, S, D og meter (oppdateres fra GPS/NVDB).\n\n' +
+      'Trykk OK for ja, eller Avbryt for nei.',
+  )
+  saveExcelIncludeVegref(includeVegref)
+  openMenuExcelExportView()
+}
+
 function bindHomeListeners() {
   if (homeAbort) homeAbort.abort()
   homeAbort = new AbortController()
@@ -7193,7 +7205,7 @@ function bindHomeListeners() {
   )
   document.getElementById('home-drawer-excel-export')?.addEventListener(
     'click',
-    () => openMenuExcelExportView(),
+    () => openMenuExcelExportViewWithVegrefPrompt(),
     { signal },
   )
   document.getElementById('home-drawer-privacy')?.addEventListener(
