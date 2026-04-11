@@ -1,5 +1,6 @@
 export const EXCEL_SHEET_STORAGE_KEY = 'scanix-excel-sheet-v1'
-export const EXCEL_INCLUDE_VEGREF_KEY = 'scanix-excel-include-vegref-v1'
+/** v2: nullstiller gammel «av»-lagring slik at vegreferanse-kolonner synes for alle. */
+export const EXCEL_INCLUDE_VEGREF_KEY = 'scanix-excel-include-vegref-v2'
 
 /**
  * Standard på slik at vegreferanse-kolonner vises uten ekstra steg (kan skrus av i UI).

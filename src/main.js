@@ -5163,7 +5163,7 @@ function renderMenuExcelExportHtml() {
       <h3 class="menu-card__title excel-sheet-vegref-heading">Vegreferanse i eksport</h3>
       <label class="excel-sheet-vegref-toggle menu-info-prose">
         <input type="checkbox" id="excel-sheet-include-vegref" checked />
-        Ta med kolonner for Vegvei, vegnummer, S, D og meter (oppdateres fra GPS / NVDB mens du fyller ut)
+        Inkluder Vegvei, vegnummer, S, D og meter i .xlsx-filen (verdiene oppdateres fra GPS / NVDB når avkrysset)
       </label>
       <div class="excel-sheet-actions">
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
@@ -5176,11 +5176,11 @@ function renderMenuExcelExportHtml() {
             <tr>
               <th scope="col">Beskrivelse</th>
               <th scope="col">Verdi</th>
-              <th scope="col" class="excel-sheet-veg-col" hidden>Vegvei</th>
-              <th scope="col" class="excel-sheet-veg-col" hidden>Vegnr</th>
-              <th scope="col" class="excel-sheet-veg-col" hidden>S</th>
-              <th scope="col" class="excel-sheet-veg-col" hidden>D</th>
-              <th scope="col" class="excel-sheet-veg-col" hidden>Meter</th>
+              <th scope="col" class="excel-sheet-veg-col">Vegvei</th>
+              <th scope="col" class="excel-sheet-veg-col">Vegnr</th>
+              <th scope="col" class="excel-sheet-veg-col">S</th>
+              <th scope="col" class="excel-sheet-veg-col">D</th>
+              <th scope="col" class="excel-sheet-veg-col">Meter</th>
               <th scope="col" class="excel-sheet-col-remove"><span class="visually-hidden">Fjern rad</span></th>
             </tr>
           </thead>
@@ -5193,9 +5193,8 @@ function renderMenuExcelExportHtml() {
 
 /**
  * @param {{ id: string, label: string, value: string }} row
- * @param {boolean} includeVegref
  */
-function createExcelSheetRowTr(row, includeVegref) {
+function createExcelSheetRowTr(row) {
   const tr = document.createElement('tr')
   tr.dataset.rowId = row.id
   const td1 = document.createElement('td')
@@ -5235,7 +5234,6 @@ function createExcelSheetRowTr(row, includeVegref) {
   for (const [field, ph] of vegSpec) {
     const tdV = document.createElement('td')
     tdV.className = 'excel-sheet-veg-col'
-    if (!includeVegref) tdV.setAttribute('hidden', '')
     const vInp = document.createElement('input')
     vInp.type = 'text'
     vInp.className = 'excel-sheet-input excel-sheet-input--vegref'
@@ -5273,12 +5271,10 @@ function persistExcelSheetFromTbody(tbody) {
 /**
  * @param {HTMLTableSectionElement} tbody
  * @param {{ id: string, label: string, value: string }[]} rows
- * @param {boolean} includeVegref
  */
-function fillExcelSheetTbody(tbody, rows, includeVegref) {
+function fillExcelSheetTbody(tbody, rows) {
   tbody.replaceChildren()
-  for (const row of rows)
-    tbody.appendChild(createExcelSheetRowTr(row, includeVegref))
+  for (const row of rows) tbody.appendChild(createExcelSheetRowTr(row))
 }
 
 function bindMenuExcelExportListeners() {
@@ -5292,32 +5288,20 @@ function bindMenuExcelExportListeners() {
   }
 
   const tbody = document.getElementById('excel-sheet-tbody')
-  if (!tbody || !(tbody instanceof HTMLTableSectionElement)) return
+  if (!tbody || String(tbody.tagName).toUpperCase() !== 'TBODY') return
 
-  const table = document.getElementById('excel-sheet-table')
   const vegCb = document.getElementById('excel-sheet-include-vegref')
-  let includeVegref = loadExcelIncludeVegref()
+  const includeVegref = loadExcelIncludeVegref()
   if (vegCb instanceof HTMLInputElement) vegCb.checked = includeVegref
 
-  const applyVegrefColumnVisibility = (on) => {
-    for (const el of document.querySelectorAll('.excel-sheet-veg-col')) {
-      if (on) el.removeAttribute('hidden')
-      else el.setAttribute('hidden', '')
-    }
-    if (table) table.classList.toggle('excel-sheet-table--vegref', on)
-  }
-  applyVegrefColumnVisibility(includeVegref)
-  fillExcelSheetTbody(tbody, loadExcelSheetRows(), includeVegref)
+  fillExcelSheetTbody(tbody, loadExcelSheetRows())
   refreshExcelSheetVegrefCells()
 
   vegCb?.addEventListener(
     'change',
     () => {
       if (!(vegCb instanceof HTMLInputElement)) return
-      includeVegref = vegCb.checked
-      saveExcelIncludeVegref(includeVegref)
-      applyVegrefColumnVisibility(includeVegref)
-      fillExcelSheetTbody(tbody, loadExcelSheetRows(), includeVegref)
+      saveExcelIncludeVegref(vegCb.checked)
       refreshExcelSheetVegrefCells()
     },
     { signal },
@@ -5364,9 +5348,7 @@ function bindMenuExcelExportListeners() {
       const rows = loadExcelSheetRows()
       rows.push(row)
       saveExcelSheetRows(rows)
-      tbody.appendChild(
-        createExcelSheetRowTr(row, loadExcelIncludeVegref()),
-      )
+      tbody.appendChild(createExcelSheetRowTr(row))
       refreshExcelSheetVegrefCells()
     },
     { signal },
@@ -5382,7 +5364,7 @@ function bindMenuExcelExportListeners() {
       )
         return
       const rows = resetExcelSheetRows()
-      fillExcelSheetTbody(tbody, rows, loadExcelIncludeVegref())
+      fillExcelSheetTbody(tbody, rows)
       refreshExcelSheetVegrefCells()
     },
     { signal },
@@ -5393,9 +5375,7 @@ function bindMenuExcelExportListeners() {
     () => {
       persistExcelSheetFromTbody(tbody)
       const useVeg =
-        loadExcelIncludeVegref() &&
-        vegCb instanceof HTMLInputElement &&
-        vegCb.checked
+        vegCb instanceof HTMLInputElement && vegCb.checked
       const base = loadExcelSheetRows()
       const snap = getHomeVegrefExcelSnapshot()
       const rows = useVeg
