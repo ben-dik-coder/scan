@@ -1,108 +1,186 @@
-export const EXCEL_SHEET_STORAGE_KEY = 'scanix-excel-sheet-v1'
-/** v2: nullstiller gammel «av»-lagring slik at vegreferanse-kolonner synes for alle. */
-export const EXCEL_INCLUDE_VEGREF_KEY = 'scanix-excel-include-vegref-v2'
+/** @typedef {{ id: string, cells: string[] }} ExcelSheetRow */
+
+/** Gammelt format: kun label/value per rad. */
+export const EXCEL_SHEET_LEGACY_V1 = 'scanix-excel-sheet-v1'
+
+export const EXCEL_SHEET_STORAGE_KEY = 'scanix-excel-sheet-v2'
+
+export const DEFAULT_EXCEL_HEADERS = [
+  'Beskrivelse',
+  'Verdi',
+  'Vegvei',
+  'Vegnr',
+  'S',
+  'D',
+  'Meter',
+]
+
+const MIN_COLS = 2
 
 /**
- * Standard på slik at vegreferanse-kolonner vises uten ekstra steg (kan skrus av i UI).
- * @returns {boolean}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
  */
-export function loadExcelIncludeVegref() {
-  try {
-    const v = localStorage.getItem(EXCEL_INCLUDE_VEGREF_KEY)
-    if (v === null) return true
-    return v === '1'
-  } catch {
-    return true
+export function defaultExcelSheetState() {
+  const headers = [...DEFAULT_EXCEL_HEADERS]
+  const n = headers.length
+  return {
+    headers,
+    rows: Array.from({ length: 5 }, () => ({
+      id: crypto.randomUUID(),
+      cells: Array.from({ length: n }, () => ''),
+    })),
   }
 }
 
 /**
- * @param {boolean} on
+ * @param {string[]} cells
+ * @param {number} n
  */
-export function saveExcelIncludeVegref(on) {
-  try {
-    localStorage.setItem(EXCEL_INCLUDE_VEGREF_KEY, on ? '1' : '0')
-  } catch {
-    /* quota */
+function padCells(cells, n) {
+  const out = cells.slice()
+  while (out.length < n) out.push('')
+  while (out.length > n) out.pop()
+  return out
+}
+
+/**
+ * @param {unknown} s
+ * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
+ */
+export function normalizeExcelSheetState(s) {
+  if (!s || typeof s !== 'object') return defaultExcelSheetState()
+  const o = /** @type {{ headers?: unknown, rows?: unknown }} */ (s)
+  let headers = Array.isArray(o.headers)
+    ? o.headers.map((h) => (typeof h === 'string' ? h : ''))
+    : []
+  if (headers.length === 0) return defaultExcelSheetState()
+  if (headers.length < MIN_COLS) {
+    while (headers.length < MIN_COLS)
+      headers.push(`Kolonne ${headers.length + 1}`)
   }
+  const n = headers.length
+  let rows = Array.isArray(o.rows) ? o.rows : []
+  rows = rows.map((r) => {
+    const row = /** @type {{ id?: unknown, cells?: unknown }} */ (r)
+    const id =
+      row && typeof row.id === 'string' ? row.id : crypto.randomUUID()
+    const raw = Array.isArray(row?.cells) ? row.cells : []
+    const cells = padCells(
+      raw.map((c) => (typeof c === 'string' ? c : String(c ?? ''))),
+      n,
+    )
+    return { id, cells }
+  })
+  while (rows.length < 5) {
+    rows.push({ id: crypto.randomUUID(), cells: Array(n).fill('') })
+  }
+  return { headers, rows }
 }
 
 /**
- * @returns {{ id: string, label: string, value: string }[]}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
  */
-function defaultRows() {
-  return Array.from({ length: 5 }, () => ({
-    id: crypto.randomUUID(),
-    label: '',
-    value: '',
-  }))
-}
-
-/**
- * @returns {{ id: string, label: string, value: string }[]}
- */
-export function loadExcelSheetRows() {
+export function loadExcelSheetState() {
   try {
     const raw = localStorage.getItem(EXCEL_SHEET_STORAGE_KEY)
-    if (!raw) return defaultRows()
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed) || parsed.length === 0) return defaultRows()
-    return parsed.map((r) => ({
-      id: typeof r?.id === 'string' ? r.id : crypto.randomUUID(),
-      label: typeof r?.label === 'string' ? r.label : '',
-      value: typeof r?.value === 'string' ? r.value : '',
-    }))
+    if (raw) {
+      const data = JSON.parse(raw)
+      if (
+        data &&
+        data.version === 2 &&
+        Array.isArray(data.headers) &&
+        Array.isArray(data.rows)
+      ) {
+        return normalizeExcelSheetState(data)
+      }
+    }
+    const v1 = localStorage.getItem(EXCEL_SHEET_LEGACY_V1)
+    if (v1) {
+      const old = JSON.parse(v1)
+      if (Array.isArray(old) && old.length) {
+        const headers = [...DEFAULT_EXCEL_HEADERS]
+        const n = headers.length
+        const rows = old.map((r) => {
+          const row = /** @type {{ id?: unknown, label?: unknown, value?: unknown }} */ (
+            r
+          )
+          return {
+            id: typeof row?.id === 'string' ? row.id : crypto.randomUUID(),
+            cells: padCells(
+              [
+                typeof row?.label === 'string' ? row.label : '',
+                typeof row?.value === 'string' ? row.value : '',
+                ...Array(Math.max(0, n - 2)).fill(''),
+              ],
+              n,
+            ),
+          }
+        })
+        return normalizeExcelSheetState({ headers, rows })
+      }
+    }
   } catch {
-    return defaultRows()
+    /* ignore */
   }
+  return defaultExcelSheetState()
 }
 
 /**
- * @param {{ id: string, label: string, value: string }[]} rows
+ * @param {{ headers: string[], rows: ExcelSheetRow[] }} state
  */
-export function saveExcelSheetRows(rows) {
+export function saveExcelSheetState(state) {
   try {
-    localStorage.setItem(EXCEL_SHEET_STORAGE_KEY, JSON.stringify(rows))
+    const n = normalizeExcelSheetState(state)
+    localStorage.setItem(
+      EXCEL_SHEET_STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        headers: n.headers,
+        rows: n.rows,
+      }),
+    )
+    try {
+      localStorage.removeItem(EXCEL_SHEET_LEGACY_V1)
+    } catch {
+      /* ignore */
+    }
   } catch {
     /* quota */
   }
+}
+
+export function resetExcelSheetState() {
+  const s = defaultExcelSheetState()
+  saveExcelSheetState(s)
+  return s
+}
+
+/** Bakoverkompatibel: returnerer kun rader (v2-modell). */
+export function loadExcelSheetRows() {
+  return loadExcelSheetState().rows
+}
+
+/** Bakoverkompatibel: erstatter rader, beholder overskrifter fra lagring. */
+export function saveExcelSheetRows(rows) {
+  const st = loadExcelSheetState()
+  st.rows = rows
+  saveExcelSheetState(st)
 }
 
 export function resetExcelSheetRows() {
-  const rows = defaultRows()
-  saveExcelSheetRows(rows)
-  return rows
+  return resetExcelSheetState().rows
 }
 
 /**
- * @param {Array<{
- *   label: string,
- *   value: string,
- *   vegvei?: string,
- *   vegnr?: string,
- *   s?: string,
- *   d?: string,
- *   meter?: string,
- * }>} rows
- * @param {{ includeVegref?: boolean }} [opts]
+ * @param {string[]} headers
+ * @param {string[][]} rows
  */
-export async function downloadExcelSheet(rows, opts = {}) {
-  const includeVegref = Boolean(opts.includeVegref)
+export async function downloadExcelSheetGrid(headers, rows) {
   const XLSX = await import('xlsx')
-  const head = includeVegref
-    ? ['Beskrivelse', 'Verdi', 'Vegvei', 'Vegnr', 'S', 'D', 'Meter']
-    : ['Beskrivelse', 'Verdi']
-  const body = includeVegref
-    ? rows.map((r) => [
-        r.label ?? '',
-        r.value ?? '',
-        r.vegvei ?? '',
-        r.vegnr ?? '',
-        r.s ?? '',
-        r.d ?? '',
-        r.meter ?? '',
-      ])
-    : rows.map((r) => [r.label ?? '', r.value ?? ''])
+  const head = headers.map((h) => (h == null ? '' : String(h)))
+  const body = rows.map((r) =>
+    r.map((c) => (c == null ? '' : String(c))),
+  )
   const aoa = [head, ...body]
   const ws = XLSX.utils.aoa_to_sheet(aoa)
   const wb = XLSX.utils.book_new()

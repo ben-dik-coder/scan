@@ -50,12 +50,10 @@ import {
   invalidateAdvRegMapSize,
 } from './advancedRegister.js'
 import {
-  downloadExcelSheet,
-  loadExcelIncludeVegref,
-  loadExcelSheetRows,
-  resetExcelSheetRows,
-  saveExcelIncludeVegref,
-  saveExcelSheetRows,
+  downloadExcelSheetGrid,
+  loadExcelSheetState,
+  resetExcelSheetState,
+  saveExcelSheetState,
 } from './excelSheetExport.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
@@ -3386,26 +3384,6 @@ function getHomeVegrefExcelSnapshot() {
   }
 }
 
-function refreshExcelSheetVegrefCells() {
-  if (view !== 'menuExcelExport') return
-  const cb = document.getElementById('excel-sheet-include-vegref')
-  if (!cb || !(cb instanceof HTMLInputElement) || !cb.checked) return
-  const snap = getHomeVegrefExcelSnapshot()
-  const tbody = document.getElementById('excel-sheet-tbody')
-  if (!tbody) return
-  for (const tr of tbody.querySelectorAll('tr')) {
-    for (const key of ['vegvei', 'vegnr', 's', 'd', 'meter']) {
-      const el = tr.querySelector(`input[data-excel-field="${key}"]`)
-      if (el instanceof HTMLInputElement) {
-        el.value = String(
-          snap[/** @type {'vegvei' | 'vegnr' | 's' | 'd' | 'meter'} */ (key)] ??
-            '',
-        )
-      }
-    }
-  }
-}
-
 function setHomeVegrefPlaceholder(msg) {
   cancelHomeVegrefMeterTween()
   const prim = document.getElementById('home-vegref-primary')
@@ -3469,7 +3447,6 @@ function applyHomeVegrefResult(res) {
     const mInt = parseKmtMeterInt(res.m)
     if (mInt != null) homeVegrefDisplayedMeter = mInt
     homeVegrefSegKey = `${longOfficial}|${res.s}|${res.d}`
-    if (view === 'menuExcelExport') refreshExcelSheetVegrefCells()
     return
   }
 
@@ -5158,31 +5135,19 @@ function renderMenuExcelExportHtml() {
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
     <h2 class="subview-title">Eksporter til Excel</h2>
-    <p class="menu-info-prose">Fyll inn beskrivelse og verdi for hver rad. Rader lagres lokalt i nettleseren til du tømmer skjemaet eller sletter nettleserdata.</p>
+    <p class="menu-info-prose">Rediger overskrifter og celler som i et lite regneark. Kolonner og rader kan legges til; alt lagres lokalt til du tømmer eller sletter nettleserdata. Bruk «Fyll inn vegreferanse fra posisjon» for å sette inn nåværende Vegvei, vegnummer, S, D og meter i kolonner som heter nøyaktig det (eller Vegnr / vegnummer for vegnummer).</p>
     <div class="menu-card excel-sheet-card">
-      <h3 class="menu-card__title excel-sheet-vegref-heading">Vegreferanse i eksport</h3>
-      <label class="excel-sheet-vegref-toggle menu-info-prose">
-        <input type="checkbox" id="excel-sheet-include-vegref" checked />
-        Inkluder Vegvei, vegnummer, S, D og meter i .xlsx-filen (verdiene oppdateres fra GPS / NVDB når avkrysset)
-      </label>
       <div class="excel-sheet-actions">
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-col">Legg til kolonne</button>
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-fill-vegref">Fyll inn vegreferanse fra posisjon</button>
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm</button>
         <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Eksporter til Excel (.xlsx)</button>
       </div>
       <div class="excel-sheet-table-wrap">
         <table class="excel-sheet-table" id="excel-sheet-table" aria-label="Egne data">
-          <thead>
-            <tr>
-              <th scope="col">Beskrivelse</th>
-              <th scope="col">Verdi</th>
-              <th scope="col" class="excel-sheet-veg-col">Vegvei</th>
-              <th scope="col" class="excel-sheet-veg-col">Vegnr</th>
-              <th scope="col" class="excel-sheet-veg-col">S</th>
-              <th scope="col" class="excel-sheet-veg-col">D</th>
-              <th scope="col" class="excel-sheet-veg-col">Meter</th>
-              <th scope="col" class="excel-sheet-col-remove"><span class="visually-hidden">Fjern rad</span></th>
-            </tr>
+          <thead id="excel-sheet-thead">
+            <tr id="excel-sheet-header-row"></tr>
           </thead>
           <tbody id="excel-sheet-tbody"></tbody>
         </table>
@@ -5192,90 +5157,135 @@ function renderMenuExcelExportHtml() {
   </div>`
 }
 
+const EXCEL_MIN_COLS = 2
+
 /**
- * @param {{ id: string, label: string, value: string }} row
+ * @param {{ headers: string[], rows: { id: string, cells: string[] }[] }} state
  */
-function createExcelSheetRowTr(row) {
+function renderExcelSheetTable(state) {
+  const theadRow = document.getElementById('excel-sheet-header-row')
+  const tbody = document.getElementById('excel-sheet-tbody')
+  if (!theadRow || !tbody) return
+  theadRow.replaceChildren()
+  state.headers.forEach((h, i) => {
+    const th = document.createElement('th')
+    const wrap = document.createElement('div')
+    wrap.className = 'excel-sheet-th-wrap'
+    const inp = document.createElement('input')
+    inp.type = 'text'
+    inp.className = 'excel-sheet-input excel-sheet-header-input'
+    inp.dataset.excelCol = String(i)
+    inp.value = h
+    inp.placeholder = `Kolonne ${i + 1}`
+    inp.autocomplete = 'off'
+    wrap.appendChild(inp)
+    if (state.headers.length > EXCEL_MIN_COLS) {
+      const rm = document.createElement('button')
+      rm.type = 'button'
+      rm.className = 'btn btn-ghost excel-sheet-remove-col'
+      rm.dataset.excelCol = String(i)
+      rm.textContent = '×'
+      rm.setAttribute('aria-label', `Fjern kolonne ${i + 1}`)
+      wrap.appendChild(rm)
+    }
+    th.appendChild(wrap)
+    theadRow.appendChild(th)
+  })
+  const thAct = document.createElement('th')
+  thAct.className = 'excel-sheet-col-remove'
+  thAct.innerHTML = '<span class="visually-hidden">Fjern rad</span>'
+  theadRow.appendChild(thAct)
+
+  tbody.replaceChildren()
+  for (const row of state.rows) {
+    tbody.appendChild(createExcelSheetDataRowTr(state.headers.length, row))
+  }
+}
+
+/**
+ * @param {number} nCols
+ * @param {{ id: string, cells: string[] }} row
+ */
+function createExcelSheetDataRowTr(nCols, row) {
   const tr = document.createElement('tr')
   tr.dataset.rowId = row.id
-  const td1 = document.createElement('td')
-  const inp1 = document.createElement('input')
-  inp1.type = 'text'
-  inp1.className = 'excel-sheet-input'
-  inp1.dataset.excelField = 'label'
-  inp1.value = row.label
-  inp1.placeholder = 'Beskrivelse'
-  inp1.autocomplete = 'off'
-  td1.appendChild(inp1)
-  const td2 = document.createElement('td')
-  const inp2 = document.createElement('input')
-  inp2.type = 'text'
-  inp2.className = 'excel-sheet-input'
-  inp2.dataset.excelField = 'value'
-  inp2.value = row.value
-  inp2.placeholder = 'Verdi'
-  inp2.autocomplete = 'off'
-  td2.appendChild(inp2)
-  const vegSpec = [
-    ['vegvei', 'Vegvei'],
-    ['vegnr', 'Vegnr'],
-    ['s', 'S'],
-    ['d', 'D'],
-    ['meter', 'Meter'],
-  ]
+  for (let i = 0; i < nCols; i++) {
+    const td = document.createElement('td')
+    const inp = document.createElement('input')
+    inp.type = 'text'
+    inp.className = 'excel-sheet-input'
+    inp.dataset.excelCol = String(i)
+    inp.value = row.cells[i] ?? ''
+    inp.autocomplete = 'off'
+    td.appendChild(inp)
+    tr.appendChild(td)
+  }
   const tdRm = document.createElement('td')
+  tdRm.className = 'excel-sheet-col-remove'
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'btn btn-ghost excel-sheet-remove'
   btn.textContent = '×'
   btn.setAttribute('aria-label', 'Fjern rad')
   tdRm.appendChild(btn)
-  tr.appendChild(td1)
-  tr.appendChild(td2)
-  for (const [field, ph] of vegSpec) {
-    const tdV = document.createElement('td')
-    tdV.className = 'excel-sheet-veg-col'
-    const vInp = document.createElement('input')
-    vInp.type = 'text'
-    vInp.className = 'excel-sheet-input excel-sheet-input--vegref'
-    vInp.readOnly = true
-    vInp.tabIndex = -1
-    vInp.dataset.excelField = field
-    vInp.placeholder = ph
-    vInp.autocomplete = 'off'
-    vInp.setAttribute('aria-readonly', 'true')
-    tdV.appendChild(vInp)
-    tr.appendChild(tdV)
-  }
   tr.appendChild(tdRm)
   return tr
 }
 
-/**
- * @param {HTMLTableSectionElement} tbody
- */
-function persistExcelSheetFromTbody(tbody) {
+function persistExcelSheetFromDom() {
+  const theadRow = document.getElementById('excel-sheet-header-row')
+  const tbody = document.getElementById('excel-sheet-tbody')
+  if (!theadRow || !tbody) return
+  const headerInputs = theadRow.querySelectorAll('input.excel-sheet-header-input')
+  const headers = []
+  for (const inp of headerInputs) {
+    if (inp instanceof HTMLInputElement) headers.push(inp.value)
+  }
+  const n = headers.length
+  if (n < EXCEL_MIN_COLS) return
   const rows = []
   for (const tr of tbody.querySelectorAll('tr')) {
     const id = tr.dataset.rowId
-    const labelEl = tr.querySelector('input[data-excel-field="label"]')
-    const valueEl = tr.querySelector('input[data-excel-field="value"]')
-    const label =
-      labelEl instanceof HTMLInputElement ? labelEl.value : ''
-    const value =
-      valueEl instanceof HTMLInputElement ? valueEl.value : ''
-    if (id) rows.push({ id, label, value })
+    if (!id) continue
+    const cells = []
+    for (let i = 0; i < n; i++) {
+      const el = tr.querySelector(`input[data-excel-col="${i}"]`)
+      cells.push(el instanceof HTMLInputElement ? el.value : '')
+    }
+    rows.push({ id, cells })
   }
-  saveExcelSheetRows(rows)
+  saveExcelSheetState({ headers, rows })
 }
 
-/**
- * @param {HTMLTableSectionElement} tbody
- * @param {{ id: string, label: string, value: string }[]} rows
- */
-function fillExcelSheetTbody(tbody, rows) {
-  tbody.replaceChildren()
-  for (const row of rows) tbody.appendChild(createExcelSheetRowTr(row))
+function fillExcelSheetVegrefFromSnapshot() {
+  persistExcelSheetFromDom()
+  const state = loadExcelSheetState()
+  const snap = getHomeVegrefExcelSnapshot()
+
+  const match = (header, candidates) => {
+    const x = header.trim().toLowerCase()
+    return candidates.some((c) => x === c)
+  }
+
+  for (let j = 0; j < state.headers.length; j++) {
+    const h = state.headers[j]
+    let val = null
+    if (match(h, ['vegvei'])) val = snap.vegvei
+    else if (match(h, ['vegnr', 'vegnummer'])) val = snap.vegnr
+    else if (match(h, ['s'])) val = snap.s
+    else if (match(h, ['d'])) val = snap.d
+    else if (match(h, ['meter'])) val = snap.meter
+    if (val != null) {
+      for (const r of state.rows) {
+        const next = r.cells.slice()
+        while (next.length <= j) next.push('')
+        next[j] = val
+        r.cells = next
+      }
+    }
+  }
+  saveExcelSheetState(state)
+  renderExcelSheetTable(loadExcelSheetState())
 }
 
 function bindMenuExcelExportListeners() {
@@ -5283,45 +5293,22 @@ function bindMenuExcelExportListeners() {
   menuExcelExportAbort = new AbortController()
   const { signal } = menuExcelExportAbort
 
-  if (menuExcelVegrefPollId) {
-    clearInterval(menuExcelVegrefPollId)
-    menuExcelVegrefPollId = null
-  }
-
   const tbody = document.getElementById('excel-sheet-tbody')
   if (!tbody || String(tbody.tagName).toUpperCase() !== 'TBODY') return
 
-  const vegCb = document.getElementById('excel-sheet-include-vegref')
-  const includeVegref = loadExcelIncludeVegref()
-  if (vegCb instanceof HTMLInputElement) vegCb.checked = includeVegref
+  const table = document.getElementById('excel-sheet-table')
+  renderExcelSheetTable(loadExcelSheetState())
 
-  fillExcelSheetTbody(tbody, loadExcelSheetRows())
-  refreshExcelSheetVegrefCells()
-
-  vegCb?.addEventListener(
-    'change',
-    () => {
-      if (!(vegCb instanceof HTMLInputElement)) return
-      saveExcelIncludeVegref(vegCb.checked)
-      refreshExcelSheetVegrefCells()
-    },
-    { signal },
-  )
-
-  menuExcelVegrefPollId = window.setInterval(() => {
-    refreshExcelSheetVegrefCells()
-  }, 900)
-
-  tbody.addEventListener(
-    'input',
-    (e) => {
-      if (e.target instanceof HTMLInputElement && e.target.dataset.excelField) {
-        persistExcelSheetFromTbody(tbody)
-        refreshExcelSheetVegrefCells()
-      }
-    },
-    { signal },
-  )
+  const onTableInput = (e) => {
+    if (
+      e.target instanceof HTMLInputElement &&
+      (e.target.classList.contains('excel-sheet-header-input') ||
+        e.target.closest('#excel-sheet-tbody'))
+    ) {
+      persistExcelSheetFromDom()
+    }
+  }
+  table?.addEventListener('input', onTableInput, { signal })
 
   tbody.addEventListener(
     'click',
@@ -5333,7 +5320,29 @@ function bindMenuExcelExportListeners() {
       const tr = btn.closest('tr')
       if (!tr || !tbody.contains(tr)) return
       tr.remove()
-      persistExcelSheetFromTbody(tbody)
+      persistExcelSheetFromDom()
+    },
+    { signal },
+  )
+
+  document.getElementById('excel-sheet-thead')?.addEventListener(
+    'click',
+    (e) => {
+      const t = e.target
+      if (!(t instanceof Element)) return
+      const btn = t.closest('.excel-sheet-remove-col')
+      if (!(btn instanceof HTMLButtonElement)) return
+      const idx = Number(btn.dataset.excelCol)
+      if (!Number.isFinite(idx) || idx < 0) return
+      persistExcelSheetFromDom()
+      const st = loadExcelSheetState()
+      if (st.headers.length <= EXCEL_MIN_COLS) return
+      st.headers.splice(idx, 1)
+      for (const r of st.rows) {
+        r.cells.splice(idx, 1)
+      }
+      saveExcelSheetState(st)
+      renderExcelSheetTable(loadExcelSheetState())
     },
     { signal },
   )
@@ -5345,12 +5354,36 @@ function bindMenuExcelExportListeners() {
   document.getElementById('btn-excel-sheet-add-row')?.addEventListener(
     'click',
     () => {
-      const row = { id: crypto.randomUUID(), label: '', value: '' }
-      const rows = loadExcelSheetRows()
-      rows.push(row)
-      saveExcelSheetRows(rows)
-      tbody.appendChild(createExcelSheetRowTr(row))
-      refreshExcelSheetVegrefCells()
+      persistExcelSheetFromDom()
+      const st = loadExcelSheetState()
+      st.rows.push({
+        id: crypto.randomUUID(),
+        cells: Array(st.headers.length).fill(''),
+      })
+      saveExcelSheetState(st)
+      renderExcelSheetTable(loadExcelSheetState())
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-excel-sheet-add-col')?.addEventListener(
+    'click',
+    () => {
+      persistExcelSheetFromDom()
+      const st = loadExcelSheetState()
+      const nextN = st.headers.length + 1
+      st.headers.push(`Kolonne ${nextN}`)
+      for (const r of st.rows) r.cells.push('')
+      saveExcelSheetState(st)
+      renderExcelSheetTable(loadExcelSheetState())
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-excel-sheet-fill-vegref')?.addEventListener(
+    'click',
+    () => {
+      fillExcelSheetVegrefFromSnapshot()
     },
     { signal },
   )
@@ -5360,13 +5393,12 @@ function bindMenuExcelExportListeners() {
     () => {
       if (
         !confirm(
-          'Tømme alle rader og starte på nytt med fem tomme rader?',
+          'Tømme arket og starte på nytt med standardkolonner og fem tomme rader?',
         )
       )
         return
-      const rows = resetExcelSheetRows()
-      fillExcelSheetTbody(tbody, rows)
-      refreshExcelSheetVegrefCells()
+      const st = resetExcelSheetState()
+      renderExcelSheetTable(st)
     },
     { signal },
   )
@@ -5374,23 +5406,11 @@ function bindMenuExcelExportListeners() {
   document.getElementById('btn-excel-sheet-export')?.addEventListener(
     'click',
     () => {
-      persistExcelSheetFromTbody(tbody)
-      const useVeg =
-        vegCb instanceof HTMLInputElement && vegCb.checked
-      const base = loadExcelSheetRows()
-      const snap = getHomeVegrefExcelSnapshot()
-      const rows = useVeg
-        ? base.map((r) => ({
-            label: r.label,
-            value: r.value,
-            vegvei: snap.vegvei,
-            vegnr: snap.vegnr,
-            s: snap.s,
-            d: snap.d,
-            meter: snap.meter,
-          }))
-        : base.map((r) => ({ label: r.label, value: r.value }))
-      void downloadExcelSheet(rows, { includeVegref: useVeg })
+      persistExcelSheetFromDom()
+      const st = loadExcelSheetState()
+      const headers = st.headers.map((h) => h)
+      const rows = st.rows.map((r) => r.cells.slice())
+      void downloadExcelSheetGrid(headers, rows)
     },
     { signal },
   )
@@ -6574,7 +6594,6 @@ let menuContactsAbort = null
 let menuInfoAbort = null
 let menuExcelExportAbort = null
 /** @type {ReturnType<typeof setInterval> | null} */
-let menuExcelVegrefPollId = null
 let inboxAbort = null
 let sessionAbort = null
 /** Avansert registering (egen flyt). */
@@ -7084,18 +7103,6 @@ function openMenuExcelExportView() {
   bindMenuExcelExportListeners()
 }
 
-/** Spør om vegreferanse før Excel-siden åpnes (fra hamburger-meny). */
-function openMenuExcelExportViewWithVegrefPrompt() {
-  closeHomeDrawer()
-  const includeVegref = window.confirm(
-    'Vil du legge ved vegreferanse i Excel-filen?\n\n' +
-      'Da legges det inn kolonner for Vegvei, vegnummer, S, D og meter (oppdateres fra GPS/NVDB).\n\n' +
-      'Trykk OK for ja, eller Avbryt for nei.',
-  )
-  saveExcelIncludeVegref(includeVegref)
-  openMenuExcelExportView()
-}
-
 function bindHomeListeners() {
   if (homeAbort) homeAbort.abort()
   homeAbort = new AbortController()
@@ -7205,7 +7212,10 @@ function bindHomeListeners() {
   )
   document.getElementById('home-drawer-excel-export')?.addEventListener(
     'click',
-    () => openMenuExcelExportViewWithVegrefPrompt(),
+    () => {
+      closeHomeDrawer()
+      openMenuExcelExportView()
+    },
     { signal },
   )
   document.getElementById('home-drawer-privacy')?.addEventListener(
@@ -10939,10 +10949,6 @@ function bindListenersForCurrentView() {
   if (advRegAbort) {
     advRegAbort.abort()
     advRegAbort = null
-  }
-  if (menuExcelVegrefPollId) {
-    clearInterval(menuExcelVegrefPollId)
-    menuExcelVegrefPollId = null
   }
   if (
     (view !== 'home' && view !== 'menuExcelExport') ||

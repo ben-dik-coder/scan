@@ -3775,28 +3775,24 @@ body.home-ai-panel-open .home-vegref {
   line-height: 1.4;
 }
 
-.excel-sheet-vegref-heading {
-  margin: 0 0 0.5rem;
-  font-size: 0.98rem;
-}
-
-.excel-sheet-vegref-toggle {
+.excel-sheet-th-wrap {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin: 0 0 0.85rem;
-  cursor: pointer;
-  line-height: 1.45;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
 }
 
-.excel-sheet-vegref-toggle input {
-  margin-top: 0.2rem;
+.excel-sheet-th-wrap .excel-sheet-header-input {
+  flex: 1;
+  min-width: 2.5rem;
+}
+
+.excel-sheet-remove-col {
   flex-shrink: 0;
-}
-
-.excel-sheet-input--vegref {
-  opacity: 0.92;
-  font-size: 0.88rem;
+  padding: 0.2rem 0.35rem;
+  min-width: 2rem;
+  line-height: 1;
+  font-size: 1rem;
 }
 
 .excel-sheet-card .excel-sheet-actions {
