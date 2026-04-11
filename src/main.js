@@ -5188,6 +5188,7 @@ function renderMenuExcelExportHtml() {
         </table>
       </div>
     </div>
+    <p class="menu-info-prose excel-sheet-build-hint" role="status">App-versjon ${escapeHtml(String(appPackage?.version ?? '?'))} · Hvis du ikke ser siste endringer: lukk alle faner med appen, åpne på nytt, eller slett nettstedsdata.</p>
   </div>`
 }
 
@@ -11112,7 +11113,13 @@ function bootstrap() {
 
 bootstrap()
 
-registerSW({ immediate: true })
+/** Når ny service worker + bygg er tilgjengelig: aktiver og last inn på nytt (PWA ellers viser ofte gammel JS). */
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    void updateSW(true)
+  },
+})
 
 window.addEventListener('beforeunload', () => {
   flushCurrentSession()
