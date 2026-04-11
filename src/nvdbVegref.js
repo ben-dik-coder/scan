@@ -1,10 +1,11 @@
 /**
  * NVDB API Les V4 – vegsystemreferanse nær punkt (Statens vegvesen).
+ * Eksplisitt v4-sti jf. https://nvdb-docs.atlas.vegvesen.no/nvdbapil/v4/Vegnett
  * Krever header X-Client. CORS tillates fra nettleser.
  */
 
 const NVDB_SEGMENTERT =
-  'https://nvdbapiles.atlas.vegvesen.no/vegnett/veglenkesekvenser/segmentert'
+  'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/veglenkesekvenser/segmentert'
 
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000
@@ -18,11 +19,35 @@ function haversineM(lat1, lng1, lat2, lng2) {
 }
 
 /**
+ * @param {{ lat: number, lng: number }[]} pts
+ */
+function lineStringPointsLookLikeWgs84Degrees(pts) {
+  if (pts.length === 0) return false
+  for (const p of pts) {
+    if (
+      Math.abs(p.lat) > 90 ||
+      Math.abs(p.lng) > 180 ||
+      Math.abs(p.lat) >= 1000 ||
+      Math.abs(p.lng) >= 1000
+    )
+      return false
+  }
+  return true
+}
+
+/**
+ * Tolker LINESTRING som WGS84-grader (første to tall = det NVDB gir som lat/lng ved srid=4326).
+ * Ved annen geometri.srid (f.eks. 5973) returneres tom liste – ikke bruk haversine på projiserte koordinater uten transformasjon.
+ *
  * @param {string} wkt
+ * @param {number | null | undefined} [geomSrid] `geometri.srid` fra NVDB-segment
  * @returns {{ lat: number, lng: number }[]}
  */
-export function parseLineStringLatLngWkt(wkt) {
+export function parseLineStringLatLngWkt(wkt, geomSrid) {
   if (typeof wkt !== 'string') return []
+  if (geomSrid != null && geomSrid !== 4326) {
+    return []
+  }
   const m = wkt.match(/LINESTRING\s+Z\s*\(([^)]+)\)/i) || wkt.match(/LINESTRING\s*\(([^)]+)\)/i)
   if (!m) return []
   const pts = []
@@ -32,6 +57,7 @@ export function parseLineStringLatLngWkt(wkt) {
       pts.push({ lat: nums[0], lng: nums[1] })
     }
   }
+  if (!lineStringPointsLookLikeWgs84Degrees(pts)) return []
   return pts
 }
 
@@ -180,7 +206,11 @@ export function segmentStableId(seg) {
  */
 export function describeSegmentForPoint(seg, lat, lng, accuracyM = 28) {
   const wkt = seg?.geometri?.wkt
-  const pts = parseLineStringLatLngWkt(wkt)
+  const geomSrid =
+    typeof seg?.geometri?.srid === 'number' && !Number.isNaN(seg.geometri.srid)
+      ? seg.geometri.srid
+      : null
+  const pts = parseLineStringLatLngWkt(wkt, geomSrid)
   const geomLen =
     typeof seg?.geometri?.lengde === 'number' && seg.geometri.lengde > 0
       ? seg.geometri.lengde
@@ -256,7 +286,11 @@ function roadKindPenalty(seg) {
  */
 function segmentRoadHeadingDeg(seg, lat, lng) {
   const wkt = seg?.geometri?.wkt
-  const pts = parseLineStringLatLngWkt(wkt)
+  const geomSrid =
+    typeof seg?.geometri?.srid === 'number' && !Number.isNaN(seg.geometri.srid)
+      ? seg.geometri.srid
+      : null
+  const pts = parseLineStringLatLngWkt(wkt, geomSrid)
   if (pts.length < 2) return null
   if (lat != null && lng != null) {
     const close = closestOnPolyline(pts, lat, lng)

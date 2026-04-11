@@ -5160,9 +5160,10 @@ function renderMenuExcelExportHtml() {
     <h2 class="subview-title">Eksporter til Excel</h2>
     <p class="menu-info-prose">Fyll inn beskrivelse og verdi for hver rad. Rader lagres lokalt i nettleseren til du tømmer skjemaet eller sletter nettleserdata.</p>
     <div class="menu-card excel-sheet-card">
+      <h3 class="menu-card__title excel-sheet-vegref-heading">Vegreferanse i eksport</h3>
       <label class="excel-sheet-vegref-toggle menu-info-prose">
-        <input type="checkbox" id="excel-sheet-include-vegref" />
-        Ta med vegreferanse (Vegvei, vegnummer, S, D, meter) – fylles automatisk fra siste posisjon
+        <input type="checkbox" id="excel-sheet-include-vegref" checked />
+        Ta med kolonner for Vegvei, vegnummer, S, D og meter (oppdateres fra GPS / NVDB mens du fyller ut)
       </label>
       <div class="excel-sheet-actions">
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>

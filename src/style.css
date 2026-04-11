@@ -3768,6 +3768,11 @@ body.home-ai-panel-open .home-vegref {
   padding: 1.25rem 1.15rem 1.75rem;
 }
 
+.excel-sheet-vegref-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.98rem;
+}
+
 .excel-sheet-vegref-toggle {
   display: flex;
   align-items: flex-start;

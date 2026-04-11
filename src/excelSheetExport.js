@@ -2,13 +2,16 @@ export const EXCEL_SHEET_STORAGE_KEY = 'scanix-excel-sheet-v1'
 export const EXCEL_INCLUDE_VEGREF_KEY = 'scanix-excel-include-vegref-v1'
 
 /**
+ * Standard på slik at vegreferanse-kolonner vises uten ekstra steg (kan skrus av i UI).
  * @returns {boolean}
  */
 export function loadExcelIncludeVegref() {
   try {
-    return localStorage.getItem(EXCEL_INCLUDE_VEGREF_KEY) === '1'
+    const v = localStorage.getItem(EXCEL_INCLUDE_VEGREF_KEY)
+    if (v === null) return true
+    return v === '1'
   } catch {
-    return false
+    return true
   }
 }
 

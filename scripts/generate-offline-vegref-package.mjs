@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const NVDB_SEGMENTERT =
-  'https://nvdbapiles.atlas.vegvesen.no/vegnett/veglenkesekvenser/segmentert'
+  'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/veglenkesekvenser/segmentert'
 const DEFAULT_CLIENT = 'Scanix'
 const DEFAULT_PAGE_SIZE = 400
 
