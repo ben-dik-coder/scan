@@ -3447,6 +3447,7 @@ function applyHomeVegrefResult(res) {
     const mInt = parseKmtMeterInt(res.m)
     if (mInt != null) homeVegrefDisplayedMeter = mInt
     homeVegrefSegKey = `${longOfficial}|${res.s}|${res.d}`
+    if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
     return
   }
 
@@ -5134,15 +5135,15 @@ function renderMenuSupportHtml() {
 function renderMenuExcelExportHtml() {
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
-    <h2 class="subview-title">Eksporter til Excel</h2>
-    <p class="menu-info-prose">Rediger overskrifter og celler som i et lite regneark. Kolonner og rader kan legges til; alt lagres lokalt til du tømmer eller sletter nettleserdata. Bruk «Fyll inn vegreferanse fra posisjon» for å sette inn nåværende Vegvei, vegnummer, S, D og meter i kolonner som heter nøyaktig det (eller Vegnr / vegnummer for vegnummer).</p>
+    <h2 class="subview-title">Excel</h2>
+    <p class="menu-info-prose excel-sheet-lead">Lokalt ark. Kolonner som heter Vegvei, Vegnr (eller vegnummer), S, D eller Meter følger GPS mens du kjører. Skriver du i en slik kolonne, låses den; de andre oppdateres fortsatt. ↻ ved overskrift låser opp.</p>
     <div class="menu-card excel-sheet-card">
-      <div class="excel-sheet-actions">
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-col">Legg til kolonne</button>
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-fill-vegref">Fyll inn vegreferanse fra posisjon</button>
+      <div class="excel-sheet-actions excel-sheet-actions--main">
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">+ Rad</button>
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-col">+ Kolonne</button>
+        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-fill-vegref">Synk veg fra GPS</button>
         <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm</button>
-        <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Eksporter til Excel (.xlsx)</button>
+        <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Eksporter .xlsx</button>
       </div>
       <div class="excel-sheet-table-wrap">
         <table class="excel-sheet-table" id="excel-sheet-table" aria-label="Egne data">
@@ -5153,14 +5154,124 @@ function renderMenuExcelExportHtml() {
         </table>
       </div>
     </div>
-    <p class="menu-info-prose excel-sheet-build-hint" role="status">App-versjon ${escapeHtml(String(appPackage?.version ?? '?'))} · Hvis du ikke ser siste endringer: lukk alle faner med appen, åpne på nytt, eller slett nettstedsdata.</p>
+    <p class="menu-info-prose excel-sheet-build-hint" role="status">v${escapeHtml(String(appPackage?.version ?? '?'))} · Ved manglende oppdatering: lukk faner eller tøm nettstedsdata.</p>
   </div>`
 }
 
 const EXCEL_MIN_COLS = 2
 
 /**
- * @param {{ headers: string[], rows: { id: string, cells: string[] }[] }} state
+ * @param {string} header
+ * @returns {'vegvei' | 'vegnr' | 's' | 'd' | 'meter' | null}
+ */
+function excelVegFieldForHeader(header) {
+  const x = String(header).trim().toLowerCase()
+  if (x === 'vegvei') return 'vegvei'
+  if (x === 'vegnr' || x === 'vegnummer') return 'vegnr'
+  if (x === 's') return 's'
+  if (x === 'd') return 'd'
+  if (x === 'meter') return 'meter'
+  return null
+}
+
+/**
+ * @param {'vegvei' | 'vegnr' | 's' | 'd' | 'meter'} field
+ * @param {{ vegvei: string, vegnr: string, s: string, d: string, meter: string }} snap
+ */
+function excelSnapValueForField(field, snap) {
+  return String(snap[field] ?? '')
+}
+
+/**
+ * @param {string[]} headers
+ * @param {{ id: string, cells: string[] }[]} rows
+ * @param {boolean[]} vegColLocked
+ */
+function recomputeExcelVegColUnlocks(headers, rows, vegColLocked) {
+  for (let j = 0; j < headers.length; j++) {
+    if (!excelVegFieldForHeader(headers[j])) continue
+    const any = rows.some((r) => (r.cells[j] || '').trim() !== '')
+    if (!any) vegColLocked[j] = false
+  }
+}
+
+/**
+ * @param {{ headers: string[], rows: { id: string, cells: string[] }[], vegColLocked: boolean[] }} state
+ */
+function excelSheetSyncVegLockChrome(state) {
+  const theadRow = document.getElementById('excel-sheet-header-row')
+  const tbody = document.getElementById('excel-sheet-tbody')
+  if (!theadRow || !tbody) return
+  for (let j = 0; j < state.headers.length; j++) {
+    const isVeg = excelVegFieldForHeader(state.headers[j]) != null
+    const locked = Boolean(state.vegColLocked[j])
+    const th = theadRow.children[j]
+    if (th instanceof HTMLElement) {
+      th.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
+      th.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
+    }
+    for (const tr of tbody.querySelectorAll('tr')) {
+      const td = tr.children[j]
+      if (td instanceof HTMLElement) {
+        td.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
+        td.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
+      }
+    }
+  }
+}
+
+function refreshExcelSheetLiveVegref() {
+  if (view !== 'menuExcelExport') return
+  const tbody = document.getElementById('excel-sheet-tbody')
+  if (!tbody) return
+  const st = loadExcelSheetState()
+  const snap = getHomeVegrefExcelSnapshot()
+  excelSheetVegrefApplying = true
+  try {
+    for (let j = 0; j < st.headers.length; j++) {
+      const field = excelVegFieldForHeader(st.headers[j])
+      if (!field || st.vegColLocked[j]) continue
+      const val = excelSnapValueForField(field, snap)
+      for (const tr of tbody.querySelectorAll('tr')) {
+        const inp = tr.querySelector(`input[data-excel-col="${j}"]`)
+        if (inp instanceof HTMLInputElement) inp.value = val
+      }
+    }
+  } finally {
+    excelSheetVegrefApplying = false
+  }
+  persistExcelSheetFromDom()
+  excelSheetSyncVegLockChrome(loadExcelSheetState())
+}
+
+/**
+ * @param {Event} e
+ */
+function excelMaybeLockVegColumnFromInput(e) {
+  if (excelSheetVegrefApplying) return
+  if (!(e.target instanceof HTMLInputElement)) return
+  if (!e.target.closest('#excel-sheet-tbody')) return
+  const col = Number(e.target.dataset.excelCol)
+  if (!Number.isFinite(col)) return
+  const theadRow = document.getElementById('excel-sheet-header-row')
+  const headerInputs = theadRow?.querySelectorAll('input.excel-sheet-header-input')
+  const headers = []
+  if (headerInputs) {
+    for (const inp of headerInputs) {
+      if (inp instanceof HTMLInputElement) headers.push(inp.value)
+    }
+  }
+  if (!excelVegFieldForHeader(headers[col] ?? '')) return
+  if (e.target.value.trim() === '') return
+  const st = loadExcelSheetState()
+  if (st.vegColLocked[col]) return
+  st.vegColLocked[col] = true
+  saveExcelSheetState(st)
+  excelSheetSyncVegLockChrome(loadExcelSheetState())
+}
+
+/**
+ * @param {{ headers: string[], rows: { id: string, cells: string[] }[], vegColLocked: boolean[] }} state
  */
 function renderExcelSheetTable(state) {
   const theadRow = document.getElementById('excel-sheet-header-row')
@@ -5179,6 +5290,17 @@ function renderExcelSheetTable(state) {
     inp.placeholder = `Kolonne ${i + 1}`
     inp.autocomplete = 'off'
     wrap.appendChild(inp)
+    const vegField = excelVegFieldForHeader(h)
+    if (vegField && state.vegColLocked[i]) {
+      const un = document.createElement('button')
+      un.type = 'button'
+      un.className = 'btn btn-ghost excel-sheet-unlock-veg'
+      un.dataset.excelCol = String(i)
+      un.title = 'Følg GPS igjen i denne kolonnen'
+      un.setAttribute('aria-label', 'Lås opp veg-kolonne')
+      un.textContent = '↻'
+      wrap.appendChild(un)
+    }
     if (state.headers.length > EXCEL_MIN_COLS) {
       const rm = document.createElement('button')
       rm.type = 'button'
@@ -5198,19 +5320,33 @@ function renderExcelSheetTable(state) {
 
   tbody.replaceChildren()
   for (const row of state.rows) {
-    tbody.appendChild(createExcelSheetDataRowTr(state.headers.length, row))
+    tbody.appendChild(
+      createExcelSheetDataRowTr(
+        state.headers.length,
+        row,
+        state.headers,
+        state.vegColLocked,
+      ),
+    )
   }
+  excelSheetSyncVegLockChrome(state)
 }
 
 /**
  * @param {number} nCols
  * @param {{ id: string, cells: string[] }} row
+ * @param {string[]} headers
+ * @param {boolean[]} vegColLocked
  */
-function createExcelSheetDataRowTr(nCols, row) {
+function createExcelSheetDataRowTr(nCols, row, headers, vegColLocked) {
   const tr = document.createElement('tr')
   tr.dataset.rowId = row.id
   for (let i = 0; i < nCols; i++) {
     const td = document.createElement('td')
+    const isVeg = excelVegFieldForHeader(headers[i] ?? '') != null
+    const locked = isVeg && vegColLocked[i]
+    td.classList.toggle('excel-sheet-col--veg-locked', Boolean(locked))
+    td.classList.toggle('excel-sheet-col--veg-live', isVeg && !vegColLocked[i])
     const inp = document.createElement('input')
     inp.type = 'text'
     inp.className = 'excel-sheet-input'
@@ -5254,7 +5390,15 @@ function persistExcelSheetFromDom() {
     }
     rows.push({ id, cells })
   }
-  saveExcelSheetState({ headers, rows })
+  const prev = loadExcelSheetState()
+  const vegColLocked = prev.vegColLocked.slice(0, n)
+  while (vegColLocked.length < n) vegColLocked.push(false)
+  vegColLocked.length = n
+  for (let j = 0; j < n; j++) {
+    if (!excelVegFieldForHeader(headers[j])) vegColLocked[j] = false
+  }
+  recomputeExcelVegColUnlocks(headers, rows, vegColLocked)
+  saveExcelSheetState({ headers, rows, vegColLocked })
 }
 
 function fillExcelSheetVegrefFromSnapshot() {
@@ -5262,26 +5406,19 @@ function fillExcelSheetVegrefFromSnapshot() {
   const state = loadExcelSheetState()
   const snap = getHomeVegrefExcelSnapshot()
 
-  const match = (header, candidates) => {
-    const x = header.trim().toLowerCase()
-    return candidates.some((c) => x === c)
+  for (let j = 0; j < state.headers.length; j++) {
+    if (excelVegFieldForHeader(state.headers[j])) state.vegColLocked[j] = false
   }
 
   for (let j = 0; j < state.headers.length; j++) {
-    const h = state.headers[j]
-    let val = null
-    if (match(h, ['vegvei'])) val = snap.vegvei
-    else if (match(h, ['vegnr', 'vegnummer'])) val = snap.vegnr
-    else if (match(h, ['s'])) val = snap.s
-    else if (match(h, ['d'])) val = snap.d
-    else if (match(h, ['meter'])) val = snap.meter
-    if (val != null) {
-      for (const r of state.rows) {
-        const next = r.cells.slice()
-        while (next.length <= j) next.push('')
-        next[j] = val
-        r.cells = next
-      }
+    const field = excelVegFieldForHeader(state.headers[j])
+    if (!field) continue
+    const val = excelSnapValueForField(field, snap)
+    for (const r of state.rows) {
+      const next = r.cells.slice()
+      while (next.length <= j) next.push('')
+      next[j] = val
+      r.cells = next
     }
   }
   saveExcelSheetState(state)
@@ -5293,19 +5430,27 @@ function bindMenuExcelExportListeners() {
   menuExcelExportAbort = new AbortController()
   const { signal } = menuExcelExportAbort
 
+  if (menuExcelVegLivePollId) {
+    clearInterval(menuExcelVegLivePollId)
+    menuExcelVegLivePollId = null
+  }
+
   const tbody = document.getElementById('excel-sheet-tbody')
   if (!tbody || String(tbody.tagName).toUpperCase() !== 'TBODY') return
 
   const table = document.getElementById('excel-sheet-table')
   renderExcelSheetTable(loadExcelSheetState())
+  refreshExcelSheetLiveVegref()
 
   const onTableInput = (e) => {
+    excelMaybeLockVegColumnFromInput(e)
     if (
       e.target instanceof HTMLInputElement &&
       (e.target.classList.contains('excel-sheet-header-input') ||
         e.target.closest('#excel-sheet-tbody'))
     ) {
       persistExcelSheetFromDom()
+      excelSheetSyncVegLockChrome(loadExcelSheetState())
     }
   }
   table?.addEventListener('input', onTableInput, { signal })
@@ -5321,6 +5466,7 @@ function bindMenuExcelExportListeners() {
       if (!tr || !tbody.contains(tr)) return
       tr.remove()
       persistExcelSheetFromDom()
+      excelSheetSyncVegLockChrome(loadExcelSheetState())
     },
     { signal },
   )
@@ -5330,6 +5476,18 @@ function bindMenuExcelExportListeners() {
     (e) => {
       const t = e.target
       if (!(t instanceof Element)) return
+      const unlock = t.closest('.excel-sheet-unlock-veg')
+      if (unlock instanceof HTMLButtonElement) {
+        e.preventDefault()
+        const idx = Number(unlock.dataset.excelCol)
+        if (!Number.isFinite(idx) || idx < 0) return
+        persistExcelSheetFromDom()
+        const st = loadExcelSheetState()
+        st.vegColLocked[idx] = false
+        saveExcelSheetState(st)
+        refreshExcelSheetLiveVegref()
+        return
+      }
       const btn = t.closest('.excel-sheet-remove-col')
       if (!(btn instanceof HTMLButtonElement)) return
       const idx = Number(btn.dataset.excelCol)
@@ -5338,6 +5496,7 @@ function bindMenuExcelExportListeners() {
       const st = loadExcelSheetState()
       if (st.headers.length <= EXCEL_MIN_COLS) return
       st.headers.splice(idx, 1)
+      st.vegColLocked.splice(idx, 1)
       for (const r of st.rows) {
         r.cells.splice(idx, 1)
       }
@@ -5362,6 +5521,7 @@ function bindMenuExcelExportListeners() {
       })
       saveExcelSheetState(st)
       renderExcelSheetTable(loadExcelSheetState())
+      refreshExcelSheetLiveVegref()
     },
     { signal },
   )
@@ -5373,6 +5533,7 @@ function bindMenuExcelExportListeners() {
       const st = loadExcelSheetState()
       const nextN = st.headers.length + 1
       st.headers.push(`Kolonne ${nextN}`)
+      st.vegColLocked.push(false)
       for (const r of st.rows) r.cells.push('')
       saveExcelSheetState(st)
       renderExcelSheetTable(loadExcelSheetState())
@@ -5399,6 +5560,7 @@ function bindMenuExcelExportListeners() {
         return
       const st = resetExcelSheetState()
       renderExcelSheetTable(st)
+      refreshExcelSheetLiveVegref()
     },
     { signal },
   )
@@ -5414,6 +5576,10 @@ function bindMenuExcelExportListeners() {
     },
     { signal },
   )
+
+  menuExcelVegLivePollId = window.setInterval(() => {
+    if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
+  }, 850)
 
   startHomeVegrefTracking()
 }
@@ -6593,6 +6759,10 @@ let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
 let menuContactsAbort = null
 let menuInfoAbort = null
 let menuExcelExportAbort = null
+/** Under programmatisk oppdatering av veg-celler (unngå at det telles som brukerredigering). */
+let excelSheetVegrefApplying = false
+/** @type {ReturnType<typeof setInterval> | null} */
+let menuExcelVegLivePollId = null
 /** @type {ReturnType<typeof setInterval> | null} */
 let inboxAbort = null
 let sessionAbort = null
@@ -10949,6 +11119,10 @@ function bindListenersForCurrentView() {
   if (advRegAbort) {
     advRegAbort.abort()
     advRegAbort = null
+  }
+  if (menuExcelVegLivePollId) {
+    clearInterval(menuExcelVegLivePollId)
+    menuExcelVegLivePollId = null
   }
   if (
     (view !== 'home' && view !== 'menuExcelExport') ||

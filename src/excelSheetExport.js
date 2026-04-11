@@ -18,7 +18,7 @@ export const DEFAULT_EXCEL_HEADERS = [
 const MIN_COLS = 2
 
 /**
- * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[], vegColLocked: boolean[] }}
  */
 export function defaultExcelSheetState() {
   const headers = [...DEFAULT_EXCEL_HEADERS]
@@ -29,6 +29,7 @@ export function defaultExcelSheetState() {
       id: crypto.randomUUID(),
       cells: Array.from({ length: n }, () => ''),
     })),
+    vegColLocked: Array(n).fill(false),
   }
 }
 
@@ -45,11 +46,13 @@ function padCells(cells, n) {
 
 /**
  * @param {unknown} s
- * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[], vegColLocked: boolean[] }}
  */
 export function normalizeExcelSheetState(s) {
   if (!s || typeof s !== 'object') return defaultExcelSheetState()
-  const o = /** @type {{ headers?: unknown, rows?: unknown }} */ (s)
+  const o = /** @type {{ headers?: unknown, rows?: unknown, vegColLocked?: unknown }} */ (
+    s
+  )
   let headers = Array.isArray(o.headers)
     ? o.headers.map((h) => (typeof h === 'string' ? h : ''))
     : []
@@ -74,11 +77,16 @@ export function normalizeExcelSheetState(s) {
   while (rows.length < 5) {
     rows.push({ id: crypto.randomUUID(), cells: Array(n).fill('') })
   }
-  return { headers, rows }
+  let vegColLocked = Array.isArray(o.vegColLocked)
+    ? o.vegColLocked.map((x) => Boolean(x))
+    : []
+  while (vegColLocked.length < n) vegColLocked.push(false)
+  vegColLocked = vegColLocked.slice(0, n)
+  return { headers, rows, vegColLocked }
 }
 
 /**
- * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[], vegColLocked: boolean[] }}
  */
 export function loadExcelSheetState() {
   try {
@@ -126,7 +134,7 @@ export function loadExcelSheetState() {
 }
 
 /**
- * @param {{ headers: string[], rows: ExcelSheetRow[] }} state
+ * @param {{ headers: string[], rows: ExcelSheetRow[], vegColLocked?: boolean[] }} state
  */
 export function saveExcelSheetState(state) {
   try {
@@ -137,6 +145,7 @@ export function saveExcelSheetState(state) {
         version: 2,
         headers: n.headers,
         rows: n.rows,
+        vegColLocked: n.vegColLocked,
       }),
     )
     try {
@@ -160,7 +169,7 @@ export function loadExcelSheetRows() {
   return loadExcelSheetState().rows
 }
 
-/** Bakoverkompatibel: erstatter rader, beholder overskrifter fra lagring. */
+/** Bakoverkompatibel: erstatter rader, beholder overskrifter og låser fra lagring. */
 export function saveExcelSheetRows(rows) {
   const st = loadExcelSheetState()
   st.rows = rows
