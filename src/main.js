@@ -3429,7 +3429,13 @@ function applyHomeVegrefResult(res) {
       '',
   ).trim()
   const officialShort = String(res.roadLineShort || longOfficial || '').trim()
-  if (!display && !officialShort) return
+  const hasSdPair =
+    res.s != null &&
+    res.d != null &&
+    String(res.s).trim() !== '' &&
+    String(res.d).trim() !== ''
+  /* Uten vegnavn fra NVDB kan vi fortsatt ha S/D – ikke stopp da (tidligere ble kompakt felt aldri oppdatert). */
+  if (!display && !officialShort && !hasSdPair) return
 
   syncHomeVegrefExcelFromRes(res)
 
@@ -3508,6 +3514,12 @@ function applyHomeVegrefResult(res) {
             homeVegrefDisplayedMeter = mInt
             setHomeVegrefCompactDom(res.s, res.d, mInt)
           } else {
+            /* Oppdater S/D med én gang ved segmentbytte; meter tweenes separat. */
+            setHomeVegrefCompactDom(
+              res.s,
+              res.d,
+              homeVegrefDisplayedMeter ?? mInt,
+            )
             startHomeVegrefMeterTweenTo(mInt)
           }
         } else {
@@ -4581,8 +4593,10 @@ function renderHomeHtml() {
       <p id="home-vegref-primary" class="home-vegref__primary">Henter posisjon …</p>
       <p id="home-vegref-type" class="home-vegref__type" hidden></p>
       <div id="home-vegref-compact" class="home-vegref__compact" hidden>
-        <div id="home-vegref-s" class="home-vegref__line home-vegref__line--s"></div>
-        <div id="home-vegref-d" class="home-vegref__line home-vegref__line--d"></div>
+        <div class="home-vegref__sd-row">
+          <span id="home-vegref-s" class="home-vegref__line home-vegref__line--s"></span>
+          <span id="home-vegref-d" class="home-vegref__line home-vegref__line--d"></span>
+        </div>
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>

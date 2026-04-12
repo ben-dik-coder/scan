@@ -1399,12 +1399,21 @@ form.auth-form[hidden] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   margin: 0.5rem 0 0;
   width: 100%;
 }
 
-/* S og D på hver sin linje (som vegkode), ikke én horisontal «strek». */
+.home-vegref__sd-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.5rem 0.85rem;
+  width: 100%;
+}
+
 .home-vegref__line {
   margin: 0;
   font-size: clamp(1.24rem, 4.2vw, 1.52rem);
