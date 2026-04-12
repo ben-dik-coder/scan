@@ -5133,17 +5133,25 @@ function renderMenuSupportHtml() {
 }
 
 function renderMenuExcelExportHtml() {
-  return `<div class="view-sub surface view-panel-enter">
+  return `<div class="view-sub surface view-panel-enter view-sub--excel">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
     <h2 class="subview-title">Excel</h2>
-    <p class="menu-info-prose excel-sheet-lead">Lokalt ark. Kolonner som heter Vegvei, Vegnr (eller vegnummer), S, D eller Meter følger GPS mens du kjører. Skriver du i en slik kolonne, låses den; de andre oppdateres fortsatt. ↻ ved overskrift låser opp.</p>
+    <p class="menu-info-prose excel-sheet-lead">Rediger cellene under. Veg-kolonner (Vegvei, Vegnr, S, D, Meter) kan enten følge GPS eller låses når du skriver egen verdi.</p>
     <div class="menu-card excel-sheet-card">
-      <div class="excel-sheet-actions excel-sheet-actions--main">
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">+ Rad</button>
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-col">+ Kolonne</button>
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-fill-vegref">Synk veg fra GPS</button>
-        <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm</button>
-        <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Eksporter .xlsx</button>
+      <div class="excel-sheet-toolbar">
+        <div class="excel-sheet-toolbar__primary">
+          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
+          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-col">Legg til kolonne</button>
+          <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Last ned .xlsx</button>
+        </div>
+        <div class="excel-sheet-toolbar__secondary">
+          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-fill-vegref">Synk alle veg fra GPS</button>
+          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm arket</button>
+        </div>
+      </div>
+      <div class="excel-sheet-legend" aria-hidden="true">
+        <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--live"></span> Veg-kolonne følger GPS</span>
+        <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--locked"></span> Låst (du har skrevet inn verdi)</span>
       </div>
       <div class="excel-sheet-table-wrap">
         <table class="excel-sheet-table" id="excel-sheet-table" aria-label="Egne data">
@@ -5154,7 +5162,7 @@ function renderMenuExcelExportHtml() {
         </table>
       </div>
     </div>
-    <p class="menu-info-prose excel-sheet-build-hint" role="status">v${escapeHtml(String(appPackage?.version ?? '?'))} · Ved manglende oppdatering: lukk faner eller tøm nettstedsdata.</p>
+    <p class="menu-info-prose excel-sheet-build-hint" role="status">v${escapeHtml(String(appPackage?.version ?? '?'))}</p>
   </div>`
 }
 
@@ -5209,12 +5217,36 @@ function excelSheetSyncVegLockChrome(state) {
     if (th instanceof HTMLElement) {
       th.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
       th.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
+      const badge = th.querySelector('.excel-sheet-veg-badge')
+      if (badge instanceof HTMLElement) {
+        badge.textContent = locked ? 'Låst' : 'Følger GPS'
+        badge.classList.toggle('excel-sheet-veg-badge--locked', Boolean(locked))
+        badge.classList.toggle('excel-sheet-veg-badge--live', !locked)
+        badge.setAttribute(
+          'title',
+          locked
+            ? 'Egen verdi – oppdateres ikke fra GPS. Bruk «Lås opp» for å følge GPS igjen.'
+            : 'Verdien oppdateres fra posisjon mens du kjører.',
+        )
+      }
+      const un = th.querySelector('.excel-sheet-unlock-veg')
+      if (un instanceof HTMLButtonElement) {
+        un.hidden = !locked
+      }
     }
     for (const tr of tbody.querySelectorAll('tr')) {
       const td = tr.children[j]
       if (td instanceof HTMLElement) {
         td.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
         td.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
+      }
+      const inp = tr.querySelector(`input[data-excel-col="${j}"]`)
+      if (inp instanceof HTMLInputElement && isVeg) {
+        inp.title = locked
+          ? 'Låst – oppdateres ikke fra GPS'
+          : 'Følger GPS'
+      } else if (inp instanceof HTMLInputElement) {
+        inp.removeAttribute('title')
       }
     }
   }
@@ -5280,6 +5312,28 @@ function renderExcelSheetTable(state) {
   theadRow.replaceChildren()
   state.headers.forEach((h, i) => {
     const th = document.createElement('th')
+    const vegField = excelVegFieldForHeader(h)
+    if (vegField) {
+      const vegHead = document.createElement('div')
+      vegHead.className = 'excel-sheet-veg-head'
+      const badge = document.createElement('span')
+      badge.className = state.vegColLocked[i]
+        ? 'excel-sheet-veg-badge excel-sheet-veg-badge--locked'
+        : 'excel-sheet-veg-badge excel-sheet-veg-badge--live'
+      badge.textContent = state.vegColLocked[i] ? 'Låst' : 'Følger GPS'
+      badge.setAttribute('role', 'status')
+      vegHead.appendChild(badge)
+      const un = document.createElement('button')
+      un.type = 'button'
+      un.className = 'btn btn-ghost excel-sheet-unlock-veg'
+      un.dataset.excelCol = String(i)
+      un.title = 'Følg GPS igjen i denne kolonnen'
+      un.setAttribute('aria-label', 'Lås opp kolonne')
+      un.textContent = 'Lås opp'
+      un.hidden = !state.vegColLocked[i]
+      vegHead.appendChild(un)
+      th.appendChild(vegHead)
+    }
     const wrap = document.createElement('div')
     wrap.className = 'excel-sheet-th-wrap'
     const inp = document.createElement('input')
@@ -5290,17 +5344,6 @@ function renderExcelSheetTable(state) {
     inp.placeholder = `Kolonne ${i + 1}`
     inp.autocomplete = 'off'
     wrap.appendChild(inp)
-    const vegField = excelVegFieldForHeader(h)
-    if (vegField && state.vegColLocked[i]) {
-      const un = document.createElement('button')
-      un.type = 'button'
-      un.className = 'btn btn-ghost excel-sheet-unlock-veg'
-      un.dataset.excelCol = String(i)
-      un.title = 'Følg GPS igjen i denne kolonnen'
-      un.setAttribute('aria-label', 'Lås opp veg-kolonne')
-      un.textContent = '↻'
-      wrap.appendChild(un)
-    }
     if (state.headers.length > EXCEL_MIN_COLS) {
       const rm = document.createElement('button')
       rm.type = 'button'
