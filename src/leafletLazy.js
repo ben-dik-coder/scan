@@ -6,8 +6,11 @@ let loadPromise = null
 /**
  * Samme som i style.css for #app .leaflet-tile — må også settes inline: WebKit dropper ofte
  * stylesheet-`filter` på kartfliser etter at appen har vært i bakgrunn (mobil låseskjerm).
+ * Voyager er lys: ren contrast() alene driver høylys mot hvitt. brightness først gir stabil,
+ * tydelig vei/terreng uten utvasking.
  */
-export const APP_MAP_TILE_IMG_FILTER = 'contrast(1.28) saturate(1.06)'
+export const APP_MAP_TILE_IMG_FILTER =
+  'brightness(0.89) contrast(1.24) saturate(1.14)'
 
 /**
  * @param {HTMLElement} el

@@ -1,5 +1,5 @@
 import { registerSW } from 'virtual:pwa-register'
-import { fetchRoadReferenceNearOnline } from './nvdbVegref.js'
+import { fetchRoadReferenceNearOnline, fetchRoadPositionDirect } from './nvdbVegref.js'
 import {
   clearOfflineVegrefPackage,
   getOfflineVegrefMeta,
@@ -22,6 +22,7 @@ import {
   vegrefHydrateFromPersisted,
 } from './vegrefLive.js'
 import {
+  APP_MAP_TILE_IMG_FILTER,
   ensureLeaflet,
   Leaflet,
   createAppMapTileLayer,
@@ -3093,6 +3094,21 @@ function applyKmtResult(res) {
     return
   }
   const mInt = parseKmtMeterInt(res.m)
+  const kmtFromPosisjon =
+    /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
+      ?.source === 'posisjon'
+  if (kmtFromPosisjon) {
+    cancelKmtMeterTween()
+    if (mInt == null) {
+      kmtDisplayedMeter = null
+      mEl.textContent = formatHomeVegrefMeterText(res.m)
+    } else {
+      kmtDisplayedMeter = mInt
+      mEl.textContent = formatHomeVegrefMeterText(mInt)
+    }
+    syncKmtCompactLine()
+    return
+  }
   if (mInt == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
@@ -3405,18 +3421,7 @@ function setHomeVegrefPlaceholder(msg) {
 }
 
 function applyHomeVegrefResult(res) {
-  if (!res) {
-    /* Ingen treff: ikke tøm eller vis feil – behold siste gode visning. */
-    return
-  }
-
-  const skipM = Boolean(
-    /** @type {{ skipMeterUpdate?: boolean }} */ (res).skipMeterUpdate,
-  )
-
-  // Alle aggressive meter-filtre (dist-to-road, large-jump, backward-jump,
-  // still-lock) er fjernet — de ga i praksis mer frys enn nytte.
-  // Meteren oppdateres alltid med siste NVDB-treff.
+  if (!res) return
 
   const longDisplay = String(res.roadLineDisplay || '').trim()
   const longOfficial = String(res.roadLine || '').trim()
@@ -3433,25 +3438,25 @@ function applyHomeVegrefResult(res) {
     res.d != null &&
     String(res.s).trim() !== '' &&
     String(res.d).trim() !== ''
-  /* Uten vegnavn fra NVDB kan vi fortsatt ha S/D – ikke stopp da (tidligere ble kompakt felt aldri oppdatert). */
   if (!display && !officialShort && !hasSdPair) return
 
   syncHomeVegrefExcelFromRes(res)
 
-  const segKeyEarly = `${longOfficial}|${res.s}|${res.d}`
-  const segChangedEarly = segKeyEarly !== homeVegrefSegKey
-  if (segChangedEarly) {
+  const segKey = `${longOfficial}|${res.s}|${res.d}`
+  const segChanged = segKey !== homeVegrefSegKey
+  if (segChanged) {
     vegrefClearSegmentLock()
     cancelHomeVegrefMeterTween()
   }
+
+  const mInt = parseKmtMeterInt(res.m)
 
   if (view !== 'home') {
     homeVegrefHasDisplayedResult = true
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
-    const mInt = parseKmtMeterInt(res.m)
     if (mInt != null) homeVegrefDisplayedMeter = mInt
-    homeVegrefSegKey = `${longOfficial}|${res.s}|${res.d}`
+    homeVegrefSegKey = segKey
     if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
     return
   }
@@ -3480,63 +3485,32 @@ function applyHomeVegrefResult(res) {
   if (comp) {
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
-    const segKey = `${longOfficial}|${res.s}|${res.d}`
-    const segChanged = segKey !== homeVegrefSegKey
-    const mInt = parseKmtMeterInt(res.m)
-    // Still-lock deaktivert: den har i praksis gitt falske "frys" i felt.
-    if (skipM && homeVegrefHasDisplayedResult) {
-      homeVegrefSegKey = segKey
-      if (homeVegrefDisplayedMeter != null) {
-        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-      } else {
-        setHomeVegrefCompactDom(res.s, res.d, res.m)
-      }
-      comp.hidden = false
-      maybePersistHomeVegref(res)
-      return
-    }
+    homeVegrefSegKey = segKey
+
+    const fromPosisjon =
+      /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
+        ?.source === 'posisjon'
+
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
-      homeVegrefSegKey = segKey
       homeVegrefDisplayedMeter = null
       setHomeVegrefCompactDom(res.s, res.d, res.m)
+    } else if (fromPosisjon) {
+      cancelHomeVegrefMeterTween()
+      homeVegrefDisplayedMeter = mInt
+      setHomeVegrefCompactDom(res.s, res.d, mInt)
+    } else if (segChanged || homeVegrefDisplayedMeter == null) {
+      cancelHomeVegrefMeterTween()
+      homeVegrefDisplayedMeter = mInt
+      setHomeVegrefCompactDom(res.s, res.d, mInt)
     } else {
-      homeVegrefSegKey = segKey
-      if (segChanged || homeVegrefDisplayedMeter == null) {
-        if (
-          segChanged &&
-          homeVegrefDisplayedMeter != null &&
-          mInt != null
-        ) {
-          if (Math.abs(mInt - homeVegrefDisplayedMeter) > 200) {
-            cancelHomeVegrefMeterTween()
-            homeVegrefDisplayedMeter = mInt
-            setHomeVegrefCompactDom(res.s, res.d, mInt)
-          } else {
-            /* Oppdater S/D med én gang ved segmentbytte; meter tweenes separat. */
-            setHomeVegrefCompactDom(
-              res.s,
-              res.d,
-              homeVegrefDisplayedMeter ?? mInt,
-            )
-            startHomeVegrefMeterTweenTo(mInt)
-          }
-        } else {
-          cancelHomeVegrefMeterTween()
-          homeVegrefDisplayedMeter = mInt
-          setHomeVegrefCompactDom(res.s, res.d, mInt)
-        }
+      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+      if (Math.abs(mInt - homeVegrefDisplayedMeter) > HOME_VEGREF_METER_SNAP) {
+        cancelHomeVegrefMeterTween()
+        homeVegrefDisplayedMeter = mInt
+        setHomeVegrefCompactDom(res.s, res.d, mInt)
       } else {
-        const prev = homeVegrefDisplayedMeter
-        if (Math.abs(mInt - prev) > HOME_VEGREF_METER_SNAP) {
-          cancelHomeVegrefMeterTween()
-          homeVegrefDisplayedMeter = mInt
-          setHomeVegrefCompactDom(res.s, res.d, mInt)
-        } else {
-          const sEl = document.getElementById('home-vegref-s')
-          if (!sEl || !sEl.textContent) setHomeVegrefCompactDom(res.s, res.d, prev)
-          startHomeVegrefMeterTweenTo(mInt)
-        }
+        startHomeVegrefMeterTweenTo(mInt)
       }
     }
     comp.hidden = false
@@ -3630,7 +3604,8 @@ function startHomeVegrefTracking() {
         const refLat = snapped.lat
         const refLng = snapped.lng
         const snapMoved = haversineM(latitude, longitude, refLat, refLng)
-        if (snapMoved < 1) return
+        /* Unngå ekstra NVDB-runde ved minimale OSRM-justeringer (rå+snap ga ofte jitter). */
+        if (snapMoved < 4) return
         scheduleHomeVegrefLookup(
           refLat,
           refLng,
@@ -11457,6 +11432,7 @@ function bootstrap() {
   })
   initVegrefLive({
     haversineM,
+    fetchRoadPositionDirect,
     fetchRoadReferenceNear: fetchRoadReferenceNearForApp,
     fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
     shouldPreferOfflineResolver: () =>
@@ -12879,10 +12855,10 @@ ${embeddedLeafletCss}
     .log-list { list-style: none; margin: 0; padding: 0; font-size: 0.86rem; }
     .log-list li { padding: 0.55rem 0; border-bottom: 1px solid #2a3142; }
     .log-list time { display: block; color: #60a5fa; font-size: 0.8rem; margin-bottom: 0.25rem; }
-    .leaflet-container { background: #d2d5db; }
+    .leaflet-container { background: #b8bcc6; }
     .leaflet-tile-container img.leaflet-tile {
       image-rendering: auto;
-      filter: contrast(1.28) saturate(1.06);
+      filter: ${APP_MAP_TILE_IMG_FILTER};
     }
     .scanix-pin-wrap { background: transparent !important; border: none !important; }
   </style>

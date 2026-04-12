@@ -1360,7 +1360,7 @@ form.auth-form[hidden] {
 }
 
 .home-vegref {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1448,10 +1448,10 @@ form.auth-form[hidden] {
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: center;
-  gap: clamp(2.5rem, 10vw, 4.25rem);
-  row-gap: clamp(1.5rem, 5.5vw, 2.5rem);
+  gap: clamp(1.2rem, 5vw, 2.5rem);
+  row-gap: clamp(1.2rem, 4vw, 2rem);
   width: 100%;
-  max-width: min(38rem, 100%);
+  max-width: min(42rem, 100%);
   margin: 0.5rem auto 0;
   padding: 0 0.65rem;
   box-sizing: border-box;
@@ -3014,7 +3014,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .menu-browse-map.leaflet-container {
-  background: #d2d5db;
+  background: #b8bcc6;
   font-family:
     system-ui,
     -apple-system,
@@ -3024,7 +3024,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 #received-photos-map.leaflet-container {
-  background: #d2d5db;
+  background: #b8bcc6;
   font-family:
     system-ui,
     -apple-system,
@@ -3089,7 +3089,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .friction-view__map.leaflet-container {
-  background: #d2d5db;
+  background: #b8bcc6;
   font-family: var(--font);
   /* Egen stable compositing – unngår at flis-filter (#app …) faller bort ved dialog/animasjon */
   isolation: isolate;
@@ -3097,7 +3097,7 @@ body.home-ai-panel-open .home-vegref {
 
 /* Samme kontrast som øvrige kart; !important mot intermittent tap av filter på fliser */
 .friction-view__map.leaflet-container .leaflet-tile-container img.leaflet-tile {
-  filter: contrast(1.28) saturate(1.06) !important;
+  filter: brightness(0.89) contrast(1.24) saturate(1.14) !important;
   image-rendering: auto;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
@@ -5584,7 +5584,7 @@ body.home-ai-panel-open .home-vegref {
 
 /* CARTO Voyager – tydelig kontrast */
 .app-stack--session .map-frame .leaflet-container {
-  background: #d2d5db;
+  background: #b8bcc6;
   font-family:
     system-ui,
     -apple-system,
@@ -6925,11 +6925,15 @@ body.session-map-fullscreen-open {
 }
 
 /* Skarpere kartfliser: Leaflet bruker @2x-CARTO på retina; unngå ekstra uskarphet */
-/* Voyager-raster: kontrast + metning — lyse veier skiller seg ut; ingen brightness-justering. */
+/* Voyager: brightness først (mot utvasket/hvitt), deretter kontrast+metning — samme som leafletLazy */
 /* !important + samme verdi inline i leafletLazy (tileload): iOS mister ofte filter etter resume. */
+#app .leaflet-container {
+  isolation: isolate;
+}
+
 #app .leaflet-tile-container img.leaflet-tile {
   image-rendering: auto !important;
-  filter: contrast(1.28) saturate(1.06) !important;
+  filter: brightness(0.89) contrast(1.24) saturate(1.14) !important;
 }
 
 .map {

@@ -7,6 +7,9 @@
 const NVDB_SEGMENTERT =
   'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/veglenkesekvenser/segmentert'
 
+const NVDB_POSISJON =
+  'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/posisjon'
+
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000
   const toR = (d) => (d * Math.PI) / 180
@@ -645,3 +648,115 @@ export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {
 }
 
 export const fetchRoadReferenceNear = fetchRoadReferenceNearOnline
+
+/**
+ * NVDB Posisjon-API: returnerer vegreferanse direkte fra koordinater.
+ * Serverside segment-valg — ingen lokal scoring/WKT-interpolasjon.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {{ signal?: AbortSignal, accuracyM?: number }} [opts]
+ * @returns {Promise<import('./nvdbVegref.js').VegrefDescribeResult | null>}
+ */
+async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
+  const { signal } = opts
+  const accM =
+    typeof opts.accuracyM === 'number' && !Number.isNaN(opts.accuracyM)
+      ? opts.accuracyM
+      : 28
+  const maksAvstand = accM > 40 ? 60 : 30
+
+  const url = new URL(NVDB_POSISJON)
+  url.searchParams.set('lat', String(lat))
+  url.searchParams.set('lon', String(lng))
+  url.searchParams.set('maks_avstand', String(maksAvstand))
+
+  const r = await fetch(url.toString(), {
+    signal,
+    headers: {
+      'X-Client': 'Scanix',
+      Accept: 'application/json',
+    },
+  })
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => '')
+    throw new Error(`NVDB posisjon ${r.status}${t ? `: ${t.slice(0, 120)}` : ''}`)
+  }
+
+  let data
+  try {
+    data = await r.json()
+  } catch {
+    throw new Error('NVDB posisjon: ugyldig JSON')
+  }
+
+  if (!Array.isArray(data) || data.length === 0) return null
+
+  const hit = data[0]
+  const vref = hit?.vegsystemreferanse
+  const vs = vref?.vegsystem
+  const str = vref?.strekning
+  if (!vs) return null
+
+  const baseRoad = formatVegsystemLine(vs)
+  const baseRoadShort = formatVegsystemShort(vs)
+  const meterRaw = str?.meter
+  const meterVal = typeof meterRaw === 'number' && Number.isFinite(meterRaw)
+    ? Math.round(meterRaw)
+    : null
+  const distToRoad = typeof hit.avstand === 'number' ? hit.avstand : 0
+
+  const vls = hit?.veglenkesekvens
+  const vlsId =
+    vls && typeof vls.veglenkesekvensid === 'number' && Number.isFinite(vls.veglenkesekvensid)
+      ? vls.veglenkesekvensid
+      : null
+  const vk = vs?.vegkategori
+  const vn = vs?.nummer
+  const sNum = str?.strekning
+  const dNum = str?.delstrekning
+  const stableNvdbId =
+    vlsId != null
+      ? `vls:${vlsId}`
+      : typeof vk === 'string' && typeof vn === 'number' && !Number.isNaN(vn)
+        ? `vs:${vk}-${vn}-S${sNum ?? ''}D${dNum ?? ''}`
+        : null
+
+  return {
+    roadLine: baseRoad,
+    roadLineShort: baseRoadShort,
+    roadLineDisplay: baseRoad,
+    roadLineDisplayShort: baseRoadShort,
+    s: str?.strekning != null ? String(str.strekning) : '–',
+    d: str?.delstrekning != null ? String(str.delstrekning) : '–',
+    m: meterVal != null ? String(meterVal) : '–',
+    kortform: typeof vref?.kortform === 'string' ? vref.kortform : '',
+    distToRoadM: distToRoad,
+    skipMeterUpdate: false,
+    nvdbId: stableNvdbId,
+    _vegrefMeta: { source: 'posisjon' },
+  }
+}
+
+/**
+ * Posisjon-API med retry (maks 2 forsøk).
+ * @param {number} lat
+ * @param {number} lng
+ * @param {{ signal?: AbortSignal, accuracyM?: number }} [opts]
+ */
+export async function fetchRoadPositionDirect(lat, lng, opts = {}) {
+  const { signal } = opts
+  let lastErr = null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    try {
+      return await fetchRoadPositionDirectOnce(lat, lng, opts)
+    } catch (e) {
+      lastErr = e
+      const name = e && typeof e === 'object' && 'name' in e ? String(e.name) : ''
+      if (name === 'AbortError' || signal?.aborted) throw e
+      if (attempt < 1) await sleepMs(350)
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('NVDB posisjon: oppslag feilet')
+}
