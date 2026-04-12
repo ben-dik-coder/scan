@@ -3533,6 +3533,8 @@ function applyHomeVegrefResult(res) {
           homeVegrefDisplayedMeter = mInt
           setHomeVegrefCompactDom(res.s, res.d, mInt)
         } else {
+          const sEl = document.getElementById('home-vegref-s')
+          if (!sEl || !sEl.textContent) setHomeVegrefCompactDom(res.s, res.d, prev)
           startHomeVegrefMeterTweenTo(mInt)
         }
       }
@@ -4650,6 +4652,30 @@ function renderHomeHtml() {
           </svg>
         </span>
         <span class="home-app-icon-btn__label">DelSky</span>
+      </button>
+      <button type="button" class="home-app-icon-btn" id="btn-home-excel">
+        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="36" height="36" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
+            <path d="M6 18h36M6 30h36" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M18 6v36M30 6v36" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M21 20l6 8M27 20l-6 8" stroke="rgba(80,180,120,0.9)" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="home-app-icon-btn__label">Excel</span>
+      </button>
+      <button type="button" class="home-app-icon-btn" id="btn-home-strekning">
+        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 40 C14 28, 20 16, 24 12 C28 16, 34 28, 40 40" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="8" cy="40" r="3" fill="rgba(255,140,60,0.85)"/>
+            <circle cx="40" cy="40" r="3" fill="rgba(255,140,60,0.85)"/>
+            <circle cx="24" cy="12" r="3" fill="rgba(255,140,60,0.85)"/>
+            <path d="M14 34h20" stroke="rgba(255,140,60,0.7)" stroke-width="1.8" stroke-dasharray="3 2" stroke-linecap="round"/>
+            <text x="24" y="38" text-anchor="middle" font-size="7" font-weight="700" fill="rgba(255,140,60,0.95)">SD</text>
+          </svg>
+        </span>
+        <span class="home-app-icon-btn__label">Strekning</span>
       </button>
     </div>
     <div class="home-main">
@@ -7530,6 +7556,12 @@ function bindHomeListeners() {
   document
     .getElementById('btn-home-delsky')
     ?.addEventListener('click', () => openInboxView(), { signal })
+  document
+    .getElementById('btn-home-excel')
+    ?.addEventListener('click', () => openMenuExcelExportView(), { signal })
+  document
+    .getElementById('btn-home-strekning')
+    ?.addEventListener('click', () => openKmtDialog(), { signal })
   document.getElementById('btn-home-drawer-open')?.addEventListener(
     'click',
     () => openHomeDrawer(),
