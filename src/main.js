@@ -17,7 +17,6 @@ import {
   vegrefResetSessionCache,
   vegrefResetThrottle,
   vegrefClearSegmentLock,
-  vegrefIsStationary,
   vegrefGetLastSpeed,
   vegrefGetSegmentConfidence,
   vegrefHydrateFromPersisted,

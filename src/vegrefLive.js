@@ -38,11 +38,6 @@ const OFFLINE_REUSE_NVDB_M = 200
 /** Monoton tid fra GPS (unngår out-of-order fixes som gir bakover-meter). */
 let lastGpsTimestamp = 0
 
-/** Siste gang NVDB ble kalt mens stillestående (periodisk refresh). */
-let lastStationaryFetchMs = 0
-/** Intervall for NVDB-kall når stillestående (ms). */
-const STATIONARY_REFRESH_MS = 8000
-
 /** Eksponentiell glatting av posisjon før NVDB (reduserer jitter). */
 let smoothLat = /** @type {number | null} */ (null)
 let smoothLng = /** @type {number | null} */ (null)
@@ -258,7 +253,6 @@ export function vegrefStopPipeline() {
   fetchGeneration += 1
   inFlightAnchorLat = null
   inFlightAnchorLng = null
-  lastStationaryFetchMs = 0
 }
 
 /** Etter navigasjon / nytt DOM: tegn siste kjente ref på nytt. */
@@ -285,12 +279,13 @@ export function vegrefClearSegmentLock() {
 }
 
 /**
- * Stillestående: lav fart og høy segment-confidence (meter skal ikke jittere).
+ * Stillestående (parkert): svært lav fart og høy segment-confidence.
+ * (GPS rapporterer ofte ~0 m/s under kjøring – ikke bruk dette til å stoppe NVDB.)
  * @param {number} speed
  * @param {number} segmentConfidence
  */
 export function isStationary(speed, segmentConfidence) {
-  return speed < 1 && segmentConfidence > 5
+  return speed < 0.35 && segmentConfidence > 7
 }
 
 /** Bruker siste fart og confidence fra vegref-pipelinen. */
@@ -427,7 +422,8 @@ function shouldDeferSegmentChange(res, speedMps) {
   let requiredWins =
     speedMps < 1 ? 4 : speedMps < 3 ? 3 : speedMps < 8 ? 2 : 1
   const source = meta && typeof meta.source === 'string' ? meta.source : null
-  if (source === 'offline') requiredWins += 1
+  /* Ekstra «win» kun ved lav fart – ellers henger offline-segment for lenge under kjøring. */
+  if (source === 'offline' && speedMps < 6) requiredWins += 1
   if (
     meta &&
     typeof meta.scoreDelta === 'number' &&
@@ -601,15 +597,6 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   }
   useLat = smoothLat
   useLng = smoothLng
-
-  /* Stillestående: reduser frekvens men IKKE stopp helt (unngår permanent frys). */
-  if (lastSpeed < 1 && segmentConfidence > 5 && !forceImmediate) {
-    const now2 = Date.now()
-    if (now2 - lastStationaryFetchMs < STATIONARY_REFRESH_MS) {
-      return
-    }
-    lastStationaryFetchMs = now2
-  }
 
   if (nvdbAbort && inFlightAnchorLat != null && inFlightAnchorLng != null) {
     const movedInflight = h.haversineM(
