@@ -3945,18 +3945,25 @@ body.home-ai-panel-open .home-vegref {
   box-shadow: 0 0 0 1px rgba(52, 150, 95, 0.45);
 }
 
-.excel-sheet-veg-head {
+.excel-sheet-th--veg {
+  box-shadow: inset 0 -1px 0 rgba(72, 168, 122, 0.25);
+}
+
+.excel-sheet-veg-cell-wrap {
   display: flex;
-  flex-wrap: nowrap;
   align-items: center;
-  gap: 0.25rem;
-  margin-bottom: 0.35rem;
-  min-height: 1.45rem;
+  gap: 0.35rem;
   min-width: 0;
 }
 
-.excel-sheet-veg-head .btn.btn-ghost {
-  padding: 0.2rem 0.4rem;
+.excel-sheet-veg-cell-wrap .excel-sheet-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.excel-sheet-cell-lock {
+  flex-shrink: 0;
+  padding: 0.2rem 0.45rem;
   font-size: 0.72rem;
   line-height: 1.2;
   white-space: nowrap;
@@ -3988,14 +3995,6 @@ body.home-ai-panel-open .home-vegref {
 
 .excel-sheet-veg-badge__ico {
   margin-right: 0.2rem;
-}
-
-.excel-sheet-lock-veg {
-  flex-shrink: 0;
-}
-
-.excel-sheet-unlock-veg {
-  flex-shrink: 0;
 }
 
 .excel-sheet-col--veg-live .excel-sheet-input {

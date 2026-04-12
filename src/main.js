@@ -5150,7 +5150,7 @@ function renderMenuExcelExportHtml() {
   return `<div class="view-sub view-panel-enter view-sub--excel view-sub--excel-flat">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
     <h2 class="subview-title">Excel</h2>
-    <p class="menu-info-prose excel-sheet-lead">Rediger cellene under. Veg-kolonner (Vegvei, Vegnr, S, D, Meter) kan følge GPS eller låses eksplisitt med «Lås» i kolonnehodet.</p>
+    <p class="menu-info-prose excel-sheet-lead">Rediger cellene under. I veg-kolonner (Vegvei, Vegnr, S, D, Meter) bruker du «Lås» ved den enkelte cellen for å stoppe GPS der – andre rader i samme kolonne kan fortsatt følge GPS.</p>
     <div class="excel-sheet-shell">
       <p id="excel-sheet-status" class="excel-sheet-status" role="status" aria-live="polite"></p>
       <div class="excel-sheet-toolbar excel-sheet-toolbar--grid">
@@ -5166,7 +5166,7 @@ function renderMenuExcelExportHtml() {
       </div>
       <div class="excel-sheet-legend" aria-hidden="true">
         <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--live"></span> Veg-kolonne følger GPS</span>
-        <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--locked"></span> Låst (med «Lås»)</span>
+        <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--locked"></span> Låst celle (med «Lås» på raden)</span>
       </div>
       <div class="excel-sheet-table-wrap">
         <table class="excel-sheet-table" id="excel-sheet-table" aria-label="Egne data">
@@ -5188,27 +5188,6 @@ const EXCEL_VEG_POLL_MS = 450
 function setExcelSheetStatus(msg) {
   const el = document.getElementById('excel-sheet-status')
   if (el) el.textContent = msg || ''
-}
-
-/**
- * @param {HTMLElement} badge
- * @param {boolean} locked
- */
-function excelFillVegBadge(badge, locked) {
-  badge.classList.toggle('excel-sheet-veg-badge--locked', Boolean(locked))
-  badge.classList.toggle('excel-sheet-veg-badge--live', !locked)
-  if (locked) {
-    badge.innerHTML =
-      '<span class="excel-sheet-veg-badge__ico" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" focusable="false"><path d="M18 8h-1V6c0-3.31-2.69-6-6-6S5 2.69 5 6v2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg></span> Låst'
-  } else {
-    badge.textContent = 'Følger GPS'
-  }
-  badge.setAttribute(
-    'title',
-    locked
-      ? 'Egen verdi – oppdateres ikke fra GPS. Bruk «Lås opp» for å følge GPS igjen.'
-      : 'Verdien oppdateres fra posisjon mens du kjører.',
-  )
 }
 
 /**
@@ -5234,46 +5213,36 @@ function excelSnapValueForField(field, snap) {
 }
 
 /**
- * @param {string[]} headers
- * @param {{ id: string, cells: string[] }[]} rows
- * @param {boolean[]} vegColLocked
- */
-function recomputeExcelVegColUnlocks(_headers, _rows, _vegColLocked) {
-  // Eksplisitt lås via «Lås» — ingen auto-opplåsing når celler tømmes.
-}
-
-/**
- * @param {{ headers: string[], rows: { id: string, cells: string[] }[], vegColLocked: boolean[] }} state
+ * @param {{ headers: string[], rows: { id: string, cells: string[], vegLocked?: boolean[] }[] }} state
  */
 function excelSheetSyncVegLockChrome(state) {
   const theadRow = document.getElementById('excel-sheet-header-row')
   const tbody = document.getElementById('excel-sheet-tbody')
   if (!theadRow || !tbody) return
+  const trList = [...tbody.querySelectorAll('tr')]
   for (let j = 0; j < state.headers.length; j++) {
     const isVeg = excelVegFieldForHeader(state.headers[j]) != null
-    const locked = Boolean(state.vegColLocked[j])
     const th = theadRow.children[j]
     if (th instanceof HTMLElement) {
-      th.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
-      th.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
-      const badge = th.querySelector('.excel-sheet-veg-badge')
-      if (badge instanceof HTMLElement) excelFillVegBadge(badge, Boolean(locked))
-      const lk = th.querySelector('.excel-sheet-lock-veg')
-      if (lk instanceof HTMLButtonElement) {
-        lk.hidden = !isVeg || locked
-      }
-      const un = th.querySelector('.excel-sheet-unlock-veg')
-      if (un instanceof HTMLButtonElement) {
-        un.hidden = !isVeg || !locked
-      }
+      th.classList.toggle('excel-sheet-th--veg', isVeg)
+      th.classList.remove('excel-sheet-col--veg-locked', 'excel-sheet-col--veg-live')
     }
-    for (const tr of tbody.querySelectorAll('tr')) {
-      const td = tr.children[j]
+    for (let ri = 0; ri < trList.length; ri++) {
+      const row = state.rows[ri]
+      const vl = row?.vegLocked || []
+      const locked = isVeg && Boolean(vl[j])
+      const tr = trList[ri]
+      const td = tr?.children[j]
       if (td instanceof HTMLElement) {
-        td.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
+        td.classList.toggle('excel-sheet-col--veg-locked', Boolean(locked))
         td.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
       }
-      const inp = tr.querySelector(`input[data-excel-col="${j}"]`)
+      const lockBtn = td?.querySelector('.excel-sheet-cell-lock')
+      if (lockBtn instanceof HTMLButtonElement && isVeg) {
+        lockBtn.textContent = locked ? 'Lås opp' : 'Lås'
+        lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false')
+      }
+      const inp = tr?.querySelector(`input[data-excel-col="${j}"]`)
       if (inp instanceof HTMLInputElement && isVeg) {
         inp.title = locked
           ? 'Låst – oppdateres ikke fra GPS'
@@ -5291,13 +5260,18 @@ function refreshExcelSheetLiveVegref() {
   if (!tbody) return
   const st = loadExcelSheetState()
   const snap = getHomeVegrefExcelSnapshot()
+  const trList = [...tbody.querySelectorAll('tr')]
   excelSheetVegrefApplying = true
   try {
-    for (let j = 0; j < st.headers.length; j++) {
-      const field = excelVegFieldForHeader(st.headers[j])
-      if (!field || st.vegColLocked[j]) continue
-      const val = excelSnapValueForField(field, snap)
-      for (const tr of tbody.querySelectorAll('tr')) {
+    for (let ri = 0; ri < st.rows.length; ri++) {
+      const row = st.rows[ri]
+      const vl = row.vegLocked || []
+      const tr = trList[ri]
+      if (!tr) continue
+      for (let j = 0; j < st.headers.length; j++) {
+        const field = excelVegFieldForHeader(st.headers[j])
+        if (!field || vl[j]) continue
+        const val = excelSnapValueForField(field, snap)
         const inp = tr.querySelector(`input[data-excel-col="${j}"]`)
         if (inp instanceof HTMLInputElement) {
           const prev = inp.value
@@ -5330,10 +5304,12 @@ function copyExcelColumnToColumn(sourceIdx, targetIdx) {
   )
     return
   st.headers[targetIdx] = st.headers[sourceIdx]
-  st.vegColLocked[targetIdx] = st.vegColLocked[sourceIdx]
   for (const r of st.rows) {
     while (r.cells.length <= Math.max(sourceIdx, targetIdx)) r.cells.push('')
     r.cells[targetIdx] = r.cells[sourceIdx] ?? ''
+    if (!r.vegLocked) r.vegLocked = Array(st.headers.length).fill(false)
+    while (r.vegLocked.length < st.headers.length) r.vegLocked.push(false)
+    r.vegLocked[targetIdx] = Boolean(r.vegLocked[sourceIdx])
   }
   saveExcelSheetState(st)
   renderExcelSheetTable(loadExcelSheetState())
@@ -5483,7 +5459,7 @@ function bindExcelColumnDragListeners(signal) {
 }
 
 /**
- * @param {{ headers: string[], rows: { id: string, cells: string[] }[], vegColLocked: boolean[] }} state
+ * @param {{ headers: string[], rows: { id: string, cells: string[], vegLocked?: boolean[] }[] }} state
  */
 function renderExcelSheetTable(state) {
   const theadRow = document.getElementById('excel-sheet-header-row')
@@ -5493,36 +5469,7 @@ function renderExcelSheetTable(state) {
   state.headers.forEach((h, i) => {
     const th = document.createElement('th')
     const vegField = excelVegFieldForHeader(h)
-    if (vegField) {
-      const vegHead = document.createElement('div')
-      vegHead.className = 'excel-sheet-veg-head'
-      const badge = document.createElement('span')
-      badge.className = state.vegColLocked[i]
-        ? 'excel-sheet-veg-badge excel-sheet-veg-badge--locked'
-        : 'excel-sheet-veg-badge excel-sheet-veg-badge--live'
-      badge.setAttribute('role', 'status')
-      excelFillVegBadge(badge, Boolean(state.vegColLocked[i]))
-      vegHead.appendChild(badge)
-      const lk = document.createElement('button')
-      lk.type = 'button'
-      lk.className = 'btn btn-ghost excel-sheet-lock-veg'
-      lk.dataset.excelCol = String(i)
-      lk.title = 'Lås kolonnen mot GPS-oppdateringer'
-      lk.setAttribute('aria-label', 'Lås kolonne')
-      lk.textContent = 'Lås'
-      lk.hidden = Boolean(state.vegColLocked[i])
-      vegHead.appendChild(lk)
-      const un = document.createElement('button')
-      un.type = 'button'
-      un.className = 'btn btn-ghost excel-sheet-unlock-veg'
-      un.dataset.excelCol = String(i)
-      un.title = 'Følg GPS igjen i denne kolonnen'
-      un.setAttribute('aria-label', 'Lås opp kolonne')
-      un.textContent = 'Lås opp'
-      un.hidden = !state.vegColLocked[i]
-      vegHead.appendChild(un)
-      th.appendChild(vegHead)
-    }
+    if (vegField) th.classList.add('excel-sheet-th--veg')
     const grip = document.createElement('button')
     grip.type = 'button'
     grip.className = 'excel-sheet__col-grip'
@@ -5564,12 +5511,7 @@ function renderExcelSheetTable(state) {
   tbody.replaceChildren()
   for (const row of state.rows) {
     tbody.appendChild(
-      createExcelSheetDataRowTr(
-        state.headers.length,
-        row,
-        state.headers,
-        state.vegColLocked,
-      ),
+      createExcelSheetDataRowTr(state.headers.length, row, state.headers),
     )
   }
   excelSheetSyncVegLockChrome(state)
@@ -5577,26 +5519,51 @@ function renderExcelSheetTable(state) {
 
 /**
  * @param {number} nCols
- * @param {{ id: string, cells: string[] }} row
+ * @param {{ id: string, cells: string[], vegLocked?: boolean[] }} row
  * @param {string[]} headers
- * @param {boolean[]} vegColLocked
  */
-function createExcelSheetDataRowTr(nCols, row, headers, vegColLocked) {
+function createExcelSheetDataRowTr(nCols, row, headers) {
+  const vl = row.vegLocked || []
   const tr = document.createElement('tr')
   tr.dataset.rowId = row.id
   for (let i = 0; i < nCols; i++) {
     const td = document.createElement('td')
     const isVeg = excelVegFieldForHeader(headers[i] ?? '') != null
-    const locked = isVeg && vegColLocked[i]
+    const locked = isVeg && Boolean(vl[i])
     td.classList.toggle('excel-sheet-col--veg-locked', Boolean(locked))
-    td.classList.toggle('excel-sheet-col--veg-live', isVeg && !vegColLocked[i])
-    const inp = document.createElement('input')
-    inp.type = 'text'
-    inp.className = 'excel-sheet-input'
-    inp.dataset.excelCol = String(i)
-    inp.value = row.cells[i] ?? ''
-    inp.autocomplete = 'off'
-    td.appendChild(inp)
+    td.classList.toggle('excel-sheet-col--veg-live', isVeg && !vl[i])
+    if (isVeg) {
+      const wrap = document.createElement('div')
+      wrap.className = 'excel-sheet-veg-cell-wrap'
+      const lockBtn = document.createElement('button')
+      lockBtn.type = 'button'
+      lockBtn.className = 'btn btn-ghost excel-sheet-cell-lock'
+      lockBtn.dataset.excelCol = String(i)
+      lockBtn.dataset.rowId = row.id
+      lockBtn.textContent = locked ? 'Lås opp' : 'Lås'
+      lockBtn.title = locked
+        ? 'Følg GPS igjen i denne cellen'
+        : 'Lås denne cellen mot GPS-oppdateringer'
+      lockBtn.setAttribute('aria-label', locked ? 'Lås opp celle' : 'Lås celle')
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false')
+      const inp = document.createElement('input')
+      inp.type = 'text'
+      inp.className = 'excel-sheet-input'
+      inp.dataset.excelCol = String(i)
+      inp.value = row.cells[i] ?? ''
+      inp.autocomplete = 'off'
+      wrap.appendChild(lockBtn)
+      wrap.appendChild(inp)
+      td.appendChild(wrap)
+    } else {
+      const inp = document.createElement('input')
+      inp.type = 'text'
+      inp.className = 'excel-sheet-input'
+      inp.dataset.excelCol = String(i)
+      inp.value = row.cells[i] ?? ''
+      inp.autocomplete = 'off'
+      td.appendChild(inp)
+    }
     tr.appendChild(td)
   }
   const tdRm = document.createElement('td')
@@ -5622,26 +5589,29 @@ function persistExcelSheetFromDom() {
   }
   const n = headers.length
   if (n < EXCEL_MIN_COLS) return
+  const prev = loadExcelSheetState()
+  const byId = new Map(prev.rows.map((r) => [r.id, r]))
   const rows = []
   for (const tr of tbody.querySelectorAll('tr')) {
     const id = tr.dataset.rowId
     if (!id) continue
+    const prevRow = byId.get(id)
     const cells = []
     for (let i = 0; i < n; i++) {
       const el = tr.querySelector(`input[data-excel-col="${i}"]`)
       cells.push(el instanceof HTMLInputElement ? el.value : '')
     }
-    rows.push({ id, cells })
+    let vegLocked = prevRow?.vegLocked
+      ? prevRow.vegLocked.slice(0, n)
+      : Array(n).fill(false)
+    while (vegLocked.length < n) vegLocked.push(false)
+    vegLocked.length = n
+    for (let j = 0; j < n; j++) {
+      if (!excelVegFieldForHeader(headers[j])) vegLocked[j] = false
+    }
+    rows.push({ id, cells, vegLocked })
   }
-  const prev = loadExcelSheetState()
-  const vegColLocked = prev.vegColLocked.slice(0, n)
-  while (vegColLocked.length < n) vegColLocked.push(false)
-  vegColLocked.length = n
-  for (let j = 0; j < n; j++) {
-    if (!excelVegFieldForHeader(headers[j])) vegColLocked[j] = false
-  }
-  recomputeExcelVegColUnlocks(headers, rows, vegColLocked)
-  saveExcelSheetState({ headers, rows, vegColLocked })
+  saveExcelSheetState({ headers, rows })
 }
 
 function fillExcelSheetVegrefFromSnapshot() {
@@ -5649,8 +5619,11 @@ function fillExcelSheetVegrefFromSnapshot() {
   const state = loadExcelSheetState()
   const snap = getHomeVegrefExcelSnapshot()
 
-  for (let j = 0; j < state.headers.length; j++) {
-    if (excelVegFieldForHeader(state.headers[j])) state.vegColLocked[j] = false
+  for (const r of state.rows) {
+    if (!r.vegLocked) r.vegLocked = Array(state.headers.length).fill(false)
+    for (let j = 0; j < state.headers.length; j++) {
+      if (excelVegFieldForHeader(state.headers[j])) r.vegLocked[j] = false
+    }
   }
 
   for (let j = 0; j < state.headers.length; j++) {
@@ -5702,6 +5675,24 @@ function bindMenuExcelExportListeners() {
     (e) => {
       const t = e.target
       if (!(t instanceof Element)) return
+      const cellLock = t.closest('.excel-sheet-cell-lock')
+      if (cellLock instanceof HTMLButtonElement) {
+        e.preventDefault()
+        const col = Number(cellLock.dataset.excelCol)
+        const rowId = cellLock.dataset.rowId
+        if (!rowId || !Number.isFinite(col) || col < 0) return
+        persistExcelSheetFromDom()
+        const st = loadExcelSheetState()
+        const row = st.rows.find((r) => r.id === rowId)
+        if (!row || !excelVegFieldForHeader(st.headers[col] ?? '')) return
+        if (!row.vegLocked) row.vegLocked = Array(st.headers.length).fill(false)
+        while (row.vegLocked.length < st.headers.length) row.vegLocked.push(false)
+        row.vegLocked[col] = !row.vegLocked[col]
+        saveExcelSheetState(st)
+        if (!row.vegLocked[col]) refreshExcelSheetLiveVegref()
+        else excelSheetSyncVegLockChrome(loadExcelSheetState())
+        return
+      }
       const btn = t.closest('.excel-sheet-remove')
       if (!btn || !tbody.contains(btn)) return
       const tr = btn.closest('tr')
@@ -5718,31 +5709,6 @@ function bindMenuExcelExportListeners() {
     (e) => {
       const t = e.target
       if (!(t instanceof Element)) return
-      const lock = t.closest('.excel-sheet-lock-veg')
-      if (lock instanceof HTMLButtonElement) {
-        e.preventDefault()
-        const idx = Number(lock.dataset.excelCol)
-        if (!Number.isFinite(idx) || idx < 0) return
-        persistExcelSheetFromDom()
-        const st = loadExcelSheetState()
-        if (!excelVegFieldForHeader(st.headers[idx] ?? '')) return
-        st.vegColLocked[idx] = true
-        saveExcelSheetState(st)
-        excelSheetSyncVegLockChrome(loadExcelSheetState())
-        return
-      }
-      const unlock = t.closest('.excel-sheet-unlock-veg')
-      if (unlock instanceof HTMLButtonElement) {
-        e.preventDefault()
-        const idx = Number(unlock.dataset.excelCol)
-        if (!Number.isFinite(idx) || idx < 0) return
-        persistExcelSheetFromDom()
-        const st = loadExcelSheetState()
-        st.vegColLocked[idx] = false
-        saveExcelSheetState(st)
-        refreshExcelSheetLiveVegref()
-        return
-      }
       const btn = t.closest('.excel-sheet-remove-col')
       if (!(btn instanceof HTMLButtonElement)) return
       const idx = Number(btn.dataset.excelCol)
@@ -5751,9 +5717,9 @@ function bindMenuExcelExportListeners() {
       const st = loadExcelSheetState()
       if (st.headers.length <= EXCEL_MIN_COLS) return
       st.headers.splice(idx, 1)
-      st.vegColLocked.splice(idx, 1)
       for (const r of st.rows) {
         r.cells.splice(idx, 1)
+        if (r.vegLocked) r.vegLocked.splice(idx, 1)
       }
       saveExcelSheetState(st)
       renderExcelSheetTable(loadExcelSheetState())
@@ -5773,6 +5739,7 @@ function bindMenuExcelExportListeners() {
       st.rows.push({
         id: crypto.randomUUID(),
         cells: Array(st.headers.length).fill(''),
+        vegLocked: Array(st.headers.length).fill(false),
       })
       saveExcelSheetState(st)
       renderExcelSheetTable(loadExcelSheetState())
@@ -5788,8 +5755,12 @@ function bindMenuExcelExportListeners() {
       const st = loadExcelSheetState()
       const nextN = st.headers.length + 1
       st.headers.push(`Kolonne ${nextN}`)
-      st.vegColLocked.push(false)
-      for (const r of st.rows) r.cells.push('')
+      for (const r of st.rows) {
+        if (!r.vegLocked) r.vegLocked = Array(r.cells.length).fill(false)
+        while (r.vegLocked.length < r.cells.length) r.vegLocked.push(false)
+        r.cells.push('')
+        r.vegLocked.push(false)
+      }
       saveExcelSheetState(st)
       renderExcelSheetTable(loadExcelSheetState())
     },

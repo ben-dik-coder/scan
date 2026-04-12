@@ -1,4 +1,4 @@
-/** @typedef {{ id: string, cells: string[] }} ExcelSheetRow */
+/** @typedef {{ id: string, cells: string[], vegLocked?: boolean[] }} ExcelSheetRow */
 
 /** Gammelt format: kun label/value per rad. */
 export const EXCEL_SHEET_LEGACY_V1 = 'scanix-excel-sheet-v1'
@@ -18,7 +18,37 @@ export const DEFAULT_EXCEL_HEADERS = [
 const MIN_COLS = 2
 
 /**
- * @returns {{ headers: string[], rows: ExcelSheetRow[], vegColLocked: boolean[] }}
+ * @param {string} h
+ */
+function isVegHeaderName(h) {
+  const x = String(h).trim().toLowerCase()
+  return (
+    x === 'vegvei' ||
+    x === 'vegnr' ||
+    x === 'vegnummer' ||
+    x === 's' ||
+    x === 'd' ||
+    x === 'meter'
+  )
+}
+
+/**
+ * @param {unknown} vl
+ * @param {number} n
+ * @param {string[]} headers
+ */
+function padVegLockedPerRow(vl, n, headers) {
+  const a = Array.isArray(vl) ? vl.map((x) => Boolean(x)) : []
+  while (a.length < n) a.push(false)
+  const out = a.slice(0, n)
+  for (let j = 0; j < n; j++) {
+    if (!isVegHeaderName(headers[j])) out[j] = false
+  }
+  return out
+}
+
+/**
+ * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
  */
 export function defaultExcelSheetState() {
   const headers = [...DEFAULT_EXCEL_HEADERS]
@@ -28,8 +58,8 @@ export function defaultExcelSheetState() {
     rows: Array.from({ length: 5 }, () => ({
       id: crypto.randomUUID(),
       cells: Array.from({ length: n }, () => ''),
+      vegLocked: Array(n).fill(false),
     })),
-    vegColLocked: Array(n).fill(false),
   }
 }
 
@@ -46,7 +76,7 @@ function padCells(cells, n) {
 
 /**
  * @param {unknown} s
- * @returns {{ headers: string[], rows: ExcelSheetRow[], vegColLocked: boolean[] }}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
  */
 export function normalizeExcelSheetState(s) {
   if (!s || typeof s !== 'object') return defaultExcelSheetState()
@@ -64,7 +94,9 @@ export function normalizeExcelSheetState(s) {
   const n = headers.length
   let rows = Array.isArray(o.rows) ? o.rows : []
   rows = rows.map((r) => {
-    const row = /** @type {{ id?: unknown, cells?: unknown }} */ (r)
+    const row = /** @type {{ id?: unknown, cells?: unknown, vegLocked?: unknown }} */ (
+      r
+    )
     const id =
       row && typeof row.id === 'string' ? row.id : crypto.randomUUID()
     const raw = Array.isArray(row?.cells) ? row.cells : []
@@ -72,21 +104,36 @@ export function normalizeExcelSheetState(s) {
       raw.map((c) => (typeof c === 'string' ? c : String(c ?? ''))),
       n,
     )
-    return { id, cells }
+    const vegLocked = padVegLockedPerRow(row?.vegLocked, n, headers)
+    return { id, cells, vegLocked }
   })
   while (rows.length < 5) {
-    rows.push({ id: crypto.randomUUID(), cells: Array(n).fill('') })
+    rows.push({
+      id: crypto.randomUUID(),
+      cells: Array(n).fill(''),
+      vegLocked: Array(n).fill(false),
+    })
   }
-  let vegColLocked = Array.isArray(o.vegColLocked)
+
+  /** @deprecated kolonnenivå — migreres til per-celle */
+  const legacyColLocked = Array.isArray(o.vegColLocked)
     ? o.vegColLocked.map((x) => Boolean(x))
     : []
-  while (vegColLocked.length < n) vegColLocked.push(false)
-  vegColLocked = vegColLocked.slice(0, n)
-  return { headers, rows, vegColLocked }
+  while (legacyColLocked.length < n) legacyColLocked.push(false)
+  if (legacyColLocked.some(Boolean)) {
+    for (let j = 0; j < n; j++) {
+      if (!legacyColLocked[j] || !isVegHeaderName(headers[j])) continue
+      for (const r of rows) {
+        r.vegLocked[j] = true
+      }
+    }
+  }
+
+  return { headers, rows }
 }
 
 /**
- * @returns {{ headers: string[], rows: ExcelSheetRow[], vegColLocked: boolean[] }}
+ * @returns {{ headers: string[], rows: ExcelSheetRow[] }}
  */
 export function loadExcelSheetState() {
   try {
@@ -134,7 +181,7 @@ export function loadExcelSheetState() {
 }
 
 /**
- * @param {{ headers: string[], rows: ExcelSheetRow[], vegColLocked?: boolean[] }} state
+ * @param {{ headers: string[], rows: ExcelSheetRow[] }} state
  */
 export function saveExcelSheetState(state) {
   try {
@@ -145,7 +192,6 @@ export function saveExcelSheetState(state) {
         version: 2,
         headers: n.headers,
         rows: n.rows,
-        vegColLocked: n.vegColLocked,
       }),
     )
     try {
