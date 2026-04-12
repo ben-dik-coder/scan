@@ -30,10 +30,10 @@ export const VEGREF_MIN_MOVE_M = 2
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
  * Skaler litt med GPS-nøyaktighet.
  */
-const VEGREF_INFLIGHT_COALESCE_BASE_M = 12
+const VEGREF_INFLIGHT_COALESCE_BASE_M = 6
 
 /** Gjenbruk siste NVDB-treff når posisjon er i nærheten (offline / nettfeil). */
-const OFFLINE_REUSE_NVDB_M = 200
+const OFFLINE_REUSE_NVDB_M = 50
 
 /** Monoton tid fra GPS (unngår out-of-order fixes som gir bakover-meter). */
 let lastGpsTimestamp = 0

@@ -343,11 +343,11 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     let score = dist + roadKindPenalty(seg)
     if (prevNvdbId != null && id !== null) {
       if (id === prevNvdbId) {
-        score -= 80 * speedFactor
-        if (speed < 2) score -= 40
+        score -= 18 * speedFactor
+        if (speed < 2) score -= 10
       } else {
-        score += 40 * speedFactor
-        if (speed < 2) score += 30
+        score += 10 * speedFactor
+        if (speed < 2) score += 8
       }
     }
     const roadH = segmentRoadHeadingDeg(seg, lat, lng)
@@ -516,18 +516,18 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   if (
     typeof hd === 'number' &&
     Number.isFinite(hd) &&
-    speedMps >= 6
+    speedMps >= 8
   ) {
-    const forwardM = Math.min(450, 8 + speedMps * 17)
+    const forwardM = Math.min(60, 4 + speedMps * 1.8)
     const sh = shiftLatLngAlongHeading(lat, lng, hd, forwardM)
     qLat = sh.lat
     qLng = sh.lng
   }
 
   const speedPadFactor =
-    speedMps > 28 ? 1.22 : speedMps > 15 ? 1.12 : speedMps > 8 ? 1.06 : 1
-  const accPadFactor = accM > 55 ? 1.08 : accM > 42 ? 1.04 : 1
-  const padLat = 0.0042 * speedPadFactor * accPadFactor
+    speedMps > 28 ? 1.08 : speedMps > 15 ? 1.05 : 1
+  const accPadFactor = accM > 55 ? 1.06 : accM > 42 ? 1.03 : 1
+  const padLat = 0.0018 * speedPadFactor * accPadFactor
   const cos = Math.cos((qLat * Math.PI) / 180) || 1
   const padLng = padLat / cos
   const minLat = qLat - padLat
