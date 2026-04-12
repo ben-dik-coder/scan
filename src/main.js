@@ -40,6 +40,12 @@ import {
   sendSessionShare,
   upsertUserAppState,
 } from './supabaseSync.js'
+import {
+  getPhotoDataUrl,
+  isPhotoBlobStoreAvailable,
+  prunePhotoBlobsExcept,
+  putPhotoDataUrl,
+} from './photoBlobStore.js'
 import { apiUrl } from './apiBase.js'
 import {
   configureAdvancedRegister,
@@ -799,6 +805,60 @@ function normalizeStandalonePhotosList(arr) {
   return arr.map(normalizePhoto).filter(Boolean)
 }
 
+/**
+ * Fyller inn dataUrl fra IndexedDB for poster lagret med idbImage.
+ * @param {unknown[]} raw
+ */
+async function hydratePhotoRecordsArray(raw) {
+  if (!Array.isArray(raw)) return []
+  const out = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const p = /** @type {Record<string, unknown>} */ (item)
+    let dataUrl =
+      typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image/')
+        ? p.dataUrl
+        : null
+    const id = typeof p.id === 'string' ? p.id : null
+    if (!dataUrl && id && (p.idbImage === true || !p.dataUrl)) {
+      try {
+        const fromIdb = await getPhotoDataUrl(id)
+        if (
+          typeof fromIdb === 'string' &&
+          fromIdb.startsWith('data:image/')
+        ) {
+          dataUrl = fromIdb
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!dataUrl) continue
+    out.push({ ...p, dataUrl })
+  }
+  return out
+}
+
+/**
+ * @param {unknown} disk
+ */
+async function hydrateSessionsFromDiskJson(disk) {
+  if (!disk || typeof disk !== 'object') return []
+  const rawSessions = /** @type {{ sessions?: unknown }} */ (disk).sessions
+  if (!Array.isArray(rawSessions)) return []
+  const out = []
+  for (const s of rawSessions) {
+    if (!s || typeof s !== 'object') continue
+    const o = /** @type {Record<string, unknown>} */ (s)
+    const photos = Array.isArray(o.photos)
+      ? await hydratePhotoRecordsArray(o.photos)
+      : []
+    const n = normalizeSession({ ...o, photos })
+    if (n) out.push(n)
+  }
+  return out
+}
+
 function mergeStandalonePhotoLists(a, b) {
   const m = new Map()
   for (const p of [...a, ...b]) {
@@ -1048,9 +1108,10 @@ function normalizeSession(p) {
 
 /**
  * Laster økter for innlogget bruker. Migrerer eldre `scanix-sessions-v2` til per-bruker-nøkkel én gang.
+ * Bildedata kan ligge i IndexedDB (idbImage); metadata i JSON.
  * @param {string} userId
  */
-function loadAppStateFromStorageForUser(userId) {
+async function loadAppStateFromStorageForUser(userId) {
   const key = sessionsKeyForUser(userId)
   let rawV2 = localStorage.getItem(key)
   if (!rawV2) {
@@ -1067,14 +1128,16 @@ function loadAppStateFromStorageForUser(userId) {
   if (rawV2) {
     try {
       const p = JSON.parse(rawV2)
-      const sess = Array.isArray(p.sessions)
-        ? p.sessions.map(normalizeSession).filter(Boolean)
+      const sess = await hydrateSessionsFromDiskJson(p)
+      const rawStandalone = Array.isArray(p.standalonePhotos)
+        ? p.standalonePhotos
         : []
+      const hydratedStandalone = await hydratePhotoRecordsArray(rawStandalone)
       return {
         sessions: sess,
         currentSessionId:
           typeof p.currentSessionId === 'string' ? p.currentSessionId : null,
-        standalonePhotos: normalizeStandalonePhotosList(p.standalonePhotos),
+        standalonePhotos: normalizeStandalonePhotosList(hydratedStandalone),
         frictionMeasurements: normalizeFrictionMeasurementsList(
           p.frictionMeasurements,
         ),
@@ -1121,7 +1184,108 @@ function loadAppStateFromStorageForUser(userId) {
   }
 }
 
-function saveAppState() {
+/** @type {ReturnType<typeof setTimeout> | null} */
+let appStatePersistDebounce = null
+/** @type {Promise<void>} */
+let appStateSaveChain = Promise.resolve()
+
+/**
+ * Skriver økter + metadata til localStorage; store bilder i IndexedDB for å unngå localStorage-kvote.
+ */
+async function flushLocalStorageAppState(key) {
+  let useIdb = await isPhotoBlobStoreAvailable()
+
+  /**
+   * @param {NonNullable<ReturnType<typeof normalizePhoto>>} p
+   */
+  const serializePhoto = async (p) => {
+    if (!useIdb) {
+      return {
+        id: p.id,
+        timestamp: p.timestamp,
+        lat: p.lat,
+        lng: p.lng,
+        dataUrl: p.dataUrl,
+        ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.imageFolder != null
+          ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
+          : {}),
+      }
+    }
+    try {
+      await putPhotoDataUrl(p.id, p.dataUrl)
+      return {
+        id: p.id,
+        timestamp: p.timestamp,
+        lat: p.lat,
+        lng: p.lng,
+        idbImage: true,
+        ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.imageFolder != null
+          ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
+          : {}),
+      }
+    } catch (e) {
+      console.warn('putPhotoDataUrl', e)
+      return {
+        id: p.id,
+        timestamp: p.timestamp,
+        lat: p.lat,
+        lng: p.lng,
+        dataUrl: p.dataUrl,
+        ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.imageFolder != null
+          ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
+          : {}),
+      }
+    }
+  }
+
+  const sessionsOut = []
+  for (const s of sessions) {
+    const photos = []
+    for (const ph of s.photos || []) {
+      photos.push(await serializePhoto(ph))
+    }
+    sessionsOut.push({ ...s, photos })
+  }
+  const standaloneOut = []
+  for (const ph of standalonePhotos) {
+    standaloneOut.push(await serializePhoto(ph))
+  }
+
+  const payload = {
+    version: 2,
+    sessions: sessionsOut,
+    currentSessionId,
+    standalonePhotos: standaloneOut,
+    frictionMeasurements,
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify(payload))
+  } catch (e) {
+    showSessionToast(
+      'Kunne ikke lagre data lokalt (lagringsplass full?). Noe kan mangle etter oppdatering.',
+      5200,
+    )
+    throw e
+  }
+
+  if (useIdb) {
+    const keepIds = new Set()
+    for (const p of standalonePhotos) keepIds.add(p.id)
+    for (const s of sessions) {
+      for (const p of s.photos || []) keepIds.add(p.id)
+    }
+    try {
+      await prunePhotoBlobsExcept(keepIds)
+    } catch (e) {
+      console.warn('prunePhotoBlobsExcept', e)
+    }
+  }
+}
+
+async function saveAppStateWorker() {
   if (!currentUser?.id) return
   const key = sessionsKeyForUser(currentUser.id)
   let diskSessions = []
@@ -1129,9 +1293,7 @@ function saveAppState() {
     const raw = localStorage.getItem(key)
     if (raw) {
       const disk = JSON.parse(raw)
-      diskSessions = Array.isArray(disk.sessions)
-        ? disk.sessions.map(normalizeSession).filter(Boolean)
-        : []
+      diskSessions = await hydrateSessionsFromDiskJson(disk)
     }
   } catch {
     /* ignore corrupt disk */
@@ -1173,20 +1335,22 @@ function saveAppState() {
     }
   }
   try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        version: 2,
-        sessions,
-        currentSessionId,
-        standalonePhotos,
-        frictionMeasurements,
-      }),
-    )
+    await flushLocalStorageAppState(key)
   } catch {
-    /* quota */
+    /* toast allerede vist */
   }
   if (isSupabaseConfigured()) scheduleSupabaseAppStatePush()
+}
+
+function saveAppState() {
+  if (!currentUser?.id) return
+  clearTimeout(appStatePersistDebounce)
+  appStatePersistDebounce = setTimeout(() => {
+    appStatePersistDebounce = null
+    appStateSaveChain = appStateSaveChain
+      .then(() => saveAppStateWorker())
+      .catch((e) => console.warn('saveAppState:', e))
+  }, 80)
 }
 
 function loadCurrentSessionState() {
@@ -1365,7 +1529,7 @@ async function initAppStateFromStorage() {
         tryWriteAuthSession(currentUser)
         void backupAuthToIdb(loadUsersFromStorage(), currentUser)
         /* Disk først → rask forsida; sky-data hentes i bakgrunnen (hydrateUserAppStateFromRemote). */
-        const diskApp = loadAppStateFromStorageForUser(currentUser.id)
+        const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
         sessions = diskApp.sessions
         currentSessionId = diskApp.currentSessionId
         standalonePhotos = diskApp.standalonePhotos
@@ -1375,15 +1539,11 @@ async function initAppStateFromStorage() {
         const fb = loadAuthSession()
         if (fb) {
           currentUser = fb
-          const diskApp = loadAppStateFromStorageForUser(currentUser.id)
+          const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
           sessions = diskApp.sessions
           currentSessionId = diskApp.currentSessionId
-          standalonePhotos = normalizeStandalonePhotosList(
-            diskApp.standalonePhotos,
-          )
-          frictionMeasurements = normalizeFrictionMeasurementsList(
-            diskApp.frictionMeasurements,
-          )
+          standalonePhotos = diskApp.standalonePhotos
+          frictionMeasurements = diskApp.frictionMeasurements
         } else {
           currentUser = null
           clearAuthSession()
@@ -1398,15 +1558,11 @@ async function initAppStateFromStorage() {
       const fb = loadAuthSession()
       if (fb) {
         currentUser = fb
-        const diskApp = loadAppStateFromStorageForUser(currentUser.id)
+        const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
         sessions = diskApp.sessions
         currentSessionId = diskApp.currentSessionId
-        standalonePhotos = normalizeStandalonePhotosList(
-          diskApp.standalonePhotos,
-        )
-        frictionMeasurements = normalizeFrictionMeasurementsList(
-          diskApp.frictionMeasurements,
-        )
+        standalonePhotos = diskApp.standalonePhotos
+        frictionMeasurements = diskApp.frictionMeasurements
       } else {
         currentUser = null
         clearAuthSession()
@@ -1420,7 +1576,7 @@ async function initAppStateFromStorage() {
     currentUser = loadAuthSession()
     syncShortIdFromUsersToSession()
     const initialApp = currentUser
-      ? loadAppStateFromStorageForUser(currentUser.id)
+      ? await loadAppStateFromStorageForUser(currentUser.id)
       : {
           sessions: [],
           currentSessionId: null,
@@ -1429,12 +1585,8 @@ async function initAppStateFromStorage() {
         }
     sessions = initialApp.sessions
     currentSessionId = initialApp.currentSessionId
-    standalonePhotos = normalizeStandalonePhotosList(
-      initialApp.standalonePhotos,
-    )
-    frictionMeasurements = normalizeFrictionMeasurementsList(
-      initialApp.frictionMeasurements,
-    )
+    standalonePhotos = initialApp.standalonePhotos
+    frictionMeasurements = initialApp.frictionMeasurements
   }
 
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
@@ -1475,7 +1627,7 @@ async function hydrateUserAppStateFromRemote() {
   }
   if (!remote) return
 
-  const diskApp = loadAppStateFromStorageForUser(currentUser.id)
+  const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
   const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
   const diskSessions = diskApp.sessions.map(normalizeSession).filter(Boolean)
   const nextSessions = mergeRemoteAndDiskSessions(remoteSessions, diskSessions)
@@ -7025,7 +7177,7 @@ async function applySupabaseSessionAndNavigate(sb, session) {
   void requestPersistedStorageIfSupported()
   void backupAuthToIdb(loadUsersFromStorage(), currentUser)
   const remote = await fetchUserAppState(sb, session.user.id)
-  const diskApp = loadAppStateFromStorageForUser(currentUser.id)
+  const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
   if (remote) {
     const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
     const diskSessions = diskApp.sessions.map(normalizeSession).filter(Boolean)
@@ -7186,13 +7338,11 @@ function bindAuthListeners() {
       }
       void requestPersistedStorageIfSupported()
       void backupAuthToIdb(loadUsersFromStorage(), currentUser)
-      const app = loadAppStateFromStorageForUser(u.id)
+      const app = await loadAppStateFromStorageForUser(u.id)
       sessions = app.sessions
       currentSessionId = app.currentSessionId
-      standalonePhotos = normalizeStandalonePhotosList(app.standalonePhotos)
-      frictionMeasurements = normalizeFrictionMeasurementsList(
-        app.frictionMeasurements,
-      )
+      standalonePhotos = app.standalonePhotos
+      frictionMeasurements = app.frictionMeasurements
       if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
         currentSessionId = null
       }
