@@ -3983,6 +3983,10 @@ body.home-ai-panel-open .home-vegref {
   margin-right: 0.2rem;
 }
 
+.excel-sheet-lock-veg {
+  flex-shrink: 0;
+}
+
 .excel-sheet-unlock-veg {
   flex-shrink: 0;
 }
