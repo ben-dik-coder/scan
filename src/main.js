@@ -4602,66 +4602,52 @@ function renderHomeHtml() {
     <div class="home-app-shortcuts">
       <button type="button" class="home-app-icon-btn" id="btn-home-registrering">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <img
-            class="home-app-icon-btn__icon"
-            src="/icons/registrering.png"
-            alt=""
-            width="96"
-            height="96"
-            decoding="async"
-          />
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="8" width="36" height="32" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
+            <path d="M6 16h36" stroke="currentColor" stroke-width="2"/>
+            <circle cx="24" cy="30" r="7" stroke="rgba(96,200,150,0.9)" stroke-width="2.4" fill="none"/>
+            <path d="M24 27v6M21 30h6" stroke="rgba(96,200,150,0.9)" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
         </span>
         <span class="home-app-icon-btn__label">Registrering</span>
       </button>
       <button type="button" class="home-app-icon-btn" id="btn-home-kamera">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <img
-            class="home-app-icon-btn__icon"
-            src="/icons/kamera.png"
-            alt=""
-            width="96"
-            height="96"
-            decoding="async"
-          />
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 16a4 4 0 014-4h6l3-4h14l3 4h6a4 4 0 014 4v20a4 4 0 01-4 4H8a4 4 0 01-4-4V16z" stroke="currentColor" stroke-width="2.4" fill="none"/>
+            <circle cx="24" cy="26" r="8" stroke="rgba(130,180,255,0.9)" stroke-width="2.4" fill="none"/>
+            <circle cx="24" cy="26" r="3" fill="rgba(130,180,255,0.5)"/>
+          </svg>
         </span>
         <span class="home-app-icon-btn__label">Kamera</span>
       </button>
       <button type="button" class="home-app-icon-btn" id="btn-home-kontraktai">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <img
-            class="home-app-icon-btn__icon"
-            src="/icons/kontraktai.png"
-            alt=""
-            width="96"
-            height="96"
-            decoding="async"
-          />
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 6h20a4 4 0 014 4v28a4 4 0 01-4 4H14a4 4 0 01-4-4V10a4 4 0 014-4z" stroke="currentColor" stroke-width="2.4" fill="none"/>
+            <path d="M16 16h16M16 22h12M16 28h8" stroke="rgba(200,200,220,0.7)" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="34" cy="36" r="7" fill="rgba(80,60,140,0.85)" stroke="rgba(160,140,240,0.8)" stroke-width="1.8"/>
+            <path d="M32 36l1.5 1.5L36 34" stroke="rgba(200,190,255,0.95)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </span>
         <span class="home-app-icon-btn__label">KontraktAi</span>
       </button>
       <button type="button" class="home-app-icon-btn" id="btn-home-album">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <img
-            class="home-app-icon-btn__icon"
-            src="/icons/album.png"
-            alt=""
-            width="96"
-            height="96"
-            decoding="async"
-          />
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
+            <path d="M6 32l10-8 6 5 8-6 12 9" stroke="rgba(96,200,150,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="16" cy="20" r="3.5" fill="rgba(255,210,90,0.8)"/>
+          </svg>
         </span>
         <span class="home-app-icon-btn__label">Album</span>
       </button>
       <button type="button" class="home-app-icon-btn" id="btn-home-delsky">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <img
-            class="home-app-icon-btn__icon"
-            src="/icons/delsky.png"
-            alt=""
-            width="96"
-            height="96"
-            decoding="async"
-          />
+          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 36a9 9 0 01-.5-18A12 12 0 0136 18a9 9 0 012 17.8" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <path d="M20 30v8M24 28v10M28 30v8" stroke="rgba(130,180,255,0.85)" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
         </span>
         <span class="home-app-icon-btn__label">DelSky</span>
       </button>
