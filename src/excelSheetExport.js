@@ -229,8 +229,9 @@ export function resetExcelSheetRows() {
 /**
  * @param {string[]} headers
  * @param {string[][]} rows
+ * @param {string} [filenameBase] Uten .xlsx; standard scanix-data-…
  */
-export async function downloadExcelSheetGrid(headers, rows) {
+export async function downloadExcelSheetGrid(headers, rows, filenameBase) {
   const XLSX = await import('xlsx')
   const head = headers.map((h) => (h == null ? '' : String(h)))
   const body = rows.map((r) =>
@@ -242,6 +243,73 @@ export async function downloadExcelSheetGrid(headers, rows) {
   XLSX.utils.book_append_sheet(wb, ws, 'Data')
   const stamp = new Date()
   const pad = (n) => String(n).padStart(2, '0')
-  const fname = `scanix-data-${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}.xlsx`
+  const base =
+    typeof filenameBase === 'string' && filenameBase.trim()
+      ? filenameBase.trim().replace(/[/\\?%*:|"<>]/g, '-')
+      : `scanix-data-${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}`
+  const fname = `${base}.xlsx`
   XLSX.writeFile(wb, fname)
+}
+
+/**
+ * Friksjonsmåling: to rader per strekning (Start og Stopp) med vegnavn, S, D, meter.
+ * @param {Array<{
+ *   distanceM: number,
+ *   value: number,
+ *   createdAt: string,
+ *   startVegref?: { vegnavn: string, s: string, d: string, meter: string } | null,
+ *   endVegref?: { vegnavn: string, s: string, d: string, meter: string } | null,
+ * }>} measurements
+ */
+export async function downloadFrictionMeasurementsXlsx(measurements) {
+  const headers = [
+    'Punkt',
+    'Vegnavn',
+    'S',
+    'D',
+    'Meter',
+    'Strekning_m',
+    'Friksjon',
+    'Tidspunkt',
+  ]
+  /** @param {number} m */
+  const distStr = (m) => {
+    if (typeof m !== 'number' || !Number.isFinite(m)) return ''
+    const rounded = Math.round(m * 10) / 10
+    return String(rounded).replace('.', ',')
+  }
+  /** @param {number} v */
+  const valStr = (v) =>
+    typeof v === 'number' && Number.isFinite(v) ? String(v).replace('.', ',') : ''
+  /**
+   * @param {string} punkt
+   * @param {{ vegnavn: string, s: string, d: string, meter: string } | null | undefined} snap
+   * @param {{ distanceM: number, value: number, createdAt: string }} m
+   */
+  const vegRow = (punkt, snap, m) => {
+    const v = snap || { vegnavn: '', s: '', d: '', meter: '' }
+    return [
+      punkt,
+      v.vegnavn,
+      v.s,
+      v.d,
+      v.meter,
+      distStr(m.distanceM),
+      valStr(m.value),
+      typeof m.createdAt === 'string' ? m.createdAt : '',
+    ]
+  }
+  const sorted = [...measurements].sort(
+    (a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  )
+  const rows = []
+  for (const m of sorted) {
+    rows.push(vegRow('Start', m.startVegref, m))
+    rows.push(vegRow('Stopp', m.endVegref, m))
+  }
+  const stamp = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const fname = `scanix-friksjon-${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}`
+  await downloadExcelSheetGrid(headers, rows, fname)
 }

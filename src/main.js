@@ -57,6 +57,7 @@ import {
 } from './advancedRegister.js'
 import {
   downloadExcelSheetGrid,
+  downloadFrictionMeasurementsXlsx,
   loadExcelSheetState,
   resetExcelSheetState,
   saveExcelSheetState,
@@ -882,8 +883,54 @@ function mergeStandalonePhotoLists(a, b) {
 const MAX_FRICTION_MEASUREMENTS = 200
 
 /**
+ * @param {unknown} x
+ * @returns {{ vegnavn: string, s: string, d: string, meter: string } | null}
+ */
+function normalizeFrictionVegSnap(x) {
+  if (!x || typeof x !== 'object') return null
+  const o = /** @type {Record<string, unknown>} */ (x)
+  const vegnavn =
+    typeof o.vegnavn === 'string'
+      ? o.vegnavn.trim()
+      : typeof o.vegnavn === 'number'
+        ? String(o.vegnavn)
+        : ''
+  const s = typeof o.s === 'string' ? o.s.trim() : ''
+  const d = typeof o.d === 'string' ? o.d.trim() : ''
+  let meter = ''
+  if (typeof o.meter === 'string') meter = o.meter.trim()
+  else if (typeof o.meter === 'number' && Number.isFinite(o.meter))
+    meter = String(Math.round(o.meter))
+  if (!vegnavn && !s && !d && !meter) return null
+  return { vegnavn, s, d, meter }
+}
+
+/**
+ * @param {object | null} r
+ * @returns {{ vegnavn: string, s: string, d: string, meter: string } | null}
+ */
+function vegrefPosisjonToFrictionSnap(r) {
+  if (!r || typeof r !== 'object') return null
+  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, s?: string, d?: string, m?: string }} */ (
+    r
+  )
+  const vegnavn = String(o.roadLineDisplay || o.roadLine || '').trim()
+  const sRaw = o.s
+  const dRaw = o.d
+  const mRaw = o.m
+  const s =
+    sRaw === undefined || sRaw === '–' ? '' : String(sRaw).trim()
+  const d =
+    dRaw === undefined || dRaw === '–' ? '' : String(dRaw).trim()
+  const meter =
+    mRaw === undefined || mRaw === '–' ? '' : String(mRaw).trim()
+  if (!vegnavn && !s && !d && !meter) return null
+  return { vegnavn, s, d, meter }
+}
+
+/**
  * @param {unknown} p
- * @returns {{ id: string, createdAt: string, distanceM: number, value: number, pathLatLngs: number[][], startLat: number | null, startLng: number | null, endLat: number | null, endLng: number | null } | null}
+ * @returns {{ id: string, createdAt: string, distanceM: number, value: number, pathLatLngs: number[][], startLat: number | null, startLng: number | null, endLat: number | null, endLng: number | null, sessionId?: string, startVegref?: { vegnavn: string, s: string, d: string, meter: string }, endVegref?: { vegnavn: string, s: string, d: string, meter: string } } | null}
  */
 function normalizeFrictionMeasurement(p) {
   if (!p || typeof p !== 'object') return null
@@ -937,6 +984,10 @@ function normalizeFrictionMeasurement(p) {
     if (endLat == null) endLat = b[0]
     if (endLng == null) endLng = b[1]
   }
+  const sessionId =
+    typeof o.sessionId === 'string' && o.sessionId ? o.sessionId : undefined
+  const startVegref = normalizeFrictionVegSnap(o.startVegref) ?? undefined
+  const endVegref = normalizeFrictionVegSnap(o.endVegref) ?? undefined
   return {
     id,
     createdAt,
@@ -947,6 +998,9 @@ function normalizeFrictionMeasurement(p) {
     startLng,
     endLat,
     endLng,
+    ...(sessionId ? { sessionId } : {}),
+    ...(startVegref ? { startVegref } : {}),
+    ...(endVegref ? { endVegref } : {}),
   }
 }
 
@@ -1451,6 +1505,14 @@ let frictionSegmentComplete = false
 let frictionHistoryLayerGroup = null
 /** @type {Map<string, import('leaflet').Polyline>} */
 let frictionHistoryPolylines = new Map()
+/** Økt for nye friksjonsmålinger (lagre / Excel for «denne økta»). */
+let frictionActiveSessionId = null
+
+function ensureFrictionSessionId() {
+  if (!frictionActiveSessionId) frictionActiveSessionId = crypto.randomUUID()
+  return frictionActiveSessionId
+}
+
 /** Rad i session_shares mens brukeren forhåndsviser en delt økt (før lagre / forkast). */
 let previewIncomingShareId = null
 /** @type {'login' | 'register'} */
@@ -5093,6 +5155,11 @@ function renderMenuFrictionHtml() {
         <button type="button" class="friction-tab" id="friction-btn-stop" role="tab" aria-selected="false">Stopp</button>
         <button type="button" class="friction-tab" id="friction-btn-value" role="tab" aria-selected="false">Verdi</button>
       </div>
+      <div class="friction-view__session-tools" role="group" aria-label="Økt og eksport">
+        <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-save-session">Lagre økt</button>
+        <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-export-xlsx">Eksporter Excel</button>
+        <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-new-session">Ny økt</button>
+      </div>
     </div>
     <dialog id="friction-value-dialog" class="friction-value-dialog" aria-labelledby="friction-value-dialog-title">
       <div class="friction-value-dialog__inner">
@@ -5111,6 +5178,7 @@ function renderMenuFrictionHtml() {
         <div class="friction-list-dialog__head">
           <h2 id="friction-list-dialog-title" class="friction-list-dialog__title">Lagrede målinger</h2>
           <div class="friction-list-dialog__head-actions">
+            <button type="button" class="btn-text" id="friction-list-export-all-xlsx" title="Alle lagrede målinger">Excel alle</button>
             <button type="button" class="btn-text friction-list-dialog__show-all" id="friction-list-show-all">Vis alle på kart</button>
             <button type="button" class="btn-text" id="friction-list-close">Lukk</button>
           </div>
@@ -7472,6 +7540,7 @@ function bindAuthListeners() {
       currentSessionId = null
       standalonePhotos = []
       frictionMeasurements = []
+      frictionActiveSessionId = null
       state = defaultState()
       view = 'home'
       saveAppState()
@@ -8778,6 +8847,7 @@ function bindMenuFrictionListeners() {
   if (menuFrictionAbort) menuFrictionAbort.abort()
   menuFrictionAbort = new AbortController()
   const { signal } = menuFrictionAbort
+  ensureFrictionSessionId()
   document
     .getElementById('btn-back-from-friction')
     ?.addEventListener('click', () => goHome(), { signal })
@@ -8829,6 +8899,26 @@ function bindMenuFrictionListeners() {
   document.getElementById('friction-list-show-all')?.addEventListener(
     'click',
     () => frictionFitAllMeasurementsOnMap(),
+    { signal },
+  )
+  document.getElementById('friction-btn-save-session')?.addEventListener(
+    'click',
+    () => frictionSaveSessionExplicit(),
+    { signal },
+  )
+  document.getElementById('friction-btn-export-xlsx')?.addEventListener(
+    'click',
+    () => void frictionExportSessionXlsx(),
+    { signal },
+  )
+  document.getElementById('friction-btn-new-session')?.addEventListener(
+    'click',
+    () => frictionStartNewFrictionSession(),
+    { signal },
+  )
+  document.getElementById('friction-list-export-all-xlsx')?.addEventListener(
+    'click',
+    () => void frictionExportAllFrictionXlsx(),
     { signal },
   )
   document.getElementById('friction-list-body')?.addEventListener(
@@ -8967,6 +9057,7 @@ async function logoutUser() {
   sessions = []
   standalonePhotos = []
   frictionMeasurements = []
+  frictionActiveSessionId = null
   currentUser = null
   clearAuthSession()
   void backupAuthToIdb(loadUsersFromStorage(), null)
@@ -11657,6 +11748,7 @@ function bootstrap() {
       sessions = []
       standalonePhotos = []
       frictionMeasurements = []
+      frictionActiveSessionId = null
       currentUser = null
       lastIncomingShareCountForNotify = null
       clearAuthSession()
@@ -11885,17 +11977,45 @@ function frictionPolylineToPathPlain(line) {
     })
 }
 
-function frictionAppendMeasurementToList(value) {
+async function frictionAppendMeasurementToList(value) {
   if (!currentUser?.id || !frictionRouteLine) return
   const pathLatLngs = frictionPolylineToPathPlain(frictionRouteLine)
-  const entry = normalizeFrictionMeasurement({
+  if (pathLatLngs.length < 2) {
+    frictionSetStatus('Mangler rutedata for målingen.')
+    return
+  }
+  const a = pathLatLngs[0]
+  const b = pathLatLngs[pathLatLngs.length - 1]
+  frictionSetStatus('Henter vegreferanse for start og stopp …')
+  let startV = null
+  let endV = null
+  try {
+    const [sr, er] = await Promise.all([
+      fetchRoadPositionDirect(a[0], a[1]).catch(() => null),
+      fetchRoadPositionDirect(b[0], b[1]).catch(() => null),
+    ])
+    startV = vegrefPosisjonToFrictionSnap(sr)
+    endV = vegrefPosisjonToFrictionSnap(er)
+  } catch {
+    /* nettverk / API */
+  }
+  const sid = ensureFrictionSessionId()
+  /** @type {Record<string, unknown>} */
+  const raw = {
     id: crypto.randomUUID(),
     createdAt: nowIso(),
     distanceM: frictionDistanceM,
     value,
     pathLatLngs,
-  })
-  if (!entry) return
+    sessionId: sid,
+  }
+  if (startV) raw.startVegref = startV
+  if (endV) raw.endVegref = endV
+  const entry = normalizeFrictionMeasurement(raw)
+  if (!entry) {
+    frictionSetStatus('Kunne ikke lagre målingen.')
+    return
+  }
   frictionMeasurements.unshift(entry)
   while (frictionMeasurements.length > MAX_FRICTION_MEASUREMENTS) {
     frictionMeasurements.pop()
@@ -11903,6 +12023,65 @@ function frictionAppendMeasurementToList(value) {
   saveAppState()
   frictionRefreshMeasurementsListBody()
   frictionSyncHistoryOverlayToMap()
+  frictionSetStatus(
+    startV || endV
+      ? `Lagret med vegreferanse. Friksjonsverdi ${value}.`
+      : `Lagret uten vegreferanse (nettverk eller posisjon). Friksjonsverdi ${value}.`,
+  )
+}
+
+function frictionSaveSessionExplicit() {
+  if (!currentUser?.id) {
+    frictionSetStatus('Logg inn for å lagre.')
+    return
+  }
+  saveAppState()
+  showSessionToast('Økt lagret på enheten.', 2800)
+}
+
+function frictionStartNewFrictionSession() {
+  frictionActiveSessionId = crypto.randomUUID()
+  frictionSetStatus('Ny økt er startet. Nye målinger tilhører denne økta.')
+}
+
+async function frictionExportSessionXlsx() {
+  const sid = frictionActiveSessionId
+  const list = sid
+    ? frictionMeasurements.filter((m) => m.sessionId === sid)
+    : frictionMeasurements
+  if (!list.length) {
+    frictionSetStatus(
+      sid
+        ? 'Ingen målinger i aktiv økt. Bruk «Excel alle» i listen for eldre målinger uten økt-id.'
+        : 'Ingen målinger å eksportere.',
+    )
+    return
+  }
+  try {
+    await downloadFrictionMeasurementsXlsx(list)
+    frictionSetStatus(
+      `Excel lastet ned (${list.length} strekning${list.length === 1 ? '' : 'er'}).`,
+    )
+  } catch (e) {
+    console.warn('frictionExportSessionXlsx', e)
+    frictionSetStatus('Kunne ikke eksportere Excel.')
+  }
+}
+
+async function frictionExportAllFrictionXlsx() {
+  if (!frictionMeasurements.length) {
+    frictionSetStatus('Ingen lagrede målinger.')
+    return
+  }
+  try {
+    await downloadFrictionMeasurementsXlsx(frictionMeasurements)
+    frictionSetStatus(
+      `Excel alle: ${frictionMeasurements.length} strekning${frictionMeasurements.length === 1 ? '' : 'er'}.`,
+    )
+  } catch (e) {
+    console.warn('frictionExportAllFrictionXlsx', e)
+    frictionSetStatus('Kunne ikke eksportere Excel.')
+  }
 }
 
 function frictionRefreshMeasurementsListBody() {
@@ -12387,9 +12566,9 @@ function frictionSaveValueFromDialog() {
     iconAnchor: [44, 44],
   })
   frictionValueMarker = Leaflet.marker(c, { icon }).addTo(frictionMap)
-  frictionAppendMeasurementToList(n)
-  frictionSetStatus(`Friksjonsverdi ${n} er knyttet til strekningen.`)
-  frictionSyncTabAria()
+  void frictionAppendMeasurementToList(n).finally(() => {
+    frictionSyncTabAria()
+  })
 }
 
 let feedbackAudioCtx = null

@@ -3219,6 +3219,24 @@ body.home-ai-panel-open .home-vegref {
   box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.2) inset;
 }
 
+.friction-view__session-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.35rem 0.85rem 0.65rem;
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+.friction-view__session-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+  padding: 0.25rem 0.15rem;
+}
+
 .friction-value-dialog {
   border: none;
   padding: 0;
