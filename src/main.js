@@ -1,11 +1,9 @@
-import { registerSW } from 'virtual:pwa-register'
-import { fetchRoadReferenceNearOnline } from './nvdbVegref.js'
+import { fetchRoadReferenceNear } from './nvdbVegref.js'
 import {
   clearOfflineVegrefPackage,
   getOfflineVegrefMeta,
   hasOfflineVegrefPackage,
   importOfflineVegrefPackage,
-  mergeNvdbSegmentsIntoOfflineDb,
   resolveOfflineRoadReferenceNear,
 } from './vegrefLocal.js'
 import {
@@ -30,7 +28,6 @@ import {
 } from './leafletLazy.js'
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
 import { syncLaunchSplash } from './launchTransition.js'
-import { getVegrefMetrics, logVegrefMetric } from './vegrefMetrics.js'
 import appPackage from '../package.json'
 import {
   buildCurrentUserFromSession,
@@ -49,12 +46,6 @@ import {
   bindAdvancedRegister,
   invalidateAdvRegMapSize,
 } from './advancedRegister.js'
-import {
-  downloadExcelSheetGrid,
-  loadExcelSheetState,
-  resetExcelSheetState,
-  saveExcelSheetState,
-} from './excelSheetExport.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
 const LEGACY_STORAGE_KEY = 'count-clicker-v1'
@@ -247,91 +238,58 @@ function rerenderIfViewingSettings() {
   bindListenersForCurrentView()
 }
 
-/**
- * @param {{ force?: boolean }} [options]
- *   `force: true` laster ned på nytt selv om pakke finnes (knappen «Oppdater offline-pakke»).
- */
-async function ensureOfflineVegrefPackage(options = {}) {
-  const force = Boolean(options.force)
+async function ensureOfflineVegrefPackage() {
   await refreshOfflineVegrefState()
-  if (offlineVegrefReady && !force) return offlineVegrefMeta
-
+  if (offlineVegrefReady) return offlineVegrefMeta
   offlineVegrefSyncBusy = true
   offlineVegrefSyncError = ''
   offlineVegrefSyncStatus = 'Laster ned offline vegreferanse ...'
   rerenderIfViewingSettings()
+  let manifest = null
   try {
-    /** @type {object | null} */
-    let manifest = null
-    try {
-      const r = await fetch(OFFLINE_VEGREF_MANIFEST_URL, { cache: 'no-store' })
-      if (!r.ok) {
-        offlineVegrefSyncStatus = 'Offline-pakke ikke tilgjengelig'
-        return null
-      }
-      manifest = await r.json()
-    } catch {
-      offlineVegrefSyncStatus = 'Kunne ikke hente offline-manifest'
+    const r = await fetch(OFFLINE_VEGREF_MANIFEST_URL, { cache: 'no-store' })
+    if (!r.ok) {
+      offlineVegrefSyncStatus = 'Offline-pakke ikke tilgjengelig'
+      rerenderIfViewingSettings()
       return null
     }
-    const dataUrl =
-      manifest && typeof manifest.dataUrl === 'string' ? manifest.dataUrl : ''
-    const regionTiles = Array.isArray(manifest.regionTiles)
-      ? manifest.regionTiles
-      : []
-    const tileUrls = regionTiles
-      .map((t) =>
-        t && typeof t.dataUrl === 'string' ? t.dataUrl.trim() : '',
-      )
-      .filter(Boolean)
-    if (!dataUrl && tileUrls.length === 0) {
-      offlineVegrefSyncStatus = 'Manifest mangler datafil'
+    manifest = await r.json()
+  } catch {
+    offlineVegrefSyncStatus = 'Kunne ikke hente offline-manifest'
+    rerenderIfViewingSettings()
+    return null
+  }
+  const dataUrl =
+    manifest && typeof manifest.dataUrl === 'string' ? manifest.dataUrl : ''
+  if (!dataUrl) {
+    offlineVegrefSyncStatus = 'Manifest mangler datafil'
+    rerenderIfViewingSettings()
+    return null
+  }
+  try {
+    const dataRes = await fetch(dataUrl, { cache: 'no-store' })
+    if (!dataRes.ok) {
+      offlineVegrefSyncStatus = 'Kunne ikke laste offline-data'
+      rerenderIfViewingSettings()
       return null
     }
-    try {
-      /** @type {object[]} */
-      const allSegments = []
-      if (dataUrl) {
-        const dataRes = await fetch(dataUrl, { cache: 'no-store' })
-        if (!dataRes.ok) {
-          offlineVegrefSyncStatus = 'Kunne ikke laste offline-data'
-          return null
-        }
-        const pkg = await dataRes.json()
-        if (Array.isArray(pkg?.segments)) allSegments.push(...pkg.segments)
-      }
-      for (const url of tileUrls) {
-        const dataRes = await fetch(url, { cache: 'no-store' })
-        if (!dataRes.ok) {
-          offlineVegrefSyncStatus = 'Kunne ikke laste offline-flis'
-          return null
-        }
-        const pkg = await dataRes.json()
-        if (Array.isArray(pkg?.segments)) allSegments.push(...pkg.segments)
-      }
-      if (!allSegments.length) {
-        offlineVegrefSyncStatus = 'Offline-data er tom'
-        return null
-      }
-      await clearOfflineVegrefPackage()
-      await importOfflineVegrefPackage({
-        version:
-          typeof manifest.version === 'string' && manifest.version.trim()
-            ? manifest.version.trim()
-            : 'unknown',
-        generatedAt:
-          typeof manifest.generatedAt === 'string'
-            ? manifest.generatedAt
-            : null,
-        segments: allSegments,
-      })
-      await refreshOfflineVegrefState()
-      return offlineVegrefMeta
-    } catch {
-      offlineVegrefSyncError = 'Nedlasting eller import av offline-data feilet.'
-      offlineVegrefSyncStatus = 'Offline-import feilet'
-      return null
-    }
+    const pkg = await dataRes.json()
+    await clearOfflineVegrefPackage()
+    await importOfflineVegrefPackage({
+      version:
+        typeof manifest.version === 'string' ? manifest.version : pkg?.version,
+      generatedAt:
+        typeof manifest.generatedAt === 'string'
+          ? manifest.generatedAt
+          : pkg?.generatedAt,
+      segments: Array.isArray(pkg?.segments) ? pkg.segments : [],
+    })
+    await refreshOfflineVegrefState()
+    return offlineVegrefMeta
+  } catch {
+    offlineVegrefSyncError = 'Nedlasting eller import av offline-data feilet.'
+    offlineVegrefSyncStatus = 'Offline-import feilet'
+    return null
   } finally {
     offlineVegrefSyncBusy = false
     rerenderIfViewingSettings()
@@ -1255,7 +1213,7 @@ let currentSessionId = null
 let standalonePhotos = []
 /** Lagrede friksjonsmålinger (start–stopp + verdi), per bruker i app-lagring. */
 let frictionMeasurements = []
-/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'menuExcelExport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
+/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
 let view = 'home'
 /** Faner under «Økten»: oversikt, gjenoppta, last ned, importer. */
 let menuSessionTab = 'sessions'
@@ -1712,16 +1670,6 @@ function clearDrivingGpsStuckPoll() {
 /** Siste lagrede NVDB-treff for forsiden (offline / rask gjenoppretting). */
 const VEGREF_PERSIST_KEY = 'scanix-vegref-last-v1'
 
-/** Throttle for inkrementell lagring av vegnett mens brukeren kjører (samme NVDB-kall som vegreferanse). */
-let lastDrivingVegnetMergeAt = 0
-/** @type {number | null} */
-let lastDrivingVegnetMergeLat = null
-/** @type {number | null} */
-let lastDrivingVegnetMergeLng = null
-const DRIVING_VEGNET_MERGE_MIN_MS = 90_000
-const DRIVING_VEGNET_MERGE_MIN_MOVE_M = 450
-const DRIVING_VEGNET_MERGE_MIN_SPEED_MPS = 2.5
-
 /** Forside: GPS-watch som mater felles vegref-pipeline. */
 let homeVegrefGpsSeq = 0
 let homeVegrefWatchId = null
@@ -1734,16 +1682,8 @@ let homeVegrefMeterT0 = 0
 let homeVegrefDisplayedMeter = null
 let homeVegrefCompactS = '–'
 let homeVegrefCompactD = '–'
-/** Speiler siste NVDB-linjer for Excel-kolonner (Vegvei / Vegnr). */
-let homeVegrefExcelVegvei = ''
-let homeVegrefExcelVegnr = ''
 let homeVegrefLastDistSkipAt = 0
 const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
-/** Hindrer permanent meter-frys når vi ser flere "umulige" hopp på rad. */
-let homeVegrefMeterRejectSince = 0
-let homeVegrefMeterRejectCount = 0
-const HOME_VEGREF_METER_REJECT_MAX_MS = 2600
-const HOME_VEGREF_METER_REJECT_MAX_COUNT = 4
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -1836,61 +1776,6 @@ function haversineM(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)))
 }
 
-/**
- * @param {object[]} segments
- * @param {number} lat
- * @param {number} lng
- * @param {number | undefined} speedMps
- */
-function maybeMergeNvdbSegmentsWhileDriving(segments, lat, lng, speedMps) {
-  if (!Array.isArray(segments) || segments.length === 0) return
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-  const s =
-    typeof speedMps === 'number' && !Number.isNaN(speedMps) ? speedMps : 0
-  if (s < DRIVING_VEGNET_MERGE_MIN_SPEED_MPS) return
-
-  const now = Date.now()
-  if (lastDrivingVegnetMergeAt > 0) {
-    const dt = now - lastDrivingVegnetMergeAt
-    if (dt < DRIVING_VEGNET_MERGE_MIN_MS) {
-      if (lastDrivingVegnetMergeLat == null || lastDrivingVegnetMergeLng == null) {
-        return
-      }
-      const moved = haversineM(
-        lastDrivingVegnetMergeLat,
-        lastDrivingVegnetMergeLng,
-        lat,
-        lng,
-      )
-      if (moved < DRIVING_VEGNET_MERGE_MIN_MOVE_M) return
-    }
-  }
-
-  void mergeNvdbSegmentsIntoOfflineDb(segments)
-    .then(() => {
-      lastDrivingVegnetMergeAt = Date.now()
-      lastDrivingVegnetMergeLat = lat
-      lastDrivingVegnetMergeLng = lng
-      void refreshOfflineVegrefState()
-    })
-    .catch(() => {})
-}
-
-/**
- * NVDB-oppslag for vegreferanse + valgfri lokal cache av rå segmenter under kjøring.
- * @param {number} lat
- * @param {number} lng
- * @param {Parameters<typeof fetchRoadReferenceNearOnline>[2]} opts
- */
-function fetchRoadReferenceNearForApp(lat, lng, opts) {
-  return fetchRoadReferenceNearOnline(lat, lng, {
-    ...opts,
-    onRawSegments: (objs) => {
-      maybeMergeNvdbSegmentsWhileDriving(objs, lat, lng, opts.speed)
-    },
-  })
-}
-
 function resetDrivingFilters() {
   navTargetLat = null
   navTargetLng = null
@@ -1957,7 +1842,7 @@ let lastSnapFromLng = 0
 let lastSnapResult = null
 /** Rå punkter for OSRM match (bedre å ligge på veikrysset enn nearest alene). */
 let traceBuffer = []
-const TRACE_MAX = 22
+const TRACE_MAX = 16
 
 function normalizeTraceTimestampMs(timestamp) {
   const ts =
@@ -1983,10 +1868,7 @@ function mapMatchRadiusM(accuracy) {
     typeof accuracy === 'number' && Number.isFinite(accuracy)
       ? Math.max(8, accuracy)
       : 25
-  /* God GPS: strammere radius → renere match. Dårlig GPS: større radius → færre bom-treff. */
-  if (a <= 18) return Math.min(52, Math.max(18, Math.round(a * 0.95)))
-  if (a <= 35) return Math.min(68, Math.max(22, Math.round(a * 1.05)))
-  return Math.min(78, Math.max(24, Math.round(a * 1.12)))
+  return Math.min(80, Math.max(20, Math.round(a * 1.15)))
 }
 
 function getMapboxAccessToken() {
@@ -2046,18 +1928,16 @@ function osrmBasePath() {
   return 'https://router.project-osrm.org'
 }
 
-async function fetchJsonWithRetry(
-  url,
-  { timeoutMs = 12_000, maxAttempts = 3 } = {},
-) {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+async function fetchJsonWithRetry(url) {
+  const timeoutMs = 12_000
+  for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController()
     const to = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const r = await fetch(url, { signal: controller.signal })
       clearTimeout(to)
       if (!r.ok) {
-        if (attempt < maxAttempts - 1) {
+        if (attempt < 2) {
           await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
         }
         continue
@@ -2065,13 +1945,13 @@ async function fetchJsonWithRetry(
       try {
         return await r.json()
       } catch {
-        if (attempt < maxAttempts - 1) {
+        if (attempt < 2) {
           await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
         }
       }
     } catch {
       clearTimeout(to)
-      if (attempt < maxAttempts - 1) {
+      if (attempt < 2) {
         await new Promise((res) => setTimeout(res, 350 * (attempt + 1)))
       }
     }
@@ -2080,11 +1960,7 @@ async function fetchJsonWithRetry(
 }
 
 async function fetchOsrmJson(path) {
-  return fetchJsonWithRetry(`${osrmBasePath()}${path}`, {
-    // OSRM er kun "nice to have" for refsnap; aldri la dette fryse meteren.
-    timeoutMs: 2200,
-    maxAttempts: 1,
-  })
+  return fetchJsonWithRetry(`${osrmBasePath()}${path}`)
 }
 
 async function fetchMapboxJson(path) {
@@ -2096,15 +1972,9 @@ async function fetchMapboxJson(path) {
  * ellers kan punktet dras inn på bygning/tomt. Match med store radiuses tåler typisk ±30–50 m GPS-feil.
  */
 async function snapToRoadNetwork(lat, lng, accuracy) {
-  const acc =
-    typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : 50
-  /* Ved svært grov posisjon: ikke trekk punktet inn på feil vei — bruk rå posisjon / siste treff. */
-  if (acc > 95) {
-    return lastSnapResult
-  }
   const now = Date.now()
   const moved = haversineM(lastSnapFromLat, lastSnapFromLng, lat, lng)
-  const poorGps = acc > 28
+  const poorGps = accuracy > 28
   const minInterval = poorGps ? 350 : 750
   const minMove = poorGps ? 3 : 12
   if (now - lastSnapAt < minInterval && moved < minMove) {
@@ -2114,11 +1984,10 @@ async function snapToRoadNetwork(lat, lng, accuracy) {
   lastSnapFromLat = lat
   lastSnapFromLng = lng
 
-  const rad = mapMatchRadiusM(acc)
+  const rad = mapMatchRadiusM(accuracy)
 
-  const traceForMatch = traceBuffer.slice(-12)
-  /* Match kan gi grovt feil treff når ± er stor — nearest er ofte tryggere da. */
-  if (traceForMatch.length >= 2 && acc <= 88) {
+  const traceForMatch = traceBuffer.slice(-10)
+  if (traceForMatch.length >= 2) {
     const pts = traceForMatch.map((p) => `${p.lng},${p.lat}`).join(';')
     const radii = traceForMatch
       .map((p) => mapMatchRadiusM(p.accuracy ?? rad))
@@ -3279,12 +3148,7 @@ function scheduleHomeVegrefLookup(
   timestamp,
   userHeadingDeg,
 ) {
-  if (
-    (view !== 'home' && view !== 'menuExcelExport') ||
-    lat == null ||
-    lng == null
-  )
-    return
+  if (view !== 'home' || lat == null || lng == null) return
   feedVegrefFromGps(
     lat,
     lng,
@@ -3341,49 +3205,6 @@ function maybePersistHomeVegref(res) {
   }
 }
 
-function syncHomeVegrefExcelFromRes(res) {
-  const mir = getVegrefHomeMirrorStrings(res)
-  if (!mir) return
-  const longDisplay = String(
-    /** @type {{ roadLineDisplay?: unknown }} */ (res).roadLineDisplay || '',
-  ).trim()
-  homeVegrefExcelVegvei = longDisplay || mir.primary
-  homeVegrefExcelVegnr =
-    mir.typeLine ||
-    String(
-      /** @type {{ roadLineShort?: unknown, roadLine?: unknown }} */ (res)
-        .roadLineShort ||
-        res.roadLine ||
-        '',
-    ).trim() ||
-    ''
-}
-
-function getHomeVegrefExcelSnapshot() {
-  const s =
-    homeVegrefCompactS === '–' || homeVegrefCompactS == null
-      ? ''
-      : String(homeVegrefCompactS)
-  const d =
-    homeVegrefCompactD === '–' || homeVegrefCompactD == null
-      ? ''
-      : String(homeVegrefCompactD)
-  let meter = ''
-  if (
-    homeVegrefDisplayedMeter != null &&
-    Number.isFinite(Number(homeVegrefDisplayedMeter))
-  ) {
-    meter = String(Math.round(homeVegrefDisplayedMeter))
-  }
-  return {
-    vegvei: homeVegrefExcelVegvei || '',
-    vegnr: homeVegrefExcelVegnr || '',
-    s,
-    d,
-    meter,
-  }
-}
-
 function setHomeVegrefPlaceholder(msg) {
   cancelHomeVegrefMeterTween()
   const prim = document.getElementById('home-vegref-primary')
@@ -3406,6 +3227,12 @@ function setHomeVegrefPlaceholder(msg) {
 }
 
 function applyHomeVegrefResult(res) {
+  if (view !== 'home') return
+  const prim = document.getElementById('home-vegref-primary')
+  const typeEl = document.getElementById('home-vegref-type')
+  const comp = document.getElementById('home-vegref-compact')
+  if (!prim) return
+
   if (!res) {
     /* Ingen treff: ikke tøm eller vis feil – behold siste gode visning. */
     return
@@ -3415,9 +3242,24 @@ function applyHomeVegrefResult(res) {
     /** @type {{ skipMeterUpdate?: boolean }} */ (res).skipMeterUpdate,
   )
 
-  // Alle aggressive meter-filtre (dist-to-road, large-jump, backward-jump,
-  // still-lock) er fjernet — de ga i praksis mer frys enn nytte.
-  // Meteren oppdateres alltid med siste NVDB-treff.
+  const dist = res.distToRoadM
+  const maxDistSkip = getHomeVegrefMaxDistSkipM(lastVegrefGpsAccuracyM)
+  if (
+    typeof dist === 'number' &&
+    !Number.isNaN(dist) &&
+    dist > maxDistSkip &&
+    homeVegrefHasDisplayedResult
+  ) {
+    const now3 = Date.now()
+    if (homeVegrefLastDistSkipAt === 0) homeVegrefLastDistSkipAt = now3
+    if (now3 - homeVegrefLastDistSkipAt < HOME_VEGREF_DIST_SKIP_TIMEOUT_MS) {
+      return
+    }
+    /* Timeout: accept the result to avoid permanent freeze. */
+    homeVegrefLastDistSkipAt = 0
+  } else {
+    homeVegrefLastDistSkipAt = 0
+  }
 
   const longDisplay = String(res.roadLineDisplay || '').trim()
   const longOfficial = String(res.roadLine || '').trim()
@@ -3429,38 +3271,36 @@ function applyHomeVegrefResult(res) {
       '',
   ).trim()
   const officialShort = String(res.roadLineShort || longOfficial || '').trim()
-  const hasSdPair =
-    res.s != null &&
-    res.d != null &&
-    String(res.s).trim() !== '' &&
-    String(res.d).trim() !== ''
-  /* Uten vegnavn fra NVDB kan vi fortsatt ha S/D – ikke stopp da (tidligere ble kompakt felt aldri oppdatert). */
-  if (!display && !officialShort && !hasSdPair) return
-
-  syncHomeVegrefExcelFromRes(res)
+  if (!display && !officialShort) return
 
   const segKeyEarly = `${longOfficial}|${res.s}|${res.d}`
+  const mIntEarly = skipM
+    ? homeVegrefDisplayedMeter
+    : parseKmtMeterInt(res.m)
   const segChangedEarly = segKeyEarly !== homeVegrefSegKey
   if (segChangedEarly) {
     vegrefClearSegmentLock()
-    cancelHomeVegrefMeterTween()
+    const willTweenSegChange =
+      !skipM &&
+      parseKmtMeterInt(res.m) != null &&
+      homeVegrefDisplayedMeter != null
+    if (!willTweenSegChange) cancelHomeVegrefMeterTween()
   }
-
-  if (view !== 'home') {
-    homeVegrefHasDisplayedResult = true
-    homeVegrefCompactS = res.s
-    homeVegrefCompactD = res.d
-    const mInt = parseKmtMeterInt(res.m)
-    if (mInt != null) homeVegrefDisplayedMeter = mInt
-    homeVegrefSegKey = `${longOfficial}|${res.s}|${res.d}`
-    if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
-    return
+  if (
+    !vegrefIsStationary() &&
+    !skipM &&
+    homeVegrefDisplayedMeter != null &&
+    mIntEarly != null &&
+    !segChangedEarly
+  ) {
+    const delta = mIntEarly - homeVegrefDisplayedMeter
+    if (delta < -50) {
+      return
+    }
+    if (Math.abs(delta) > 200) {
+      return
+    }
   }
-
-  const prim = document.getElementById('home-vegref-primary')
-  const typeEl = document.getElementById('home-vegref-type')
-  const comp = document.getElementById('home-vegref-compact')
-  if (!prim) return
 
   homeVegrefHasDisplayedResult = true
   prim.textContent = display || officialShort
@@ -3484,7 +3324,17 @@ function applyHomeVegrefResult(res) {
     const segKey = `${longOfficial}|${res.s}|${res.d}`
     const segChanged = segKey !== homeVegrefSegKey
     const mInt = parseKmtMeterInt(res.m)
-    // Still-lock deaktivert: den har i praksis gitt falske "frys" i felt.
+    const isStill =
+      vegrefGetLastSpeed() < 1 &&
+      homeVegrefDisplayedMeter != null &&
+      vegrefGetSegmentConfidence() > 5
+    if (isStill && !segChanged && !skipM) {
+      homeVegrefSegKey = segKey
+      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+      comp.hidden = false
+      maybePersistHomeVegref(res)
+      return
+    }
     if (skipM && homeVegrefHasDisplayedResult) {
       homeVegrefSegKey = segKey
       if (homeVegrefDisplayedMeter != null) {
@@ -3514,12 +3364,6 @@ function applyHomeVegrefResult(res) {
             homeVegrefDisplayedMeter = mInt
             setHomeVegrefCompactDom(res.s, res.d, mInt)
           } else {
-            /* Oppdater S/D med én gang ved segmentbytte; meter tweenes separat. */
-            setHomeVegrefCompactDom(
-              res.s,
-              res.d,
-              homeVegrefDisplayedMeter ?? mInt,
-            )
             startHomeVegrefMeterTweenTo(mInt)
           }
         } else {
@@ -3611,29 +3455,16 @@ function startHomeVegrefTracking() {
         )
         return
       }
-      // Kritisk: oppdater vegref umiddelbart på rå GPS.
-      // Hvis OSRM er treg/timeout skal ikke meteren stå og vente.
-      scheduleHomeVegrefLookup(
-        latitude,
-        longitude,
-        false,
-        accuracy,
-        pos.timestamp,
-        hdg,
-      )
       void (async () => {
         const snapped = await snapToRoadNetwork(latitude, longitude, accuracy)
         if (seq !== homeVegrefGpsSeq) return
         if (view !== 'home') return
-        if (!snapped) return
-        const refLat = snapped.lat
-        const refLng = snapped.lng
-        const snapMoved = haversineM(latitude, longitude, refLat, refLng)
-        if (snapMoved < 1) return
+        const refLat = snapped ? snapped.lat : latitude
+        const refLng = snapped ? snapped.lng : longitude
         scheduleHomeVegrefLookup(
           refLat,
           refLng,
-          true,
+          false,
           accuracy,
           pos.timestamp,
           hdg,
@@ -4593,10 +4424,8 @@ function renderHomeHtml() {
       <p id="home-vegref-primary" class="home-vegref__primary">Henter posisjon …</p>
       <p id="home-vegref-type" class="home-vegref__type" hidden></p>
       <div id="home-vegref-compact" class="home-vegref__compact" hidden>
-        <div class="home-vegref__sd-row">
-          <span id="home-vegref-s" class="home-vegref__line home-vegref__line--s"></span>
-          <span id="home-vegref-d" class="home-vegref__line home-vegref__line--d"></span>
-        </div>
+        <div id="home-vegref-s" class="home-vegref__line home-vegref__line--s"></div>
+        <div id="home-vegref-d" class="home-vegref__line home-vegref__line--d"></div>
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
@@ -4771,7 +4600,6 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
         <button type="button" class="home-drawer__link" id="home-drawer-messages">Meldinger</button>
         <button type="button" class="home-drawer__link" id="home-drawer-settings">Innstillinger</button>
-        <button type="button" class="home-drawer__link" id="home-drawer-excel-export">Eksporter til Excel</button>
         <button type="button" class="home-drawer__link" id="home-drawer-privacy">Personvern</button>
         <button type="button" class="home-drawer__link" id="home-drawer-support">Support</button>
       </nav>
@@ -5081,53 +4909,8 @@ function renderMenuSettingsHtml() {
       <p class="menu-info-prose">Generert: ${generatedAt}</p>
       ${offlineError}
       <button type="button" class="btn btn-primary" id="btn-settings-download-offline-vegref"${offlineVegrefSyncBusy ? ' disabled' : ''}>${offlineVegrefReady ? 'Oppdater offline-pakke' : 'Last ned offline-pakke'}</button>
-      <button type="button" class="btn btn-ghost" id="btn-settings-copy-vegref-debug">Kopier vegref-debug</button>
     </div>
   </div>`
-}
-
-function buildVegrefDebugReportText() {
-  const rows = getVegrefMetrics()
-  const meterRows = rows.filter((r) => {
-    const t = String(r?.type || '')
-    return t.startsWith('home-meter') || t === 'home-meter-override'
-  })
-  const byReason = {}
-  for (const r of meterRows) {
-    const key = `${String(r.type || 'unknown')}:${String(r.reason || 'n/a')}`
-    byReason[key] = (byReason[key] || 0) + 1
-  }
-  return JSON.stringify(
-    {
-      generatedAt: new Date().toISOString(),
-      appVersion: String(appPackage?.version || 'unknown'),
-      offlineVegrefReady,
-      offlineVegrefStatus: offlineVegrefSyncStatus,
-      totalMetrics: rows.length,
-      meterMetrics: meterRows.length,
-      byReason,
-      lastMeterEvents: meterRows.slice(-30),
-    },
-    null,
-    2,
-  )
-}
-
-async function copyVegrefDebugReport() {
-  const text = buildVegrefDebugReportText()
-  if (
-    navigator.clipboard &&
-    typeof navigator.clipboard.writeText === 'function'
-  ) {
-    try {
-      await navigator.clipboard.writeText(text)
-      alert('Vegref-debug kopiert. Lim inn i chatten.')
-      return
-    } catch {
-      /* fallback below */
-    }
-  }
-  window.prompt('Kopier vegref-debug og lim inn i chatten:', text)
 }
 
 function renderMenuPrivacyHtml() {
@@ -5144,501 +4927,6 @@ function renderMenuSupportHtml() {
     <h2 class="subview-title">Support</h2>
     <p class="menu-info-prose">Trenger du hjelp? Beskriv problemet og enhet/nettleser i en e-post til appens leverandør, eller se dokumentasjonen som følger prosjektet.</p>
   </div>`
-}
-
-function renderMenuExcelExportHtml() {
-  return `<div class="view-sub surface view-panel-enter view-sub--excel">
-    <button type="button" class="btn btn-back" id="btn-back-from-menu-excel-export">← Meny</button>
-    <h2 class="subview-title">Excel</h2>
-    <p class="menu-info-prose excel-sheet-lead">Rediger cellene under. Veg-kolonner (Vegvei, Vegnr, S, D, Meter) kan enten følge GPS eller låses når du skriver egen verdi.</p>
-    <div class="menu-card excel-sheet-card">
-      <div class="excel-sheet-toolbar">
-        <div class="excel-sheet-toolbar__primary">
-          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-row">Legg til rad</button>
-          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-add-col">Legg til kolonne</button>
-          <button type="button" class="btn btn-primary" id="btn-excel-sheet-export">Last ned .xlsx</button>
-        </div>
-        <div class="excel-sheet-toolbar__secondary">
-          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-fill-vegref">Synk alle veg fra GPS</button>
-          <button type="button" class="btn btn-ghost" id="btn-excel-sheet-clear">Tøm arket</button>
-        </div>
-      </div>
-      <div class="excel-sheet-legend" aria-hidden="true">
-        <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--live"></span> Veg-kolonne følger GPS</span>
-        <span class="excel-sheet-legend__item"><span class="excel-sheet-legend__sw excel-sheet-legend__sw--locked"></span> Låst (du har skrevet inn verdi)</span>
-      </div>
-      <div class="excel-sheet-table-wrap">
-        <table class="excel-sheet-table" id="excel-sheet-table" aria-label="Egne data">
-          <thead id="excel-sheet-thead">
-            <tr id="excel-sheet-header-row"></tr>
-          </thead>
-          <tbody id="excel-sheet-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-    <p class="menu-info-prose excel-sheet-build-hint" role="status">v${escapeHtml(String(appPackage?.version ?? '?'))}</p>
-  </div>`
-}
-
-const EXCEL_MIN_COLS = 2
-
-/**
- * @param {string} header
- * @returns {'vegvei' | 'vegnr' | 's' | 'd' | 'meter' | null}
- */
-function excelVegFieldForHeader(header) {
-  const x = String(header).trim().toLowerCase()
-  if (x === 'vegvei') return 'vegvei'
-  if (x === 'vegnr' || x === 'vegnummer') return 'vegnr'
-  if (x === 's') return 's'
-  if (x === 'd') return 'd'
-  if (x === 'meter') return 'meter'
-  return null
-}
-
-/**
- * @param {'vegvei' | 'vegnr' | 's' | 'd' | 'meter'} field
- * @param {{ vegvei: string, vegnr: string, s: string, d: string, meter: string }} snap
- */
-function excelSnapValueForField(field, snap) {
-  return String(snap[field] ?? '')
-}
-
-/**
- * @param {string[]} headers
- * @param {{ id: string, cells: string[] }[]} rows
- * @param {boolean[]} vegColLocked
- */
-function recomputeExcelVegColUnlocks(headers, rows, vegColLocked) {
-  for (let j = 0; j < headers.length; j++) {
-    if (!excelVegFieldForHeader(headers[j])) continue
-    const any = rows.some((r) => (r.cells[j] || '').trim() !== '')
-    if (!any) vegColLocked[j] = false
-  }
-}
-
-/**
- * @param {{ headers: string[], rows: { id: string, cells: string[] }[], vegColLocked: boolean[] }} state
- */
-function excelSheetSyncVegLockChrome(state) {
-  const theadRow = document.getElementById('excel-sheet-header-row')
-  const tbody = document.getElementById('excel-sheet-tbody')
-  if (!theadRow || !tbody) return
-  for (let j = 0; j < state.headers.length; j++) {
-    const isVeg = excelVegFieldForHeader(state.headers[j]) != null
-    const locked = Boolean(state.vegColLocked[j])
-    const th = theadRow.children[j]
-    if (th instanceof HTMLElement) {
-      th.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
-      th.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
-      const badge = th.querySelector('.excel-sheet-veg-badge')
-      if (badge instanceof HTMLElement) {
-        badge.textContent = locked ? 'Låst' : 'Følger GPS'
-        badge.classList.toggle('excel-sheet-veg-badge--locked', Boolean(locked))
-        badge.classList.toggle('excel-sheet-veg-badge--live', !locked)
-        badge.setAttribute(
-          'title',
-          locked
-            ? 'Egen verdi – oppdateres ikke fra GPS. Bruk «Lås opp» for å følge GPS igjen.'
-            : 'Verdien oppdateres fra posisjon mens du kjører.',
-        )
-      }
-      const un = th.querySelector('.excel-sheet-unlock-veg')
-      if (un instanceof HTMLButtonElement) {
-        un.hidden = !locked
-      }
-    }
-    for (const tr of tbody.querySelectorAll('tr')) {
-      const td = tr.children[j]
-      if (td instanceof HTMLElement) {
-        td.classList.toggle('excel-sheet-col--veg-locked', isVeg && locked)
-        td.classList.toggle('excel-sheet-col--veg-live', isVeg && !locked)
-      }
-      const inp = tr.querySelector(`input[data-excel-col="${j}"]`)
-      if (inp instanceof HTMLInputElement && isVeg) {
-        inp.title = locked
-          ? 'Låst – oppdateres ikke fra GPS'
-          : 'Følger GPS'
-      } else if (inp instanceof HTMLInputElement) {
-        inp.removeAttribute('title')
-      }
-    }
-  }
-}
-
-function refreshExcelSheetLiveVegref() {
-  if (view !== 'menuExcelExport') return
-  const tbody = document.getElementById('excel-sheet-tbody')
-  if (!tbody) return
-  const st = loadExcelSheetState()
-  const snap = getHomeVegrefExcelSnapshot()
-  excelSheetVegrefApplying = true
-  try {
-    for (let j = 0; j < st.headers.length; j++) {
-      const field = excelVegFieldForHeader(st.headers[j])
-      if (!field || st.vegColLocked[j]) continue
-      const val = excelSnapValueForField(field, snap)
-      for (const tr of tbody.querySelectorAll('tr')) {
-        const inp = tr.querySelector(`input[data-excel-col="${j}"]`)
-        if (inp instanceof HTMLInputElement) inp.value = val
-      }
-    }
-  } finally {
-    excelSheetVegrefApplying = false
-  }
-  persistExcelSheetFromDom()
-  excelSheetSyncVegLockChrome(loadExcelSheetState())
-}
-
-/**
- * @param {Event} e
- */
-function excelMaybeLockVegColumnFromInput(e) {
-  if (excelSheetVegrefApplying) return
-  if (!(e.target instanceof HTMLInputElement)) return
-  if (!e.target.closest('#excel-sheet-tbody')) return
-  const col = Number(e.target.dataset.excelCol)
-  if (!Number.isFinite(col)) return
-  const theadRow = document.getElementById('excel-sheet-header-row')
-  const headerInputs = theadRow?.querySelectorAll('input.excel-sheet-header-input')
-  const headers = []
-  if (headerInputs) {
-    for (const inp of headerInputs) {
-      if (inp instanceof HTMLInputElement) headers.push(inp.value)
-    }
-  }
-  if (!excelVegFieldForHeader(headers[col] ?? '')) return
-  if (e.target.value.trim() === '') return
-  const st = loadExcelSheetState()
-  if (st.vegColLocked[col]) return
-  st.vegColLocked[col] = true
-  saveExcelSheetState(st)
-  excelSheetSyncVegLockChrome(loadExcelSheetState())
-}
-
-/**
- * @param {{ headers: string[], rows: { id: string, cells: string[] }[], vegColLocked: boolean[] }} state
- */
-function renderExcelSheetTable(state) {
-  const theadRow = document.getElementById('excel-sheet-header-row')
-  const tbody = document.getElementById('excel-sheet-tbody')
-  if (!theadRow || !tbody) return
-  theadRow.replaceChildren()
-  state.headers.forEach((h, i) => {
-    const th = document.createElement('th')
-    const vegField = excelVegFieldForHeader(h)
-    if (vegField) {
-      const vegHead = document.createElement('div')
-      vegHead.className = 'excel-sheet-veg-head'
-      const badge = document.createElement('span')
-      badge.className = state.vegColLocked[i]
-        ? 'excel-sheet-veg-badge excel-sheet-veg-badge--locked'
-        : 'excel-sheet-veg-badge excel-sheet-veg-badge--live'
-      badge.textContent = state.vegColLocked[i] ? 'Låst' : 'Følger GPS'
-      badge.setAttribute('role', 'status')
-      vegHead.appendChild(badge)
-      const un = document.createElement('button')
-      un.type = 'button'
-      un.className = 'btn btn-ghost excel-sheet-unlock-veg'
-      un.dataset.excelCol = String(i)
-      un.title = 'Følg GPS igjen i denne kolonnen'
-      un.setAttribute('aria-label', 'Lås opp kolonne')
-      un.textContent = 'Lås opp'
-      un.hidden = !state.vegColLocked[i]
-      vegHead.appendChild(un)
-      th.appendChild(vegHead)
-    }
-    const wrap = document.createElement('div')
-    wrap.className = 'excel-sheet-th-wrap'
-    const inp = document.createElement('input')
-    inp.type = 'text'
-    inp.className = 'excel-sheet-input excel-sheet-header-input'
-    inp.dataset.excelCol = String(i)
-    inp.value = h
-    inp.placeholder = `Kolonne ${i + 1}`
-    inp.autocomplete = 'off'
-    wrap.appendChild(inp)
-    if (state.headers.length > EXCEL_MIN_COLS) {
-      const rm = document.createElement('button')
-      rm.type = 'button'
-      rm.className = 'btn btn-ghost excel-sheet-remove-col'
-      rm.dataset.excelCol = String(i)
-      rm.textContent = '×'
-      rm.setAttribute('aria-label', `Fjern kolonne ${i + 1}`)
-      wrap.appendChild(rm)
-    }
-    th.appendChild(wrap)
-    theadRow.appendChild(th)
-  })
-  const thAct = document.createElement('th')
-  thAct.className = 'excel-sheet-col-remove'
-  thAct.innerHTML = '<span class="visually-hidden">Fjern rad</span>'
-  theadRow.appendChild(thAct)
-
-  tbody.replaceChildren()
-  for (const row of state.rows) {
-    tbody.appendChild(
-      createExcelSheetDataRowTr(
-        state.headers.length,
-        row,
-        state.headers,
-        state.vegColLocked,
-      ),
-    )
-  }
-  excelSheetSyncVegLockChrome(state)
-}
-
-/**
- * @param {number} nCols
- * @param {{ id: string, cells: string[] }} row
- * @param {string[]} headers
- * @param {boolean[]} vegColLocked
- */
-function createExcelSheetDataRowTr(nCols, row, headers, vegColLocked) {
-  const tr = document.createElement('tr')
-  tr.dataset.rowId = row.id
-  for (let i = 0; i < nCols; i++) {
-    const td = document.createElement('td')
-    const isVeg = excelVegFieldForHeader(headers[i] ?? '') != null
-    const locked = isVeg && vegColLocked[i]
-    td.classList.toggle('excel-sheet-col--veg-locked', Boolean(locked))
-    td.classList.toggle('excel-sheet-col--veg-live', isVeg && !vegColLocked[i])
-    const inp = document.createElement('input')
-    inp.type = 'text'
-    inp.className = 'excel-sheet-input'
-    inp.dataset.excelCol = String(i)
-    inp.value = row.cells[i] ?? ''
-    inp.autocomplete = 'off'
-    td.appendChild(inp)
-    tr.appendChild(td)
-  }
-  const tdRm = document.createElement('td')
-  tdRm.className = 'excel-sheet-col-remove'
-  const btn = document.createElement('button')
-  btn.type = 'button'
-  btn.className = 'btn btn-ghost excel-sheet-remove'
-  btn.textContent = '×'
-  btn.setAttribute('aria-label', 'Fjern rad')
-  tdRm.appendChild(btn)
-  tr.appendChild(tdRm)
-  return tr
-}
-
-function persistExcelSheetFromDom() {
-  const theadRow = document.getElementById('excel-sheet-header-row')
-  const tbody = document.getElementById('excel-sheet-tbody')
-  if (!theadRow || !tbody) return
-  const headerInputs = theadRow.querySelectorAll('input.excel-sheet-header-input')
-  const headers = []
-  for (const inp of headerInputs) {
-    if (inp instanceof HTMLInputElement) headers.push(inp.value)
-  }
-  const n = headers.length
-  if (n < EXCEL_MIN_COLS) return
-  const rows = []
-  for (const tr of tbody.querySelectorAll('tr')) {
-    const id = tr.dataset.rowId
-    if (!id) continue
-    const cells = []
-    for (let i = 0; i < n; i++) {
-      const el = tr.querySelector(`input[data-excel-col="${i}"]`)
-      cells.push(el instanceof HTMLInputElement ? el.value : '')
-    }
-    rows.push({ id, cells })
-  }
-  const prev = loadExcelSheetState()
-  const vegColLocked = prev.vegColLocked.slice(0, n)
-  while (vegColLocked.length < n) vegColLocked.push(false)
-  vegColLocked.length = n
-  for (let j = 0; j < n; j++) {
-    if (!excelVegFieldForHeader(headers[j])) vegColLocked[j] = false
-  }
-  recomputeExcelVegColUnlocks(headers, rows, vegColLocked)
-  saveExcelSheetState({ headers, rows, vegColLocked })
-}
-
-function fillExcelSheetVegrefFromSnapshot() {
-  persistExcelSheetFromDom()
-  const state = loadExcelSheetState()
-  const snap = getHomeVegrefExcelSnapshot()
-
-  for (let j = 0; j < state.headers.length; j++) {
-    if (excelVegFieldForHeader(state.headers[j])) state.vegColLocked[j] = false
-  }
-
-  for (let j = 0; j < state.headers.length; j++) {
-    const field = excelVegFieldForHeader(state.headers[j])
-    if (!field) continue
-    const val = excelSnapValueForField(field, snap)
-    for (const r of state.rows) {
-      const next = r.cells.slice()
-      while (next.length <= j) next.push('')
-      next[j] = val
-      r.cells = next
-    }
-  }
-  saveExcelSheetState(state)
-  renderExcelSheetTable(loadExcelSheetState())
-}
-
-function bindMenuExcelExportListeners() {
-  if (menuExcelExportAbort) menuExcelExportAbort.abort()
-  menuExcelExportAbort = new AbortController()
-  const { signal } = menuExcelExportAbort
-
-  if (menuExcelVegLivePollId) {
-    clearInterval(menuExcelVegLivePollId)
-    menuExcelVegLivePollId = null
-  }
-
-  const tbody = document.getElementById('excel-sheet-tbody')
-  if (!tbody || String(tbody.tagName).toUpperCase() !== 'TBODY') return
-
-  const table = document.getElementById('excel-sheet-table')
-  renderExcelSheetTable(loadExcelSheetState())
-  refreshExcelSheetLiveVegref()
-
-  const onTableInput = (e) => {
-    excelMaybeLockVegColumnFromInput(e)
-    if (
-      e.target instanceof HTMLInputElement &&
-      (e.target.classList.contains('excel-sheet-header-input') ||
-        e.target.closest('#excel-sheet-tbody'))
-    ) {
-      persistExcelSheetFromDom()
-      excelSheetSyncVegLockChrome(loadExcelSheetState())
-    }
-  }
-  table?.addEventListener('input', onTableInput, { signal })
-
-  tbody.addEventListener(
-    'click',
-    (e) => {
-      const t = e.target
-      if (!(t instanceof Element)) return
-      const btn = t.closest('.excel-sheet-remove')
-      if (!btn || !tbody.contains(btn)) return
-      const tr = btn.closest('tr')
-      if (!tr || !tbody.contains(tr)) return
-      tr.remove()
-      persistExcelSheetFromDom()
-      excelSheetSyncVegLockChrome(loadExcelSheetState())
-    },
-    { signal },
-  )
-
-  document.getElementById('excel-sheet-thead')?.addEventListener(
-    'click',
-    (e) => {
-      const t = e.target
-      if (!(t instanceof Element)) return
-      const unlock = t.closest('.excel-sheet-unlock-veg')
-      if (unlock instanceof HTMLButtonElement) {
-        e.preventDefault()
-        const idx = Number(unlock.dataset.excelCol)
-        if (!Number.isFinite(idx) || idx < 0) return
-        persistExcelSheetFromDom()
-        const st = loadExcelSheetState()
-        st.vegColLocked[idx] = false
-        saveExcelSheetState(st)
-        refreshExcelSheetLiveVegref()
-        return
-      }
-      const btn = t.closest('.excel-sheet-remove-col')
-      if (!(btn instanceof HTMLButtonElement)) return
-      const idx = Number(btn.dataset.excelCol)
-      if (!Number.isFinite(idx) || idx < 0) return
-      persistExcelSheetFromDom()
-      const st = loadExcelSheetState()
-      if (st.headers.length <= EXCEL_MIN_COLS) return
-      st.headers.splice(idx, 1)
-      st.vegColLocked.splice(idx, 1)
-      for (const r of st.rows) {
-        r.cells.splice(idx, 1)
-      }
-      saveExcelSheetState(st)
-      renderExcelSheetTable(loadExcelSheetState())
-    },
-    { signal },
-  )
-
-  document
-    .getElementById('btn-back-from-menu-excel-export')
-    ?.addEventListener('click', () => goHome(), { signal })
-
-  document.getElementById('btn-excel-sheet-add-row')?.addEventListener(
-    'click',
-    () => {
-      persistExcelSheetFromDom()
-      const st = loadExcelSheetState()
-      st.rows.push({
-        id: crypto.randomUUID(),
-        cells: Array(st.headers.length).fill(''),
-      })
-      saveExcelSheetState(st)
-      renderExcelSheetTable(loadExcelSheetState())
-      refreshExcelSheetLiveVegref()
-    },
-    { signal },
-  )
-
-  document.getElementById('btn-excel-sheet-add-col')?.addEventListener(
-    'click',
-    () => {
-      persistExcelSheetFromDom()
-      const st = loadExcelSheetState()
-      const nextN = st.headers.length + 1
-      st.headers.push(`Kolonne ${nextN}`)
-      st.vegColLocked.push(false)
-      for (const r of st.rows) r.cells.push('')
-      saveExcelSheetState(st)
-      renderExcelSheetTable(loadExcelSheetState())
-    },
-    { signal },
-  )
-
-  document.getElementById('btn-excel-sheet-fill-vegref')?.addEventListener(
-    'click',
-    () => {
-      fillExcelSheetVegrefFromSnapshot()
-    },
-    { signal },
-  )
-
-  document.getElementById('btn-excel-sheet-clear')?.addEventListener(
-    'click',
-    () => {
-      if (
-        !confirm(
-          'Tømme arket og starte på nytt med standardkolonner og fem tomme rader?',
-        )
-      )
-        return
-      const st = resetExcelSheetState()
-      renderExcelSheetTable(st)
-      refreshExcelSheetLiveVegref()
-    },
-    { signal },
-  )
-
-  document.getElementById('btn-excel-sheet-export')?.addEventListener(
-    'click',
-    () => {
-      persistExcelSheetFromDom()
-      const st = loadExcelSheetState()
-      const headers = st.headers.map((h) => h)
-      const rows = st.rows.map((r) => r.cells.slice())
-      void downloadExcelSheetGrid(headers, rows)
-    },
-    { signal },
-  )
-
-  menuExcelVegLivePollId = window.setInterval(() => {
-    if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
-  }, 850)
-
-  startHomeVegrefTracking()
 }
 
 function syncPhotoAlbumChrome() {
@@ -6770,7 +6058,6 @@ function renderApp() {
   else if (view === 'menuSettings') main = renderMenuSettingsHtml()
   else if (view === 'menuPrivacy') main = renderMenuPrivacyHtml()
   else if (view === 'menuSupport') main = renderMenuSupportHtml()
-  else if (view === 'menuExcelExport') main = renderMenuExcelExportHtml()
   else if (view === 'inbox') main = renderInboxHtml()
   else if (view === 'photoAlbum') main = renderPhotoAlbumHtml()
   else if (view === 'receivedPhotos') main = renderReceivedPhotosHtml()
@@ -6815,12 +6102,6 @@ let menuPhotosAbort = null
 let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
 let menuContactsAbort = null
 let menuInfoAbort = null
-let menuExcelExportAbort = null
-/** Under programmatisk oppdatering av veg-celler (unngå at det telles som brukerredigering). */
-let excelSheetVegrefApplying = false
-/** @type {ReturnType<typeof setInterval> | null} */
-let menuExcelVegLivePollId = null
-/** @type {ReturnType<typeof setInterval> | null} */
 let inboxAbort = null
 let sessionAbort = null
 /** Avansert registering (egen flyt). */
@@ -7318,18 +6599,6 @@ function openMenuSupportView() {
   bindMenuInfoListeners()
 }
 
-function openMenuExcelExportView() {
-  closeHomeDrawer()
-  flushCurrentSession()
-  destroyMap()
-  currentSessionId = null
-  state = defaultState()
-  view = 'menuExcelExport'
-  saveAppState()
-  renderApp()
-  bindMenuExcelExportListeners()
-}
-
 function bindHomeListeners() {
   if (homeAbort) homeAbort.abort()
   homeAbort = new AbortController()
@@ -7435,14 +6704,6 @@ function bindHomeListeners() {
   document.getElementById('home-drawer-settings')?.addEventListener(
     'click',
     () => openMenuSettingsView(),
-    { signal },
-  )
-  document.getElementById('home-drawer-excel-export')?.addEventListener(
-    'click',
-    () => {
-      closeHomeDrawer()
-      openMenuExcelExportView()
-    },
     { signal },
   )
   document.getElementById('home-drawer-privacy')?.addEventListener(
@@ -8607,16 +7868,7 @@ function bindMenuInfoListeners() {
     ?.addEventListener(
       'click',
       () => {
-        void ensureOfflineVegrefPackage({ force: true })
-      },
-      { signal },
-    )
-  document
-    .getElementById('btn-settings-copy-vegref-debug')
-    ?.addEventListener(
-      'click',
-      () => {
-        void copyVegrefDebugReport()
+        void ensureOfflineVegrefPackage()
       },
       { signal },
     )
@@ -11177,14 +10429,7 @@ function bindListenersForCurrentView() {
     advRegAbort.abort()
     advRegAbort = null
   }
-  if (menuExcelVegLivePollId) {
-    clearInterval(menuExcelVegLivePollId)
-    menuExcelVegLivePollId = null
-  }
-  if (
-    (view !== 'home' && view !== 'menuExcelExport') ||
-    !currentUser
-  ) {
+  if (view !== 'home' || !currentUser) {
     stopHomeVegrefTracking()
   }
   if (!currentUser) {
@@ -11208,8 +10453,6 @@ function bindListenersForCurrentView() {
     bindMenuContactsListeners()
   } else if (view === 'menuSettings' || view === 'menuPrivacy' || view === 'menuSupport') {
     bindMenuInfoListeners()
-  } else if (view === 'menuExcelExport') {
-    bindMenuExcelExportListeners()
   } else if (view === 'inbox') {
     bindInboxListeners()
   } else if (view === 'photoAlbum') {
@@ -11269,12 +10512,9 @@ function bootstrap() {
   })
   initVegrefLive({
     haversineM,
-    fetchRoadReferenceNear: fetchRoadReferenceNearForApp,
+    fetchRoadReferenceNear,
     fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
-    shouldPreferOfflineResolver: () =>
-      offlineVegrefReady &&
-      typeof navigator !== 'undefined' &&
-      navigator.onLine === false,
+    shouldPreferOfflineResolver: () => offlineVegrefReady,
     getViewHome: () => view === 'home',
     getKmtOpen: () => kmtDialogOpen,
     applyHome: applyHomeVegrefResult,
@@ -11362,13 +10602,14 @@ function bootstrap() {
 
 bootstrap()
 
-/** Når ny service worker + bygg er tilgjengelig: aktiver og last inn på nytt (PWA ellers viser ofte gammel JS). */
-const updateSW = registerSW({
-  immediate: true,
-  onNeedRefresh() {
-    void updateSW(true)
-  },
-})
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { updateViaCache: 'none', scope: '/' })
+      .then((reg) => reg.update())
+      .catch(() => {})
+  })
+}
 
 window.addEventListener('beforeunload', () => {
   flushCurrentSession()

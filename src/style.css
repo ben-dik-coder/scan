@@ -3781,6 +3781,26 @@ body.home-ai-panel-open .home-vegref {
   padding-bottom: 2rem;
 }
 
+/* Én flate uten ekstra glass-kort (samme som øvrig meny-innhold). */
+.view-sub--excel-flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.excel-sheet-shell {
+  margin-top: 0.35rem;
+}
+
+.excel-sheet-status {
+  min-height: 1.25rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: rgba(160, 200, 170, 0.95);
+}
+
 .excel-sheet-build-hint {
   margin: 1rem 0 0;
   font-size: 0.75rem;
@@ -3795,32 +3815,100 @@ body.home-ai-panel-open .home-vegref {
   max-width: 36rem;
 }
 
-.excel-sheet-card {
-  padding: 1rem 1rem 1.15rem;
+/* Samme uttrykk som Kontrakt AI: .home-ai-gpt__tool */
+.excel-sheet__tool {
+  min-width: 0;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.45rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ececec;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.excel-sheet__tool:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.excel-sheet__tool--primary {
+  border-color: rgba(25, 195, 125, 0.45);
+  background: rgba(25, 195, 125, 0.14);
+  color: #d8f5e5;
+}
+
+.excel-sheet__tool--primary:hover {
+  border-color: rgba(34, 197, 94, 0.55);
+  background: rgba(25, 195, 125, 0.2);
 }
 
 .excel-sheet-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
   margin-bottom: 0.75rem;
 }
 
-.excel-sheet-toolbar__primary,
-.excel-sheet-toolbar__secondary {
+.excel-sheet-toolbar--grid {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 0.5rem;
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
 }
 
-.excel-sheet-toolbar__primary {
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid rgba(42, 49, 66, 0.65);
+.excel-sheet-toolbar__row {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
 }
 
-.excel-sheet-toolbar__secondary .btn {
-  font-size: 0.88rem;
+.excel-sheet-toolbar__row--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.excel-sheet-toolbar__row--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.excel-sheet__col-grip {
+  align-self: flex-start;
+  width: 1.85rem;
+  height: 1.65rem;
+  padding: 0;
+  margin: 0 0 0.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(200, 210, 230, 0.85);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+.excel-sheet__col-grip:active {
+  cursor: grabbing;
+}
+
+.excel-sheet-col--drag-source {
+  outline: 2px solid rgba(96, 165, 250, 0.65);
+  outline-offset: -1px;
+}
+
+.excel-sheet-col--drag-target {
+  outline: 2px solid rgba(34, 197, 94, 0.75);
+  outline-offset: -1px;
+  background: rgba(34, 197, 94, 0.08);
 }
 
 .excel-sheet-legend {
@@ -3854,8 +3942,8 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .excel-sheet-legend__sw--locked {
-  background: rgba(210, 165, 85, 0.95);
-  box-shadow: 0 0 0 1px rgba(210, 165, 85, 0.35);
+  background: linear-gradient(145deg, rgba(52, 150, 95, 0.95), rgba(34, 120, 75, 0.9));
+  box-shadow: 0 0 0 1px rgba(52, 150, 95, 0.45);
 }
 
 .excel-sheet-veg-head {
@@ -3885,17 +3973,18 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .excel-sheet-veg-badge--locked {
-  color: rgba(40, 32, 20, 0.95);
-  background: rgba(220, 175, 90, 0.88);
-  border: 1px solid rgba(190, 145, 70, 0.9);
+  color: rgba(235, 255, 245, 0.98);
+  background: linear-gradient(155deg, rgba(42, 140, 88, 0.92), rgba(28, 100, 62, 0.95));
+  border: 1px solid rgba(72, 180, 120, 0.65);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.excel-sheet-veg-badge__ico {
+  margin-right: 0.2rem;
 }
 
 .excel-sheet-unlock-veg {
   flex-shrink: 0;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.78rem;
-  line-height: 1.2;
-  white-space: nowrap;
 }
 
 .excel-sheet-col--veg-live .excel-sheet-input {
@@ -3904,8 +3993,15 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .excel-sheet-col--veg-locked .excel-sheet-input {
-  border-color: rgba(200, 155, 75, 0.85);
-  background: rgba(48, 40, 24, 0.45);
+  border-color: rgba(72, 170, 115, 0.65);
+  background: linear-gradient(180deg, rgba(28, 72, 48, 0.55), rgba(18, 52, 34, 0.5));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.excel-sheet-input--vegflash {
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  border-color: rgba(120, 200, 160, 0.9) !important;
+  box-shadow: 0 0 0 1px rgba(72, 180, 120, 0.45);
 }
 
 .excel-sheet-th-wrap {
@@ -3960,7 +4056,10 @@ body.home-ai-panel-open .home-vegref {
   min-width: 7.5rem;
 }
 
-.excel-sheet-table th {
+.excel-sheet-table th:not(.excel-sheet-col-remove) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   text-align: left;
   font-weight: 600;
   color: var(--muted);
