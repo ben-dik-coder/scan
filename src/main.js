@@ -5492,17 +5492,6 @@ function renderExcelSheetTable(state) {
   theadRow.replaceChildren()
   state.headers.forEach((h, i) => {
     const th = document.createElement('th')
-    const grip = document.createElement('button')
-    grip.type = 'button'
-    grip.className = 'excel-sheet__col-grip'
-    grip.dataset.excelCol = String(i)
-    grip.setAttribute(
-      'aria-label',
-      `Kolonne ${i + 1}: hold og dra for å kopiere til annen kolonne`,
-    )
-    grip.title = 'Hold ca. 1 s, deretter dra til målkolonne'
-    grip.textContent = '⋮'
-    th.appendChild(grip)
     const vegField = excelVegFieldForHeader(h)
     if (vegField) {
       const vegHead = document.createElement('div')
@@ -5534,8 +5523,19 @@ function renderExcelSheetTable(state) {
       vegHead.appendChild(un)
       th.appendChild(vegHead)
     }
+    const grip = document.createElement('button')
+    grip.type = 'button'
+    grip.className = 'excel-sheet__col-grip'
+    grip.dataset.excelCol = String(i)
+    grip.setAttribute(
+      'aria-label',
+      `Kolonne ${i + 1}: hold og dra for å kopiere til annen kolonne`,
+    )
+    grip.title = 'Hold ca. 1 s, deretter dra til målkolonne'
+    grip.textContent = '⋮'
     const wrap = document.createElement('div')
     wrap.className = 'excel-sheet-th-wrap'
+    wrap.appendChild(grip)
     const inp = document.createElement('input')
     inp.type = 'text'
     inp.className = 'excel-sheet-input excel-sheet-header-input'

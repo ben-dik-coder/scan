@@ -3880,16 +3880,15 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .excel-sheet__col-grip {
-  align-self: flex-start;
-  width: 1.85rem;
-  height: 1.65rem;
+  width: 1.65rem;
+  height: 1.5rem;
   padding: 0;
-  margin: 0 0 0.15rem;
+  margin: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.35rem;
   background: rgba(0, 0, 0, 0.25);
   color: rgba(200, 210, 230, 0.85);
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1;
   cursor: grab;
   touch-action: none;
@@ -3948,11 +3947,19 @@ body.home-ai-panel-open .home-vegref {
 
 .excel-sheet-veg-head {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 0.35rem 0.5rem;
-  margin-bottom: 0.4rem;
-  min-height: 1.5rem;
+  gap: 0.25rem;
+  margin-bottom: 0.35rem;
+  min-height: 1.45rem;
+  min-width: 0;
+}
+
+.excel-sheet-veg-head .btn.btn-ghost {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .excel-sheet-veg-badge {
@@ -4041,6 +4048,23 @@ body.home-ai-panel-open .home-vegref {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.94rem;
+  table-layout: auto;
+}
+
+.excel-sheet-table thead tr {
+  display: table-row;
+}
+
+.excel-sheet-table thead th {
+  display: table-cell;
+}
+
+.excel-sheet-table tbody tr {
+  display: table-row;
+}
+
+.excel-sheet-table tbody td {
+  display: table-cell;
 }
 
 .excel-sheet-table th,
@@ -4061,9 +4085,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .excel-sheet-table th:not(.excel-sheet-col-remove) {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  display: table-cell;
   text-align: left;
   font-weight: 600;
   color: var(--muted);
