@@ -896,15 +896,52 @@ function normalizeFrictionVegSnap(x) {
       : typeof o.vegnavn === 'number'
         ? String(o.vegnavn)
         : ''
-  const vegnr = typeof o.vegnr === 'string' ? o.vegnr.trim() : ''
-  const s = typeof o.s === 'string' ? o.s.trim() : ''
-  const d = typeof o.d === 'string' ? o.d.trim() : ''
+  const vegnr =
+    typeof o.vegnr === 'string'
+      ? o.vegnr.trim()
+      : typeof o.vegnr === 'number' && Number.isFinite(o.vegnr)
+        ? String(o.vegnr)
+        : ''
+  /** @param {unknown} v */
+  const sdStr = (v) => {
+    if (v === undefined || v === null) return ''
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (t === '–' || t === '-') return ''
+      return t
+    }
+    return ''
+  }
+  const s = sdStr(o.s)
+  const d = sdStr(o.d)
   let meter = ''
-  if (typeof o.meter === 'string') meter = o.meter.trim()
-  else if (typeof o.meter === 'number' && Number.isFinite(o.meter))
+  if (typeof o.meter === 'string') {
+    const t = o.meter.trim()
+    meter = t === '–' || t === '-' ? '' : t
+  } else if (typeof o.meter === 'number' && Number.isFinite(o.meter)) {
     meter = String(Math.round(o.meter))
+  }
   if (!vegnavn && !vegnr && !s && !d && !meter) return null
   return { vegnavn, vegnr, s, d, meter }
+}
+
+/**
+ * NVDB `kortform` når S/D/meter ikke ligger i strekning-objektet (typisk posisjon-API).
+ * @param {string} kf
+ */
+function parseKortformSdMeterForFriction(kf) {
+  if (typeof kf !== 'string') return { s: '', d: '', meter: '' }
+  const t = kf.trim()
+  if (!t) return { s: '', d: '', meter: '' }
+  const sM = t.match(/\bS\s*(\d+)/i)
+  const dM = t.match(/\bD\s*(\d+)/i)
+  const mM = t.match(/\bm\s*(\d+)/i)
+  return {
+    s: sM ? sM[1] : '',
+    d: dM ? dM[1] : '',
+    meter: mM ? mM[1] : '',
+  }
 }
 
 /**
@@ -913,7 +950,7 @@ function normalizeFrictionVegSnap(x) {
  */
 function vegrefPosisjonToFrictionSnap(r) {
   if (!r || typeof r !== 'object') return null
-  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, roadLineShort?: string, roadLineDisplayShort?: string, s?: string, d?: string, m?: string }} */ (
+  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, roadLineShort?: string, roadLineDisplayShort?: string, s?: string | number, d?: string | number, m?: string | number, kortform?: string }} */ (
     r
   )
   const vegnavn = String(o.roadLineDisplay || o.roadLine || '').trim()
@@ -923,12 +960,18 @@ function vegrefPosisjonToFrictionSnap(r) {
   const sRaw = o.s
   const dRaw = o.d
   const mRaw = o.m
-  const s =
-    sRaw === undefined || sRaw === '–' ? '' : String(sRaw).trim()
-  const d =
-    dRaw === undefined || dRaw === '–' ? '' : String(dRaw).trim()
-  const meter =
-    mRaw === undefined || mRaw === '–' ? '' : String(mRaw).trim()
+  const dash = (v) =>
+    v === '–' || v === '-' || v === undefined || v === null
+  let s = dash(sRaw) ? '' : String(sRaw).trim()
+  let d = dash(dRaw) ? '' : String(dRaw).trim()
+  let meter = dash(mRaw) ? '' : String(mRaw).trim()
+  const kortform = typeof o.kortform === 'string' ? o.kortform.trim() : ''
+  if ((!s || !d || !meter) && kortform) {
+    const p = parseKortformSdMeterForFriction(kortform)
+    if (!s && p.s) s = p.s
+    if (!d && p.d) d = p.d
+    if (!meter && p.meter) meter = p.meter
+  }
   if (!vegnavn && !vegnr && !s && !d && !meter) return null
   return { vegnavn, vegnr, s, d, meter }
 }

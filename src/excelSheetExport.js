@@ -287,8 +287,15 @@ export async function downloadFrictionMeasurementsXlsx(measurements) {
    */
   const snapStr = (snap, k) => {
     if (!snap || typeof snap !== 'object') return ''
-    const v = /** @type {Record<string, unknown>} */ (snap)[k]
-    return v == null ? '' : String(v).trim()
+    const o = /** @type {Record<string, unknown>} */ (snap)
+    const v = o[k] ?? (k === 'meter' ? o.m : undefined)
+    if (v == null) return ''
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      return k === 'meter' ? String(Math.round(v)) : String(v)
+    }
+    const t = String(v).trim()
+    if (t === '–' || t === '-') return ''
+    return t
   }
   const sorted = [...measurements].sort(
     (a, b) =>
