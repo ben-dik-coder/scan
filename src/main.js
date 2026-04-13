@@ -30,6 +30,7 @@ import {
 } from './leafletLazy.js'
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
 import { syncLaunchSplash } from './launchTransition.js'
+import { initScreenWakeLock } from './screenWakeLock.js'
 import { getVegrefMetrics, logVegrefMetric } from './vegrefMetrics.js'
 import appPackage from '../package.json'
 import {
@@ -11779,6 +11780,7 @@ function queueRefreshLeafletAfterResume() {
 }
 
 function bootstrap() {
+  initScreenWakeLock()
   configureAdvancedRegister({
     navigate: (nextView) => {
       view = nextView
