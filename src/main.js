@@ -896,52 +896,15 @@ function normalizeFrictionVegSnap(x) {
       : typeof o.vegnavn === 'number'
         ? String(o.vegnavn)
         : ''
-  const vegnr =
-    typeof o.vegnr === 'string'
-      ? o.vegnr.trim()
-      : typeof o.vegnr === 'number' && Number.isFinite(o.vegnr)
-        ? String(o.vegnr)
-        : ''
-  /** @param {unknown} v */
-  const sdStr = (v) => {
-    if (v === undefined || v === null) return ''
-    if (typeof v === 'number' && Number.isFinite(v)) return String(v)
-    if (typeof v === 'string') {
-      const t = v.trim()
-      if (t === '–' || t === '-') return ''
-      return t
-    }
-    return ''
-  }
-  const s = sdStr(o.s)
-  const d = sdStr(o.d)
+  const vegnr = typeof o.vegnr === 'string' ? o.vegnr.trim() : ''
+  const s = typeof o.s === 'string' ? o.s.trim() : ''
+  const d = typeof o.d === 'string' ? o.d.trim() : ''
   let meter = ''
-  if (typeof o.meter === 'string') {
-    const t = o.meter.trim()
-    meter = t === '–' || t === '-' ? '' : t
-  } else if (typeof o.meter === 'number' && Number.isFinite(o.meter)) {
+  if (typeof o.meter === 'string') meter = o.meter.trim()
+  else if (typeof o.meter === 'number' && Number.isFinite(o.meter))
     meter = String(Math.round(o.meter))
-  }
   if (!vegnavn && !vegnr && !s && !d && !meter) return null
   return { vegnavn, vegnr, s, d, meter }
-}
-
-/**
- * NVDB `kortform` når S/D/meter ikke ligger i strekning-objektet (typisk posisjon-API).
- * @param {string} kf
- */
-function parseKortformSdMeterForFriction(kf) {
-  if (typeof kf !== 'string') return { s: '', d: '', meter: '' }
-  const t = kf.trim()
-  if (!t) return { s: '', d: '', meter: '' }
-  const sM = t.match(/\bS\s*(\d+)/i)
-  const dM = t.match(/\bD\s*(\d+)/i)
-  const mM = t.match(/\bm\s*(\d+)/i)
-  return {
-    s: sM ? sM[1] : '',
-    d: dM ? dM[1] : '',
-    meter: mM ? mM[1] : '',
-  }
 }
 
 /**
@@ -950,7 +913,7 @@ function parseKortformSdMeterForFriction(kf) {
  */
 function vegrefPosisjonToFrictionSnap(r) {
   if (!r || typeof r !== 'object') return null
-  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, roadLineShort?: string, roadLineDisplayShort?: string, s?: string | number, d?: string | number, m?: string | number, kortform?: string }} */ (
+  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, roadLineShort?: string, roadLineDisplayShort?: string, s?: string, d?: string, m?: string }} */ (
     r
   )
   const vegnavn = String(o.roadLineDisplay || o.roadLine || '').trim()
@@ -960,18 +923,12 @@ function vegrefPosisjonToFrictionSnap(r) {
   const sRaw = o.s
   const dRaw = o.d
   const mRaw = o.m
-  const dash = (v) =>
-    v === '–' || v === '-' || v === undefined || v === null
-  let s = dash(sRaw) ? '' : String(sRaw).trim()
-  let d = dash(dRaw) ? '' : String(dRaw).trim()
-  let meter = dash(mRaw) ? '' : String(mRaw).trim()
-  const kortform = typeof o.kortform === 'string' ? o.kortform.trim() : ''
-  if ((!s || !d || !meter) && kortform) {
-    const p = parseKortformSdMeterForFriction(kortform)
-    if (!s && p.s) s = p.s
-    if (!d && p.d) d = p.d
-    if (!meter && p.meter) meter = p.meter
-  }
+  const s =
+    sRaw === undefined || sRaw === '–' ? '' : String(sRaw).trim()
+  const d =
+    dRaw === undefined || dRaw === '–' ? '' : String(dRaw).trim()
+  const meter =
+    mRaw === undefined || mRaw === '–' ? '' : String(mRaw).trim()
   if (!vegnavn && !vegnr && !s && !d && !meter) return null
   return { vegnavn, vegnr, s, d, meter }
 }
@@ -1695,50 +1652,6 @@ function mapSupabaseAuthError(err) {
   return m || 'Noe gikk galt. Prøv igjen.'
 }
 
-/**
- * `getSession()` kan henge (nett/DNS/Supabase) og blokkerer hele main.js via top-level await.
- * Tidsavbrudd → null-session og eksisterende logikk bruker lokal sesjon.
- * @param {import('@supabase/supabase-js').SupabaseClient} sb
- * @param {number} [ms]
- */
-async function getSupabaseSessionWithTimeout(sb, ms = 8000) {
-  try {
-    return await Promise.race([
-      sb.auth.getSession(),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('getSession timeout')), ms),
-      ),
-    ])
-  } catch (e) {
-    console.warn(
-      'Scanix: Supabase getSession avbrutt etter',
-      ms,
-      'ms (bruker lokal lagring om den finnes).',
-      e,
-    )
-    return { data: { session: null }, error: null }
-  }
-}
-
-/**
- * @template T
- * @param {Promise<T>} p
- * @param {number} ms
- * @param {string} label
- * @returns {Promise<T>}
- */
-async function awaitWithTimeout(p, ms, label) {
-  return Promise.race([
-    p,
-    new Promise((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`${label} timeout (${ms}ms)`)),
-        ms,
-      ),
-    ),
-  ])
-}
-
 async function initAppStateFromStorage() {
   await restoreAuthFromIdbIfLocalEmpty()
   loadUsersFromStorage()
@@ -1748,15 +1661,11 @@ async function initAppStateFromStorage() {
     const {
       data: { session },
       error: sessErr,
-    } = await getSupabaseSessionWithTimeout(sb)
+    } = await sb.auth.getSession()
     if (sessErr) console.warn('Supabase getSession:', sessErr.message)
     if (session?.user) {
       try {
-        currentUser = await awaitWithTimeout(
-          buildCurrentUserFromSession(sb, session),
-          12_000,
-          'buildCurrentUserFromSession',
-        )
+        currentUser = await buildCurrentUserFromSession(sb, session)
         tryWriteAuthSession(currentUser)
         void backupAuthToIdb(loadUsersFromStorage(), currentUser)
         /* Disk først → rask forsida; sky-data hentes i bakgrunnen (hydrateUserAppStateFromRemote). */
@@ -2436,14 +2345,11 @@ function parseLastMatchedPoint(j) {
   return null
 }
 
-/** Offentlig OSRM (samme som Vite-proxy / server default). Brukes som fallback når backend-proxy feiler. */
-const OSRM_PUBLIC_ORIGIN = 'https://router.project-osrm.org'
-
 function osrmBasePath() {
   if (import.meta.env.DEV) return '/api/osrm'
   const raw = import.meta.env.VITE_API_BASE
   if (typeof raw === 'string' && raw.trim()) return apiUrl('/api/osrm')
-  return OSRM_PUBLIC_ORIGIN
+  return 'https://router.project-osrm.org'
 }
 
 async function fetchJsonWithRetry(
@@ -2480,18 +2386,10 @@ async function fetchJsonWithRetry(
 }
 
 async function fetchOsrmJson(path) {
-  const base = osrmBasePath()
-  const primary = await fetchJsonWithRetry(`${base}${path}`, {
+  return fetchJsonWithRetry(`${osrmBasePath()}${path}`, {
     // OSRM er kun "nice to have" for refsnap; aldri la dette fryse meteren.
     timeoutMs: 2200,
     maxAttempts: 1,
-  })
-  if (primary) return primary
-  /* Render (eller annen backend) kan ikke nå OSRM → proxy gir 502. Hent direkte fra nettleseren (CORS tillatt på project-osrm). */
-  if (base === OSRM_PUBLIC_ORIGIN) return null
-  return fetchJsonWithRetry(`${OSRM_PUBLIC_ORIGIN}${path}`, {
-    timeoutMs: 12_000,
-    maxAttempts: 2,
   })
 }
 
@@ -2676,58 +2574,6 @@ const sessionMarkerInteractionDefaults = Object.freeze({
   riseOnHover: false,
 })
 
-/**
- * HTML til kart-popup for lagret vegreferanse ved registrering (vegnr + meter, valgfritt S/D).
- * @param {{ vegrefAtClick?: { vegnr?: string, meter?: string, s?: string, d?: string } }} c
- */
-function sessionClickVegrefPopupFragment(c) {
-  const v = c.vegrefAtClick
-  if (!v || typeof v !== 'object') return ''
-  const nr = typeof v.vegnr === 'string' ? v.vegnr.trim() : ''
-  const m = typeof v.meter === 'string' ? v.meter.trim() : ''
-  const s = typeof v.s === 'string' ? v.s.trim() : ''
-  const d = typeof v.d === 'string' ? v.d.trim() : ''
-  const mainParts = []
-  if (nr) mainParts.push(`(${escapeHtml(nr)})`)
-  if (m) mainParts.push(`Meter ${escapeHtml(m)}`)
-  const mainLine = mainParts.join(' · ')
-  const sdLine =
-    s && d
-      ? `<span style="font-size:0.78rem;opacity:0.92;display:block;margin-top:0.2rem">S ${escapeHtml(s)} · D ${escapeHtml(d)}</span>`
-      : ''
-  if (!mainLine && !sdLine) return ''
-  return `<br><span style="font-size:0.85rem;line-height:1.4;display:block;margin:0.25rem 0 0">${mainLine}${sdLine}</span>`
-}
-
-/**
- * Henter NVDB-posisjon for trykket og lagrer kompakt vegref på oppføringen (popup oppdateres).
- * @param {string} clickId
- * @param {number} lat
- * @param {number} lng
- */
-async function enrichClickEntryWithVegrefFromPosisjon(clickId, lat, lng) {
-  try {
-    const r = await fetchRoadPositionDirect(lat, lng)
-    const snap = vegrefPosisjonToFrictionSnap(r)
-    if (!snap) return
-    const idx = state.clickHistory.findIndex((x) => x.id === clickId)
-    if (idx < 0) return
-    state.clickHistory[idx] = {
-      ...state.clickHistory[idx],
-      vegrefAtClick: {
-        vegnr: snap.vegnr,
-        meter: snap.meter,
-        s: snap.s,
-        d: snap.d,
-      },
-    }
-    persist()
-    if (view === 'session' && map) rebuildMarkers()
-  } catch {
-    /* nettverk / API */
-  }
-}
-
 function rebuildMarkers() {
   if (!map || !Leaflet) return
   ensureSessionPinIcons()
@@ -2745,10 +2591,7 @@ function rebuildMarkers() {
       typeof c.category === 'string' && c.category
         ? `${escapeHtml(getObjectCategoryLabel(c.category))}<br>`
         : ''
-    const vegFrag = sessionClickVegrefPopupFragment(c)
-    m.bindPopup(
-      `Trykk #${i + 1}<br>${catPart}${vegFrag}${vegFrag ? '<br>' : ''}${formatNb(new Date(c.timestamp))}`,
-    )
+    m.bindPopup(`Trykk #${i + 1}<br>${catPart}${formatNb(new Date(c.timestamp))}`)
     m.addTo(map)
     markers.push(m)
   })
@@ -11690,7 +11533,6 @@ function bindSessionListeners() {
       state.clickHistory.push(clickEntry)
 
       rebuildMarkers()
-      void enrichClickEntryWithVegrefFromPosisjon(id, lat, lng)
       animateSessionPinDrop()
       if (map) {
         followUserOnMap = false
@@ -11980,19 +11822,7 @@ function bootstrap() {
       })
     }
   })
-  /* Ikke konkurrer med første lasting / NVDB — last ned offline-pakke når nettleseren er ledig. */
-  if (typeof requestIdleCallback === 'function') {
-    requestIdleCallback(
-      () => {
-        void ensureOfflineVegrefPackage()
-      },
-      { timeout: 12_000 },
-    )
-  } else {
-    window.setTimeout(() => {
-      void ensureOfflineVegrefPackage()
-    }, 3000)
-  }
+  void ensureOfflineVegrefPackage()
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && currentUser?.id) {
       void backupAuthToIdb(loadUsersFromStorage(), currentUser)
