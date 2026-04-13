@@ -77,9 +77,34 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 scanixDebugLine('boot: css ok, starter main.js …')
 
+const EMPTY_APP_WATCH_MS = 15_000
+
+/**
+ * Når import() lykkes men #app forblir tom (feil chunk-URL, hengende bootstrap, el. SW-cache).
+ */
+function startEmptyAppWatchdog() {
+  const start = Date.now()
+  const tick = () => {
+    if (reportedBootFailure) return
+    const app = document.getElementById('app')
+    if (app?.innerHTML?.trim()) return
+    if (Date.now() - start >= EMPTY_APP_WATCH_MS) {
+      showBootFailure(
+        new Error(
+          'Tom side: grensesnittet ble ikke tegnet. Ofte feil JS-fil (cache), eller hosting uten SPA-fallback. Tøm nettsteddata for domenet, prøv privat vindu, eller legg til ?scanixdebug=1',
+        ),
+      )
+      return
+    }
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
 void Promise.race([
   import('./main.js').then(() => {
     scanixDebugLine('boot: main.js modul lastet')
+    startEmptyAppWatchdog()
   }),
   new Promise((_, reject) =>
     setTimeout(

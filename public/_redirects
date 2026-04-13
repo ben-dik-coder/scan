@@ -1,0 +1,2 @@
+# Cloudflare Pages / Netlify: alle ruter → index.html (SPA). Uten dette kan du få 404 eller tom side ved refresh.
+/*    /index.html   200
