@@ -27,6 +27,9 @@ import { logVegrefMetric } from './vegrefMetrics.js'
 export const VEGREF_MIN_INTERVAL_MS = 450
 export const VEGREF_MIN_MOVE_M = 2
 
+/** Vent litt før supplerende segmentert-kall (veinavn) — unngår å stable NVDB på kald start. */
+const POSISJON_ENRICH_SEGMENT_DELAY_MS = 1600
+
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
  * Skaler litt med GPS-nøyaktighet.
@@ -451,6 +454,11 @@ function schedulePosisjonDisplayEnrichFromSegments(
 
   void (async () => {
     try {
+      await new Promise((r) =>
+        setTimeout(r, POSISJON_ENRICH_SEGMENT_DELAY_MS),
+      )
+      if (fetchOpts.signal.aborted) return
+      if (seq !== fetchGeneration) return
       const segRes = await h.fetchRoadReferenceNear(lat, lng, {
         signal: fetchOpts.signal,
         accuracyM: fetchOpts.accuracyM,
