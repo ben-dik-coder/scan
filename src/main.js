@@ -11932,7 +11932,19 @@ function bootstrap() {
       })
     }
   })
-  void ensureOfflineVegrefPackage()
+  /* Ikke konkurrer med første lasting / NVDB — last ned offline-pakke når nettleseren er ledig. */
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(
+      () => {
+        void ensureOfflineVegrefPackage()
+      },
+      { timeout: 12_000 },
+    )
+  } else {
+    window.setTimeout(() => {
+      void ensureOfflineVegrefPackage()
+    }, 3000)
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && currentUser?.id) {
       void backupAuthToIdb(loadUsersFromStorage(), currentUser)

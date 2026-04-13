@@ -416,6 +416,7 @@ function isOfficialVegsystemLineOnly(s) {
 /**
  * Når posisjon-API bare gir offisiell vegkategori-linje, suppler med segmentert treff
  * som ofte har `adresse.navn` (f.eks. Åsveien). Bevar S/D/meter fra posisjon.
+ * Kjører i bakgrunnen etter første apply — unngår å doble NVDB-laten ved oppstart.
  * @param {VegrefDescribeResult} res
  * @param {number} lat
  * @param {number} lng
@@ -428,52 +429,61 @@ function isOfficialVegsystemLineOnly(s) {
  * }} fetchOpts
  * @param {VegrefHooks} h
  * @param {number} seq
+ * @param {{ accuracyM?: number, speedMps?: number, online?: boolean }} applyCtx
  */
-async function enrichPosisjonDisplayWithSegmentNames(
+function schedulePosisjonDisplayEnrichFromSegments(
   res,
   lat,
   lng,
   fetchOpts,
   h,
   seq,
+  applyCtx,
 ) {
-  if (!res?._vegrefMeta || res._vegrefMeta.source !== 'posisjon') return res
-  if (!h.fetchRoadReferenceNear) return res
+  if (!res?._vegrefMeta || res._vegrefMeta.source !== 'posisjon') return
+  if (!h.fetchRoadReferenceNear) return
   const nid = res.nvdbId
-  if (nid == null) return res
+  if (nid == null) return
   const disp = String(res.roadLineDisplay || res.roadLine || '').trim()
-  if (!isOfficialVegsystemLineOnly(disp)) return res
-  if (String(lastPosisjonEnrichNvdbId) === String(nid)) return res
+  if (!isOfficialVegsystemLineOnly(disp)) return
+  if (String(lastPosisjonEnrichNvdbId) === String(nid)) return
   lastPosisjonEnrichNvdbId = nid
-  try {
-    const segRes = await h.fetchRoadReferenceNear(lat, lng, {
-      signal: fetchOpts.signal,
-      accuracyM: fetchOpts.accuracyM,
-      prevNvdbId: fetchOpts.prevNvdbId,
-      userHeadingDeg: fetchOpts.userHeadingDeg,
-      speed: fetchOpts.speed,
-    })
-    if (fetchOpts.signal.aborted) return res
-    if (seq !== fetchGeneration) return res
-    if (!segRes) return res
-    const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
-    if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) return res
-    if (segDisp === disp) return res
-    return {
-      ...res,
-      roadLineDisplay: segRes.roadLineDisplay,
-      roadLineDisplayShort:
-        segRes.roadLineDisplayShort ||
-        segRes.roadLineShort ||
-        segRes.roadLineDisplay,
-      roadLine: segRes.roadLine || res.roadLine,
-      roadLineShort: segRes.roadLineShort || res.roadLineShort,
+
+  void (async () => {
+    try {
+      const segRes = await h.fetchRoadReferenceNear(lat, lng, {
+        signal: fetchOpts.signal,
+        accuracyM: fetchOpts.accuracyM,
+        prevNvdbId: fetchOpts.prevNvdbId,
+        userHeadingDeg: fetchOpts.userHeadingDeg,
+        speed: fetchOpts.speed,
+      })
+      if (fetchOpts.signal.aborted) return
+      if (seq !== fetchGeneration) return
+      if (!segRes) return
+      const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
+      if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) return
+      if (segDisp === disp) return
+      const merged = {
+        ...res,
+        roadLineDisplay: segRes.roadLineDisplay,
+        roadLineDisplayShort:
+          segRes.roadLineDisplayShort ||
+          segRes.roadLineShort ||
+          segRes.roadLineDisplay,
+        roadLine: segRes.roadLine || res.roadLine,
+        roadLineShort: segRes.roadLineShort || res.roadLineShort,
+      }
+      cacheLat = lat
+      cacheLng = lng
+      cacheRes = merged
+      if (seq !== fetchGeneration) return
+      applyNvdbNullable(merged, lat, lng, applyCtx)
+    } catch (e) {
+      if (/** @type {{ name?: string }} */ (e).name === 'AbortError') return
+      lastPosisjonEnrichNvdbId = null
     }
-  } catch (e) {
-    if (/** @type {{ name?: string }} */ (e).name === 'AbortError') throw e
-    lastPosisjonEnrichNvdbId = null
-    return res
-  }
+  })()
 }
 
 export function vegrefResetSessionCache() {
@@ -710,28 +720,6 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         }
       }
 
-      if (
-        res &&
-        online &&
-        h.fetchRoadReferenceNear &&
-        res._vegrefMeta?.source === 'posisjon'
-      ) {
-        res = await enrichPosisjonDisplayWithSegmentNames(
-          res,
-          useLat,
-          useLng,
-          {
-            signal,
-            accuracyM,
-            prevNvdbId: res.nvdbId ?? null,
-            userHeadingDeg: effHeadingDeg,
-            speed: speedMps,
-          },
-          h,
-          seq,
-        )
-      }
-
       if (!res && online) {
         const prevId =
           lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
@@ -757,11 +745,30 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         cacheRes = res
       }
       if (seq !== fetchGeneration) return
-      applyNvdbNullable(res, useLat, useLng, {
-        accuracyM,
-        speedMps,
-        online,
-      })
+      const applyCtx = { accuracyM, speedMps, online }
+      applyNvdbNullable(res, useLat, useLng, applyCtx)
+      if (
+        res &&
+        online &&
+        h.fetchRoadReferenceNear &&
+        res._vegrefMeta?.source === 'posisjon'
+      ) {
+        schedulePosisjonDisplayEnrichFromSegments(
+          res,
+          useLat,
+          useLng,
+          {
+            signal,
+            accuracyM,
+            prevNvdbId: res.nvdbId ?? null,
+            userHeadingDeg: effHeadingDeg,
+            speed: speedMps,
+          },
+          h,
+          seq,
+          applyCtx,
+        )
+      }
     } catch (e) {
       if (/** @type {{ name?: string }} */ (e).name === 'AbortError') return
       if (seq !== fetchGeneration) return
