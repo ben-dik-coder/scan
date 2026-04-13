@@ -1578,6 +1578,46 @@ form.auth-form[hidden] {
   line-height: 1.05;
 }
 
+@keyframes home-reg-icon-pulse-glow {
+  from {
+    opacity: 0.65;
+    box-shadow:
+      0 0 8px rgba(72, 200, 130, 0.35),
+      0 0 18px rgba(56, 185, 120, 0.22);
+  }
+  to {
+    opacity: 1;
+    box-shadow:
+      0 0 16px rgba(96, 220, 150, 0.75),
+      0 0 32px rgba(72, 200, 130, 0.42),
+      0 0 48px rgba(48, 175, 110, 0.22);
+  }
+}
+
+#btn-home-registrering.home-app-icon-btn--reg-pulse .home-app-icon-btn__icon-wrap::after {
+  content: '';
+  position: absolute;
+  top: -0.55rem;
+  right: -0.55rem;
+  left: -0.55rem;
+  bottom: -0.32rem;
+  z-index: -1;
+  border-radius: 1.25rem;
+  pointer-events: none;
+  background: transparent;
+  animation: home-reg-icon-pulse-glow 2.1s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #btn-home-registrering.home-app-icon-btn--reg-pulse .home-app-icon-btn__icon-wrap::after {
+    animation: none;
+    opacity: 0.9;
+    box-shadow:
+      0 0 12px rgba(80, 200, 135, 0.45),
+      0 0 22px rgba(72, 190, 125, 0.28);
+  }
+}
+
 .home-action-split {
   display: flex;
   flex-direction: column;
