@@ -63,9 +63,19 @@ let posisjonPendingNewNvdbId = /** @type {string | number | null} */ (null)
 
 /**
  * Unngå gjentatte segmentert-kall for samme posisjon-NVDB-id når visning allerede er beriket
- * eller segment ikke ga bedre navn.
+ * eller segment ikke ga bedre navn. Settes først når et forsøk er ferdig (suksess eller «ingen bedring»).
  */
 let lastPosisjonEnrichNvdbId = /** @type {string | number | null} */ (null)
+
+/** Egen avbryter for veinavn-berikelse — må ikke kobles til hoved-NVDB `AbortController` (ny GPS avbryter den). */
+let posisjonEnrichAbort = /** @type {AbortController | null} */ (null)
+
+function abortPosisjonEnrichInFlight() {
+  if (posisjonEnrichAbort) {
+    posisjonEnrichAbort.abort()
+    posisjonEnrichAbort = null
+  }
+}
 
 /** Glattet kompassretning [0,360) — reduserer hopp mellom GPS-rammer. */
 let smoothHeading = /** @type {number | null} */ (null)
@@ -314,6 +324,7 @@ export function initVegrefLive(h) {
 }
 
 export function vegrefStopPipeline() {
+  abortPosisjonEnrichInFlight()
   if (nvdbAbort) {
     nvdbAbort.abort()
     nvdbAbort = null
@@ -424,14 +435,12 @@ function isOfficialVegsystemLineOnly(s) {
  * @param {number} lat
  * @param {number} lng
  * @param {{
- *   signal: AbortSignal
  *   accuracyM: number
  *   prevNvdbId: string | number | null
  *   userHeadingDeg: number | null | undefined
  *   speed: number
  * }} fetchOpts
  * @param {VegrefHooks} h
- * @param {number} seq
  * @param {{ accuracyM?: number, speedMps?: number, online?: boolean }} applyCtx
  */
 function schedulePosisjonDisplayEnrichFromSegments(
@@ -440,7 +449,6 @@ function schedulePosisjonDisplayEnrichFromSegments(
   lng,
   fetchOpts,
   h,
-  seq,
   applyCtx,
 ) {
   if (!res?._vegrefMeta || res._vegrefMeta.source !== 'posisjon') return
@@ -450,28 +458,40 @@ function schedulePosisjonDisplayEnrichFromSegments(
   const disp = String(res.roadLineDisplay || res.roadLine || '').trim()
   if (!isOfficialVegsystemLineOnly(disp)) return
   if (String(lastPosisjonEnrichNvdbId) === String(nid)) return
-  lastPosisjonEnrichNvdbId = nid
+
+  abortPosisjonEnrichInFlight()
+  const enrichCtrl = new AbortController()
+  posisjonEnrichAbort = enrichCtrl
+  const enrichSignal = enrichCtrl.signal
+  const targetNvdbId = nid
 
   void (async () => {
     try {
       await new Promise((r) =>
         setTimeout(r, POSISJON_ENRICH_SEGMENT_DELAY_MS),
       )
-      if (fetchOpts.signal.aborted) return
-      if (seq !== fetchGeneration) return
+      if (enrichSignal.aborted) return
       const segRes = await h.fetchRoadReferenceNear(lat, lng, {
-        signal: fetchOpts.signal,
+        signal: enrichSignal,
         accuracyM: fetchOpts.accuracyM,
         prevNvdbId: fetchOpts.prevNvdbId,
         userHeadingDeg: fetchOpts.userHeadingDeg,
         speed: fetchOpts.speed,
       })
-      if (fetchOpts.signal.aborted) return
-      if (seq !== fetchGeneration) return
-      if (!segRes) return
+      if (enrichSignal.aborted) return
+      if (!segRes) {
+        lastPosisjonEnrichNvdbId = targetNvdbId
+        return
+      }
       const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
-      if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) return
-      if (segDisp === disp) return
+      if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) {
+        lastPosisjonEnrichNvdbId = targetNvdbId
+        return
+      }
+      if (segDisp === disp) {
+        lastPosisjonEnrichNvdbId = targetNvdbId
+        return
+      }
       const merged = {
         ...res,
         roadLineDisplay: segRes.roadLineDisplay,
@@ -482,14 +502,32 @@ function schedulePosisjonDisplayEnrichFromSegments(
         roadLine: segRes.roadLine || res.roadLine,
         roadLineShort: segRes.roadLineShort || res.roadLineShort,
       }
+      const cur = lastAppliedRes
+      const curId =
+        cur && typeof cur === 'object' && 'nvdbId' in cur
+          ? /** @type {{ nvdbId?: string | number | null }} */ (cur).nvdbId
+          : null
+      if (
+        curId != null &&
+        String(curId) !== String(targetNvdbId)
+      ) {
+        return
+      }
+      if (lastAppliedLat != null && lastAppliedLng != null && hooks) {
+        const drift = hooks.haversineM(lastAppliedLat, lastAppliedLng, lat, lng)
+        if (drift > 140) return
+      }
       cacheLat = lat
       cacheLng = lng
       cacheRes = merged
-      if (seq !== fetchGeneration) return
+      if (enrichSignal.aborted) return
       applyNvdbNullable(merged, lat, lng, applyCtx)
+      lastPosisjonEnrichNvdbId = targetNvdbId
     } catch (e) {
       if (/** @type {{ name?: string }} */ (e).name === 'AbortError') return
       lastPosisjonEnrichNvdbId = null
+    } finally {
+      if (posisjonEnrichAbort === enrichCtrl) posisjonEnrichAbort = null
     }
   })()
 }
@@ -766,14 +804,12 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
           useLat,
           useLng,
           {
-            signal,
             accuracyM,
             prevNvdbId: res.nvdbId ?? null,
             userHeadingDeg: effHeadingDeg,
             speed: speedMps,
           },
           h,
-          seq,
           applyCtx,
         )
       }
