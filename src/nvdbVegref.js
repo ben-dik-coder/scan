@@ -654,6 +654,24 @@ export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {
 export const fetchRoadReferenceNear = fetchRoadReferenceNearOnline
 
 /**
+ * @param {unknown} hit Første treff fra /posisjon
+ * @returns {string}
+ */
+function extractAdresseNavnFromPosisjonHit(hit) {
+  if (!hit || typeof hit !== 'object') return ''
+  const ad = /** @type {{ adresse?: { navn?: unknown } }} */ (hit).adresse
+  if (
+    ad &&
+    typeof ad === 'object' &&
+    typeof ad.navn === 'string' &&
+    ad.navn.trim()
+  ) {
+    return ad.navn.trim()
+  }
+  return ''
+}
+
+/**
  * NVDB Posisjon-API: returnerer vegreferanse direkte fra koordinater.
  * Serverside segment-valg — ingen lokal scoring/WKT-interpolasjon.
  * @param {number} lat
@@ -704,6 +722,7 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
 
   const baseRoad = formatVegsystemLine(vs)
   const baseRoadShort = formatVegsystemShort(vs)
+  const addrNameFromHit = extractAdresseNavnFromPosisjonHit(hit)
   const meterRaw = str?.meter
   const meterVal = typeof meterRaw === 'number' && Number.isFinite(meterRaw)
     ? Math.round(meterRaw)
@@ -726,11 +745,14 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
         ? `vs:${vk}-${vn}-S${sNum ?? ''}D${dNum ?? ''}`
         : null
 
+  const primaryDisplay = addrNameFromHit || baseRoad
+  const primaryDisplayShort = addrNameFromHit || baseRoadShort
+
   return {
     roadLine: baseRoad,
     roadLineShort: baseRoadShort,
-    roadLineDisplay: baseRoad,
-    roadLineDisplayShort: baseRoadShort,
+    roadLineDisplay: primaryDisplay,
+    roadLineDisplayShort: primaryDisplayShort,
     s: str?.strekning != null ? String(str.strekning) : '–',
     d: str?.delstrekning != null ? String(str.delstrekning) : '–',
     m: meterVal != null ? String(meterVal) : '–',

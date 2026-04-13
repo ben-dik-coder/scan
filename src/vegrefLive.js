@@ -58,6 +58,12 @@ let lastConfidenceDecayAt = 0
  */
 let posisjonPendingNewNvdbId = /** @type {string | number | null} */ (null)
 
+/**
+ * Unngå gjentatte segmentert-kall for samme posisjon-NVDB-id når visning allerede er beriket
+ * eller segment ikke ga bedre navn.
+ */
+let lastPosisjonEnrichNvdbId = /** @type {string | number | null} */ (null)
+
 /** Glattet kompassretning [0,360) — reduserer hopp mellom GPS-rammer. */
 let smoothHeading = /** @type {number | null} */ (null)
 
@@ -396,6 +402,80 @@ function computeSpeed(lat, lng, timestamp, haversineMFn) {
   return speed
 }
 
+/**
+ * @param {string} s
+ */
+function isOfficialVegsystemLineOnly(s) {
+  const t = String(s || '').trim()
+  if (!t) return true
+  return /^(Europaveg|Riksveg|Fylkesveg|Kommunal veg|Privat veg|Skogsbilveg|Ukjent veg|Veg)\b/i.test(
+    t,
+  )
+}
+
+/**
+ * Når posisjon-API bare gir offisiell vegkategori-linje, suppler med segmentert treff
+ * som ofte har `adresse.navn` (f.eks. Åsveien). Bevar S/D/meter fra posisjon.
+ * @param {VegrefDescribeResult} res
+ * @param {number} lat
+ * @param {number} lng
+ * @param {{
+ *   signal: AbortSignal
+ *   accuracyM: number
+ *   prevNvdbId: string | number | null
+ *   userHeadingDeg: number | null | undefined
+ *   speed: number
+ * }} fetchOpts
+ * @param {VegrefHooks} h
+ * @param {number} seq
+ */
+async function enrichPosisjonDisplayWithSegmentNames(
+  res,
+  lat,
+  lng,
+  fetchOpts,
+  h,
+  seq,
+) {
+  if (!res?._vegrefMeta || res._vegrefMeta.source !== 'posisjon') return res
+  if (!h.fetchRoadReferenceNear) return res
+  const nid = res.nvdbId
+  if (nid == null) return res
+  const disp = String(res.roadLineDisplay || res.roadLine || '').trim()
+  if (!isOfficialVegsystemLineOnly(disp)) return res
+  if (String(lastPosisjonEnrichNvdbId) === String(nid)) return res
+  lastPosisjonEnrichNvdbId = nid
+  try {
+    const segRes = await h.fetchRoadReferenceNear(lat, lng, {
+      signal: fetchOpts.signal,
+      accuracyM: fetchOpts.accuracyM,
+      prevNvdbId: fetchOpts.prevNvdbId,
+      userHeadingDeg: fetchOpts.userHeadingDeg,
+      speed: fetchOpts.speed,
+    })
+    if (fetchOpts.signal.aborted) return res
+    if (seq !== fetchGeneration) return res
+    if (!segRes) return res
+    const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
+    if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) return res
+    if (segDisp === disp) return res
+    return {
+      ...res,
+      roadLineDisplay: segRes.roadLineDisplay,
+      roadLineDisplayShort:
+        segRes.roadLineDisplayShort ||
+        segRes.roadLineShort ||
+        segRes.roadLineDisplay,
+      roadLine: segRes.roadLine || res.roadLine,
+      roadLineShort: segRes.roadLineShort || res.roadLineShort,
+    }
+  } catch (e) {
+    if (/** @type {{ name?: string }} */ (e).name === 'AbortError') throw e
+    lastPosisjonEnrichNvdbId = null
+    return res
+  }
+}
+
 export function vegrefResetSessionCache() {
   vegrefStopPipeline()
   lastFetchMs = 0
@@ -419,6 +499,7 @@ export function vegrefResetSessionCache() {
   lastSpeed = 0
   lastPosForSpeed = null
   posisjonPendingNewNvdbId = null
+  lastPosisjonEnrichNvdbId = null
 }
 
 /** Første oppslag etter åpning av KMT: ikke vent på throttling. */
@@ -627,6 +708,28 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         } catch (e) {
           if (/** @type {{ name?: string }} */ (e).name === 'AbortError') throw e
         }
+      }
+
+      if (
+        res &&
+        online &&
+        h.fetchRoadReferenceNear &&
+        res._vegrefMeta?.source === 'posisjon'
+      ) {
+        res = await enrichPosisjonDisplayWithSegmentNames(
+          res,
+          useLat,
+          useLng,
+          {
+            signal,
+            accuracyM,
+            prevNvdbId: res.nvdbId ?? null,
+            userHeadingDeg: effHeadingDeg,
+            speed: speedMps,
+          },
+          h,
+          seq,
+        )
       }
 
       if (!res && online) {
