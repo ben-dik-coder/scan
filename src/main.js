@@ -884,7 +884,7 @@ const MAX_FRICTION_MEASUREMENTS = 200
 
 /**
  * @param {unknown} x
- * @returns {{ vegnavn: string, s: string, d: string, meter: string } | null}
+ * @returns {{ vegnavn: string, vegnr: string, s: string, d: string, meter: string } | null}
  */
 function normalizeFrictionVegSnap(x) {
   if (!x || typeof x !== 'object') return null
@@ -895,26 +895,30 @@ function normalizeFrictionVegSnap(x) {
       : typeof o.vegnavn === 'number'
         ? String(o.vegnavn)
         : ''
+  const vegnr = typeof o.vegnr === 'string' ? o.vegnr.trim() : ''
   const s = typeof o.s === 'string' ? o.s.trim() : ''
   const d = typeof o.d === 'string' ? o.d.trim() : ''
   let meter = ''
   if (typeof o.meter === 'string') meter = o.meter.trim()
   else if (typeof o.meter === 'number' && Number.isFinite(o.meter))
     meter = String(Math.round(o.meter))
-  if (!vegnavn && !s && !d && !meter) return null
-  return { vegnavn, s, d, meter }
+  if (!vegnavn && !vegnr && !s && !d && !meter) return null
+  return { vegnavn, vegnr, s, d, meter }
 }
 
 /**
  * @param {object | null} r
- * @returns {{ vegnavn: string, s: string, d: string, meter: string } | null}
+ * @returns {{ vegnavn: string, vegnr: string, s: string, d: string, meter: string } | null}
  */
 function vegrefPosisjonToFrictionSnap(r) {
   if (!r || typeof r !== 'object') return null
-  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, s?: string, d?: string, m?: string }} */ (
+  const o = /** @type {{ roadLineDisplay?: string, roadLine?: string, roadLineShort?: string, roadLineDisplayShort?: string, s?: string, d?: string, m?: string }} */ (
     r
   )
   const vegnavn = String(o.roadLineDisplay || o.roadLine || '').trim()
+  const vegnr = String(
+    o.roadLineShort || o.roadLineDisplayShort || '',
+  ).trim()
   const sRaw = o.s
   const dRaw = o.d
   const mRaw = o.m
@@ -924,13 +928,13 @@ function vegrefPosisjonToFrictionSnap(r) {
     dRaw === undefined || dRaw === '–' ? '' : String(dRaw).trim()
   const meter =
     mRaw === undefined || mRaw === '–' ? '' : String(mRaw).trim()
-  if (!vegnavn && !s && !d && !meter) return null
-  return { vegnavn, s, d, meter }
+  if (!vegnavn && !vegnr && !s && !d && !meter) return null
+  return { vegnavn, vegnr, s, d, meter }
 }
 
 /**
  * @param {unknown} p
- * @returns {{ id: string, createdAt: string, distanceM: number, value: number, pathLatLngs: number[][], startLat: number | null, startLng: number | null, endLat: number | null, endLng: number | null, sessionId?: string, startVegref?: { vegnavn: string, s: string, d: string, meter: string }, endVegref?: { vegnavn: string, s: string, d: string, meter: string } } | null}
+ * @returns {{ id: string, createdAt: string, distanceM: number, value: number, pathLatLngs: number[][], startLat: number | null, startLng: number | null, endLat: number | null, endLng: number | null, sessionId?: string, startVegref?: { vegnavn: string, vegnr: string, s: string, d: string, meter: string }, endVegref?: { vegnavn: string, vegnr: string, s: string, d: string, meter: string } } | null}
  */
 function normalizeFrictionMeasurement(p) {
   if (!p || typeof p !== 'object') return null
@@ -1195,6 +1199,14 @@ async function loadAppStateFromStorageForUser(userId) {
         frictionMeasurements: normalizeFrictionMeasurementsList(
           p.frictionMeasurements,
         ),
+        frictionActiveSessionId:
+          typeof p.frictionActiveSessionId === 'string'
+            ? p.frictionActiveSessionId
+            : null,
+        frictionPreviousSessionId:
+          typeof p.frictionPreviousSessionId === 'string'
+            ? p.frictionPreviousSessionId
+            : null,
       }
     } catch {
       /* fall through */
@@ -1225,6 +1237,8 @@ async function loadAppStateFromStorageForUser(userId) {
         currentSessionId: null,
         standalonePhotos: [],
         frictionMeasurements: [],
+        frictionActiveSessionId: null,
+        frictionPreviousSessionId: null,
       }
     } catch {
       /* fall through */
@@ -1235,6 +1249,8 @@ async function loadAppStateFromStorageForUser(userId) {
     currentSessionId: null,
     standalonePhotos: [],
     frictionMeasurements: [],
+    frictionActiveSessionId: null,
+    frictionPreviousSessionId: null,
   }
 }
 
@@ -1314,6 +1330,8 @@ async function flushLocalStorageAppState(key) {
     currentSessionId,
     standalonePhotos: standaloneOut,
     frictionMeasurements,
+    frictionActiveSessionId,
+    frictionPreviousSessionId,
   }
   try {
     localStorage.setItem(key, JSON.stringify(payload))
@@ -1507,10 +1525,67 @@ let frictionHistoryLayerGroup = null
 let frictionHistoryPolylines = new Map()
 /** Økt for nye friksjonsmålinger (lagre / Excel for «denne økta»). */
 let frictionActiveSessionId = null
+/** Forrige økt-id før «Ny økt» — kan gjenopptas. */
+let frictionPreviousSessionId = null
+/**
+ * Øker ved hver Start; brukes så async NVDB-svar ikke blandes mellom strekninger.
+ */
+let frictionSegmentGeneration = 0
+/** NVDB ved Start-trykk (samme API som forsiden / posisjon). */
+let frictionPendingStartVegref = null
+/** NVDB ved Stopp-trykk. */
+let frictionPendingStopVegref = null
 
 function ensureFrictionSessionId() {
   if (!frictionActiveSessionId) frictionActiveSessionId = crypto.randomUUID()
   return frictionActiveSessionId
+}
+
+/**
+ * @param {{ frictionActiveSessionId?: string | null, frictionPreviousSessionId?: string | null } | null | undefined} diskApp
+ */
+function applyFrictionSessionIdsFromDisk(diskApp) {
+  if (!diskApp) {
+    frictionActiveSessionId = null
+    frictionPreviousSessionId = null
+    return
+  }
+  frictionActiveSessionId =
+    typeof diskApp.frictionActiveSessionId === 'string' &&
+    diskApp.frictionActiveSessionId
+      ? diskApp.frictionActiveSessionId
+      : null
+  frictionPreviousSessionId =
+    typeof diskApp.frictionPreviousSessionId === 'string' &&
+    diskApp.frictionPreviousSessionId
+      ? diskApp.frictionPreviousSessionId
+      : null
+}
+
+/**
+ * @param {{ frictionActiveSessionId?: string | null, frictionPreviousSessionId?: string | null } | null | undefined} diskApp
+ * @param {{ frictionActiveSessionId?: string | null, frictionPreviousSessionId?: string | null } | null | undefined} remote
+ */
+function mergeFrictionSessionStateFromRemote(diskApp, remote) {
+  const dA = diskApp?.frictionActiveSessionId
+  const dP = diskApp?.frictionPreviousSessionId
+  const r = remote && typeof remote === 'object' ? remote : null
+  const rA = r?.frictionActiveSessionId
+  const rP = r?.frictionPreviousSessionId
+  return {
+    frictionActiveSessionId:
+      typeof dA === 'string' && dA
+        ? dA
+        : typeof rA === 'string' && rA
+          ? rA
+          : null,
+    frictionPreviousSessionId:
+      typeof dP === 'string' && dP
+        ? dP
+        : typeof rP === 'string' && rP
+          ? rP
+          : null,
+  }
 }
 
 /** Rad i session_shares mens brukeren forhåndsviser en delt økt (før lagre / forkast). */
@@ -1549,6 +1624,8 @@ function scheduleSupabaseAppStatePush() {
       currentSessionId,
       standalonePhotos,
       frictionMeasurements,
+      frictionActiveSessionId,
+      frictionPreviousSessionId,
     })
   }, 1600)
 }
@@ -1596,6 +1673,7 @@ async function initAppStateFromStorage() {
         currentSessionId = diskApp.currentSessionId
         standalonePhotos = diskApp.standalonePhotos
         frictionMeasurements = diskApp.frictionMeasurements
+        applyFrictionSessionIdsFromDisk(diskApp)
       } catch (e) {
         console.warn('Supabase init:', e)
         const fb = loadAuthSession()
@@ -1606,6 +1684,7 @@ async function initAppStateFromStorage() {
           currentSessionId = diskApp.currentSessionId
           standalonePhotos = diskApp.standalonePhotos
           frictionMeasurements = diskApp.frictionMeasurements
+          applyFrictionSessionIdsFromDisk(diskApp)
         } else {
           currentUser = null
           clearAuthSession()
@@ -1613,6 +1692,7 @@ async function initAppStateFromStorage() {
           currentSessionId = null
           standalonePhotos = []
           frictionMeasurements = []
+          applyFrictionSessionIdsFromDisk(null)
         }
       }
     } else {
@@ -1625,6 +1705,7 @@ async function initAppStateFromStorage() {
         currentSessionId = diskApp.currentSessionId
         standalonePhotos = diskApp.standalonePhotos
         frictionMeasurements = diskApp.frictionMeasurements
+        applyFrictionSessionIdsFromDisk(diskApp)
       } else {
         currentUser = null
         clearAuthSession()
@@ -1632,6 +1713,7 @@ async function initAppStateFromStorage() {
         currentSessionId = null
         standalonePhotos = []
         frictionMeasurements = []
+        applyFrictionSessionIdsFromDisk(null)
       }
     }
   } else {
@@ -1644,11 +1726,14 @@ async function initAppStateFromStorage() {
           currentSessionId: null,
           standalonePhotos: [],
           frictionMeasurements: [],
+          frictionActiveSessionId: null,
+          frictionPreviousSessionId: null,
         }
     sessions = initialApp.sessions
     currentSessionId = initialApp.currentSessionId
     standalonePhotos = initialApp.standalonePhotos
     frictionMeasurements = initialApp.frictionMeasurements
+    applyFrictionSessionIdsFromDisk(initialApp)
   }
 
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
@@ -1711,18 +1796,24 @@ async function hydrateUserAppStateFromRemote() {
         : null
   }
 
-  const prevSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}`
+  const prevSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}|${frictionActiveSessionId}|${frictionPreviousSessionId}`
   const viewBefore = view
   sessions = nextSessions
   currentSessionId = nextSessionId
   standalonePhotos = nextStandalone
   frictionMeasurements = nextFriction
+  const mergedFrictionIds = mergeFrictionSessionStateFromRemote(
+    diskApp,
+    remote,
+  )
+  frictionActiveSessionId = mergedFrictionIds.frictionActiveSessionId
+  frictionPreviousSessionId = mergedFrictionIds.frictionPreviousSessionId
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     currentSessionId = null
   }
   state = loadCurrentSessionState()
 
-  const nextSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}`
+  const nextSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}|${frictionActiveSessionId}|${frictionPreviousSessionId}`
   const dataChanged = prevSig !== nextSig
 
   if (isViewLockedDuringRemoteHydrate()) {
@@ -5137,10 +5228,12 @@ function renderMenuMapHtml() {
 }
 
 function renderMenuFrictionHtml() {
+  const resumeHidden = frictionPreviousSessionId == null ? ' hidden' : ''
   return `<div class="friction-view view-panel-enter" aria-label="Friksjonsmåling">
     <header class="friction-view__top">
       <button type="button" class="friction-view__back btn btn-back" id="btn-back-from-friction">← Meny</button>
       <span class="friction-view__title">Friksjonsmåling</span>
+      <button type="button" class="friction-view__my-pos btn-text" id="friction-btn-my-position" aria-label="Min posisjon">Min posisjon</button>
       <button type="button" class="friction-view__list-open btn-text" id="friction-btn-open-list">Liste</button>
     </header>
     <div id="friction-map" class="friction-view__map" role="application" aria-label="Kart"></div>
@@ -5157,6 +5250,7 @@ function renderMenuFrictionHtml() {
       </div>
       <div class="friction-view__session-tools" role="group" aria-label="Økt og eksport">
         <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-save-session">Lagre økt</button>
+        <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-resume-session"${resumeHidden}>Gjenoppta økt</button>
         <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-export-xlsx">Eksporter Excel</button>
         <button type="button" class="btn-text friction-view__session-btn" id="friction-btn-new-session">Ny økt</button>
       </div>
@@ -7259,11 +7353,18 @@ async function applySupabaseSessionAndNavigate(sb, session) {
       normalizeFrictionMeasurementsList(remote.frictionMeasurements),
       diskApp.frictionMeasurements,
     )
+    const mergedFrictionIds = mergeFrictionSessionStateFromRemote(
+      diskApp,
+      remote,
+    )
+    frictionActiveSessionId = mergedFrictionIds.frictionActiveSessionId
+    frictionPreviousSessionId = mergedFrictionIds.frictionPreviousSessionId
   } else {
     sessions = diskApp.sessions
     currentSessionId = diskApp.currentSessionId
     standalonePhotos = diskApp.standalonePhotos
     frictionMeasurements = diskApp.frictionMeasurements
+    applyFrictionSessionIdsFromDisk(diskApp)
   }
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     currentSessionId =
@@ -7541,6 +7642,7 @@ function bindAuthListeners() {
       standalonePhotos = []
       frictionMeasurements = []
       frictionActiveSessionId = null
+      frictionPreviousSessionId = null
       state = defaultState()
       view = 'home'
       saveAppState()
@@ -8916,6 +9018,16 @@ function bindMenuFrictionListeners() {
     () => frictionStartNewFrictionSession(),
     { signal },
   )
+  document.getElementById('friction-btn-resume-session')?.addEventListener(
+    'click',
+    () => frictionResumePreviousSession(),
+    { signal },
+  )
+  document.getElementById('friction-btn-my-position')?.addEventListener(
+    'click',
+    () => void frictionRefreshGpsAndCenter(),
+    { signal },
+  )
   document.getElementById('friction-list-export-all-xlsx')?.addEventListener(
     'click',
     () => void frictionExportAllFrictionXlsx(),
@@ -9042,6 +9154,8 @@ async function logoutUser() {
       currentSessionId,
       standalonePhotos,
       frictionMeasurements,
+      frictionActiveSessionId,
+      frictionPreviousSessionId,
     })
   }
   if (sbOut) {
@@ -9058,6 +9172,7 @@ async function logoutUser() {
   standalonePhotos = []
   frictionMeasurements = []
   frictionActiveSessionId = null
+  frictionPreviousSessionId = null
   currentUser = null
   clearAuthSession()
   void backupAuthToIdb(loadUsersFromStorage(), null)
@@ -11749,6 +11864,7 @@ function bootstrap() {
       standalonePhotos = []
       frictionMeasurements = []
       frictionActiveSessionId = null
+      frictionPreviousSessionId = null
       currentUser = null
       lastIncomingShareCountForNotify = null
       clearAuthSession()
@@ -11986,19 +12102,23 @@ async function frictionAppendMeasurementToList(value) {
   }
   const a = pathLatLngs[0]
   const b = pathLatLngs[pathLatLngs.length - 1]
-  frictionSetStatus('Henter vegreferanse for start og stopp …')
-  let startV = null
-  let endV = null
-  try {
-    const [sr, er] = await Promise.all([
-      fetchRoadPositionDirect(a[0], a[1]).catch(() => null),
-      fetchRoadPositionDirect(b[0], b[1]).catch(() => null),
-    ])
-    startV = vegrefPosisjonToFrictionSnap(sr)
-    endV = vegrefPosisjonToFrictionSnap(er)
-  } catch {
-    /* nettverk / API */
+  let startV = frictionPendingStartVegref
+  let endV = frictionPendingStopVegref
+  if (!startV || !endV) {
+    frictionSetStatus('Henter vegreferanse for start og stopp …')
+    try {
+      const [sr, er] = await Promise.all([
+        fetchRoadPositionDirect(a[0], a[1]).catch(() => null),
+        fetchRoadPositionDirect(b[0], b[1]).catch(() => null),
+      ])
+      if (!startV) startV = vegrefPosisjonToFrictionSnap(sr)
+      if (!endV) endV = vegrefPosisjonToFrictionSnap(er)
+    } catch {
+      /* nettverk / API */
+    }
   }
+  frictionPendingStartVegref = null
+  frictionPendingStopVegref = null
   const sid = ensureFrictionSessionId()
   /** @type {Record<string, unknown>} */
   const raw = {
@@ -12040,8 +12160,36 @@ function frictionSaveSessionExplicit() {
 }
 
 function frictionStartNewFrictionSession() {
+  if (frictionActiveSessionId) {
+    frictionPreviousSessionId = frictionActiveSessionId
+  }
   frictionActiveSessionId = crypto.randomUUID()
+  saveAppState()
   frictionSetStatus('Ny økt er startet. Nye målinger tilhører denne økta.')
+  frictionSyncResumeSessionButton()
+}
+
+function frictionSyncResumeSessionButton() {
+  const btn = document.getElementById('friction-btn-resume-session')
+  if (!btn) return
+  if (frictionPreviousSessionId) {
+    btn.removeAttribute('hidden')
+  } else {
+    btn.setAttribute('hidden', '')
+  }
+}
+
+function frictionResumePreviousSession() {
+  if (!frictionPreviousSessionId) {
+    frictionSetStatus('Ingen lagret økt å gjenoppta.')
+    return
+  }
+  const back = frictionPreviousSessionId
+  frictionPreviousSessionId = null
+  frictionActiveSessionId = back
+  saveAppState()
+  frictionSetStatus('Forrige økt er gjenopptatt.')
+  frictionSyncResumeSessionButton()
 }
 
 async function frictionExportSessionXlsx() {
@@ -12336,6 +12484,51 @@ function frictionSyncTabAria() {
     )
 }
 
+/**
+ * Fersk GPS og sentrer friksjonskartet; oppdaterer `lastLiveCoords`.
+ * @param {{ quiet?: boolean }} [opts]
+ */
+async function frictionRefreshGpsAndCenter(opts = {}) {
+  const quiet = !!opts.quiet
+  if (!window.isSecureContext || !navigator.geolocation) {
+    if (!quiet) {
+      frictionSetStatus(
+        'Posisjon kreves (HTTPS eller localhost). Tillat plassering i nettleseren.',
+      )
+    }
+    return
+  }
+  try {
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000,
+      })
+    })
+    const c = /** @type {GeolocationPosition} */ (pos).coords
+    const lat = c.latitude
+    const lng = c.longitude
+    const acc = Math.max(
+      typeof c.accuracy === 'number' && !Number.isNaN(c.accuracy)
+        ? c.accuracy
+        : 20,
+      8,
+    )
+    lastLiveCoords = { lat, lng, accuracy: acc, ts: Date.now() }
+    if (frictionMap) {
+      frictionMap.setView([lat, lng], zoomForDriving(acc))
+    }
+    if (!quiet) frictionSetStatus('Kartet viser din posisjon.')
+  } catch {
+    if (!quiet) {
+      frictionSetStatus(
+        'Kunne ikke hente posisjon. Sjekk tillatelser og prøv igjen.',
+      )
+    }
+  }
+}
+
 async function initFrictionMap() {
   const el = document.getElementById('friction-map')
   if (!el || frictionMap) return
@@ -12354,14 +12547,52 @@ async function initFrictionMap() {
     } catch {
       /* ignore */
     }
+    void frictionRefreshGpsAndCenter({ quiet: true })
   }, 160)
-  if (lastLiveCoords) {
-    frictionMap.setView(
-      [lastLiveCoords.lat, lastLiveCoords.lng],
-      Math.max(15, frictionMap.getZoom()),
-    )
-  }
   frictionSyncTabAria()
+}
+
+/**
+ * NVDB posisjon ved Start (synk med siste kjente GPS / samme kilde som forsiden bruker).
+ * @param {number} gen
+ */
+async function frictionSnapshotVegrefForSegmentStart(gen) {
+  let lat = /** @type {number | null} */ (null)
+  let lng = /** @type {number | null} */ (null)
+  if (
+    lastLiveCoords &&
+    typeof lastLiveCoords.lat === 'number' &&
+    typeof lastLiveCoords.lng === 'number' &&
+    typeof lastLiveCoords.ts === 'number' &&
+    Date.now() - lastLiveCoords.ts < 12_000
+  ) {
+    lat = lastLiveCoords.lat
+    lng = lastLiveCoords.lng
+  }
+  if ((lat == null || lng == null) && navigator.geolocation) {
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          maximumAge: 2500,
+          timeout: 12_000,
+        })
+      })
+      lat = /** @type {GeolocationPosition} */ (pos).coords.latitude
+      lng = /** @type {GeolocationPosition} */ (pos).coords.longitude
+    } catch {
+      return
+    }
+  }
+  if (lat == null || lng == null || gen !== frictionSegmentGeneration) return
+  try {
+    const r = await fetchRoadPositionDirect(lat, lng)
+    if (gen !== frictionSegmentGeneration) return
+    frictionPendingStartVegref = vegrefPosisjonToFrictionSnap(r)
+  } catch {
+    if (gen !== frictionSegmentGeneration) return
+    frictionPendingStartVegref = null
+  }
 }
 
 function frictionBeginMeasurement() {
@@ -12371,6 +12602,10 @@ function frictionBeginMeasurement() {
     )
     return
   }
+  frictionSegmentGeneration += 1
+  const segGen = frictionSegmentGeneration
+  frictionPendingStartVegref = null
+  frictionPendingStopVegref = null
   frictionClearMapOverlays()
   frictionPoints = []
   frictionDistanceM = 0
@@ -12380,6 +12615,7 @@ function frictionBeginMeasurement() {
   frictionUpdateDistanceDisplay()
   frictionSetStatus('Måler … gå eller kjør strekningen, trykk Stopp når du er ferdig.')
   frictionSyncTabAria()
+  void frictionSnapshotVegrefForSegmentStart(segGen)
 
   if (frictionWatchId != null) {
     navigator.geolocation.clearWatch(frictionWatchId)
@@ -12445,6 +12681,8 @@ async function frictionFinishMeasurement() {
   }
 
   if (frictionPoints.length < 2) {
+    frictionPendingStartVegref = null
+    frictionPendingStopVegref = null
     frictionClearMapOverlays()
     frictionPoints = []
     frictionDistanceM = 0
@@ -12462,6 +12700,17 @@ async function frictionFinishMeasurement() {
 
   const start = frictionPoints[0]
   const end = frictionPoints[frictionPoints.length - 1]
+  const segGen = frictionSegmentGeneration
+  frictionSetStatus('Henter vegreferanse ved stopp …')
+  try {
+    const rStop = await fetchRoadPositionDirect(end.lat, end.lng)
+    if (segGen === frictionSegmentGeneration) {
+      frictionPendingStopVegref = vegrefPosisjonToFrictionSnap(rStop)
+    }
+  } catch {
+    if (segGen === frictionSegmentGeneration) frictionPendingStopVegref = null
+  }
+
   const route = await fetchOsrmDrivingRoute(
     start.lat,
     start.lng,

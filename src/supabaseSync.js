@@ -79,7 +79,7 @@ export async function buildCurrentUserFromSession(supabase, session) {
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} userId
- * @returns {Promise<{ sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[], frictionMeasurements?: unknown[] } | null>}
+ * @returns {Promise<{ sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[], frictionMeasurements?: unknown[], frictionActiveSessionId?: string | null, frictionPreviousSessionId?: string | null } | null>}
  */
 export async function fetchUserAppState(supabase, userId) {
   const { data, error } = await supabase
@@ -102,13 +102,28 @@ export async function fetchUserAppState(supabase, userId) {
   const frictionMeasurements = Array.isArray(p.frictionMeasurements)
     ? p.frictionMeasurements
     : []
-  return { sessions, currentSessionId, standalonePhotos, frictionMeasurements }
+  const frictionActiveSessionId =
+    typeof p.frictionActiveSessionId === 'string'
+      ? p.frictionActiveSessionId
+      : null
+  const frictionPreviousSessionId =
+    typeof p.frictionPreviousSessionId === 'string'
+      ? p.frictionPreviousSessionId
+      : null
+  return {
+    sessions,
+    currentSessionId,
+    standalonePhotos,
+    frictionMeasurements,
+    frictionActiveSessionId,
+    frictionPreviousSessionId,
+  }
 }
 
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} userId
- * @param {{ version: number, sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[], frictionMeasurements?: unknown[] }} payload
+ * @param {{ version: number, sessions: unknown[], currentSessionId: string | null, standalonePhotos?: unknown[], frictionMeasurements?: unknown[], frictionActiveSessionId?: string | null, frictionPreviousSessionId?: string | null }} payload
  */
 export async function upsertUserAppState(supabase, userId, payload) {
   const row = {

@@ -3072,6 +3072,15 @@ body.home-ai-panel-open .home-vegref {
   color: var(--text);
 }
 
+.friction-view__my-pos {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(186, 230, 253, 0.98);
+  padding: 0.35rem 0.4rem;
+  white-space: nowrap;
+}
+
 .friction-view__list-open {
   flex-shrink: 0;
   margin-left: auto;

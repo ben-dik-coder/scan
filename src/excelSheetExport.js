@@ -252,22 +252,23 @@ export async function downloadExcelSheetGrid(headers, rows, filenameBase) {
 }
 
 /**
- * Friksjonsmåling: to rader per strekning (Start og Stopp) med vegnavn, S, D, meter.
+ * Friksjonsmåling: én rad per strekning — vegnavn/vegnr/S/D fra start, meterteller ved Start- og Stopp-trykk.
  * @param {Array<{
  *   distanceM: number,
  *   value: number,
  *   createdAt: string,
- *   startVegref?: { vegnavn: string, s: string, d: string, meter: string } | null,
- *   endVegref?: { vegnavn: string, s: string, d: string, meter: string } | null,
+ *   startVegref?: { vegnavn?: string, vegnr?: string, s?: string, d?: string, meter?: string } | null,
+ *   endVegref?: { vegnavn?: string, vegnr?: string, s?: string, d?: string, meter?: string } | null,
  * }>} measurements
  */
 export async function downloadFrictionMeasurementsXlsx(measurements) {
   const headers = [
-    'Punkt',
     'Vegnavn',
+    'Vegnr',
     'S',
     'D',
-    'Meter',
+    'Meter_start',
+    'Meter_stopp',
     'Strekning_m',
     'Friksjon',
     'Tidspunkt',
@@ -282,22 +283,12 @@ export async function downloadFrictionMeasurementsXlsx(measurements) {
   const valStr = (v) =>
     typeof v === 'number' && Number.isFinite(v) ? String(v).replace('.', ',') : ''
   /**
-   * @param {string} punkt
-   * @param {{ vegnavn: string, s: string, d: string, meter: string } | null | undefined} snap
-   * @param {{ distanceM: number, value: number, createdAt: string }} m
+   * @param {{ vegnavn?: string, vegnr?: string, s?: string, d?: string, meter?: string } | null | undefined} snap
    */
-  const vegRow = (punkt, snap, m) => {
-    const v = snap || { vegnavn: '', s: '', d: '', meter: '' }
-    return [
-      punkt,
-      v.vegnavn,
-      v.s,
-      v.d,
-      v.meter,
-      distStr(m.distanceM),
-      valStr(m.value),
-      typeof m.createdAt === 'string' ? m.createdAt : '',
-    ]
+  const snapStr = (snap, k) => {
+    if (!snap || typeof snap !== 'object') return ''
+    const v = /** @type {Record<string, unknown>} */ (snap)[k]
+    return v == null ? '' : String(v).trim()
   }
   const sorted = [...measurements].sort(
     (a, b) =>
@@ -305,8 +296,19 @@ export async function downloadFrictionMeasurementsXlsx(measurements) {
   )
   const rows = []
   for (const m of sorted) {
-    rows.push(vegRow('Start', m.startVegref, m))
-    rows.push(vegRow('Stopp', m.endVegref, m))
+    const sv = m.startVegref
+    const ev = m.endVegref
+    rows.push([
+      snapStr(sv, 'vegnavn'),
+      snapStr(sv, 'vegnr'),
+      snapStr(sv, 's'),
+      snapStr(sv, 'd'),
+      snapStr(sv, 'meter'),
+      snapStr(ev, 'meter'),
+      distStr(m.distanceM),
+      valStr(m.value),
+      typeof m.createdAt === 'string' ? m.createdAt : '',
+    ])
   }
   const stamp = new Date()
   const pad = (n) => String(n).padStart(2, '0')
