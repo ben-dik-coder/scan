@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "generate:offline-vegref": "node scripts/generate-offline-vegref-package.mjs",
     "validate:vegref-parity": "node scripts/validate-vegref-parity.mjs",
+    "debug:boot": "npm run build && node scripts/debug-boot-console.mjs",
     "pdf-server": "npm run start --prefix server",
     "ingest-contract": "npm run ingest-contract-pdf --prefix server --",
     "fix:registrering-icon": "node scripts/fix-registrering-alpha.mjs",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "playwright": "^1.49.1",
     "sharp": "^0.34.5",
     "vite": "^7.3.2",
     "vite-plugin-pwa": "^1.2.0"

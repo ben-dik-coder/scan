@@ -11827,14 +11827,36 @@ function showBootstrapFailure(err) {
   console.error('Scanix: oppstart feilet', err)
   document.getElementById('app-launch')?.remove()
   const app = document.getElementById('app')
+  const detail =
+    err && typeof err === 'object' && 'message' in err
+      ? String(/** @type {{ message?: unknown }} */ (err).message)
+      : String(err)
   if (app) {
     app.innerHTML =
-      '<p style="padding:1.25rem;font-family:system-ui,sans-serif;line-height:1.5;color:#fecaca;background:#1a1520;border-radius:12px;margin:1rem;">Kunne ikke starte appen. Prøv å oppdatere siden eller tøm nettsteddata for dette domenet. (Se konsoll.)</p>'
+      `<p style="padding:1.25rem;font-family:system-ui,sans-serif;line-height:1.5;color:#fecaca;background:#1a1520;border-radius:12px;margin:1rem;">Kunne ikke starte appen. Prøv å oppdatere siden eller tøm nettsteddata for dette domenet. (Se konsoll.)${typeof location !== 'undefined' && new URLSearchParams(location.search).has('scanixdebug') ? `<br><br><small style="opacity:.85">${detail.slice(0, 800)}</small>` : ''}</p>`
+  }
+}
+
+function scanixBootstrapLog(msg) {
+  try {
+    const on =
+      typeof location !== 'undefined' &&
+      (new URLSearchParams(location.search).has('scanixdebug') ||
+        (typeof localStorage !== 'undefined' &&
+          localStorage.getItem('scanix-debug') === '1'))
+    if (!on) return
+    console.info('[Scanix bootstrap]', msg)
+    const el = document.getElementById('scanix-debug-overlay')
+    if (el) el.textContent += `[bootstrap] ${msg}\n`
+  } catch {
+    /* ignore */
   }
 }
 
 async function bootstrap() {
+  scanixBootstrapLog('starter initAppStateFromStorage …')
   await initAppStateFromStorage()
+  scanixBootstrapLog('initAppStateFromStorage ferdig')
   initScreenWakeLock()
   configureAdvancedRegister({
     navigate: (nextView) => {
@@ -11944,22 +11966,29 @@ async function bootstrap() {
       bindAuthListeners()
     })
   }
+  scanixBootstrapLog('renderApp …')
   renderApp()
   bindListenersForCurrentView()
   if (isSupabaseConfigured() && currentUser?.id) {
     void hydrateUserAppStateFromRemote()
   }
+  scanixBootstrapLog('bootstrap ferdig')
 }
 
 void bootstrap().catch(showBootstrapFailure)
 
-/** Service worker: ikke `immediate` ved load — unngår ekstra arbeid/reload i samme øyeblikk som oppstart. */
-const updateSW = registerSW({
-  immediate: false,
-  onNeedRefresh() {
-    void updateSW(true)
-  },
-})
+/** Service worker — må ikke krasje appen hvis registrering feiler. */
+let updateSW = /** @type {((reload?: boolean) => Promise<void>) | null} */ (null)
+try {
+  updateSW = registerSW({
+    immediate: false,
+    onNeedRefresh() {
+      void updateSW?.(true)
+    },
+  })
+} catch (e) {
+  console.warn('Scanix: registerSW feilet (app kjører uten PWA-oppdatering)', e)
+}
 
 window.addEventListener('beforeunload', () => {
   flushCurrentSession()
