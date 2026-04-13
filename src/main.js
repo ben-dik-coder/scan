@@ -2388,11 +2388,14 @@ function parseLastMatchedPoint(j) {
   return null
 }
 
+/** Offentlig OSRM (samme som Vite-proxy / server default). Brukes som fallback når backend-proxy feiler. */
+const OSRM_PUBLIC_ORIGIN = 'https://router.project-osrm.org'
+
 function osrmBasePath() {
   if (import.meta.env.DEV) return '/api/osrm'
   const raw = import.meta.env.VITE_API_BASE
   if (typeof raw === 'string' && raw.trim()) return apiUrl('/api/osrm')
-  return 'https://router.project-osrm.org'
+  return OSRM_PUBLIC_ORIGIN
 }
 
 async function fetchJsonWithRetry(
@@ -2429,10 +2432,18 @@ async function fetchJsonWithRetry(
 }
 
 async function fetchOsrmJson(path) {
-  return fetchJsonWithRetry(`${osrmBasePath()}${path}`, {
+  const base = osrmBasePath()
+  const primary = await fetchJsonWithRetry(`${base}${path}`, {
     // OSRM er kun "nice to have" for refsnap; aldri la dette fryse meteren.
     timeoutMs: 2200,
     maxAttempts: 1,
+  })
+  if (primary) return primary
+  /* Render (eller annen backend) kan ikke nå OSRM → proxy gir 502. Hent direkte fra nettleseren (CORS tillatt på project-osrm). */
+  if (base === OSRM_PUBLIC_ORIGIN) return null
+  return fetchJsonWithRetry(`${OSRM_PUBLIC_ORIGIN}${path}`, {
+    timeoutMs: 12_000,
+    maxAttempts: 2,
   })
 }
 

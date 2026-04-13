@@ -8,9 +8,13 @@
  * (unngår lang stillhet ved treg disk / iCloud / store node_modules).
  */
 
+import dns from 'node:dns'
 import dotenv from 'dotenv'
 import cors from 'cors'
 import express from 'express'
+
+/* Unngå IPv6-rute til OSRM som kan gi ECONNREFUSED/timeout på noen skyplattformer. */
+dns.setDefaultResultOrder('ipv4first')
 import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -98,6 +102,7 @@ app.use(express.json({ limit: '48mb' }))
 const OSRM_UPSTREAM = (
   process.env.OSRM_UPSTREAM || 'https://router.project-osrm.org'
 ).replace(/\/$/, '')
+console.log(`[osrm] proxy → ${OSRM_UPSTREAM}`)
 app.use('/api/osrm', async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.status(405).end()
