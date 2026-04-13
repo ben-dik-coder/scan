@@ -2613,6 +2613,58 @@ function computeAllMarkerDisplayPositions() {
   return { clickLatLng, photoLatLng }
 }
 
+/**
+ * HTML til kart-popup for lagret vegreferanse ved registrering (vegnr + meter, valgfritt S/D).
+ * @param {{ vegrefAtClick?: { vegnr?: string, meter?: string, s?: string, d?: string } }} c
+ */
+function sessionClickVegrefPopupFragment(c) {
+  const v = c.vegrefAtClick
+  if (!v || typeof v !== 'object') return ''
+  const nr = typeof v.vegnr === 'string' ? v.vegnr.trim() : ''
+  const m = typeof v.meter === 'string' ? v.meter.trim() : ''
+  const s = typeof v.s === 'string' ? v.s.trim() : ''
+  const d = typeof v.d === 'string' ? v.d.trim() : ''
+  const mainParts = []
+  if (nr) mainParts.push(`(${escapeHtml(nr)})`)
+  if (m) mainParts.push(`Meter ${escapeHtml(m)}`)
+  const mainLine = mainParts.join(' · ')
+  const sdLine =
+    s && d
+      ? `<span style="font-size:0.78rem;opacity:0.92;display:block;margin-top:0.2rem">S ${escapeHtml(s)} · D ${escapeHtml(d)}</span>`
+      : ''
+  if (!mainLine && !sdLine) return ''
+  return `<br><span style="font-size:0.85rem;line-height:1.4;display:block;margin:0.25rem 0 0">${mainLine}${sdLine}</span>`
+}
+
+/**
+ * Henter NVDB-posisjon for trykket og lagrer kompakt vegref på oppføringen (popup oppdateres).
+ * @param {string} clickId
+ * @param {number} lat
+ * @param {number} lng
+ */
+async function enrichClickEntryWithVegrefFromPosisjon(clickId, lat, lng) {
+  try {
+    const r = await fetchRoadPositionDirect(lat, lng)
+    const snap = vegrefPosisjonToFrictionSnap(r)
+    if (!snap) return
+    const idx = state.clickHistory.findIndex((x) => x.id === clickId)
+    if (idx < 0) return
+    state.clickHistory[idx] = {
+      ...state.clickHistory[idx],
+      vegrefAtClick: {
+        vegnr: snap.vegnr,
+        meter: snap.meter,
+        s: snap.s,
+        d: snap.d,
+      },
+    }
+    persist()
+    if (view === 'session' && map) rebuildMarkers()
+  } catch {
+    /* nettverk / API */
+  }
+}
+
 const sessionMarkerInteractionDefaults = Object.freeze({
   bubblingMouseEvents: false,
   riseOnHover: false,
@@ -2635,7 +2687,10 @@ function rebuildMarkers() {
       typeof c.category === 'string' && c.category
         ? `${escapeHtml(getObjectCategoryLabel(c.category))}<br>`
         : ''
-    m.bindPopup(`Trykk #${i + 1}<br>${catPart}${formatNb(new Date(c.timestamp))}`)
+    const vegFrag = sessionClickVegrefPopupFragment(c)
+    m.bindPopup(
+      `Trykk #${i + 1}<br>${catPart}${vegFrag}${vegFrag ? '<br>' : ''}${formatNb(new Date(c.timestamp))}`,
+    )
     m.addTo(map)
     markers.push(m)
   })
@@ -11577,6 +11632,7 @@ function bindSessionListeners() {
       state.clickHistory.push(clickEntry)
 
       rebuildMarkers()
+      void enrichClickEntryWithVegrefFromPosisjon(id, lat, lng)
       animateSessionPinDrop()
       if (map) {
         followUserOnMap = false
