@@ -51,6 +51,13 @@ let lastNvdbSegmentApplyAt = 0
 /** Siste decay-steg (maks én gang per ~2 s ved inaktivitet). */
 let lastConfidenceDecayAt = 0
 
+/**
+ * NVDB posisjon returnerer ett treff uten klient-hysterese — i tettbygd kan ID flakse.
+ * Vi bytter ikke visning til nytt segment før: tydelig lav avstand til vei, eller to påfølgende
+ * forespørsler med samme nye ID (samme som pickBestSegment-idéen).
+ */
+let posisjonPendingNewNvdbId = /** @type {string | number | null} */ (null)
+
 /** Glattet kompassretning [0,360) — reduserer hopp mellom GPS-rammer. */
 let smoothHeading = /** @type {number | null} */ (null)
 
@@ -190,11 +197,46 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
       res && typeof res === 'object' && 'nvdbId' in res
         ? /** @type {{ nvdbId?: string | number | null }} */ (res).nvdbId
         : null
+    const metaSrc = res._vegrefMeta?.source
+
+    if (
+      metaSrc === 'posisjon' &&
+      oid != null &&
+      nid != null &&
+      String(oid) !== String(nid)
+    ) {
+      const dist =
+        typeof res.distToRoadM === 'number' && Number.isFinite(res.distToRoadM)
+          ? res.distToRoadM
+          : 999
+      const acc =
+        typeof ctx.accuracyM === 'number' && !Number.isNaN(ctx.accuracyM)
+          ? ctx.accuracyM
+          : 28
+      const clearOnRoad = dist <= Math.min(11, Math.max(5.5, acc * 0.3))
+      const pendingMatch =
+        posisjonPendingNewNvdbId != null &&
+        String(posisjonPendingNewNvdbId) === String(nid)
+      if (clearOnRoad) {
+        posisjonPendingNewNvdbId = null
+      } else if (pendingMatch) {
+        posisjonPendingNewNvdbId = null
+      } else {
+        posisjonPendingNewNvdbId = nid
+        return
+      }
+    } else if (
+      nid != null &&
+      oid != null &&
+      String(nid) === String(oid)
+    ) {
+      posisjonPendingNewNvdbId = null
+    }
+
     const segmentChanged =
       oid != null &&
       nid != null &&
       String(oid) !== String(nid)
-    const metaSrc = res._vegrefMeta?.source
     logVegrefMetric({
       accuracyM: ctx.accuracyM,
       speedMps: ctx.speedMps,
@@ -255,6 +297,7 @@ export function vegrefHydrateFromPersisted(lat, lng, res) {
   lastAppliedRes = res
   lastAppliedLat = lat
   lastAppliedLng = lng
+  posisjonPendingNewNvdbId = null
 }
 
 export function initVegrefLive(h) {
@@ -375,6 +418,7 @@ export function vegrefResetSessionCache() {
   smoothHeading = null
   lastSpeed = 0
   lastPosForSpeed = null
+  posisjonPendingNewNvdbId = null
 }
 
 /** Første oppslag etter åpning av KMT: ikke vent på throttling. */

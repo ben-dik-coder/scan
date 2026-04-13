@@ -346,15 +346,16 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     let score = dist + roadKindPenalty(seg)
     if (prevNvdbId != null && id !== null) {
       if (id === prevNvdbId) {
-        score -= 18 * speedFactor
-        if (speed < 2) score -= 10
+        score -= 22 * speedFactor
+        if (speed < 2) score -= 14
       } else {
-        score += 10 * speedFactor
-        if (speed < 2) score += 8
+        score += 12 * speedFactor
+        if (speed < 2) score += 10
+        else if (speed >= 2 && speed < 14) score += 5
       }
     }
     const roadH = segmentRoadHeadingDeg(seg, lat, lng)
-    if (userHeadingDeg != null && roadH != null && speed >= 5) {
+    if (userHeadingDeg != null && roadH != null && speed >= 3.5) {
       const hd = headingDiffDeg(userHeadingDeg, roadH)
       score += hd * 0.5
       if (hd < 25 && d.distToRoadM < 20) score -= 15
@@ -380,9 +381,12 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore: null }
   }
 
-  const baseMargin = Math.min(30, Math.max(6, accuracyM * 0.3))
-  const margin = speed < 2 ? Math.max(baseMargin, 24) : baseMargin
-  if ((accuracyM >= 20 || speed < 2) && prevRow.score - best.score < margin) {
+  const baseMargin = Math.min(34, Math.max(8, accuracyM * 0.36))
+  const accBoost =
+    accuracyM >= 24 ? Math.min(14, (accuracyM - 22) * 0.5) : 0
+  const margin =
+    (speed < 2 ? Math.max(baseMargin, 26) : baseMargin) + accBoost
+  if ((accuracyM >= 18 || speed < 2) && prevRow.score - best.score < margin) {
     return {
       seg: prevRow.seg,
       chosenScore: prevRow.score,
