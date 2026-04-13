@@ -1886,8 +1886,6 @@ async function hydrateUserAppStateFromRemote() {
   }
 }
 
-await initAppStateFromStorage()
-
 function formatNb(date) {
   return new Intl.DateTimeFormat('nb-NO', {
     dateStyle: 'full',
@@ -11825,7 +11823,18 @@ function queueRefreshLeafletAfterResume() {
   })
 }
 
-function bootstrap() {
+function showBootstrapFailure(err) {
+  console.error('Scanix: oppstart feilet', err)
+  document.getElementById('app-launch')?.remove()
+  const app = document.getElementById('app')
+  if (app) {
+    app.innerHTML =
+      '<p style="padding:1.25rem;font-family:system-ui,sans-serif;line-height:1.5;color:#fecaca;background:#1a1520;border-radius:12px;margin:1rem;">Kunne ikke starte appen. Prøv å oppdatere siden eller tøm nettsteddata for dette domenet. (Se konsoll.)</p>'
+  }
+}
+
+async function bootstrap() {
+  await initAppStateFromStorage()
   initScreenWakeLock()
   configureAdvancedRegister({
     navigate: (nextView) => {
@@ -11942,11 +11951,11 @@ function bootstrap() {
   }
 }
 
-bootstrap()
+void bootstrap().catch(showBootstrapFailure)
 
-/** Når ny service worker + bygg er tilgjengelig: aktiver og last inn på nytt (PWA ellers viser ofte gammel JS). */
+/** Service worker: ikke `immediate` ved load — unngår ekstra arbeid/reload i samme øyeblikk som oppstart. */
 const updateSW = registerSW({
-  immediate: true,
+  immediate: false,
   onNeedRefresh() {
     void updateSW(true)
   },
