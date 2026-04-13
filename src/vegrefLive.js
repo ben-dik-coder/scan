@@ -102,7 +102,24 @@ function buildCoordFallback(lat, lng) {
     kortform: '',
     distToRoadM: 0,
     nvdbId: null,
+    _vegrefMeta: { source: 'coord-fallback' },
   }
+}
+
+/**
+ * Koordinat-fallback (midlertidig nett-/NVDB-feil): da må vi ikke throttle like hardt,
+ * ellers henger UI i °N/°Ø til brukeren refresher.
+ * @param {VegrefDescribeResult | null} [res]
+ */
+function isCoordFallbackDisplay(res) {
+  if (!res || typeof res !== 'object') return false
+  const meta = /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)
+    ._vegrefMeta
+  if (meta?.source === 'coord-fallback') return true
+  const line = String(
+    /** @type {{ roadLine?: unknown }} */ (res).roadLine || '',
+  ).trim()
+  return /^Posisjon\s+[\d.]+°N/i.test(line)
 }
 
 /**
@@ -511,10 +528,15 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     minInterval = Math.max(300, minInterval - 70)
     minMove = Math.max(1, minMove - 1)
   }
+  const inCoordFallbackUi = isCoordFallbackDisplay(lastAppliedRes)
+  /** Når vi viser koordinat-fallback: tillat oftere nytt NVDB-forsøk (samme logikk ellers). */
+  const recoverMs = 280
+  const recoverMoveM = 1.2
   const throttled =
     !forceImmediate &&
-    now - lastFetchMs < minInterval &&
-    moved < minMove
+    (inCoordFallbackUi
+      ? now - lastFetchMs < recoverMs && moved < recoverMoveM
+      : now - lastFetchMs < minInterval && moved < minMove)
   if (throttled) return
 
   lastFetchMs = now
