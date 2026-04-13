@@ -1695,6 +1695,50 @@ function mapSupabaseAuthError(err) {
   return m || 'Noe gikk galt. Prøv igjen.'
 }
 
+/**
+ * `getSession()` kan henge (nett/DNS/Supabase) og blokkerer hele main.js via top-level await.
+ * Tidsavbrudd → null-session og eksisterende logikk bruker lokal sesjon.
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb
+ * @param {number} [ms]
+ */
+async function getSupabaseSessionWithTimeout(sb, ms = 8000) {
+  try {
+    return await Promise.race([
+      sb.auth.getSession(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('getSession timeout')), ms),
+      ),
+    ])
+  } catch (e) {
+    console.warn(
+      'Scanix: Supabase getSession avbrutt etter',
+      ms,
+      'ms (bruker lokal lagring om den finnes).',
+      e,
+    )
+    return { data: { session: null }, error: null }
+  }
+}
+
+/**
+ * @template T
+ * @param {Promise<T>} p
+ * @param {number} ms
+ * @param {string} label
+ * @returns {Promise<T>}
+ */
+async function awaitWithTimeout(p, ms, label) {
+  return Promise.race([
+    p,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${label} timeout (${ms}ms)`)),
+        ms,
+      ),
+    ),
+  ])
+}
+
 async function initAppStateFromStorage() {
   await restoreAuthFromIdbIfLocalEmpty()
   loadUsersFromStorage()
@@ -1704,11 +1748,15 @@ async function initAppStateFromStorage() {
     const {
       data: { session },
       error: sessErr,
-    } = await sb.auth.getSession()
+    } = await getSupabaseSessionWithTimeout(sb)
     if (sessErr) console.warn('Supabase getSession:', sessErr.message)
     if (session?.user) {
       try {
-        currentUser = await buildCurrentUserFromSession(sb, session)
+        currentUser = await awaitWithTimeout(
+          buildCurrentUserFromSession(sb, session),
+          12_000,
+          'buildCurrentUserFromSession',
+        )
         tryWriteAuthSession(currentUser)
         void backupAuthToIdb(loadUsersFromStorage(), currentUser)
         /* Disk først → rask forsida; sky-data hentes i bakgrunnen (hydrateUserAppStateFromRemote). */
