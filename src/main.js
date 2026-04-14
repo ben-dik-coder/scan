@@ -2142,6 +2142,20 @@ let homeVegrefMeterRejectSince = 0
 let homeVegrefMeterRejectCount = 0
 const HOME_VEGREF_METER_REJECT_MAX_MS = 2600
 const HOME_VEGREF_METER_REJECT_MAX_COUNT = 4
+let homeVegrefStartupToken = 0
+let homeVegrefStartupStartedAt = 0
+let homeVegrefStartupFirstGpsAt = 0
+let homeVegrefStartupFirstLookupAt = 0
+let homeVegrefStartupFirstRenderAt = 0
+let homeVegrefStartupFirstRenderSource = ''
+let homeVegrefLastStableRes = null
+let homeVegrefLastStableAt = 0
+let homeVegrefUiUncertain = false
+/** @type {Array<{ lat: number, lng: number, accuracy: number, timestamp: number, headingDeg: number | null }>} */
+let homeVegrefGpsBuffer = []
+const HOME_VEGREF_GPS_BUFFER_MAX = 5
+const HOME_VEGREF_STALE_REUSE_MS = 8 * 60 * 1000
+const HOME_VEGREF_UNCERTAIN_HOLD_MS = 15_000
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -2150,6 +2164,99 @@ function getHomeVegrefMaxDistSkipM(accuracyM) {
   const a =
     typeof accuracyM === 'number' && !Number.isNaN(accuracyM) ? accuracyM : 28
   return a > 30 ? 80 : 50
+}
+
+/**
+ * Startup-metrikk for første vegref på forsiden.
+ * Kan senere kopieres ut via eksisterende vegref-debug.
+ * @param {string} type
+ * @param {Record<string, unknown>} [extra]
+ */
+function logHomeVegrefStartupMetric(type, extra = {}) {
+  if (!homeVegrefStartupStartedAt) return
+  logVegrefMetric({
+    type: `home-startup-${type}`,
+    sinceStartMs: Math.max(0, Date.now() - homeVegrefStartupStartedAt),
+    firstGpsMs:
+      homeVegrefStartupFirstGpsAt > 0
+        ? homeVegrefStartupFirstGpsAt - homeVegrefStartupStartedAt
+        : null,
+    firstLookupMs:
+      homeVegrefStartupFirstLookupAt > 0
+        ? homeVegrefStartupFirstLookupAt - homeVegrefStartupStartedAt
+        : null,
+    firstRenderMs:
+      homeVegrefStartupFirstRenderAt > 0
+        ? homeVegrefStartupFirstRenderAt - homeVegrefStartupStartedAt
+        : null,
+    firstRenderSource: homeVegrefStartupFirstRenderSource || null,
+    ...extra,
+  })
+}
+
+function resetHomeVegrefRuntimeState() {
+  homeVegrefGpsBuffer = []
+  homeVegrefUiUncertain = false
+}
+
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number} accuracy
+ * @param {number | undefined} timestamp
+ * @param {number | null | undefined} headingDeg
+ */
+function pushHomeVegrefGpsSample(lat, lng, accuracy, timestamp, headingDeg) {
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    !Number.isFinite(accuracy)
+  ) {
+    return
+  }
+  const sample = {
+    lat,
+    lng,
+    accuracy: Math.max(0, accuracy),
+    timestamp:
+      typeof timestamp === 'number' && Number.isFinite(timestamp)
+        ? timestamp
+        : Date.now(),
+    headingDeg:
+      typeof headingDeg === 'number' && Number.isFinite(headingDeg)
+        ? headingDeg
+        : null,
+  }
+  homeVegrefGpsBuffer.push(sample)
+  if (homeVegrefGpsBuffer.length > HOME_VEGREF_GPS_BUFFER_MAX) {
+    homeVegrefGpsBuffer.splice(
+      0,
+      homeVegrefGpsBuffer.length - HOME_VEGREF_GPS_BUFFER_MAX,
+    )
+  }
+}
+
+function getBufferedHomeVegrefFix() {
+  if (!homeVegrefGpsBuffer.length) return null
+  const recent = [...homeVegrefGpsBuffer]
+    .filter((s) => Date.now() - s.timestamp < 20_000)
+    .slice(-HOME_VEGREF_GPS_BUFFER_MAX)
+  if (!recent.length) return homeVegrefGpsBuffer[homeVegrefGpsBuffer.length - 1]
+  const byLat = [...recent].sort((a, b) => a.lat - b.lat)
+  const byLng = [...recent].sort((a, b) => a.lng - b.lng)
+  const byAcc = [...recent].sort((a, b) => a.accuracy - b.accuracy)
+  const mid = Math.floor(recent.length / 2)
+  const newest = recent[recent.length - 1]
+  const headings = recent
+    .map((s) => s.headingDeg)
+    .filter((h) => typeof h === 'number' && Number.isFinite(h))
+  return {
+    lat: byLat[mid].lat,
+    lng: byLng[mid].lng,
+    accuracy: byAcc[mid].accuracy,
+    timestamp: newest.timestamp,
+    headingDeg: headings.length ? headings[headings.length - 1] : null,
+  }
 }
 /** Siste nøyaktighet brukt til dist-skip (oppdateres i feedVegrefFromGps). */
 let lastVegrefGpsAccuracyM = 28
@@ -3869,6 +3976,8 @@ function setHomeVegrefPlaceholder(msg) {
   const prim = document.getElementById('home-vegref-primary')
   const typeEl = document.getElementById('home-vegref-type')
   const comp = document.getElementById('home-vegref-compact')
+  const host = document.getElementById('home-vegref')
+  if (host) host.classList.remove('home-vegref--uncertain')
   if (prim) prim.textContent = msg
   if (typeEl) {
     typeEl.textContent = ''
@@ -3883,6 +3992,49 @@ function setHomeVegrefPlaceholder(msg) {
     if (mEl) mEl.textContent = ''
     comp.hidden = true
   }
+}
+
+function setHomeVegrefUncertainUi(active, label) {
+  const host = document.getElementById('home-vegref')
+  const typeEl = document.getElementById('home-vegref-type')
+  if (host) host.classList.toggle('home-vegref--uncertain', active)
+  if (typeEl) {
+    if (active) {
+      typeEl.textContent = label || 'Usikker posisjon'
+      typeEl.hidden = false
+    } else if (homeVegrefUiUncertain) {
+      typeEl.textContent = ''
+      typeEl.hidden = true
+    }
+  }
+  homeVegrefUiUncertain = active
+}
+
+function showHomeVegrefUncertainFallback(reason, accuracyM) {
+  const recentStable =
+    homeVegrefLastStableRes &&
+    Date.now() - homeVegrefLastStableAt <= HOME_VEGREF_UNCERTAIN_HOLD_MS
+      ? homeVegrefLastStableRes
+      : null
+  if (recentStable) {
+    applyHomeVegrefResult(recentStable)
+    setHomeVegrefUncertainUi(
+      true,
+      accuracyM != null && Number.isFinite(accuracyM)
+        ? `Usikker posisjon (ca. ±${Math.round(accuracyM)} m)`
+        : 'Usikker posisjon',
+    )
+    logVegrefMetric({
+      type: 'home-uncertain-hold',
+      reason,
+      accuracyM:
+        typeof accuracyM === 'number' && Number.isFinite(accuracyM)
+          ? Math.round(accuracyM)
+          : null,
+    })
+    return true
+  }
+  return false
 }
 
 function applyHomeVegrefResult(res) {
@@ -3904,6 +4056,18 @@ function applyHomeVegrefResult(res) {
     String(res.s).trim() !== '' &&
     String(res.d).trim() !== ''
   if (!display && !officialShort && !hasSdPair) return
+
+  if (!homeVegrefStartupFirstRenderAt) {
+    homeVegrefStartupFirstRenderAt = Date.now()
+    homeVegrefStartupFirstRenderSource = String(
+      /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
+        ?.source || 'unknown',
+    )
+    logHomeVegrefStartupMetric('first-render', {
+      source: homeVegrefStartupFirstRenderSource,
+      roadLine: display || officialShort || '',
+    })
+  }
 
   syncHomeVegrefExcelFromRes(res)
 
@@ -3932,6 +4096,7 @@ function applyHomeVegrefResult(res) {
   if (!prim) return
 
   homeVegrefHasDisplayedResult = true
+  setHomeVegrefUncertainUi(false, '')
   prim.textContent = display || officialShort
   if (typeEl) {
     const isStreet =
@@ -3998,6 +4163,14 @@ function applyHomeVegrefResult(res) {
     }
     comp.hidden = false
   }
+  const metaSource = String(
+    /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
+      ?.source || '',
+  )
+  if (metaSource !== 'coord-fallback') {
+    homeVegrefLastStableRes = res
+    homeVegrefLastStableAt = Date.now()
+  }
   maybePersistHomeVegref(res)
 }
 
@@ -4007,29 +4180,53 @@ function startHomeVegrefTracking() {
     homeVegrefWatchId = null
   }
   cancelHomeVegrefMeterTween()
+  resetHomeVegrefRuntimeState()
+  homeVegrefStartupToken += 1
+  const startupToken = homeVegrefStartupToken
+  homeVegrefStartupStartedAt = Date.now()
+  homeVegrefStartupFirstGpsAt = 0
+  homeVegrefStartupFirstLookupAt = 0
+  homeVegrefStartupFirstRenderAt = 0
+  homeVegrefStartupFirstRenderSource = ''
+  logHomeVegrefStartupMetric('tracking-start')
   void (async () => {
     const offlineAtStart =
       typeof navigator !== 'undefined' && navigator.onLine === false
     if (offlineAtStart) {
       await ensureOfflineVegrefPackage().catch(() => null)
-      try {
-        const raw = localStorage.getItem(VEGREF_PERSIST_KEY)
-        if (raw) {
-          const p = JSON.parse(raw)
-          if (
-            p &&
-            typeof p.lat === 'number' &&
-            typeof p.lng === 'number' &&
-            p.res &&
-            typeof p.res === 'object'
-          ) {
+    }
+    try {
+      const raw = localStorage.getItem(VEGREF_PERSIST_KEY)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (
+          p &&
+          typeof p.lat === 'number' &&
+          typeof p.lng === 'number' &&
+          p.res &&
+          typeof p.res === 'object'
+        ) {
+          const ageMs =
+            typeof p.savedAt === 'number' && Number.isFinite(p.savedAt)
+              ? Date.now() - p.savedAt
+              : Infinity
+          if (ageMs <= HOME_VEGREF_STALE_REUSE_MS) {
             vegrefHydrateFromPersisted(p.lat, p.lng, p.res)
+            homeVegrefLastStableRes = p.res
+            homeVegrefLastStableAt = Date.now()
             vegrefReapplyLastToDom()
+            if (!offlineAtStart) {
+              setHomeVegrefUncertainUi(true, 'Sist kjente vei - oppdaterer ...')
+            }
+            logHomeVegrefStartupMetric('persisted-hydrate', {
+              ageMs: Math.round(ageMs),
+              offline: offlineAtStart,
+            })
           }
         }
-      } catch {
-        /* ignore */
       }
+    } catch {
+      /* ignore */
     }
   })()
   if (!window.isSecureContext || !navigator.geolocation) {
@@ -4045,24 +4242,122 @@ function startHomeVegrefTracking() {
   } else {
     setHomeVegrefPlaceholder('Henter posisjon …')
   }
+
+  /* Warm start: få første vegref så raskt som mulig, uten å vente på watchPosition callback. */
+  void (async () => {
+    try {
+      const pos = await getCurrentPositionOnce({
+        enableHighAccuracy: true,
+        maximumAge: 1500,
+        timeout: 7000,
+      })
+      if (startupToken !== homeVegrefStartupToken || view !== 'home') return
+      const { latitude, longitude, accuracy, heading } = pos.coords
+      if (!homeVegrefStartupFirstGpsAt) {
+        homeVegrefStartupFirstGpsAt = Date.now()
+        logHomeVegrefStartupMetric('warm-gps', {
+          accuracyM:
+            typeof accuracy === 'number' && Number.isFinite(accuracy)
+              ? Math.round(accuracy)
+              : null,
+        })
+      }
+      scheduleHomeWeatherFromPosition(latitude, longitude)
+      pushHomeVegrefGpsSample(
+        latitude,
+        longitude,
+        accuracy,
+        pos.timestamp,
+        heading,
+      )
+      const buffered = getBufferedHomeVegrefFix()
+      const refLat = buffered?.lat ?? latitude
+      const refLng = buffered?.lng ?? longitude
+      const refAccuracy = buffered?.accuracy ?? accuracy
+      const refHeading =
+        buffered?.headingDeg != null ? buffered.headingDeg : heading
+      if (accuracy > GPS_REJECT_M) {
+        logHomeVegrefStartupMetric('warm-gps-rejected', {
+          accuracyM: Math.round(accuracy),
+        })
+        void showHomeVegrefUncertainFallback('warm-gps-weak', accuracy)
+        return
+      }
+      if (!homeVegrefStartupFirstLookupAt) {
+        homeVegrefStartupFirstLookupAt = Date.now()
+        logHomeVegrefStartupMetric('first-lookup', {
+          source: 'warm-gps',
+          accuracyM: Math.round(refAccuracy),
+        })
+      }
+      pushTracePoint(latitude, longitude, pos.timestamp, accuracy)
+      const hdg =
+        refHeading != null && Number.isFinite(refHeading) ? refHeading : null
+      scheduleHomeVegrefLookup(
+        refLat,
+        refLng,
+        true,
+        refAccuracy,
+        pos.timestamp,
+        hdg,
+      )
+    } catch (err) {
+      if (startupToken !== homeVegrefStartupToken) return
+      logHomeVegrefStartupMetric('warm-gps-error', {
+        message:
+          err && typeof err === 'object' && 'message' in err
+            ? String(/** @type {{ message?: unknown }} */ (err).message).slice(
+                0,
+                120,
+              )
+            : String(err).slice(0, 120),
+      })
+    }
+  })()
+
   homeVegrefWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       if (view !== 'home') return
       const { latitude, longitude, accuracy, heading } = pos.coords
+      if (!homeVegrefStartupFirstGpsAt) {
+        homeVegrefStartupFirstGpsAt = Date.now()
+        logHomeVegrefStartupMetric('watch-gps', {
+          accuracyM:
+            typeof accuracy === 'number' && Number.isFinite(accuracy)
+              ? Math.round(accuracy)
+              : null,
+        })
+      }
       scheduleHomeWeatherFromPosition(latitude, longitude)
-      if (accuracy > GPS_REJECT_M) return
+      pushHomeVegrefGpsSample(
+        latitude,
+        longitude,
+        accuracy,
+        pos.timestamp,
+        heading,
+      )
+      const buffered = getBufferedHomeVegrefFix()
+      const refLat = buffered?.lat ?? latitude
+      const refLng = buffered?.lng ?? longitude
+      const refAccuracy = buffered?.accuracy ?? accuracy
+      const refHeading =
+        buffered?.headingDeg != null ? buffered.headingDeg : heading
+      if (accuracy > GPS_REJECT_M) {
+        if (showHomeVegrefUncertainFallback('watch-weak', accuracy)) return
+        return
+      }
       pushTracePoint(latitude, longitude, pos.timestamp, accuracy)
       const hdg =
-        heading != null && Number.isFinite(heading) ? heading : null
+        refHeading != null && Number.isFinite(refHeading) ? refHeading : null
       /* Uten nett: ikke vent på OSRM — gå rett til NVDB-cache / koordinat-fallback i pipelinen. */
       const offline =
         typeof navigator !== 'undefined' && navigator.onLine === false
       if (offline) {
         scheduleHomeVegrefLookup(
-          latitude,
-          longitude,
+          refLat,
+          refLng,
           false,
-          accuracy,
+          refAccuracy,
           pos.timestamp,
           hdg,
         )
@@ -4070,11 +4365,18 @@ function startHomeVegrefTracking() {
       }
       // Kritisk: oppdater vegref umiddelbart på rå GPS.
       // Hvis OSRM er treg/timeout skal ikke meteren stå og vente.
+      if (!homeVegrefStartupFirstLookupAt) {
+        homeVegrefStartupFirstLookupAt = Date.now()
+        logHomeVegrefStartupMetric('first-lookup', {
+          source: 'watch',
+          accuracyM: Math.round(refAccuracy),
+        })
+      }
       scheduleHomeVegrefLookup(
-        latitude,
-        longitude,
+        refLat,
+        refLng,
         false,
-        accuracy,
+        refAccuracy,
         pos.timestamp,
         hdg,
       )
@@ -5667,6 +5969,9 @@ function buildVegrefDebugReportText() {
     const t = String(r?.type || '')
     return t.startsWith('home-meter') || t === 'home-meter-override'
   })
+  const startupRows = rows.filter((r) =>
+    String(r?.type || '').startsWith('home-startup-'),
+  )
   const byReason = {}
   for (const r of meterRows) {
     const key = `${String(r.type || 'unknown')}:${String(r.reason || 'n/a')}`
@@ -5680,7 +5985,9 @@ function buildVegrefDebugReportText() {
       offlineVegrefStatus: offlineVegrefSyncStatus,
       totalMetrics: rows.length,
       meterMetrics: meterRows.length,
+      startupMetrics: startupRows.length,
       byReason,
+      lastStartupEvents: startupRows.slice(-30),
       lastMeterEvents: meterRows.slice(-30),
     },
     null,

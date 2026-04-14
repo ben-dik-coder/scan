@@ -1537,6 +1537,18 @@ form.auth-form[hidden] {
   box-sizing: border-box;
 }
 
+.home-vegref--uncertain .home-vegref__primary {
+  opacity: 0.92;
+}
+
+.home-vegref--uncertain .home-vegref__type {
+  color: rgba(255, 213, 122, 0.92);
+}
+
+.home-vegref--uncertain .home-vegref__meter {
+  opacity: 0.9;
+}
+
 .home-vegref__primary {
   margin: 0;
   font-size: clamp(1.85rem, 5.8vw, 2.1rem);

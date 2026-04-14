@@ -355,6 +355,8 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     !Number.isNaN(opts.userHeadingDeg)
       ? opts.userHeadingDeg
       : null
+  const lowSpeedUrbanHeading =
+    userHeadingDeg != null && speed >= 1.2 && speed < 3.5 && accuracyM <= 24
 
   const scored = []
   for (const seg of objekter) {
@@ -374,11 +376,12 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       }
     }
     const roadH = segmentRoadHeadingDeg(seg, lat, lng)
-    if (userHeadingDeg != null && roadH != null && speed >= 3.5) {
+    if (userHeadingDeg != null && roadH != null && (speed >= 3.5 || lowSpeedUrbanHeading)) {
       const hd = headingDiffDeg(userHeadingDeg, roadH)
-      score += hd * 0.5
-      if (hd < 25 && d.distToRoadM < 20) score -= 15
-      if (hd < 10) score += dist * 0.5
+      const headingWeight = speed >= 3.5 ? 0.5 : 0.22
+      score += hd * headingWeight
+      if (hd < 25 && d.distToRoadM < 20) score -= speed >= 3.5 ? 15 : 9
+      if (hd < 10) score += dist * (speed >= 3.5 ? 0.5 : 0.18)
     }
     /* Kommunalveg med gatenavn: lett bonus — ikke overstyr nærhet (unngå «feil gate»). */
     if (segmentVegkategori(seg) === 'K' && segmentAdresseNavn(seg)) {
@@ -421,8 +424,12 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
   const baseMargin = Math.min(40, Math.max(9, accuracyM * 0.42))
   const accBoost =
     accuracyM >= 24 ? Math.min(18, (accuracyM - 22) * 0.55) : 0
+  const denseUrbanStickiness =
+    accuracyM <= 32 && speed < 14 ? (speed < 4 ? 12 : 7) : 0
   const margin =
-    (speed < 2 ? Math.max(baseMargin, 28) : baseMargin) + accBoost
+    (speed < 2 ? Math.max(baseMargin, 28) : baseMargin) +
+    accBoost +
+    denseUrbanStickiness
   if ((accuracyM >= 18 || speed < 2) && prevRow.score - best.score < margin) {
     return {
       seg: prevRow.seg,
@@ -573,10 +580,15 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
     qLng = sh.lng
   }
 
+  const denseUrbanMode =
+    accM <= 32 &&
+    (speedMps < 14 || opts.prevNvdbId != null)
   const speedPadFactor =
-    speedMps > 28 ? 1.08 : speedMps > 15 ? 1.05 : 1
-  const accPadFactor = accM > 55 ? 1.06 : accM > 42 ? 1.03 : 1
-  const padLat = 0.0018 * speedPadFactor * accPadFactor
+    speedMps > 28 ? 1.08 : speedMps > 15 ? 1.05 : denseUrbanMode ? 0.82 : 1
+  const accPadFactor =
+    accM > 55 ? 1.06 : accM > 42 ? 1.03 : denseUrbanMode ? 0.9 : 1
+  const basePadLat = denseUrbanMode ? 0.00135 : 0.0018
+  const padLat = basePadLat * speedPadFactor * accPadFactor
   const cos = Math.cos((qLat * Math.PI) / 180) || 1
   const padLng = padLat / cos
   const minLat = qLat - padLat
@@ -588,7 +600,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   const url = new URL(NVDB_SEGMENTERT)
   url.searchParams.set('kartutsnitt', kartutsnitt)
   url.searchParams.set('srid', '4326')
-  url.searchParams.set('antall', '100')
+  url.searchParams.set('antall', denseUrbanMode ? '160' : '100')
   url.searchParams.set('inkluderAntall', 'false')
 
   const r = await fetch(url.toString(), {
@@ -624,8 +636,9 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
       : ''
   const wantExtraPage =
     nesteHref &&
-    speedMps > 12 &&
-    (allObjs.length >= 92 || speedMps > 22)
+    (allObjs.length >= (denseUrbanMode ? 120 : 92) ||
+      speedMps > 22 ||
+      denseUrbanMode)
 
   if (wantExtraPage && !signal?.aborted) {
     try {

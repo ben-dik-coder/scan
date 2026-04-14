@@ -493,7 +493,21 @@ function mergePosisjonWithSegmentDisplay(res, segRes) {
     m: isDashMeter(res.m) && !isDashMeter(segRes.m) ? segRes.m : res.m,
     s: isDashMeter(res.s) && !isDashMeter(segRes.s) ? segRes.s : res.s,
     d: isDashMeter(res.d) && !isDashMeter(segRes.d) ? segRes.d : res.d,
+    /* Bruk segment-id videre, så pickBestSegment kan holde oss på samme vei. */
+    nvdbId: segRes.nvdbId ?? res.nvdbId,
   }
+}
+
+/**
+ * Segment-oppslag bruker stabile segment-id/kortform, mens posisjon-API lager egne `vls:`/`vs:`-nøkler.
+ * Når vi har en segment-lås, bør videre oppslag prioritere segmentert resolver.
+ * @param {string | number | null | undefined} nvdbId
+ */
+function isSegmentStableNvdbId(nvdbId) {
+  if (nvdbId == null) return false
+  const id = String(nvdbId).trim()
+  if (!id) return false
+  return !/^v(?:ls|s):/i.test(id)
 }
 
 /**
@@ -828,9 +842,27 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     try {
       const fetchOpts = { signal, accuracyM }
       let res = null
+      const currentShownId =
+        lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
+          ? /** @type {{ nvdbId?: string | number | null }} */ (lastAppliedRes).nvdbId
+          : null
+      const stablePrevNvdbId = isSegmentStableNvdbId(currentShownId)
+        ? currentShownId
+        : null
+      const preferSegmentFirst =
+        online && h.fetchRoadReferenceNear && stablePrevNvdbId != null
 
       if (preferOffline && h.fetchRoadReferenceNearOffline) {
         res = await h.fetchRoadReferenceNearOffline(nvdbLat, nvdbLng, fetchOpts)
+      }
+
+      if (!res && preferSegmentFirst) {
+        res = await h.fetchRoadReferenceNear(nvdbLat, nvdbLng, {
+          ...fetchOpts,
+          prevNvdbId: stablePrevNvdbId,
+          userHeadingDeg: effHeadingDeg,
+          speed: speedMps,
+        })
       }
 
       if (!res && online && h.fetchRoadPositionDirect) {
@@ -869,6 +901,7 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
               m: segFill.m,
               s: isDashMeter(res.s) && !isDashMeter(segFill.s) ? segFill.s : res.s,
               d: isDashMeter(res.d) && !isDashMeter(segFill.d) ? segFill.d : res.d,
+              nvdbId: segFill.nvdbId ?? res.nvdbId,
             }
           }
         } catch {
@@ -877,13 +910,9 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       }
 
       if (!res && online) {
-        const prevId =
-          lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
-            ? /** @type {{ nvdbId?: string | number | null }} */ (lastAppliedRes).nvdbId
-            : null
         res = await h.fetchRoadReferenceNear(nvdbLat, nvdbLng, {
           ...fetchOpts,
-          prevNvdbId: prevId ?? null,
+          prevNvdbId: stablePrevNvdbId,
           userHeadingDeg: effHeadingDeg,
           speed: speedMps,
         })
