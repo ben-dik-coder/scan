@@ -350,6 +350,15 @@ html.app-launch-active body {
     color: var(--label-primary) !important;
     text-shadow: none !important;
   }
+
+  .home-dash-card {
+    border-color: var(--border) !important;
+    box-shadow: var(--shadow-surface) !important;
+  }
+
+  .home-dash-card--accent {
+    box-shadow: var(--shadow-surface) !important;
+  }
 }
 
 .surface--home {
@@ -481,16 +490,11 @@ html.app-launch-active body {
     -webkit-backdrop-filter: none;
   }
 
-  .home-app-shortcuts {
-    background: var(--surface-solid);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  .home-app-icon-btn__icon-wrap::before {
-    background: var(--surface-solid);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  .home-dash-card {
+    background: var(--surface-solid) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: var(--shadow-surface) !important;
   }
 
   .incoming-share-save-dialog {
@@ -1583,141 +1587,136 @@ form.auth-form[hidden] {
   }
 }
 
-/* Snarveier i glasskort mot bakgrunnen */
-.home-app-shortcuts {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: center;
-  gap: clamp(1.35rem, 5vw, 2.25rem);
-  row-gap: clamp(1.35rem, 4.5vw, 2rem);
+/* Forside: kort-dashboard (fintech / SaaS) */
+.home-dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
   width: 100%;
-  max-width: min(42rem, 100%);
-  margin: 1.25rem auto 0;
-  padding: 1.15rem 1rem 1.3rem;
+  max-width: 26.5rem;
+  margin: 1.35rem auto 0;
+  padding: 0 max(0.5rem, env(safe-area-inset-left, 0px))
+    0 max(0.5rem, env(safe-area-inset-right, 0px));
   box-sizing: border-box;
-  background: var(--surface-glass);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow:
-    var(--shadow-glass-edge),
-    var(--shadow-surface),
-    0 0 40px rgba(77, 163, 255, 0.06);
 }
 
-.home-app-icon-btn {
-  --home-app-icon-slot: 3.65rem;
+.home-dashboard > .home-dash-card--hero {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 380px) {
+  .home-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .home-dashboard > .home-dash-card--hero {
+    grid-column: 1;
+  }
+}
+
+.home-dash-card {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.9rem;
   margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
+  padding: 1.05rem 1.1rem;
+  min-height: 4.35rem;
+  text-align: left;
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  background: rgba(46, 46, 52, 0.42);
+  backdrop-filter: blur(22px) saturate(1.55);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  box-shadow:
+    var(--shadow-glass-edge),
+    0 4px 20px rgba(0, 0, 0, 0.22);
   cursor: pointer;
   font: inherit;
-  color: var(--label-secondary);
+  color: inherit;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   transition:
-    transform 0.18s var(--ease-apple),
-    opacity 0.18s var(--ease-apple);
+    transform 0.2s var(--ease-apple),
+    border-color 0.2s var(--ease-apple),
+    box-shadow 0.2s var(--ease-apple),
+    background 0.2s var(--ease-apple);
 }
 
-.home-app-icon-btn:active {
-  transform: scale(0.97);
-  opacity: 0.92;
+.home-dash-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(56, 56, 62, 0.55);
 }
 
-.home-app-icon-btn:focus-visible {
+.home-dash-card:active {
+  transform: scale(0.98);
+}
+
+.home-dash-card:focus-visible {
   outline: 2px solid rgba(77, 163, 255, 0.55);
-  outline-offset: 4px;
-  border-radius: var(--radius-sm);
+  outline-offset: 3px;
 }
 
-.home-app-icon-btn__icon-wrap {
-  position: relative;
+/* Primær handling: diskret blå glød */
+.home-dash-card--accent {
+  border-color: rgba(77, 163, 255, 0.28);
+  background: rgba(40, 52, 72, 0.45);
+  box-shadow:
+    var(--shadow-glass-edge),
+    0 4px 24px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(77, 163, 255, 0.12),
+    0 0 48px rgba(77, 163, 255, 0.08);
+}
+
+.home-dash-card--accent:hover {
+  border-color: rgba(77, 163, 255, 0.4);
+  background: rgba(48, 62, 88, 0.52);
+}
+
+.home-dash-card--hero {
+  padding: 1.2rem 1.2rem 1.25rem;
+  min-height: 5rem;
+  border-radius: 20px;
+}
+
+.home-dash-card__glyph {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--home-app-icon-slot);
-  height: var(--home-app-icon-slot);
-  flex-shrink: 0;
-  line-height: 0;
-  margin-bottom: 0.2rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.42);
 }
 
-/* Glass-plate per ikon */
-.home-app-icon-btn__icon-wrap::before {
-  content: '';
-  position: absolute;
-  top: -0.38rem;
-  right: -0.38rem;
-  left: -0.38rem;
-  bottom: -0.16rem;
-  z-index: 0;
-  border-radius: var(--radius-sm);
-  pointer-events: none;
-  background: rgba(56, 56, 62, 0.45);
-  backdrop-filter: blur(16px) saturate(1.6);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6);
-  border: 1px solid var(--border-soft);
-  box-shadow:
-    var(--shadow-glass-edge),
-    0 2px 12px rgba(0, 0, 0, 0.25);
-  transition:
-    opacity 0.18s var(--ease-apple),
-    transform 0.18s var(--ease-apple),
-    border-color 0.18s var(--ease-apple);
+.home-dash-card--accent .home-dash-card__glyph {
+  background: rgba(77, 163, 255, 0.14);
+  color: rgba(200, 220, 255, 0.75);
 }
 
-.home-app-icon-btn:active .home-app-icon-btn__icon-wrap::before {
-  opacity: 0.88;
+.home-dash-card__content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
 }
 
-.home-app-icon-btn__icon {
-  position: relative;
-  z-index: 1;
-  display: block;
-  width: 100%;
-  height: 100%;
-  max-width: min(var(--home-app-icon-slot), 22vw);
-  max-height: min(var(--home-app-icon-slot), 22vw);
-  object-fit: contain;
-  object-position: center center;
-  pointer-events: none;
-  filter: none;
-}
-
-.home-app-icon-btn__svg {
-  position: relative;
-  z-index: 1;
-  display: block;
-  width: 72%;
-  height: 72%;
-  color: var(--label-primary);
-  pointer-events: none;
-  filter: none;
-}
-
-.home-app-icon-btn__label {
-  position: relative;
-  z-index: 2;
-  margin: 0;
-  padding: 0;
-  max-width: 7.5rem;
-  text-align: center;
-  font-size: clamp(0.68rem, 2vw, 0.78rem);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  text-transform: none;
-  color: var(--label-tertiary);
+.home-dash-card__title {
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.25;
+  color: var(--label-primary);
+}
+
+.home-dash-card__hint {
+  font-size: 0.76rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--label-tertiary);
 }
 
 .home-action-split {

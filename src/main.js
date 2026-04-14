@@ -5035,83 +5035,71 @@ function renderHomeHtml() {
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
-    <div class="home-app-shortcuts">
-      <button type="button" class="home-app-icon-btn" id="btn-home-registrering">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="8" width="36" height="32" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
-            <path d="M6 16h36" stroke="currentColor" stroke-width="2"/>
-            <circle cx="24" cy="30" r="7" stroke="rgba(96,200,150,0.9)" stroke-width="2.4" fill="none"/>
-            <path d="M24 27v6M21 30h6" stroke="rgba(96,200,150,0.9)" stroke-width="2.2" stroke-linecap="round"/>
-          </svg>
+    <nav class="home-dashboard" aria-label="Hurtigvalg">
+      <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16"/><path d="M12 13v5M9.5 15.5h5"/></svg>
         </span>
-        <span class="home-app-icon-btn__label">Registrering</span>
-      </button>
-      <button type="button" class="home-app-icon-btn" id="btn-home-kamera">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 16a4 4 0 014-4h6l3-4h14l3 4h6a4 4 0 014 4v20a4 4 0 01-4 4H8a4 4 0 01-4-4V16z" stroke="currentColor" stroke-width="2.4" fill="none"/>
-            <circle cx="24" cy="26" r="8" stroke="rgba(130,180,255,0.9)" stroke-width="2.4" fill="none"/>
-            <circle cx="24" cy="26" r="3" fill="rgba(130,180,255,0.5)"/>
-          </svg>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">Ny registrering</span>
+          <span class="home-dash-card__hint">Start økt fra din posisjon</span>
         </span>
-        <span class="home-app-icon-btn__label">Kamera</span>
       </button>
-      <button type="button" class="home-app-icon-btn" id="btn-home-kontraktai">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M14 6h20a4 4 0 014 4v28a4 4 0 01-4 4H14a4 4 0 01-4-4V10a4 4 0 014-4z" stroke="currentColor" stroke-width="2.4" fill="none"/>
-            <path d="M16 16h16M16 22h12M16 28h8" stroke="rgba(200,200,220,0.7)" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="34" cy="36" r="7" fill="rgba(80,60,140,0.85)" stroke="rgba(160,140,240,0.8)" stroke-width="1.8"/>
-            <path d="M32 36l1.5 1.5L36 34" stroke="rgba(200,190,255,0.95)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+      <button type="button" class="home-dash-card" id="btn-home-kamera">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 012-2h2l1.5-2h5L14 6h2a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V8z"/><circle cx="12" cy="13" r="3.5"/></svg>
         </span>
-        <span class="home-app-icon-btn__label">KontraktAi</span>
-      </button>
-      <button type="button" class="home-app-icon-btn" id="btn-home-album">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
-            <path d="M6 32l10-8 6 5 8-6 12 9" stroke="rgba(96,200,150,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="16" cy="20" r="3.5" fill="rgba(255,210,90,0.8)"/>
-          </svg>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">Kamera</span>
+          <span class="home-dash-card__hint">Bilder til økten</span>
         </span>
-        <span class="home-app-icon-btn__label">Album</span>
       </button>
-      <button type="button" class="home-app-icon-btn" id="btn-home-delsky">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 36a9 9 0 01-.5-18A12 12 0 0136 18a9 9 0 012 17.8" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-            <path d="M20 30v8M24 28v10M28 30v8" stroke="rgba(130,180,255,0.85)" stroke-width="2.2" stroke-linecap="round"/>
-          </svg>
+      <button type="button" class="home-dash-card" id="btn-home-kontraktai">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
         </span>
-        <span class="home-app-icon-btn__label">DelSky</span>
-      </button>
-      <button type="button" class="home-app-icon-btn" id="btn-home-excel">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="6" width="36" height="36" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
-            <path d="M6 18h36M6 30h36" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M18 6v36M30 6v36" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M21 20l6 8M27 20l-6 8" stroke="rgba(80,180,120,0.9)" stroke-width="2.4" stroke-linecap="round"/>
-          </svg>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">Kontrakter</span>
+          <span class="home-dash-card__hint">AI mot kontraktskrav</span>
         </span>
-        <span class="home-app-icon-btn__label">Excel</span>
       </button>
-      <button type="button" class="home-app-icon-btn" id="btn-home-strekning">
-        <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
-          <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 40 C14 28, 20 16, 24 12 C28 16, 34 28, 40 40" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="8" cy="40" r="3" fill="rgba(255,140,60,0.85)"/>
-            <circle cx="40" cy="40" r="3" fill="rgba(255,140,60,0.85)"/>
-            <circle cx="24" cy="12" r="3" fill="rgba(255,140,60,0.85)"/>
-            <path d="M14 34h20" stroke="rgba(255,140,60,0.7)" stroke-width="1.8" stroke-dasharray="3 2" stroke-linecap="round"/>
-            <text x="24" y="38" text-anchor="middle" font-size="7" font-weight="700" fill="rgba(255,140,60,0.95)">SD</text>
-          </svg>
+      <button type="button" class="home-dash-card" id="btn-home-album">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M3 17l5-4 3 2.5 4-3 6 4.5"/></svg>
         </span>
-        <span class="home-app-icon-btn__label">Strekning</span>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">Album</span>
+          <span class="home-dash-card__hint">Bilder og filer</span>
+        </span>
       </button>
-    </div>
+      <button type="button" class="home-dash-card" id="btn-home-delsky">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h11a4 4 0 10-.5-8 5.5 5.5 0 10-10.9 1.4A4 4 0 007 18z"/><path d="M12 15v4M10 17h4"/></svg>
+        </span>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">DelSky</span>
+          <span class="home-dash-card__hint">Del til sky</span>
+        </span>
+      </button>
+      <button type="button" class="home-dash-card" id="btn-home-excel">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        </span>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">Excel</span>
+          <span class="home-dash-card__hint">Eksporter regneark</span>
+        </span>
+      </button>
+      <button type="button" class="home-dash-card" id="btn-home-strekning">
+        <span class="home-dash-card__glyph" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18c3-6 6-10 8-12s4 3 8 12"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="20" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">Strekning</span>
+          <span class="home-dash-card__hint">Segment og avstand</span>
+        </span>
+      </button>
+    </nav>
     <div class="home-main">
     <div class="home-bilde-stack">
       <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde"></div>
