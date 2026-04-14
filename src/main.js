@@ -5036,7 +5036,7 @@ function renderHomeHtml() {
       </div>
     </div>
     <div class="home-app-shortcuts">
-      <button type="button" class="home-app-icon-btn home-app-icon-btn--reg-pulse" id="btn-home-registrering">
+      <button type="button" class="home-app-icon-btn" id="btn-home-registrering">
         <span class="home-app-icon-btn__icon-wrap" aria-hidden="true">
           <svg class="home-app-icon-btn__svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="6" y="8" width="36" height="32" rx="4" stroke="currentColor" stroke-width="2.4" fill="none"/>
