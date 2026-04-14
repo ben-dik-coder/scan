@@ -7198,6 +7198,7 @@ function renderSessionHtml() {
     : ''
   return `<div class="app-stack app-stack--session">
     <header class="session-top">
+      ${previewBanner}
       <div class="session-top__bar">
         <button type="button" class="btn btn-text btn-back-session" id="btn-back-menu">← Meny</button>
       </div>
@@ -7228,7 +7229,6 @@ function renderSessionHtml() {
         ${roadBlock ? `<div class="session-top__road">${roadBlock}</div>` : ''}
       </div>
     </header>
-    ${previewBanner}
 
     <dialog id="share-session-dialog" class="share-session-dialog" aria-labelledby="share-session-heading">
       <div class="share-session-dialog__inner">
@@ -7295,67 +7295,19 @@ function renderSessionHtml() {
       </div>
     </dialog>
 
-    <div class="session-stage">
-      <div class="session-map-stage">
-        <section class="map-section surface map-section--hero" aria-label="Kart">
-          <div class="section-head">
-            <h2 class="section-head__title">Kart</h2>
-            <span class="section-head__meta" id="map-meta"></span>
-          </div>
-          <div id="session-map-slot-embedded" class="session-map-slot-embedded">
-          <div class="map-frame" id="session-map-frame">
-            <div id="map" class="map"></div>
-            <p id="gps-status" class="gps-status map-gps-chip" role="status"></p>
-            <button
-              type="button"
-              id="btn-map-fullscreen"
-              class="map-fullscreen-btn"
-              aria-label="Fullskjerm kart"
-              title="Fullskjerm"
-              aria-pressed="false"
-            >
-              <svg class="map-fullscreen-btn__icon map-fullscreen-btn__icon--enter" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-              </svg>
-              <svg class="map-fullscreen-btn__icon map-fullscreen-btn__icon--exit" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" hidden>
-                <path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
-              </svg>
-            </button>
-            <button
-              type="button"
-              id="btn-map-locate"
-              class="map-locate-btn"
-              aria-label="Gå til min posisjon"
-              title="Min posisjon"
-            >
-              <span class="map-locate-btn__icon" aria-hidden="true">⌂</span>
-            </button>
-          </div>
-          </div>
-          <details class="map-section__more">
-            <summary class="map-section__more-summary">Vis mer · kart og lenker</summary>
-            <div class="map-section__more-inner">
-              <div class="map-section__toolbar" role="tablist" aria-label="Kart og deling">
-                <button type="button" class="map-section__tab map-section__tab--active" role="tab" id="tab-map-fit" aria-selected="true" aria-controls="map-panel-fit">Vis alle punkter</button>
-                <button type="button" class="map-section__tab" role="tab" id="tab-map-share" aria-selected="false" aria-controls="map-panel-share">Del rute som lenke</button>
-              </div>
-              <div id="map-panel-fit" class="map-section__panel" role="tabpanel" aria-labelledby="tab-map-fit">
-                <button type="button" id="btn-fit" class="btn btn-secondary btn-fit">Tilpass kartet til alle punkter</button>
-              </div>
-              <div id="map-panel-share" class="map-section__panel" role="tabpanel" aria-labelledby="tab-map-share" hidden>
-                <p class="map-share-lead">Lenkene åpner i Google Maps med stopp i rekkefølge. På mobil er det maks fem stopp per lenke; ved flere punkter får du flere lenker etter hverandre.</p>
-                <p id="map-share-empty" class="map-share-empty" hidden>Ingen posisjon ennå – registrer minst én gang med god dekning.</p>
-                <p id="map-share-segments" class="map-share-segments" hidden></p>
-                <div class="map-share-row map-share-row--textarea">
-                  <textarea readonly class="map-share-textarea" id="map-share-urls" rows="4" autocomplete="off" spellcheck="false" aria-label="Google Maps-lenker"></textarea>
-                  <button type="button" class="btn btn-secondary" id="btn-copy-map-link">Kopier</button>
-                </div>
-                <p id="map-share-copy-status" class="map-share-copy-status" role="status" aria-live="polite"></p>
-                <button type="button" class="btn btn-secondary btn-share-map" id="btn-share-map-link">Del lenker …</button>
-              </div>
-            </div>
-          </details>
-        </section>
+    <div class="session-map-root" id="session-map-root" aria-hidden="false">
+      <div class="map-frame session-map-frame" id="session-map-frame">
+        <div id="map" class="map"></div>
+        <p id="gps-status" class="gps-status map-gps-chip" role="status"></p>
+        <button
+          type="button"
+          id="btn-map-locate"
+          class="map-locate-btn"
+          aria-label="Gå til min posisjon"
+          title="Min posisjon"
+        >
+          <span class="map-locate-btn__icon" aria-hidden="true">⌂</span>
+        </button>
       </div>
     </div>
 
@@ -7383,12 +7335,43 @@ function renderSessionHtml() {
           </span>
         </button>
         <div class="session-sheet-tier session-sheet-tier--secondary">
-          <button type="button" id="btn-minus" class="btn btn-minus btn-ghost-action" title="Angre siste" aria-label="Angre siste">Angre</button>
-          <button type="button" id="btn-reset" class="btn btn-reset btn-ghost-action">Fjern alle</button>
+          <button type="button" id="btn-minus" class="btn btn-minus btn-ghost-action" title="Angre siste" aria-label="Angre siste">Angre (−)</button>
+          <button type="button" id="btn-reset" class="btn btn-reset btn-ghost-action">Nullstill</button>
         </div>
         <p class="session-sheet-tier session-sheet-tier--expanded-hint">Notater og nedlasting finner du under kartet.</p>
       </div>
     </div>
+
+    <div class="session-scroll-stack">
+      <section class="map-section surface session-map-meta" aria-label="Kart og lenker">
+        <div class="section-head">
+          <h2 class="section-head__title">Kart</h2>
+          <span class="section-head__meta" id="map-meta"></span>
+        </div>
+        <details class="map-section__more">
+          <summary class="map-section__more-summary">Vis mer · kart og lenker</summary>
+          <div class="map-section__more-inner">
+            <div class="map-section__toolbar" role="tablist" aria-label="Kart og deling">
+              <button type="button" class="map-section__tab map-section__tab--active" role="tab" id="tab-map-fit" aria-selected="true" aria-controls="map-panel-fit">Vis alle punkter</button>
+              <button type="button" class="map-section__tab" role="tab" id="tab-map-share" aria-selected="false" aria-controls="map-panel-share">Del rute som lenke</button>
+            </div>
+            <div id="map-panel-fit" class="map-section__panel" role="tabpanel" aria-labelledby="tab-map-fit">
+              <button type="button" id="btn-fit" class="btn btn-secondary btn-fit">Tilpass kartet til alle punkter</button>
+            </div>
+            <div id="map-panel-share" class="map-section__panel" role="tabpanel" aria-labelledby="tab-map-share" hidden>
+              <p class="map-share-lead">Lenkene åpner i Google Maps med stopp i rekkefølge. På mobil er det maks fem stopp per lenke; ved flere punkter får du flere lenker etter hverandre.</p>
+              <p id="map-share-empty" class="map-share-empty" hidden>Ingen posisjon ennå – registrer minst én gang med god dekning.</p>
+              <p id="map-share-segments" class="map-share-segments" hidden></p>
+              <div class="map-share-row map-share-row--textarea">
+                <textarea readonly class="map-share-textarea" id="map-share-urls" rows="4" autocomplete="off" spellcheck="false" aria-label="Google Maps-lenker"></textarea>
+                <button type="button" class="btn btn-secondary" id="btn-copy-map-link">Kopier</button>
+              </div>
+              <p id="map-share-copy-status" class="map-share-copy-status" role="status" aria-live="polite"></p>
+              <button type="button" class="btn btn-secondary btn-share-map" id="btn-share-map-link">Del lenker …</button>
+            </div>
+          </div>
+        </details>
+      </section>
 
     <section
       class="session-photos-strip surface"
@@ -7418,6 +7401,8 @@ function renderSessionHtml() {
         </div>
       </details>
     </section>
+    </div>
+
     <div id="session-toast" class="session-toast" role="status" aria-live="polite" hidden></div>
 
     <div id="session-action-wheel-dock" class="session-action-wheel-dock">
@@ -7459,29 +7444,6 @@ function renderSessionHtml() {
         </div>
       </div>
     </dialog>
-
-    <div
-      id="session-map-fullscreen-layer"
-      class="session-map-fullscreen-layer"
-      hidden
-      aria-hidden="true"
-    >
-      <header class="session-map-fullscreen-layer__bar">
-        <button
-          type="button"
-          id="btn-session-map-fullscreen-close"
-          class="session-map-fullscreen-layer__close"
-        >
-          ← Tilbake
-        </button>
-        <span class="session-map-fullscreen-layer__title">Kart</span>
-      </header>
-      <div
-        id="session-map-fullscreen-slot"
-        class="session-map-fullscreen-layer__map"
-        role="presentation"
-      ></div>
-    </div>
   </div>`
 }
 
@@ -11872,33 +11834,6 @@ function bindSessionListeners() {
     { signal },
   )
 
-  document.getElementById('btn-map-fullscreen')?.addEventListener(
-    'click',
-    () => {
-      toggleSessionMapFullscreen()
-    },
-    { signal },
-  )
-
-  document.getElementById('btn-session-map-fullscreen-close')?.addEventListener(
-    'click',
-    () => {
-      exitSessionMapFullscreen()
-    },
-    { signal },
-  )
-
-  document.addEventListener(
-    'keydown',
-    (ev) => {
-      if (ev.key !== 'Escape') return
-      if (!isSessionMapFullscreenActive()) return
-      exitSessionMapFullscreen()
-      document.getElementById('btn-map-fullscreen')?.focus()
-    },
-    { signal },
-  )
-
   document.getElementById('btn-export')?.addEventListener(
     'click',
     async () => {
@@ -12229,64 +12164,9 @@ window.addEventListener('beforeunload', () => {
   stopLocationWatch()
 })
 
-function isSessionMapFullscreenActive() {
-  const layer = document.getElementById('session-map-fullscreen-layer')
-  return Boolean(layer && !layer.hidden)
-}
-
-function syncSessionMapFullscreenUi() {
-  const btn = document.getElementById('btn-map-fullscreen')
-  const active = isSessionMapFullscreenActive()
-  if (btn) {
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false')
-    btn.setAttribute(
-      'aria-label',
-      active ? 'Lukk fullskjerm kart' : 'Åpne kart i full skjerm',
-    )
-    btn.title = active ? 'Lukk fullskjerm' : 'Full skjerm'
-    btn.classList.toggle('map-fullscreen-btn--active', active)
-    const enterIc = btn.querySelector('.map-fullscreen-btn__icon--enter')
-    const exitIc = btn.querySelector('.map-fullscreen-btn__icon--exit')
-    if (enterIc instanceof SVGElement) enterIc.toggleAttribute('hidden', active)
-    if (exitIc instanceof SVGElement) exitIc.toggleAttribute('hidden', !active)
-  }
-  window.setTimeout(() => map?.invalidateSize(), 50)
-  window.setTimeout(() => map?.invalidateSize(), 320)
-}
-
+/** Tidligere: flyttet kart til eget fullskjermslag. Kart er nå alltid fullskjerm under økt. */
 function exitSessionMapFullscreen() {
-  const frame = document.getElementById('session-map-frame')
-  const embedded = document.getElementById('session-map-slot-embedded')
-  const layer = document.getElementById('session-map-fullscreen-layer')
-  if (!frame || !embedded || !layer) return
-  embedded.appendChild(frame)
-  layer.hidden = true
-  layer.setAttribute('aria-hidden', 'true')
   document.body.classList.remove('session-map-fullscreen-open')
-  embedded.classList.remove('session-map-slot-embedded--empty')
-  syncSessionMapFullscreenUi()
-}
-
-function openSessionMapFullscreen() {
-  const frame = document.getElementById('session-map-frame')
-  const embedded = document.getElementById('session-map-slot-embedded')
-  const slot = document.getElementById('session-map-fullscreen-slot')
-  const layer = document.getElementById('session-map-fullscreen-layer')
-  if (!frame || !embedded || !slot || !layer) return
-  slot.appendChild(frame)
-  layer.hidden = false
-  layer.setAttribute('aria-hidden', 'false')
-  document.body.classList.add('session-map-fullscreen-open')
-  embedded.classList.add('session-map-slot-embedded--empty')
-  syncSessionMapFullscreenUi()
-  queueMicrotask(() => {
-    document.getElementById('btn-session-map-fullscreen-close')?.focus()
-  })
-}
-
-function toggleSessionMapFullscreen() {
-  if (isSessionMapFullscreenActive()) exitSessionMapFullscreen()
-  else openSessionMapFullscreen()
 }
 
 function centerMapWhenEmptyPins() {
