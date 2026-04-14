@@ -206,7 +206,10 @@ export function scheduleHomeWeatherFromPosition(lat, lng) {
     }
     return
   }
-  if (!shouldFetch(lat, lng)) return
+  if (!shouldFetch(lat, lng)) {
+    if (lastOk && getIsHome()) setDom(lastOk.temp, lastOk.kind, lastOk.label)
+    return
+  }
   if (fetchInFlight) return
   fetchInFlight = true
   void (async () => {
@@ -233,6 +236,12 @@ export function resetHomeWeather() {
   lastLng = null
   lastFetchAt = 0
   hideDom()
+}
+
+/** Etter navigering tilbake til forsiden: vis siste vær med én gang (DOM er ny, hidden). */
+export function refreshHomeWeatherOnHomeEnter() {
+  if (!getIsHome() || !lastOk) return
+  setDom(lastOk.temp, lastOk.kind, lastOk.label)
 }
 
 /**

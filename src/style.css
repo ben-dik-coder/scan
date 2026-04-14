@@ -293,11 +293,6 @@ html.scanix-home-view,
       transparent 58%
     ),
     radial-gradient(
-      ellipse 80% 72% at 82% 14%,
-      rgba(230, 238, 255, 0.16) 0%,
-      transparent 56%
-    ),
-    radial-gradient(
       ellipse 70% 58% at 48% 48%,
       rgba(255, 255, 255, 0.09) 0%,
       transparent 62%
@@ -311,11 +306,6 @@ html.scanix-home-view,
       ellipse 58% 44% at 10% 8%,
       rgba(120, 185, 255, 0.2) 0%,
       transparent 52%
-    ),
-    radial-gradient(
-      ellipse 52% 40% at 92% 16%,
-      rgba(77, 163, 255, 0.14) 0%,
-      transparent 50%
     ),
     radial-gradient(
       ellipse 48% 36% at 48% 94%,
@@ -403,10 +393,9 @@ body.scanix-home-view {
     background-color: #2a2e36 !important;
   }
 
-  .home-weather__inner {
-    background: var(--surface-solid);
-    border-radius: 10px;
-    padding: 0.25rem;
+  .home-user-bar .home-weather__inner {
+    background: transparent;
+    padding: 0;
   }
 
   .home-vegref__meter {
@@ -1658,6 +1647,17 @@ form.auth-form[hidden] {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 7.5rem;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.home-user-bar__actions .home-weather__inner {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .home-weather--toolbar .home-weather__inner {

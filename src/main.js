@@ -33,6 +33,7 @@ import { syncLaunchSplash } from './launchTransition.js'
 import { initScreenWakeLock } from './screenWakeLock.js'
 import {
   initHomeWeather,
+  refreshHomeWeatherOnHomeEnter,
   resetHomeWeather,
   scheduleHomeWeatherFromPosition,
 } from './homeWeather.js'
@@ -8192,6 +8193,7 @@ function bindHomeListeners() {
   bindHomeAiDocumentationListeners(signal)
   setupSessionShareInbox()
   startHomeVegrefTracking()
+  refreshHomeWeatherOnHomeEnter()
 }
 
 function captureHomeAiLayoutHeight() {
