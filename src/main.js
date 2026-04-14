@@ -5061,16 +5061,17 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual home-dash-card__visual--accent" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <defs>
-                <linearGradient id="dashp-reg-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#1e2a3d"/><stop offset="1" stop-color="#121820"/>
-                </linearGradient>
-                <linearGradient id="dashp-reg-road" x1="12" y1="52" x2="68" y2="28" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(120,170,255,0.35)"/><stop offset="1" stop-color="rgba(77,163,255,0.55)"/>
+                <linearGradient id="hp-reg-bg" x1="40" y1="10" x2="40" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#1a2840"/><stop offset="1" stop-color="#0e1520"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="url(#dashp-reg-bg)"/>
-              <path d="M14 56 C28 48 36 32 44 26 S58 22 66 18" stroke="url(#dashp-reg-road)" stroke-width="3" stroke-linecap="round" fill="none"/>
-              <circle cx="14" cy="56" r="4" fill="rgba(77,163,255,0.85)"/><circle cx="44" cy="26" r="3" fill="rgba(255,255,255,0.35)"/><circle cx="66" cy="18" r="3.5" fill="rgba(77,163,255,0.5)"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-reg-bg)"/>
+              <rect x="12" y="14" width="56" height="40" rx="6" fill="rgba(20,35,55,0.85)" stroke="rgba(77,163,255,0.35)" stroke-width="1.25"/>
+              <path d="M18 48h12M18 42h20M18 36h8" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="46" cy="30" r="2.5" fill="rgba(255,255,255,0.15)"/><circle cx="58" cy="38" r="2" fill="rgba(255,255,255,0.1)"/>
+              <path d="M22 52 Q34 44 46 38 T58 28" stroke="rgba(77,163,255,0.55)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <path d="M38 24c0-3.3 2.7-6 6-6s6 2.7 6 6c0 4.5-6 10-6 10s-6-5.5-6-10z" fill="rgba(77,163,255,0.9)" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+              <circle cx="44" cy="24" r="2" fill="#fff"/>
             </svg>
           </span>
         </span>
@@ -5084,17 +5085,19 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <defs>
-                <linearGradient id="dashp-cam-bg" x1="40" y1="12" x2="40" y2="68" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#1a1f28"/><stop offset="1" stop-color="#0e1218"/>
+                <linearGradient id="hp-cam-bg" x1="40" y1="12" x2="40" y2="70" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#1e232e"/><stop offset="1" stop-color="#0c0f14"/>
                 </linearGradient>
-                <radialGradient id="dashp-cam-lens" cx="40" cy="40" r="22" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(100,150,220,0.25)"/><stop offset="1" stop-color="rgba(40,50,70,0.5)"/>
+                <radialGradient id="hp-cam-lens" cx="40" cy="44" r="16" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(90,140,210,0.35)"/><stop offset="1" stop-color="rgba(25,35,55,0.65)"/>
                 </radialGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="url(#dashp-cam-bg)"/>
-              <rect x="18" y="22" width="44" height="36" rx="6" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
-              <circle cx="40" cy="40" r="14" fill="url(#dashp-cam-lens)" stroke="rgba(120,160,220,0.35)" stroke-width="1.25"/>
-              <path d="M22 26h4M54 26h4M22 54h4M54 54h4" stroke="rgba(200,210,230,0.25)" stroke-width="1.5" stroke-linecap="round"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-cam-bg)"/>
+              <path d="M26 28h10l3-4h12l3 4h10" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+              <rect x="16" y="28" width="48" height="34" rx="7" fill="rgba(30,36,48,0.9)" stroke="rgba(255,255,255,0.12)" stroke-width="1.25"/>
+              <circle cx="40" cy="45" r="13" fill="url(#hp-cam-lens)" stroke="rgba(130,175,230,0.45)" stroke-width="2"/>
+              <circle cx="40" cy="45" r="6" fill="rgba(15,25,40,0.6)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <circle cx="54" cy="34" r="3" fill="rgba(255,220,160,0.35)" stroke="rgba(255,255,255,0.2)" stroke-width="0.75"/>
             </svg>
           </span>
         </span>
@@ -5108,15 +5111,17 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <defs>
-                <linearGradient id="dashp-doc-bg" x1="24" y1="14" x2="56" y2="66" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#2a2f38"/><stop offset="1" stop-color="#1a1e26"/>
+                <linearGradient id="hp-kon-bg" x1="22" y1="14" x2="58" y2="64" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2e3542"/><stop offset="1" stop-color="#181c24"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#14161c"/>
-              <rect x="20" y="16" width="40" height="50" rx="4" fill="url(#dashp-doc-bg)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <path d="M44 16v8h8" stroke="rgba(255,255,255,0.08)" stroke-width="1" fill="none"/>
-              <path d="M26 30h28M26 38h22M26 46h26M26 54h18" stroke="rgba(220,225,235,0.2)" stroke-width="2" stroke-linecap="round"/>
-              <path d="M26 60h20" stroke="rgba(77,163,255,0.45)" stroke-width="2" stroke-linecap="round"/>
+              <rect width="80" height="80" rx="14" fill="#12151c"/>
+              <rect x="18" y="14" width="44" height="54" rx="5" fill="url(#hp-kon-bg)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <path d="M38 14v10h10" stroke="rgba(255,255,255,0.1)" stroke-width="1.25" fill="none"/>
+              <path d="M24 34h32M24 42h28M24 50h32M24 58h20" stroke="rgba(230,235,245,0.18)" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="52" cy="24" r="10" fill="rgba(77,163,255,0.2)" stroke="rgba(77,163,255,0.5)" stroke-width="1.25"/>
+              <path d="M48 24h8M52 20v8" stroke="rgba(77,163,255,0.85)" stroke-width="1.75" stroke-linecap="round"/>
+              <circle cx="46" cy="32" r="1.2" fill="rgba(120,200,255,0.9)"/><circle cx="52" cy="30" r="1.2" fill="rgba(120,200,255,0.7)"/><circle cx="58" cy="32" r="1.2" fill="rgba(120,200,255,0.9)"/>
             </svg>
           </span>
         </span>
@@ -5130,16 +5135,24 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <defs>
-                <linearGradient id="dashp-ph1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#3d4858"/><stop offset="1" stop-color="#252a34"/></linearGradient>
-                <linearGradient id="dashp-ph2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4a5568"/><stop offset="1" stop-color="#2c3440"/></linearGradient>
-                <linearGradient id="dashp-ph3" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5a6578"/><stop offset="1" stop-color="#343c48"/></linearGradient>
+                <linearGradient id="hp-al-1" x1="14" y1="18" x2="38" y2="42" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#4a5568"/><stop offset="1" stop-color="#2a3038"/>
+                </linearGradient>
+                <linearGradient id="hp-al-2" x1="42" y1="18" x2="66" y2="42" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#5a6578"/><stop offset="1" stop-color="#343c48"/>
+                </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#12141a"/>
-              <rect x="28" y="22" width="38" height="28" rx="5" fill="url(#dashp-ph3)" stroke="rgba(255,255,255,0.08)" transform="rotate(-4 47 36)"/>
-              <rect x="18" y="26" width="38" height="28" rx="5" fill="url(#dashp-ph2)" stroke="rgba(255,255,255,0.1)"/>
-              <rect x="12" y="30" width="38" height="28" rx="5" fill="url(#dashp-ph1)" stroke="rgba(255,255,255,0.12)"/>
-              <circle cx="22" cy="40" r="3" fill="rgba(255,200,120,0.5)"/>
-              <path d="M12 52l8-6 6 5 10-8 14 11" stroke="rgba(120,170,255,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <rect width="80" height="80" rx="14" fill="#101218"/>
+              <rect x="14" y="16" width="24" height="24" rx="4" fill="url(#hp-al-1)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+              <path d="M18 36l6-8 4 5 4-6 8 12" stroke="rgba(120,170,255,0.4)" stroke-width="1.25" fill="none" stroke-linejoin="round"/>
+              <circle cx="22" cy="22" r="2.5" fill="rgba(255,210,120,0.55)"/>
+              <rect x="42" y="16" width="24" height="24" rx="4" fill="url(#hp-al-2)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <path d="M48 28h12M48 32h8M48 36h10" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" stroke-linecap="round"/>
+              <rect x="14" y="44" width="24" height="24" rx="4" fill="rgba(35,42,54,0.95)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <path d="M20 58l6-7h12l6 7" stroke="rgba(180,195,220,0.25)" stroke-width="1.25" fill="none"/>
+              <rect x="42" y="44" width="24" height="24" rx="4" fill="rgba(38,46,58,0.95)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <circle cx="54" cy="54" r="5" fill="none" stroke="rgba(77,163,255,0.35)" stroke-width="1.5"/>
+              <path d="M52 54h4M54 52v4" stroke="rgba(77,163,255,0.6)" stroke-width="1.25" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -5153,14 +5166,16 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <defs>
-                <linearGradient id="dashp-cloud" x1="40" y1="18" x2="40" y2="52" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(130,165,220,0.35)"/><stop offset="1" stop-color="rgba(60,80,120,0.4)"/>
+                <linearGradient id="hp-cloud" x1="40" y1="22" x2="40" y2="50" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(140,175,230,0.45)"/><stop offset="1" stop-color="rgba(55,75,115,0.5)"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#13151c"/>
-              <ellipse cx="34" cy="44" rx="22" ry="13" fill="url(#dashp-cloud)"/>
-              <ellipse cx="50" cy="42" rx="16" ry="11" fill="url(#dashp-cloud)" opacity="0.85"/>
-              <path d="M40 46v10M35 51h10" stroke="rgba(200,215,240,0.4)" stroke-width="2" stroke-linecap="round"/>
+              <rect width="80" height="80" rx="14" fill="#12141c"/>
+              <rect x="22" y="48" width="36" height="22" rx="3" fill="rgba(35,42,58,0.9)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <path d="M40 46V34" stroke="rgba(77,163,255,0.75)" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M36 38l4-4 4 4" stroke="rgba(77,163,255,0.75)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <ellipse cx="32" cy="50" rx="18" ry="11" fill="url(#hp-cloud)"/>
+              <ellipse cx="48" cy="48" rx="14" ry="9" fill="url(#hp-cloud)" opacity="0.9"/>
             </svg>
           </span>
         </span>
@@ -5173,12 +5188,19 @@ function renderHomeHtml() {
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
-              <rect width="80" height="80" rx="14" fill="#12141a"/>
-              <rect x="16" y="18" width="48" height="44" rx="4" fill="#1c212c" stroke="rgba(255,255,255,0.08)"/>
-              <path d="M16 30h48M16 42h48M16 54h48M28 18v44M40 18v44M52 18v44" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-              <rect x="28" y="32" width="12" height="8" rx="1" fill="rgba(77,163,255,0.15)"/>
-              <rect x="40" y="44" width="12" height="8" rx="1" fill="rgba(255,255,255,0.06)"/>
-              <rect x="28" y="44" width="12" height="8" rx="1" fill="rgba(255,255,255,0.04)"/>
+              <defs>
+                <linearGradient id="hp-xls-bar" x1="16" y1="20" x2="64" y2="26" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#217346"/><stop offset="1" stop-color="#185c37"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="#0f1218"/>
+              <rect x="14" y="16" width="52" height="48" rx="4" fill="#1a1f28" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <rect x="14" y="16" width="52" height="10" rx="4" fill="url(#hp-xls-bar)"/>
+              <circle cx="22" cy="21" r="2.5" fill="rgba(255,255,255,0.9)"/>
+              <path d="M26 21h34" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-linecap="round"/>
+              <path d="M18 34h44M18 44h44M18 54h44M30 28v32M42 28v32M54 28v32" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <rect x="30" y="36" width="10" height="6" rx="0.5" fill="rgba(33,115,70,0.45)"/>
+              <rect x="42" y="46" width="10" height="6" rx="0.5" fill="rgba(77,163,255,0.2)"/>
             </svg>
           </span>
         </span>
@@ -5192,13 +5214,19 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <defs>
-                <linearGradient id="dashp-route" x1="12" y1="52" x2="68" y2="24" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(77,163,255,0.5)"/><stop offset="1" stop-color="rgba(120,180,255,0.2)"/>
+                <linearGradient id="hp-route" x1="18" y1="38" x2="62" y2="26" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(77,163,255,0.7)"/><stop offset="1" stop-color="rgba(120,190,255,0.3)"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#13151c"/>
-              <path d="M14 58 C26 44 34 36 42 30 S58 20 66 14" stroke="url(#dashp-route)" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="14" cy="58" r="4" fill="rgba(77,163,255,0.85)"/><circle cx="42" cy="30" r="3" fill="rgba(255,255,255,0.35)"/><circle cx="66" cy="14" r="3.5" fill="rgba(77,163,255,0.45)"/>
+              <rect width="80" height="80" rx="14" fill="#12151c"/>
+              <rect x="10" y="50" width="60" height="10" rx="2" fill="rgba(38,46,58,0.9)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <path d="M14 54h4M22 54h4M30 54h4M38 54h4M46 54h4M54 54h4M62 54h4" stroke="rgba(255,255,255,0.14)" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M18 58v-4M62 58v-4" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M22 36 C34 22 46 22 58 34" stroke="url(#hp-route)" stroke-width="2.75" fill="none" stroke-linecap="round" stroke-dasharray="5 4"/>
+              <path d="M22 36 L22 44 L18 48 L26 48 L22 44" fill="rgba(77,163,255,0.9)" stroke="rgba(255,255,255,0.35)" stroke-width="0.75"/>
+              <circle cx="22" cy="32" r="2.5" fill="#fff"/>
+              <path d="M58 34 L58 42 L54 46 L62 46 L58 42" fill="rgba(100,180,255,0.35)" stroke="rgba(77,163,255,0.75)" stroke-width="1"/>
+              <circle cx="58" cy="30" r="2.5" fill="rgba(255,255,255,0.85)"/>
             </svg>
           </span>
         </span>
