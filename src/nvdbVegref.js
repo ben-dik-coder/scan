@@ -231,7 +231,8 @@ export function describeSegmentForPoint(seg, lat, lng, accuracyM = 28) {
     typeof accuracyM === 'number' && !Number.isNaN(accuracyM)
       ? Math.min(60, Math.max(8, accuracyM))
       : 28
-  const meterDistThreshold = Math.min(65, Math.max(30, Math.round(acc * 1.1)))
+  /* Litt romsligere ved siden av kjørebane (rå GPS) — ellers blir meter ofte «–». */
+  const meterDistThreshold = Math.min(88, Math.max(26, Math.round(acc * 1.22)))
   if (
     distM <= meterDistThreshold &&
     typeof fraM === 'number' &&
@@ -514,32 +515,8 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
   })
   if (!picked) return null
 
-  let segUse = picked.seg
-  let described = describeSegmentForPoint(segUse, lat, lng, accuracyM)
+  const described = describeSegmentForPoint(picked.seg, lat, lng, accuracyM)
   if (!described) return null
-
-  /* Nærmeste K-veg uten navn, men nær K med gatenavn (typisk samme gate) → bytt kun ved lite avvik. */
-  if (
-    segmentVegkategori(segUse) === 'K' &&
-    !segmentAdresseNavn(segUse) &&
-    Array.isArray(picked.ranked)
-  ) {
-    const baseD = described.distToRoadM ?? 99
-    const maxAlt = Math.min(baseD + 10, 22)
-    for (let i = 1; i < picked.ranked.length; i++) {
-      const row = picked.ranked[i]
-      if (segmentVegkategori(row.seg) !== 'K' || !segmentAdresseNavn(row.seg)) {
-        continue
-      }
-      const alt = describeSegmentForPoint(row.seg, lat, lng, accuracyM)
-      if (!alt) continue
-      if (alt.distToRoadM <= maxAlt) {
-        segUse = row.seg
-        described = alt
-        break
-      }
-    }
-  }
 
   if (
     typeof picked.chosenScore === 'number' &&
@@ -803,9 +780,13 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
   const baseRoadShort = formatVegsystemShort(vs)
   const addrNameFromHit = extractAdresseNavnFromPosisjonHit(hit)
   const meterRaw = str?.meter
-  const meterVal = typeof meterRaw === 'number' && Number.isFinite(meterRaw)
-    ? Math.round(meterRaw)
-    : null
+  let meterVal = null
+  if (typeof meterRaw === 'number' && Number.isFinite(meterRaw)) {
+    meterVal = Math.round(meterRaw)
+  } else if (typeof meterRaw === 'string' && meterRaw.trim()) {
+    const n = parseInt(meterRaw.replace(/[^\d-]/g, ''), 10)
+    if (!Number.isNaN(n) && n >= 0) meterVal = n
+  }
   const distToRoad = typeof hit.avstand === 'number' ? hit.avstand : 0
 
   const vls = hit?.veglenkesekvens

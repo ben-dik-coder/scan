@@ -299,9 +299,6 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
 }
 
 /**
- * @param {VegrefHooks} h
- */
-/**
  * Gjenopprett pipeline-cache fra localStorage (offline / rask første visning).
  * @param {number} lat
  * @param {number} lng
@@ -409,8 +406,8 @@ function computeSpeed(lat, lng, timestamp, haversineMFn) {
   )
   const dt = (ts - lastPosForSpeed.timestamp) / 1000
   lastPosForSpeed = { lat, lng, timestamp: ts }
-  if (dt <= 0) return lastSpeed
-  const speed = d / dt
+  if (dt < 0.15) return lastSpeed
+  const speed = Math.min(d / dt, 80)
   lastSpeed = speed
   return speed
 }
@@ -430,6 +427,73 @@ function isOfficialVegsystemLineOnly(s) {
   }
   /* Kort veglinje (f.eks. «KV 12») – trenger fortsatt segment-oppslag for lokalt gatenavn. */
   return /^(EV|RV|FV|KV|PV|SV)\s+\d+/i.test(t)
+}
+
+function normalizeKortformKey(kf) {
+  return String(kf ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
+function normRoadLine(s) {
+  return String(s ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * Ikke bland inn gatenavn fra et annet vegsystem (parallelle veier / feil segment).
+ */
+function posisjonEnrichSameVegsystemAsPosisjon(res, segRes) {
+  if (!res || !segRes) return false
+  const rk = normalizeKortformKey(
+    /** @type {{ kortform?: unknown }} */ (res).kortform,
+  )
+  const sk = normalizeKortformKey(
+    /** @type {{ kortform?: unknown }} */ (segRes).kortform,
+  )
+  if (rk && sk && rk === sk) return true
+  const rl = normRoadLine(
+    /** @type {{ roadLine?: unknown }} */ (res).roadLine,
+  )
+  const sl = normRoadLine(
+    /** @type {{ roadLine?: unknown }} */ (segRes).roadLine,
+  )
+  if (rl && sl && rl === sl) return true
+  const rsh = normRoadLine(
+    /** @type {{ roadLineShort?: unknown }} */ (res).roadLineShort,
+  )
+  const ssh = normRoadLine(
+    /** @type {{ roadLineShort?: unknown }} */ (segRes).roadLineShort,
+  )
+  if (rsh && ssh && rsh === ssh) return true
+  return false
+}
+
+function isDashMeter(m) {
+  const t = String(m ?? '').trim()
+  return t === '' || t === '–' || t === '-'
+}
+
+/**
+ * @param {object} res
+ * @param {object} segRes
+ */
+function mergePosisjonWithSegmentDisplay(res, segRes) {
+  return {
+    ...res,
+    roadLineDisplay: segRes.roadLineDisplay,
+    roadLineDisplayShort:
+      segRes.roadLineDisplayShort ||
+      segRes.roadLineShort ||
+      segRes.roadLineDisplay,
+    roadLine: segRes.roadLine || res.roadLine,
+    roadLineShort: segRes.roadLineShort || res.roadLineShort,
+    m: isDashMeter(res.m) && !isDashMeter(segRes.m) ? segRes.m : res.m,
+    s: isDashMeter(res.s) && !isDashMeter(segRes.s) ? segRes.s : res.s,
+    d: isDashMeter(res.d) && !isDashMeter(segRes.d) ? segRes.d : res.d,
+  }
 }
 
 /**
@@ -479,22 +543,40 @@ function schedulePosisjonDisplayEnrichFromSegments(
 
       const attemptMerge = async (segRes) => {
         if (!segRes) return false
+        if (!posisjonEnrichSameVegsystemAsPosisjon(res, segRes)) return false
         const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
-        if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) return false
+        const segOfficial = !segDisp || isOfficialVegsystemLineOnly(segDisp)
+        if (segOfficial) {
+          if (isDashMeter(res.m) && !isDashMeter(segRes.m)) {
+            const meterOnly = {
+              ...res,
+              m: segRes.m,
+              s: isDashMeter(res.s) && !isDashMeter(segRes.s) ? segRes.s : res.s,
+              d: isDashMeter(res.d) && !isDashMeter(segRes.d) ? segRes.d : res.d,
+            }
+            const cur = lastAppliedRes
+            const curId =
+              cur && typeof cur === 'object' && 'nvdbId' in cur
+                ? /** @type {{ nvdbId?: string | number | null }} */ (cur).nvdbId
+                : null
+            if (curId != null && String(curId) !== String(targetNvdbId)) {
+              return false
+            }
+            cacheLat = lat
+            cacheLng = lng
+            cacheRes = meterOnly
+            if (enrichSignal.aborted) return false
+            applyNvdbNullable(meterOnly, lat, lng, applyCtx)
+            lastPosisjonEnrichNvdbId = targetNvdbId
+            return true
+          }
+          return false
+        }
         if (segDisp === disp) {
           lastPosisjonEnrichNvdbId = targetNvdbId
           return true
         }
-        const merged = {
-          ...res,
-          roadLineDisplay: segRes.roadLineDisplay,
-          roadLineDisplayShort:
-            segRes.roadLineDisplayShort ||
-            segRes.roadLineShort ||
-            segRes.roadLineDisplay,
-          roadLine: segRes.roadLine || res.roadLine,
-          roadLineShort: segRes.roadLineShort || res.roadLineShort,
-        }
+        const merged = mergePosisjonWithSegmentDisplay(res, segRes)
         const cur = lastAppliedRes
         const curId =
           cur && typeof cur === 'object' && 'nvdbId' in cur
@@ -625,8 +707,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     : null
   const lastSpeedBefore = lastSpeed
   const speedMps = computeSpeed(lat, lng, tsForSpeed, h.haversineM)
-  let gpsLat = lat
-  let gpsLng = lng
+  const gpsLat = lat
+  const gpsLng = lng
   if (posBeforeSpeed && speedMps < 0.5) {
     const jump = h.haversineM(
       posBeforeSpeed.lat,
@@ -635,12 +717,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       lng,
     )
     if (jump > 10) {
-      /* GPS jump detected — restore speed AND use previous position for
-         smoothing/heading so the jump doesn't pollute downstream. */
       lastPosForSpeed = posBeforeSpeed
       lastSpeed = lastSpeedBefore
-      gpsLat = posBeforeSpeed.lat
-      gpsLng = posBeforeSpeed.lng
     }
   }
 
@@ -719,6 +797,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   lastFetchLat = nvdbLat
   lastFetchLng = nvdbLng
 
+  abortPosisjonEnrichInFlight()
+  lastPosisjonEnrichNvdbId = null
   if (nvdbAbort) nvdbAbort.abort()
   nvdbAbort = new AbortController()
   const { signal } = nvdbAbort
@@ -758,6 +838,41 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
           res = await h.fetchRoadPositionDirect(nvdbLat, nvdbLng, fetchOpts)
         } catch (e) {
           if (/** @type {{ name?: string }} */ (e).name === 'AbortError') throw e
+        }
+      }
+
+      if (
+        res &&
+        online &&
+        h.fetchRoadReferenceNear &&
+        res._vegrefMeta?.source === 'posisjon' &&
+        isDashMeter(/** @type {{ m?: unknown }} */ (res).m)
+      ) {
+        try {
+          const prevIdFill =
+            res && typeof res === 'object' && 'nvdbId' in res
+              ? /** @type {{ nvdbId?: string | number | null }} */ (res).nvdbId
+              : null
+          const segFill = await h.fetchRoadReferenceNear(nvdbLat, nvdbLng, {
+            ...fetchOpts,
+            prevNvdbId: prevIdFill ?? null,
+            userHeadingDeg: effHeadingDeg,
+            speed: speedMps,
+          })
+          if (
+            segFill &&
+            posisjonEnrichSameVegsystemAsPosisjon(res, segFill) &&
+            !isDashMeter(segFill.m)
+          ) {
+            res = {
+              ...res,
+              m: segFill.m,
+              s: isDashMeter(res.s) && !isDashMeter(segFill.s) ? segFill.s : res.s,
+              d: isDashMeter(res.d) && !isDashMeter(segFill.d) ? segFill.d : res.d,
+            }
+          }
+        } catch {
+          /* behold posisjon uten meter */
         }
       }
 
