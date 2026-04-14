@@ -2641,7 +2641,7 @@ body.home-ai-panel-open .home-vegref {
   align-self: stretch;
 }
 
-/* Tilbake | Kontraktskontroll (sentrert) | balanse – samme som tidligere, uten duplikat-topplinje */
+/* Tilbake | Kontraktskontroll (pille) | balanse */
 .home-ai-gpt__header {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
@@ -2654,29 +2654,6 @@ body.home-ai-panel-open .home-vegref {
   flex-shrink: 0;
   min-height: 2.75rem;
   box-sizing: border-box;
-}
-
-.home-ai-gpt__header-center {
-  grid-column: 2;
-  grid-row: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-width: 0;
-  width: 100%;
-}
-
-.home-ai-gpt__header-title {
-  margin: 0;
-  width: 100%;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
-  color: #f5f5f5;
-  text-align: center;
 }
 
 .home-ai-gpt__header-spacer {
@@ -2714,6 +2691,84 @@ body.home-ai-panel-open .home-vegref {
 
 .home-ai-gpt__close-icon {
   display: block;
+}
+
+.home-ai-gpt__header-center {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Stor Kontrakt-pille: grå baseline, grønn fyll via --contract-fill under lasting */
+.home-ai-gpt__contract-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin: 0;
+  padding: 0.55rem 1.5rem;
+  min-height: 2.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #3d3d3d;
+  color: #ececec;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+  --contract-fill: 0%;
+  transition: border-color 0.2s ease;
+}
+
+.home-ai-gpt__brand-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+.home-ai-gpt__contract-pill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--contract-fill, 0%);
+  max-width: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(32, 210, 140, 0.95) 0%,
+    rgba(14, 143, 95, 0.98) 100%
+  );
+  transition: width 0.12s ease-out;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.home-ai-gpt__contract-pill-label {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.home-ai-gpt__contract-pill:not(.home-ai-gpt__brand-label):hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.home-ai-gpt__contract-pill--on {
+  border-color: rgba(25, 195, 125, 0.45);
+  box-shadow: 0 0 0 1px rgba(25, 195, 125, 0.12);
+}
+
+.home-ai-gpt__contract-pill--on:not(:disabled) {
+  background: #3a4540;
 }
 
 .home-ai-gpt__tool {
@@ -2780,7 +2835,7 @@ body.home-ai-panel-open .home-vegref {
 }
 
 /* Kontraktskontroll uten vedlagt bilde: skjul tom forhånds-rad (mindre luft over chat) */
-#home-ai-stage-chat.home-ai-gpt__stage--contract-rag
+.home-ai-gpt:has(#home-ai-contract-brand.home-ai-gpt__contract-pill--on)
   .home-ai-gpt__context:has(#home-ai-preview-img[hidden]) {
   display: none;
 }
@@ -3157,7 +3212,7 @@ body.home-ai-panel-open .home-vegref {
   animation: home-ai-shell-glow 1.65s ease-in-out infinite;
 }
 
-.home-ai-gpt--thinking .home-ai-gpt__header-title {
+.home-ai-gpt--thinking .home-ai-gpt__contract-pill.home-ai-gpt__brand-label {
   animation: home-ai-title-pulse 2.1s ease-in-out infinite;
 }
 
@@ -3239,7 +3294,7 @@ body.home-ai-panel-open .home-vegref {
 
 @media (prefers-reduced-motion: reduce) {
   .home-ai-gpt--thinking .home-ai-gpt__input-shell,
-  .home-ai-gpt--thinking .home-ai-gpt__header-title {
+  .home-ai-gpt--thinking .home-ai-gpt__contract-pill.home-ai-gpt__brand-label {
     animation: none;
   }
 
