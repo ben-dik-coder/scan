@@ -5042,17 +5042,18 @@ function renderHomeHtml() {
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
-    <div id="home-weather" class="home-weather" hidden aria-live="polite">
-      <div class="home-weather__glass">
-        <div class="home-weather__icon-wrap" id="home-weather-icon" aria-hidden="true"></div>
-        <div class="home-weather__meta">
-          <span id="home-weather-temp" class="home-weather__temp">—</span>
-          <span id="home-weather-desc" class="home-weather__desc"></span>
-        </div>
-      </div>
-    </div>
     <nav class="home-dashboard" aria-label="Hurtigvalg">
-      <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
+      <div class="home-dashboard__hero-row">
+        <div id="home-weather" class="home-weather" hidden aria-live="polite">
+          <div class="home-weather__inner">
+            <div class="home-weather__icon-wrap" id="home-weather-icon" aria-hidden="true"></div>
+            <div class="home-weather__meta">
+              <span id="home-weather-temp" class="home-weather__temp">—</span>
+              <span id="home-weather-desc" class="home-weather__desc"></span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
         <span class="home-dash-card__row">
           <span class="home-dash-card__content">
             <span class="home-dash-card__title">Ny registrering</span>
@@ -5075,6 +5076,7 @@ function renderHomeHtml() {
           </span>
         </span>
       </button>
+      </div>
       <button type="button" class="home-dash-card" id="btn-home-kamera">
         <span class="home-dash-card__row">
           <span class="home-dash-card__content">
