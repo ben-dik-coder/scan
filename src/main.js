@@ -5037,66 +5037,154 @@ function renderHomeHtml() {
     </div>
     <nav class="home-dashboard" aria-label="Hurtigvalg">
       <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16"/><path d="M12 13v5M9.5 15.5h5"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">Ny registrering</span>
-          <span class="home-dash-card__hint">Start økt fra din posisjon</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">Ny registrering</span>
+            <span class="home-dash-card__hint">Start økt fra din posisjon</span>
+          </span>
+          <span class="home-dash-card__visual home-dash-card__visual--accent" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <defs>
+                <linearGradient id="dashp-reg-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#1e2a3d"/><stop offset="1" stop-color="#121820"/>
+                </linearGradient>
+                <linearGradient id="dashp-reg-road" x1="12" y1="52" x2="68" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(120,170,255,0.35)"/><stop offset="1" stop-color="rgba(77,163,255,0.55)"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#dashp-reg-bg)"/>
+              <path d="M14 56 C28 48 36 32 44 26 S58 22 66 18" stroke="url(#dashp-reg-road)" stroke-width="3" stroke-linecap="round" fill="none"/>
+              <circle cx="14" cy="56" r="4" fill="rgba(77,163,255,0.85)"/><circle cx="44" cy="26" r="3" fill="rgba(255,255,255,0.35)"/><circle cx="66" cy="18" r="3.5" fill="rgba(77,163,255,0.5)"/>
+            </svg>
+          </span>
         </span>
       </button>
       <button type="button" class="home-dash-card" id="btn-home-kamera">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 012-2h2l1.5-2h5L14 6h2a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V8z"/><circle cx="12" cy="13" r="3.5"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">Kamera</span>
-          <span class="home-dash-card__hint">Bilder til økten</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">Kamera</span>
+            <span class="home-dash-card__hint">Bilder til økten</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <defs>
+                <linearGradient id="dashp-cam-bg" x1="40" y1="12" x2="40" y2="68" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#1a1f28"/><stop offset="1" stop-color="#0e1218"/>
+                </linearGradient>
+                <radialGradient id="dashp-cam-lens" cx="40" cy="40" r="22" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(100,150,220,0.25)"/><stop offset="1" stop-color="rgba(40,50,70,0.5)"/>
+                </radialGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#dashp-cam-bg)"/>
+              <rect x="18" y="22" width="44" height="36" rx="6" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+              <circle cx="40" cy="40" r="14" fill="url(#dashp-cam-lens)" stroke="rgba(120,160,220,0.35)" stroke-width="1.25"/>
+              <path d="M22 26h4M54 26h4M22 54h4M54 54h4" stroke="rgba(200,210,230,0.25)" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
         </span>
       </button>
       <button type="button" class="home-dash-card" id="btn-home-kontraktai">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">Kontrakter</span>
-          <span class="home-dash-card__hint">AI mot kontraktskrav</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">Kontrakter</span>
+            <span class="home-dash-card__hint">AI mot kontraktskrav</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <defs>
+                <linearGradient id="dashp-doc-bg" x1="24" y1="14" x2="56" y2="66" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2a2f38"/><stop offset="1" stop-color="#1a1e26"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="#14161c"/>
+              <rect x="20" y="16" width="40" height="50" rx="4" fill="url(#dashp-doc-bg)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+              <path d="M44 16v8h8" stroke="rgba(255,255,255,0.08)" stroke-width="1" fill="none"/>
+              <path d="M26 30h28M26 38h22M26 46h26M26 54h18" stroke="rgba(220,225,235,0.2)" stroke-width="2" stroke-linecap="round"/>
+              <path d="M26 60h20" stroke="rgba(77,163,255,0.45)" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </span>
         </span>
       </button>
       <button type="button" class="home-dash-card" id="btn-home-album">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M3 17l5-4 3 2.5 4-3 6 4.5"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">Album</span>
-          <span class="home-dash-card__hint">Bilder og filer</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">Album</span>
+            <span class="home-dash-card__hint">Bilder og filer</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <defs>
+                <linearGradient id="dashp-ph1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#3d4858"/><stop offset="1" stop-color="#252a34"/></linearGradient>
+                <linearGradient id="dashp-ph2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4a5568"/><stop offset="1" stop-color="#2c3440"/></linearGradient>
+                <linearGradient id="dashp-ph3" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5a6578"/><stop offset="1" stop-color="#343c48"/></linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="#12141a"/>
+              <rect x="28" y="22" width="38" height="28" rx="5" fill="url(#dashp-ph3)" stroke="rgba(255,255,255,0.08)" transform="rotate(-4 47 36)"/>
+              <rect x="18" y="26" width="38" height="28" rx="5" fill="url(#dashp-ph2)" stroke="rgba(255,255,255,0.1)"/>
+              <rect x="12" y="30" width="38" height="28" rx="5" fill="url(#dashp-ph1)" stroke="rgba(255,255,255,0.12)"/>
+              <circle cx="22" cy="40" r="3" fill="rgba(255,200,120,0.5)"/>
+              <path d="M12 52l8-6 6 5 10-8 14 11" stroke="rgba(120,170,255,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            </svg>
+          </span>
         </span>
       </button>
       <button type="button" class="home-dash-card" id="btn-home-delsky">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h11a4 4 0 10-.5-8 5.5 5.5 0 10-10.9 1.4A4 4 0 007 18z"/><path d="M12 15v4M10 17h4"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">DelSky</span>
-          <span class="home-dash-card__hint">Del til sky</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">DelSky</span>
+            <span class="home-dash-card__hint">Del til sky</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <defs>
+                <linearGradient id="dashp-cloud" x1="40" y1="18" x2="40" y2="52" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(130,165,220,0.35)"/><stop offset="1" stop-color="rgba(60,80,120,0.4)"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="#13151c"/>
+              <ellipse cx="34" cy="44" rx="22" ry="13" fill="url(#dashp-cloud)"/>
+              <ellipse cx="50" cy="42" rx="16" ry="11" fill="url(#dashp-cloud)" opacity="0.85"/>
+              <path d="M40 46v10M35 51h10" stroke="rgba(200,215,240,0.4)" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </span>
         </span>
       </button>
       <button type="button" class="home-dash-card" id="btn-home-excel">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">Excel</span>
-          <span class="home-dash-card__hint">Eksporter regneark</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">Excel</span>
+            <span class="home-dash-card__hint">Eksporter regneark</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <rect width="80" height="80" rx="14" fill="#12141a"/>
+              <rect x="16" y="18" width="48" height="44" rx="4" fill="#1c212c" stroke="rgba(255,255,255,0.08)"/>
+              <path d="M16 30h48M16 42h48M16 54h48M28 18v44M40 18v44M52 18v44" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+              <rect x="28" y="32" width="12" height="8" rx="1" fill="rgba(77,163,255,0.15)"/>
+              <rect x="40" y="44" width="12" height="8" rx="1" fill="rgba(255,255,255,0.06)"/>
+              <rect x="28" y="44" width="12" height="8" rx="1" fill="rgba(255,255,255,0.04)"/>
+            </svg>
+          </span>
         </span>
       </button>
       <button type="button" class="home-dash-card" id="btn-home-strekning">
-        <span class="home-dash-card__glyph" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18c3-6 6-10 8-12s4 3 8 12"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="20" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none"/></svg>
-        </span>
-        <span class="home-dash-card__content">
-          <span class="home-dash-card__title">Strekning</span>
-          <span class="home-dash-card__hint">Segment og avstand</span>
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">Strekning</span>
+            <span class="home-dash-card__hint">Segment og avstand</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+              <defs>
+                <linearGradient id="dashp-route" x1="12" y1="52" x2="68" y2="24" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="rgba(77,163,255,0.5)"/><stop offset="1" stop-color="rgba(120,180,255,0.2)"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="#13151c"/>
+              <path d="M14 58 C26 44 34 36 42 30 S58 20 66 14" stroke="url(#dashp-route)" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="14" cy="58" r="4" fill="rgba(77,163,255,0.85)"/><circle cx="42" cy="30" r="3" fill="rgba(255,255,255,0.35)"/><circle cx="66" cy="14" r="3.5" fill="rgba(77,163,255,0.45)"/>
+            </svg>
+          </span>
         </span>
       </button>
     </nav>
