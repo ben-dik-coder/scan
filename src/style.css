@@ -394,46 +394,18 @@ body.scanix-home-view {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Safe area / padding-top ligger på .home-top-shell; bunn-padding på .home-scroll */
-  padding-top: 0;
+  /* Tettere mot topp (notch/safe area); horisontalt: samme logikk som #app-padding */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.2rem);
   padding-left: max(clamp(1rem, 3.5vw, 1.25rem), env(safe-area-inset-left, 0px));
   padding-right: max(clamp(1rem, 3.5vw, 1.25rem), env(safe-area-inset-right, 0px));
-  padding-bottom: 0;
+  /* Plass til fast nedre hurtigmeny */
+  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
   /* Ingen .surface-kort på forsiden – flat sammenhengende flate */
   background: transparent;
   border: none;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-
-/* Brukerlinje + vegref: låst øverst; scrolles ikke med hurtigvalg / underliggende innhold */
-.home-top-shell {
-  flex: 0 0 auto;
-  position: relative;
-  z-index: 25;
-  width: 100%;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 0.2rem);
-  /* Samme flate som skallet — ingen skygge/stripe (så det ikke ser ut som et «håndtak» eller panel) */
-  background-color: #2e323c;
-  box-shadow: none;
-}
-
-/* Hurtigvalg + home-main: eneste vertikale scroll på forsiden */
-.home-scroll {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
-}
-
-.home-scroll .home-dashboard {
-  flex-shrink: 0;
 }
 
 .home-main {
@@ -2248,11 +2220,6 @@ form.auth-form[hidden] {
   display: none !important;
 }
 
-.view-home:has(#panel-home-bilde-ai:not([hidden])) .home-scroll {
-  overflow: hidden;
-  padding-bottom: 0;
-}
-
 /*
  * Samme fullskjerm-fiks via body-klasse (JS: syncHomeAiPanelBodyClass).
  * Sikrer stablelag når :has() mangler/feiler, og skjuler bunnnav helt (unngår glimt).
@@ -2306,11 +2273,6 @@ body.home-ai-panel-open #app.app-root--home .app-body {
 
 body.home-ai-panel-open .view-home.surface--home {
   /* Ekstra padding her ga ofte feil høyde-justering ved AI-fullskjerm */
-  padding-bottom: 0;
-  overflow: hidden;
-}
-
-body.home-ai-panel-open .home-scroll {
   padding-bottom: 0;
   overflow: hidden;
 }
