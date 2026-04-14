@@ -1587,16 +1587,18 @@ form.auth-form[hidden] {
   }
 }
 
-/* Forside: kort-dashboard — én kolonne, kompakt høyde (flere rader synlig uten scroll) */
+/* Forside: kort-dashboard — nesten kant-til-kant på mobil (motvirker .view-home sin padding) */
 .home-dashboard {
+  --home-dash-pull: max(1.25rem, env(safe-area-inset-left, 0px));
+  --home-dash-pull-right: max(1.25rem, env(safe-area-inset-right, 0px));
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.5rem;
-  width: 100%;
-  max-width: 26.5rem;
-  margin: 1rem auto 0;
-  padding: 0 max(0.5rem, env(safe-area-inset-left, 0px))
-    0 max(0.5rem, env(safe-area-inset-right, 0px));
+  width: calc(100% + var(--home-dash-pull) + var(--home-dash-pull-right));
+  max-width: none;
+  margin: 1rem calc(-1 * var(--home-dash-pull-right)) 0 calc(-1 * var(--home-dash-pull));
+  padding: 0 max(0.3rem, env(safe-area-inset-left, 0px)) 0
+    max(0.3rem, env(safe-area-inset-right, 0px));
   box-sizing: border-box;
 }
 
