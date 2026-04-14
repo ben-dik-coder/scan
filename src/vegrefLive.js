@@ -24,11 +24,11 @@ import { logVegrefMetric } from './vegrefMetrics.js'
  */
 
 /** Felles timing for forsiden og KMT – samme opplevd hastighet. */
-export const VEGREF_MIN_INTERVAL_MS = 450
+export const VEGREF_MIN_INTERVAL_MS = 400
 export const VEGREF_MIN_MOVE_M = 2
 
-/** Vent litt før supplerende segmentert-kall (veinavn) — unngår å stable NVDB på kald start. */
-const POSISJON_ENRICH_SEGMENT_DELAY_MS = 1600
+/** Vent før supplerende segmentert-kall (veinavn) — kortere = raskere gatenavn, fortsatt unngår dobbeltkall ved kald start. */
+const POSISJON_ENRICH_SEGMENT_DELAY_MS = 950
 
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
@@ -232,7 +232,8 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
         typeof ctx.accuracyM === 'number' && !Number.isNaN(ctx.accuracyM)
           ? ctx.accuracyM
           : 28
-      const clearOnRoad = dist <= Math.min(11, Math.max(5.5, acc * 0.3))
+      /* Ved stor radius må vi slippe gjennom første treff oftere — ellers venter UI på to NVDB-runder. */
+      const clearOnRoad = dist <= Math.min(24, Math.max(7, acc * 0.38))
       const pendingMatch =
         posisjonPendingNewNvdbId != null &&
         String(posisjonPendingNewNvdbId) === String(nid)
@@ -655,8 +656,16 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   }
 
   const highSpeed = lastSpeed > 15
+  /* Ved stor usikkerhet: følg rå fix litt tettere (mindre «henging» på meter). */
+  const accLoose = accuracyM > 42
   /* Litt mindre vekt på siste fix ved høy fart → mindre GPS-støy i NVDB-inndata */
-  const aSmooth = highSpeed ? 0.38 : 0.3
+  const aSmooth = highSpeed
+    ? accLoose
+      ? 0.44
+      : 0.38
+    : accLoose
+      ? 0.4
+      : 0.3
   const aKeep = 1 - aSmooth
 
   let useLat = gpsLat
@@ -696,12 +705,12 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       : h.haversineM(lastFetchLat, lastFetchLng, useLat, useLng)
   let minInterval =
     accuracyM > 48
-      ? VEGREF_MIN_INTERVAL_MS + 420
+      ? VEGREF_MIN_INTERVAL_MS + 260
       : accuracyM > 36
-        ? VEGREF_MIN_INTERVAL_MS + 220
+        ? VEGREF_MIN_INTERVAL_MS + 140
         : VEGREF_MIN_INTERVAL_MS
   let minMove =
-    accuracyM > 48 ? 7 : accuracyM > 36 ? 5 : VEGREF_MIN_MOVE_M
+    accuracyM > 48 ? 5.5 : accuracyM > 36 ? 4 : VEGREF_MIN_MOVE_M
   if (lastSpeed > 32) {
     minInterval = Math.max(260, minInterval - 110)
     minMove = Math.max(1, minMove - 2)

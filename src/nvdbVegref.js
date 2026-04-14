@@ -381,11 +381,12 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore: null }
   }
 
-  const baseMargin = Math.min(34, Math.max(8, accuracyM * 0.36))
+  /* Større margin ved ustabil GPS → færre hopp mellom parallelle veier / veinavn. */
+  const baseMargin = Math.min(40, Math.max(9, accuracyM * 0.42))
   const accBoost =
-    accuracyM >= 24 ? Math.min(14, (accuracyM - 22) * 0.5) : 0
+    accuracyM >= 24 ? Math.min(18, (accuracyM - 22) * 0.55) : 0
   const margin =
-    (speed < 2 ? Math.max(baseMargin, 26) : baseMargin) + accBoost
+    (speed < 2 ? Math.max(baseMargin, 28) : baseMargin) + accBoost
   if ((accuracyM >= 18 || speed < 2) && prevRow.score - best.score < margin) {
     return {
       seg: prevRow.seg,

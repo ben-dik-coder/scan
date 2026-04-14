@@ -2154,7 +2154,7 @@ function getHomeVegrefMaxDistSkipM(accuracyM) {
 }
 /** Siste nøyaktighet brukt til dist-skip (oppdateres i feedVegrefFromGps). */
 let lastVegrefGpsAccuracyM = 28
-const HOME_VEGREF_METER_TWEEN_MS = 220
+const HOME_VEGREF_METER_TWEEN_MS = 260
 /** Hopp mellom metertall oftere = færre tween-rammer (jevnere ved rask kjøring). */
 const HOME_VEGREF_METER_SNAP = 240
 let kmtCameraMode = false
@@ -3962,9 +3962,27 @@ function applyHomeVegrefResult(res) {
       homeVegrefDisplayedMeter = null
       setHomeVegrefCompactDom(res.s, res.d, res.m)
     } else if (fromPosisjon) {
-      cancelHomeVegrefMeterTween()
-      homeVegrefDisplayedMeter = mInt
-      setHomeVegrefCompactDom(res.s, res.d, mInt)
+      if (homeVegrefDisplayedMeter != null && !segChanged) {
+        const dMeter = Math.abs(mInt - homeVegrefDisplayedMeter)
+        const snapBand =
+          lastVegrefGpsAccuracyM > 45
+            ? 300
+            : lastVegrefGpsAccuracyM > 32
+              ? 270
+              : HOME_VEGREF_METER_SNAP
+        if (dMeter <= snapBand) {
+          setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+          startHomeVegrefMeterTweenTo(mInt)
+        } else {
+          cancelHomeVegrefMeterTween()
+          homeVegrefDisplayedMeter = mInt
+          setHomeVegrefCompactDom(res.s, res.d, mInt)
+        }
+      } else {
+        cancelHomeVegrefMeterTween()
+        homeVegrefDisplayedMeter = mInt
+        setHomeVegrefCompactDom(res.s, res.d, mInt)
+      }
     } else if (segChanged || homeVegrefDisplayedMeter == null) {
       cancelHomeVegrefMeterTween()
       homeVegrefDisplayedMeter = mInt
