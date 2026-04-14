@@ -288,39 +288,39 @@ html.app-launch-active body {
   padding-top: 0.1rem;
   position: relative;
   isolation: isolate;
-  /* Dypere skall + tydeligere fargeaksenter (himmel / mint) + kontrast mot bunn */
-  background-color: var(--bg);
+  /* Lysere flate for dagslys + sterkere «himmel»-lysskår (glass føles lysere) */
+  background-color: #1e2128;
   background-image:
     radial-gradient(
-      ellipse 118% 78% at 50% -22%,
-      rgba(255, 255, 255, 0.11) 0%,
-      transparent 48%
+      ellipse 120% 82% at 50% -24%,
+      rgba(255, 255, 255, 0.2) 0%,
+      transparent 46%
     ),
     radial-gradient(
-      ellipse 58% 44% at 12% 10%,
-      var(--tint-sky) 0%,
+      ellipse 62% 48% at 10% 8%,
+      rgba(120, 185, 255, 0.22) 0%,
       transparent 52%
     ),
     radial-gradient(
-      ellipse 52% 40% at 90% 18%,
-      rgba(77, 163, 255, 0.12) 0%,
+      ellipse 56% 42% at 92% 14%,
+      rgba(77, 163, 255, 0.16) 0%,
       transparent 50%
     ),
     radial-gradient(
-      ellipse 48% 36% at 48% 92%,
-      var(--tint-mint) 0%,
-      transparent 55%
+      ellipse 50% 38% at 48% 94%,
+      rgba(80, 220, 160, 0.1) 0%,
+      transparent 56%
     ),
     radial-gradient(
-      ellipse 98% 58% at 50% 108%,
-      rgba(0, 0, 0, 0.52) 0%,
+      ellipse 100% 60% at 50% 108%,
+      rgba(0, 0, 0, 0.38) 0%,
       transparent 54%
     ),
     linear-gradient(
       168deg,
-      #242428 0%,
-      #18181c 38%,
-      var(--bg-deep) 100%
+      #2e323c 0%,
+      #23262e 40%,
+      #15161a 100%
     );
 }
 
@@ -332,6 +332,29 @@ html.app-launch-active body {
   background: transparent;
 }
 
+/* Sterkere glass på forsiden (lesbarhet i dagslys) */
+#app.app-root--home .home-dash-card {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(
+    165deg,
+    rgba(68, 72, 82, 0.45) 0%,
+    rgba(46, 50, 60, 0.62) 100%
+  );
+  backdrop-filter: blur(32px) saturate(1.85);
+  -webkit-backdrop-filter: blur(32px) saturate(1.85);
+  box-shadow:
+    var(--shadow-glass-edge),
+    0 6px 26px rgba(0, 0, 0, 0.2);
+}
+
+#app.app-root--home .home-dash-card--accent {
+  background: linear-gradient(
+    165deg,
+    rgba(58, 72, 96, 0.48) 0%,
+    rgba(38, 48, 68, 0.72) 100%
+  );
+}
+
 .app-body {
   min-height: 60vh;
   background-color: var(--bg);
@@ -341,6 +364,13 @@ html.app-launch-active body {
   #app.app-root--home {
     background-image: none;
     background-color: var(--bg);
+  }
+
+  .home-weather__glass {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--border);
   }
 
   .home-vegref__meter {
@@ -1584,6 +1614,226 @@ form.auth-form[hidden] {
     background-clip: text;
     color: transparent;
     text-shadow: none;
+  }
+}
+
+/* Værstripe — glass, animerte ikoner (posisjon → Open-Meteo i JS) */
+.home-weather {
+  --home-dash-pull: max(1.25rem, env(safe-area-inset-left, 0px));
+  --home-dash-pull-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  width: calc(100% + var(--home-dash-pull) + var(--home-dash-pull-right));
+  max-width: none;
+  margin: 0.35rem calc(-1 * var(--home-dash-pull-right)) 0
+    calc(-1 * var(--home-dash-pull));
+  padding: 0 max(0.3rem, env(safe-area-inset-left, 0px)) 0
+    max(0.3rem, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+
+.home-weather__glass {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.85rem 0.55rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    155deg,
+    rgba(72, 76, 88, 0.42) 0%,
+    rgba(48, 52, 62, 0.55) 100%
+  );
+  backdrop-filter: blur(36px) saturate(1.95);
+  -webkit-backdrop-filter: blur(36px) saturate(1.95);
+  box-shadow:
+    var(--shadow-glass-edge),
+    0 8px 32px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.home-weather__icon-wrap {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-weather__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.home-weather__meta {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.08rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.home-weather__temp {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--label-primary);
+}
+
+.home-weather__desc {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--label-secondary);
+  letter-spacing: 0.02em;
+}
+
+/* Vær-animasjoner */
+@keyframes homeWeatherSunSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes homeWeatherFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes homeWeatherRain {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(5px);
+  }
+}
+
+@keyframes homeWeatherRainLight {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translateY(3px);
+  }
+}
+
+@keyframes homeWeatherSnow {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes homeWeatherBolt {
+  0%,
+  45%,
+  55%,
+  100% {
+    opacity: 0.15;
+  }
+  48%,
+  52% {
+    opacity: 1;
+  }
+}
+
+@keyframes homeWeatherFogPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.home-weather__svg--sun .home-weather__sun-rays {
+  transform-origin: 0 0;
+  animation: homeWeatherSunSpin 18s linear infinite;
+}
+
+.home-weather__svg--partly .home-weather__sun-rays {
+  transform-origin: 0 0;
+  animation: homeWeatherSunSpin 22s linear infinite;
+}
+
+.home-weather__svg--partly .home-weather__partly-cloud {
+  animation: homeWeatherFloat 3.8s ease-in-out infinite;
+}
+
+.home-weather__svg--partly .home-weather__partly-sun {
+  animation: homeWeatherFloat 4.5s ease-in-out infinite reverse;
+}
+
+.home-weather__svg--cloud .home-weather__cloud-alone {
+  animation: homeWeatherFloat 3.6s ease-in-out infinite;
+}
+
+.home-weather__svg--fog .home-weather__fog-cloud {
+  animation: homeWeatherFloat 4.2s ease-in-out infinite;
+}
+
+.home-weather__svg--fog .home-weather__fog-layer {
+  animation: homeWeatherFogPulse 3s ease-in-out infinite;
+}
+
+.home-weather__rain-drops .home-weather__drop {
+  animation: homeWeatherRain 0.9s ease-in-out infinite;
+}
+
+.home-weather__rain-drops--light .home-weather__drop {
+  animation: homeWeatherRainLight 1.2s ease-in-out infinite;
+}
+
+.home-weather__svg--snow .home-weather__flake {
+  animation: homeWeatherSnow 1.4s ease-in-out infinite;
+}
+
+.home-weather__svg--thunder .home-weather__th-cloud {
+  animation: homeWeatherFloat 3.2s ease-in-out infinite;
+}
+
+.home-weather__svg--thunder .home-weather__bolt {
+  animation: homeWeatherBolt 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-weather__svg--sun .home-weather__sun-rays,
+  .home-weather__svg--partly .home-weather__sun-rays,
+  .home-weather__svg--partly .home-weather__partly-cloud,
+  .home-weather__svg--partly .home-weather__partly-sun,
+  .home-weather__svg--cloud .home-weather__cloud-alone,
+  .home-weather__svg--fog .home-weather__fog-cloud,
+  .home-weather__svg--fog .home-weather__fog-layer,
+  .home-weather__rain-drops .home-weather__drop,
+  .home-weather__rain-drops--light .home-weather__drop,
+  .home-weather__svg--snow .home-weather__flake,
+  .home-weather__svg--thunder .home-weather__th-cloud,
+  .home-weather__svg--thunder .home-weather__bolt {
+    animation: none !important;
   }
 }
 

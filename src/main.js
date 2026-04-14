@@ -31,6 +31,11 @@ import {
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
 import { syncLaunchSplash } from './launchTransition.js'
 import { initScreenWakeLock } from './screenWakeLock.js'
+import {
+  initHomeWeather,
+  resetHomeWeather,
+  scheduleHomeWeatherFromPosition,
+} from './homeWeather.js'
 import { getVegrefMetrics, logVegrefMetric } from './vegrefMetrics.js'
 import appPackage from '../package.json'
 import {
@@ -3705,6 +3710,7 @@ function stopHomeVegrefTracking() {
     navigator.geolocation.clearWatch(homeVegrefWatchId)
     homeVegrefWatchId = null
   }
+  resetHomeWeather()
   cancelHomeVegrefMeterTween()
   /* Don't reset vegref pipeline or UI state — preserve last known position so
      returning to home doesn't trigger a cold-start freeze. */
@@ -4025,6 +4031,7 @@ function startHomeVegrefTracking() {
     (pos) => {
       if (view !== 'home') return
       const { latitude, longitude, accuracy, heading } = pos.coords
+      scheduleHomeWeatherFromPosition(latitude, longitude)
       if (accuracy > GPS_REJECT_M) return
       homeVegrefGpsSeq += 1
       const seq = homeVegrefGpsSeq
@@ -5033,6 +5040,15 @@ function renderHomeHtml() {
           <span id="home-vegref-d" class="home-vegref__line home-vegref__line--d"></span>
         </div>
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
+      </div>
+    </div>
+    <div id="home-weather" class="home-weather" hidden aria-live="polite">
+      <div class="home-weather__glass">
+        <div class="home-weather__icon-wrap" id="home-weather-icon" aria-hidden="true"></div>
+        <div class="home-weather__meta">
+          <span id="home-weather-temp" class="home-weather__temp">—</span>
+          <span id="home-weather-desc" class="home-weather__desc"></span>
+        </div>
       </div>
     </div>
     <nav class="home-dashboard" aria-label="Hurtigvalg">
@@ -12044,6 +12060,7 @@ async function bootstrap() {
   await initAppStateFromStorage()
   scanixBootstrapLog('initAppStateFromStorage ferdig')
   initScreenWakeLock()
+  initHomeWeather({ getIsHome: () => view === 'home' })
   configureAdvancedRegister({
     navigate: (nextView) => {
       view = nextView
