@@ -5339,6 +5339,7 @@ function renderHomeHtml() {
       </div>
     </div>`
   return `<div class="view-home surface--home">
+    <div class="home-top-shell">
     ${userBar || ''}
     <div class="home-vegref" role="status" aria-live="off">
       <p id="home-vegref-primary" class="home-vegref__primary">Henter posisjon …</p>
@@ -5351,6 +5352,8 @@ function renderHomeHtml() {
         <div id="home-vegref-meter" class="home-vegref__meter"></div>
       </div>
     </div>
+    </div>
+    <div class="home-scroll">
     <nav class="home-dashboard" aria-label="Hurtigvalg">
       <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
         <span class="home-dash-card__row">
@@ -5596,6 +5599,7 @@ function renderHomeHtml() {
           </div>
         </dialog>
       </div>
+    </div>
     </div>
     </div>
     <nav class="home-bottom-nav" aria-label="Hurtigvalg">
