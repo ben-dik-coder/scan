@@ -1,27 +1,39 @@
 :root {
-  /* iOS-lignende: mørk grå skall, flat, begrenset palett */
-  --bg: #121212;
-  --surface: #1c1c1e;
-  --border: rgba(255, 255, 255, 0.08);
-  --text: #f2f2f7;
-  --muted: rgba(235, 235, 245, 0.55);
-  --accent: #0a84ff;
-  --accent-dim: rgba(10, 132, 255, 0.14);
+  /* Lysere «elevated» mørk modus – iOS systemgrå + tydeligere nyanser */
+  --bg: #1c1c1e;
+  --bg-deep: #151516;
+  --surface: #2c2c2e;
+  --surface-hover: #3a3a3c;
+  --border: rgba(255, 255, 255, 0.11);
+  --separator: rgba(84, 84, 88, 0.42);
+  --text: #ffffff;
+  --label-primary: rgba(255, 255, 255, 0.96);
+  --label-secondary: rgba(235, 235, 245, 0.64);
+  --label-tertiary: rgba(235, 235, 245, 0.42);
+  --muted: var(--label-secondary);
+  /* Litt lysere blå på mørk bakgrunn (nær iOS vibrant) */
+  --accent: #409cff;
+  --accent-dim: rgba(64, 156, 255, 0.2);
+  --accent-glow: rgba(64, 156, 255, 0.12);
   --danger: #ff453a;
-  --danger-dim: rgba(255, 69, 58, 0.14);
-  --plus: #30d158;
-  --plus-dim: rgba(48, 209, 88, 0.14);
+  --danger-dim: rgba(255, 69, 58, 0.16);
+  --plus: #32d74b;
+  --plus-dim: rgba(50, 215, 75, 0.18);
   --radius: 14px;
-  --radius-sm: 10px;
+  --radius-sm: 11px;
   --font:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui,
+    sans-serif;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-enter: cubic-bezier(0.25, 0.46, 0.45, 0.98);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
   --anim-stack: 0.72s;
   --anim-btn: 0.55s;
-  --shadow-surface: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  --shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.22);
+  --shadow-surface:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-lift: 0 6px 20px rgba(0, 0, 0, 0.18);
   --shell-grad: linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
   --shell-accent-glow: radial-gradient(
     ellipse 100% 100% at 50% 50%,
@@ -31,6 +43,9 @@
   color-scheme: dark;
   font-family: var(--font);
   line-height: 1.5;
+  font-feature-settings:
+    'kern' 1,
+    'liga' 1;
 }
 
 html {
@@ -79,8 +94,10 @@ body {
   min-height: 100dvh;
   min-height: -webkit-fill-available;
   overflow-x: hidden;
-  color: var(--text);
+  color: var(--label-primary);
   background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .secure-banner {
@@ -262,29 +279,34 @@ html.app-launch-active body {
   padding-top: 0.1rem;
   position: relative;
   isolation: isolate;
-  /* Profesjonell dybde: myk «studio»-lysning + svak vertikal gradient + diskret aksent */
-  background-color: #121212;
+  /* Luftigere skall: lysere grå + svak kjølig tone + myk «himmel»-lysning */
+  background-color: var(--bg);
   background-image:
     radial-gradient(
-      ellipse 115% 72% at 50% -18%,
-      rgba(255, 255, 255, 0.055) 0%,
-      transparent 52%
+      ellipse 118% 78% at 50% -20%,
+      rgba(255, 255, 255, 0.09) 0%,
+      transparent 50%
     ),
     radial-gradient(
-      ellipse 72% 48% at 92% 6%,
-      rgba(10, 132, 255, 0.045) 0%,
+      ellipse 65% 48% at 14% 8%,
+      rgba(100, 170, 255, 0.07) 0%,
+      transparent 48%
+    ),
+    radial-gradient(
+      ellipse 78% 52% at 88% 12%,
+      rgba(64, 156, 255, 0.06) 0%,
       transparent 46%
     ),
     radial-gradient(
-      ellipse 95% 52% at 50% 108%,
-      rgba(0, 0, 0, 0.52) 0%,
-      transparent 55%
+      ellipse 98% 58% at 50% 108%,
+      rgba(0, 0, 0, 0.28) 0%,
+      transparent 54%
     ),
     linear-gradient(
       168deg,
-      #171719 0%,
-      #121212 44%,
-      #0b0b0d 100%
+      #2a2a2e 0%,
+      #1e1e22 36%,
+      var(--bg-deep) 100%
     );
 }
 
@@ -340,7 +362,7 @@ html.app-launch-active body {
   flex-direction: column;
 }
 
-/* Nedre hurtigmeny: flat, diskret blur */
+/* Nedre hurtigmeny: lysere «material», tydeligere separator */
 .home-bottom-nav {
   position: fixed;
   bottom: 0;
@@ -357,12 +379,14 @@ html.app-launch-active body {
   padding: 0.55rem 1rem;
   padding-bottom: max(0.45rem, env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
-  background: rgba(28, 28, 30, 0.92);
-  backdrop-filter: blur(16px) saturate(1.05);
-  -webkit-backdrop-filter: blur(16px) saturate(1.05);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 1rem 1rem 0 0;
-  box-shadow: none;
+  background: rgba(58, 58, 62, 0.78);
+  backdrop-filter: blur(28px) saturate(1.65);
+  -webkit-backdrop-filter: blur(28px) saturate(1.65);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1.1rem 1.1rem 0 0;
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 -8px 28px rgba(0, 0, 0, 0.12);
 }
 
 .home-bottom-nav__btn {
@@ -376,13 +400,13 @@ html.app-launch-active body {
   border: none;
   border-radius: 0.65rem;
   background: transparent;
-  color: rgba(235, 235, 245, 0.45);
+  color: var(--label-tertiary);
   cursor: pointer;
   font: inherit;
   transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    transform 0.15s ease;
+    background 0.22s var(--ease-apple),
+    color 0.22s var(--ease-apple),
+    transform 0.16s var(--ease-apple);
 }
 
 .home-bottom-nav__btn:active {
@@ -390,8 +414,8 @@ html.app-launch-active body {
 }
 
 .home-bottom-nav__btn--active {
-  color: rgba(242, 242, 247, 0.95);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--label-primary);
+  background: rgba(255, 255, 255, 0.1);
   box-shadow: none;
 }
 
@@ -405,13 +429,25 @@ html.app-launch-active body {
 }
 
 .home-bottom-nav__icon--primary {
-  background: var(--accent-dim);
-  color: var(--accent);
-  box-shadow: none;
+  background: linear-gradient(
+    165deg,
+    rgba(64, 156, 255, 0.35) 0%,
+    rgba(64, 156, 255, 0.18) 100%
+  );
+  color: #eaf4ff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset;
 }
 
 .home-bottom-nav__btn--active .home-bottom-nav__icon:not(.home-bottom-nav__icon--primary) {
   color: var(--accent);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .home-bottom-nav {
+    background: rgba(44, 44, 46, 0.97);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 /* Fullbredde promo-layout (innlogging); bakgrunn er CSS-skall, ikke bilde */
@@ -716,11 +752,12 @@ form.auth-form[hidden] {
   padding: 0.85rem 1rem;
   text-align: left;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
   font: inherit;
+  box-shadow: var(--shadow-surface);
   transition:
     border-color 0.2s ease,
     background 0.2s ease,
@@ -728,8 +765,8 @@ form.auth-form[hidden] {
 }
 
 .home-inbox-card:hover {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(44, 44, 46, 0.98);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--surface-hover);
 }
 
 .home-inbox-card:active {
@@ -762,7 +799,7 @@ form.auth-form[hidden] {
 }
 
 .home-inbox-card:focus-visible {
-  outline: 2px solid rgba(147, 197, 253, 0.65);
+  outline: 2px solid rgba(64, 156, 255, 0.55);
   outline-offset: 3px;
 }
 
@@ -774,8 +811,8 @@ form.auth-form[hidden] {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 12px;
-  background: rgba(59, 130, 246, 0.15);
-  color: rgba(186, 210, 255, 0.95);
+  background: var(--accent-glow);
+  color: var(--accent);
 }
 
 .home-inbox-card__icon svg {
@@ -1287,9 +1324,9 @@ form.auth-form[hidden] {
 .incoming-share-save-dialog {
   max-width: min(92vw, 22rem);
   padding: 0;
-  border: none;
   border-radius: var(--radius-sm);
-  background: rgba(22, 26, 38, 0.98);
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-lift);
 }
@@ -1358,20 +1395,21 @@ form.auth-form[hidden] {
   padding: 0 0.45rem;
   border-radius: var(--radius-sm);
   background: var(--surface);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   cursor: pointer;
   font: inherit;
-  color: rgba(242, 242, 247, 0.85);
+  color: var(--label-primary);
   flex-shrink: 0;
   touch-action: manipulation;
+  box-shadow: var(--shadow-surface);
 }
 
 .btn-home-hamburger:hover {
-  background: rgba(44, 44, 46, 0.98);
+  background: var(--surface-hover);
 }
 
 .btn-home-hamburger:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.55);
+  outline: 2px solid rgba(64, 156, 255, 0.55);
   outline-offset: 2px;
 }
 
@@ -1403,7 +1441,7 @@ form.auth-form[hidden] {
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.02em;
-  color: rgba(242, 242, 247, 0.92);
+  color: var(--label-primary);
 }
 
 /* Forkortet vegklasse (KV, RV, …) under gatenavn. */
@@ -1414,7 +1452,7 @@ form.auth-form[hidden] {
   line-height: 1.4;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(235, 235, 245, 0.5);
+  color: var(--label-tertiary);
 }
 
 .home-vegref__compact {
@@ -1443,7 +1481,7 @@ form.auth-form[hidden] {
   line-height: 1.45;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
-  color: rgba(235, 235, 245, 0.55);
+  color: var(--label-secondary);
 }
 
 .home-vegref__line--s,
@@ -1458,7 +1496,7 @@ form.auth-form[hidden] {
   font-variant-numeric: tabular-nums;
   line-height: 1.08;
   letter-spacing: -0.04em;
-  color: var(--text);
+  color: var(--label-primary);
 }
 
 /* App-ikoner under vegreferanse (PNG med alfa – ingen screen-blend) */
@@ -1490,10 +1528,12 @@ form.auth-form[hidden] {
   background: transparent;
   cursor: pointer;
   font: inherit;
-  color: rgba(235, 235, 245, 0.78);
+  color: var(--label-secondary);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform 0.18s var(--ease-apple),
+    opacity 0.18s var(--ease-apple);
 }
 
 .home-app-icon-btn:active {
@@ -1502,7 +1542,7 @@ form.auth-form[hidden] {
 }
 
 .home-app-icon-btn:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.55);
+  outline: 2px solid rgba(64, 156, 255, 0.55);
   outline-offset: 4px;
   border-radius: var(--radius-sm);
 }
@@ -1519,7 +1559,7 @@ form.auth-form[hidden] {
   margin-bottom: 0.2rem;
 }
 
-/* Flat plate (iOS-lignende surface) */
+/* Løftet plate med lett høylys */
 .home-app-icon-btn__icon-wrap::before {
   content: '';
   position: absolute;
@@ -1530,10 +1570,17 @@ form.auth-form[hidden] {
   z-index: 0;
   border-radius: var(--radius-sm);
   pointer-events: none;
-  background: var(--surface);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(44, 44, 46, 0.98) 42%,
+    var(--surface) 100%
+  );
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-surface);
+  transition:
+    opacity 0.18s var(--ease-apple),
+    transform 0.18s var(--ease-apple);
 }
 
 .home-app-icon-btn:active .home-app-icon-btn__icon-wrap::before {
@@ -1560,7 +1607,7 @@ form.auth-form[hidden] {
   display: block;
   width: 72%;
   height: 72%;
-  color: rgba(235, 235, 245, 0.88);
+  color: var(--label-primary);
   pointer-events: none;
   filter: none;
 }
@@ -1576,7 +1623,7 @@ form.auth-form[hidden] {
   font-weight: 500;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: rgba(235, 235, 245, 0.62);
+  color: var(--label-tertiary);
   line-height: 1.25;
 }
 
@@ -1606,7 +1653,7 @@ form.auth-form[hidden] {
   font-size: 0.92rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
@@ -1618,13 +1665,13 @@ form.auth-form[hidden] {
 }
 
 .home-action-split__btn:hover {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(44, 44, 46, 0.98);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--surface-hover);
 }
 
 .home-action-split__btn--primary {
   background: var(--accent-dim);
-  border-color: rgba(10, 132, 255, 0.35);
+  border-color: rgba(64, 156, 255, 0.38);
   color: var(--text);
 }
 
@@ -1648,7 +1695,7 @@ form.auth-form[hidden] {
   font-size: 0.8rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
@@ -1660,7 +1707,7 @@ form.auth-form[hidden] {
 }
 
 .home-bilde-tabs__tab--active {
-  border-color: rgba(10, 132, 255, 0.35);
+  border-color: rgba(64, 156, 255, 0.38);
   background: var(--accent-dim);
   color: var(--text);
 }
@@ -6332,7 +6379,7 @@ body.session-map-fullscreen-open {
 .surface {
   padding: 1.35rem 1.25rem;
   background: var(--surface);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -6344,7 +6391,7 @@ body.session-map-fullscreen-open {
 
 @media (hover: hover) and (pointer: fine) {
   .surface:hover {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.16);
   }
 }
 
@@ -6564,12 +6611,12 @@ body.session-map-fullscreen-open {
   padding: 0.55rem 0.95rem;
   background: var(--accent-dim);
   color: var(--accent);
-  border-color: rgba(10, 132, 255, 0.28);
+  border-color: rgba(64, 156, 255, 0.32);
 }
 
 .btn-secondary:hover {
   filter: brightness(1.06);
-  border-color: rgba(10, 132, 255, 0.4);
+  border-color: rgba(64, 156, 255, 0.48);
 }
 
 .map-section__toolbar {
@@ -6585,7 +6632,7 @@ body.session-map-fullscreen-open {
   font-weight: 500;
   line-height: 1.25;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
@@ -6596,18 +6643,18 @@ body.session-map-fullscreen-open {
 }
 
 .map-section__tab:hover {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
   color: var(--text);
 }
 
 .map-section__tab--active {
-  border-color: rgba(10, 132, 255, 0.35);
+  border-color: rgba(64, 156, 255, 0.38);
   background: var(--accent-dim);
   color: var(--text);
 }
 
 .map-section__tab:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.45);
+  outline: 2px solid rgba(64, 156, 255, 0.45);
   outline-offset: 2px;
 }
 
