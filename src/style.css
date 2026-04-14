@@ -260,6 +260,32 @@ html.app-launch-active body {
   box-sizing: border-box;
   /* Minimal luft; safe area i .view-home.surface--home */
   padding-top: 0.1rem;
+  position: relative;
+  isolation: isolate;
+  /* Profesjonell dybde: myk «studio»-lysning + svak vertikal gradient + diskret aksent */
+  background-color: #121212;
+  background-image:
+    radial-gradient(
+      ellipse 115% 72% at 50% -18%,
+      rgba(255, 255, 255, 0.055) 0%,
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 72% 48% at 92% 6%,
+      rgba(10, 132, 255, 0.045) 0%,
+      transparent 46%
+    ),
+    radial-gradient(
+      ellipse 95% 52% at 50% 108%,
+      rgba(0, 0, 0, 0.52) 0%,
+      transparent 55%
+    ),
+    linear-gradient(
+      168deg,
+      #171719 0%,
+      #121212 44%,
+      #0b0b0d 100%
+    );
 }
 
 #app.app-root--home .app-body {
@@ -267,11 +293,19 @@ html.app-launch-active body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: transparent;
 }
 
 .app-body {
   min-height: 60vh;
   background-color: var(--bg);
+}
+
+@media (prefers-contrast: more) {
+  #app.app-root--home {
+    background-image: none;
+    background-color: var(--bg);
+  }
 }
 
 .surface--home {
