@@ -280,34 +280,18 @@ html.app-launch-active body {
 }
 
 /*
- * Forside-skall: symmetrisk (midtstilt lys) — tidligere radialer ved 16%/10% ga mørk høyre
- * kant, spesielt synlig på Mac der html-bakgrunn fyller marg utenfor sentrert #app.
+ * Forside-skall: én vertikal gradient (samme tone per rad over hele bredden).
+ * Radialgradienter med transparent + mørk bunn (#2a2d34) ga mørkere hjørner/høyre kant.
  */
 html.scanix-home-view,
 #app.app-root--home {
   background-color: #2e323c;
-  background-image:
-    radial-gradient(
-      ellipse 130% 90% at 50% -8%,
-      rgba(255, 255, 255, 0.18) 0%,
-      transparent 52%
-    ),
-    radial-gradient(
-      ellipse 85% 55% at 50% 52%,
-      rgba(255, 255, 255, 0.05) 0%,
-      transparent 58%
-    ),
-    radial-gradient(
-      ellipse 90% 45% at 50% 100%,
-      rgba(120, 185, 255, 0.07) 0%,
-      transparent 52%
-    ),
-    linear-gradient(
-      180deg,
-      #383d48 0%,
-      #2e323c 45%,
-      #2a2d34 100%
-    );
+  background-image: linear-gradient(
+    180deg,
+    #383d48 0%,
+    #2e323c 42%,
+    #2e323c 100%
+  );
   background-attachment: scroll;
 }
 
