@@ -279,6 +279,23 @@ function roadKindPenalty(seg) {
   return 12
 }
 
+/** @param {object} seg */
+function segmentVegkategori(seg) {
+  const vs = seg?.vegsystemreferanse?.vegsystem
+  return vs && typeof vs === 'object' ? vs.vegkategori : null
+}
+
+/**
+ * @param {object} seg
+ * @returns {string}
+ */
+function segmentAdresseNavn(seg) {
+  const ad = seg?.adresse
+  if (!ad || typeof ad !== 'object') return ''
+  const n = ad.navn
+  return typeof n === 'string' ? n.trim() : ''
+}
+
 /**
  * Retning langs segment ved nærmeste punkt (tangent), grader [0,360).
  * Bruker segment-indeks fra closestOnPolyline for lokal retning.
@@ -321,6 +338,7 @@ function segmentRoadHeadingDeg(seg, lat, lng) {
  *   chosenScore: number
  *   bestScore: number
  *   prevSegScore: number | null
+ *   ranked: Array<{ seg: object, score: number, d: object, id: string | number | null }>
  * } | null}
  */
 function pickBestSegment(objekter, lat, lng, opts = {}) {
@@ -361,11 +379,16 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       if (hd < 25 && d.distToRoadM < 20) score -= 15
       if (hd < 10) score += dist * 0.5
     }
+    /* Kommunalveg med gatenavn: lett bonus — ikke overstyr nærhet (unngå «feil gate»). */
+    if (segmentVegkategori(seg) === 'K' && segmentAdresseNavn(seg)) {
+      score -= 10
+    }
     scored.push({ seg, score, d, id })
   }
   if (!scored.length) return null
 
   scored.sort((a, b) => a.score - b.score)
+  const ranked = scored.slice(0, 18)
   const best = scored[0]
   const bestScore = best.score
   const prevRow =
@@ -374,11 +397,23 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     prevRow != null && typeof prevRow.score === 'number' ? prevRow.score : null
 
   if (prevNvdbId == null || best.id === prevNvdbId) {
-    return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore }
+    return {
+      seg: best.seg,
+      chosenScore: best.score,
+      bestScore,
+      prevSegScore,
+      ranked,
+    }
   }
 
   if (!prevRow) {
-    return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore: null }
+    return {
+      seg: best.seg,
+      chosenScore: best.score,
+      bestScore,
+      prevSegScore: null,
+      ranked,
+    }
   }
 
   /* Større margin ved ustabil GPS → færre hopp mellom parallelle veier / veinavn. */
@@ -393,9 +428,16 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       chosenScore: prevRow.score,
       bestScore,
       prevSegScore,
+      ranked,
     }
   }
-  return { seg: best.seg, chosenScore: best.score, bestScore, prevSegScore }
+  return {
+    seg: best.seg,
+    chosenScore: best.score,
+    bestScore,
+    prevSegScore,
+    ranked,
+  }
 }
 
 function sleepMs(ms) {
@@ -472,13 +514,33 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
   })
   if (!picked) return null
 
-  const described = describeSegmentForPoint(
-    picked.seg,
-    lat,
-    lng,
-    accuracyM,
-  )
+  let segUse = picked.seg
+  let described = describeSegmentForPoint(segUse, lat, lng, accuracyM)
   if (!described) return null
+
+  /* Nærmeste K-veg uten navn, men nær K med gatenavn (typisk samme gate) → bytt kun ved lite avvik. */
+  if (
+    segmentVegkategori(segUse) === 'K' &&
+    !segmentAdresseNavn(segUse) &&
+    Array.isArray(picked.ranked)
+  ) {
+    const baseD = described.distToRoadM ?? 99
+    const maxAlt = Math.min(baseD + 10, 22)
+    for (let i = 1; i < picked.ranked.length; i++) {
+      const row = picked.ranked[i]
+      if (segmentVegkategori(row.seg) !== 'K' || !segmentAdresseNavn(row.seg)) {
+        continue
+      }
+      const alt = describeSegmentForPoint(row.seg, lat, lng, accuracyM)
+      if (!alt) continue
+      if (alt.distToRoadM <= maxAlt) {
+        segUse = row.seg
+        described = alt
+        break
+      }
+    }
+  }
+
   if (
     typeof picked.chosenScore === 'number' &&
     (picked.prevSegScore == null || typeof picked.prevSegScore === 'number')
@@ -521,12 +583,14 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
 
   let qLat = lat
   let qLng = lng
+  /* Forskyv søk «forover» ved fart — men ikke ved dårlig GPS (kan treffe feil vei i kartutsnitt). */
   if (
     typeof hd === 'number' &&
     Number.isFinite(hd) &&
-    speedMps >= 8
+    speedMps >= 8 &&
+    accM <= 40
   ) {
-    const forwardM = Math.min(60, 4 + speedMps * 1.8)
+    const forwardM = Math.min(42, 3 + speedMps * 1.35)
     const sh = shiftLatLngAlongHeading(lat, lng, hd, forwardM)
     qLat = sh.lat
     qLng = sh.lng
@@ -655,19 +719,33 @@ export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {
 export const fetchRoadReferenceNear = fetchRoadReferenceNearOnline
 
 /**
+ * @param {unknown} o
+ * @returns {string}
+ */
+function adresseObjectNavn(o) {
+  if (!o || typeof o !== 'object') return ''
+  const ad = /** @type {{ navn?: unknown }} */ (o)
+  if (typeof ad.navn === 'string' && ad.navn.trim()) {
+    return ad.navn.trim()
+  }
+  return ''
+}
+
+/**
  * @param {unknown} hit Første treff fra /posisjon
  * @returns {string}
  */
 function extractAdresseNavnFromPosisjonHit(hit) {
   if (!hit || typeof hit !== 'object') return ''
-  const ad = /** @type {{ adresse?: { navn?: unknown } }} */ (hit).adresse
-  if (
-    ad &&
-    typeof ad === 'object' &&
-    typeof ad.navn === 'string' &&
-    ad.navn.trim()
-  ) {
-    return ad.navn.trim()
+  const h = /** @type {{ adresse?: unknown, adresser?: unknown }} */ (hit)
+  let n = adresseObjectNavn(h.adresse)
+  if (n) return n
+  const arr = h.adresser
+  if (Array.isArray(arr)) {
+    for (const a of arr) {
+      n = adresseObjectNavn(a)
+      if (n) return n
+    }
   }
   return ''
 }

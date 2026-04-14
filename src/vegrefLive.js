@@ -28,7 +28,9 @@ export const VEGREF_MIN_INTERVAL_MS = 400
 export const VEGREF_MIN_MOVE_M = 2
 
 /** Vent før supplerende segmentert-kall (veinavn) — kortere = raskere gatenavn, fortsatt unngår dobbeltkall ved kald start. */
-const POSISJON_ENRICH_SEGMENT_DELAY_MS = 950
+const POSISJON_ENRICH_SEGMENT_DELAY_MS = 850
+/** Andre forsøk når første segment-svar mangler adresse.navn (nett/GPS). */
+const POSISJON_ENRICH_RETRY_GAP_MS = 2800
 
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
@@ -41,10 +43,6 @@ const OFFLINE_REUSE_NVDB_M = 50
 
 /** Monoton tid fra GPS (unngår out-of-order fixes som gir bakover-meter). */
 let lastGpsTimestamp = 0
-
-/** Eksponentiell glatting av posisjon før NVDB (reduserer jitter). */
-let smoothLat = /** @type {number | null} */ (null)
-let smoothLng = /** @type {number | null} */ (null)
 
 /** @type {number} */
 let segmentConfidence = 0
@@ -423,9 +421,15 @@ function computeSpeed(lat, lng, timestamp, haversineMFn) {
 function isOfficialVegsystemLineOnly(s) {
   const t = String(s || '').trim()
   if (!t) return true
-  return /^(Europaveg|Riksveg|Fylkesveg|Kommunal veg|Privat veg|Skogsbilveg|Ukjent veg|Veg)\b/i.test(
-    t,
-  )
+  if (
+    /^(Europaveg|Riksveg|Fylkesveg|Kommunal veg|Privat veg|Skogsbilveg|Ukjent veg|Veg)\b/i.test(
+      t,
+    )
+  ) {
+    return true
+  }
+  /* Kort veglinje (f.eks. «KV 12») – trenger fortsatt segment-oppslag for lokalt gatenavn. */
+  return /^(EV|RV|FV|KV|PV|SV)\s+\d+/i.test(t)
 }
 
 /**
@@ -472,57 +476,62 @@ function schedulePosisjonDisplayEnrichFromSegments(
         setTimeout(r, POSISJON_ENRICH_SEGMENT_DELAY_MS),
       )
       if (enrichSignal.aborted) return
-      const segRes = await h.fetchRoadReferenceNear(lat, lng, {
-        signal: enrichSignal,
-        accuracyM: fetchOpts.accuracyM,
-        prevNvdbId: fetchOpts.prevNvdbId,
-        userHeadingDeg: fetchOpts.userHeadingDeg,
-        speed: fetchOpts.speed,
-      })
-      if (enrichSignal.aborted) return
-      if (!segRes) {
+
+      const attemptMerge = async (segRes) => {
+        if (!segRes) return false
+        const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
+        if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) return false
+        if (segDisp === disp) {
+          lastPosisjonEnrichNvdbId = targetNvdbId
+          return true
+        }
+        const merged = {
+          ...res,
+          roadLineDisplay: segRes.roadLineDisplay,
+          roadLineDisplayShort:
+            segRes.roadLineDisplayShort ||
+            segRes.roadLineShort ||
+            segRes.roadLineDisplay,
+          roadLine: segRes.roadLine || res.roadLine,
+          roadLineShort: segRes.roadLineShort || res.roadLineShort,
+        }
+        const cur = lastAppliedRes
+        const curId =
+          cur && typeof cur === 'object' && 'nvdbId' in cur
+            ? /** @type {{ nvdbId?: string | number | null }} */ (cur).nvdbId
+            : null
+        if (curId != null && String(curId) !== String(targetNvdbId)) {
+          return false
+        }
+        if (lastAppliedLat != null && lastAppliedLng != null && hooks) {
+          const drift = hooks.haversineM(lastAppliedLat, lastAppliedLng, lat, lng)
+          if (drift > 140) return false
+        }
+        cacheLat = lat
+        cacheLng = lng
+        cacheRes = merged
+        if (enrichSignal.aborted) return false
+        applyNvdbNullable(merged, lat, lng, applyCtx)
         lastPosisjonEnrichNvdbId = targetNvdbId
-        return
+        return true
       }
-      const segDisp = String(segRes.roadLineDisplay || segRes.roadLine || '').trim()
-      if (!segDisp || isOfficialVegsystemLineOnly(segDisp)) {
-        lastPosisjonEnrichNvdbId = targetNvdbId
-        return
+
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        if (enrichSignal.aborted) return
+        const segRes = await h.fetchRoadReferenceNear(lat, lng, {
+          signal: enrichSignal,
+          accuracyM: fetchOpts.accuracyM,
+          prevNvdbId: fetchOpts.prevNvdbId,
+          userHeadingDeg: fetchOpts.userHeadingDeg,
+          speed: fetchOpts.speed,
+        })
+        if (enrichSignal.aborted) return
+        const ok = await attemptMerge(segRes)
+        if (ok) return
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, POSISJON_ENRICH_RETRY_GAP_MS))
+        }
       }
-      if (segDisp === disp) {
-        lastPosisjonEnrichNvdbId = targetNvdbId
-        return
-      }
-      const merged = {
-        ...res,
-        roadLineDisplay: segRes.roadLineDisplay,
-        roadLineDisplayShort:
-          segRes.roadLineDisplayShort ||
-          segRes.roadLineShort ||
-          segRes.roadLineDisplay,
-        roadLine: segRes.roadLine || res.roadLine,
-        roadLineShort: segRes.roadLineShort || res.roadLineShort,
-      }
-      const cur = lastAppliedRes
-      const curId =
-        cur && typeof cur === 'object' && 'nvdbId' in cur
-          ? /** @type {{ nvdbId?: string | number | null }} */ (cur).nvdbId
-          : null
-      if (
-        curId != null &&
-        String(curId) !== String(targetNvdbId)
-      ) {
-        return
-      }
-      if (lastAppliedLat != null && lastAppliedLng != null && hooks) {
-        const drift = hooks.haversineM(lastAppliedLat, lastAppliedLng, lat, lng)
-        if (drift > 140) return
-      }
-      cacheLat = lat
-      cacheLng = lng
-      cacheRes = merged
-      if (enrichSignal.aborted) return
-      applyNvdbNullable(merged, lat, lng, applyCtx)
       lastPosisjonEnrichNvdbId = targetNvdbId
     } catch (e) {
       if (/** @type {{ name?: string }} */ (e).name === 'AbortError') return
@@ -547,8 +556,6 @@ export function vegrefResetSessionCache() {
   inFlightAnchorLat = null
   inFlightAnchorLng = null
   lastGpsTimestamp = 0
-  smoothLat = null
-  smoothLng = null
   segmentConfidence = 0
   lastNvdbSegmentApplyAt = 0
   lastConfidenceDecayAt = 0
@@ -655,37 +662,16 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     effHeadingDeg = effHeadingSmoothed
   }
 
-  const highSpeed = lastSpeed > 15
-  /* Ved stor usikkerhet: følg rå fix litt tettere (mindre «henging» på meter). */
-  const accLoose = accuracyM > 42
-  /* Litt mindre vekt på siste fix ved høy fart → mindre GPS-støy i NVDB-inndata */
-  const aSmooth = highSpeed
-    ? accLoose
-      ? 0.44
-      : 0.38
-    : accLoose
-      ? 0.4
-      : 0.3
-  const aKeep = 1 - aSmooth
-
-  let useLat = gpsLat
-  let useLng = gpsLng
-  if (smoothLat == null || smoothLng == null) {
-    smoothLat = gpsLat
-    smoothLng = gpsLng
-  } else {
-    smoothLat = smoothLat * aKeep + gpsLat * aSmooth
-    smoothLng = smoothLng * aKeep + gpsLng * aSmooth
-  }
-  useLat = smoothLat
-  useLng = smoothLng
+  /* NVDB må bruke samme punkt som GPS (kart/markør). Glatting her ga systematisk avvik under kjøring. */
+  const nvdbLat = gpsLat
+  const nvdbLng = gpsLng
 
   if (nvdbAbort && inFlightAnchorLat != null && inFlightAnchorLng != null) {
     const movedInflight = h.haversineM(
       inFlightAnchorLat,
       inFlightAnchorLng,
-      useLat,
-      useLng,
+      nvdbLat,
+      nvdbLng,
     )
     let coalesceRadius = Math.max(
       VEGREF_INFLIGHT_COALESCE_BASE_M,
@@ -702,7 +688,7 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   const moved =
     lastFetchLat == null
       ? Infinity
-      : h.haversineM(lastFetchLat, lastFetchLng, useLat, useLng)
+      : h.haversineM(lastFetchLat, lastFetchLng, nvdbLat, nvdbLng)
   let minInterval =
     accuracyM > 48
       ? VEGREF_MIN_INTERVAL_MS + 260
@@ -730,16 +716,16 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   if (throttled) return
 
   lastFetchMs = now
-  lastFetchLat = useLat
-  lastFetchLng = useLng
+  lastFetchLat = nvdbLat
+  lastFetchLng = nvdbLng
 
   if (nvdbAbort) nvdbAbort.abort()
   nvdbAbort = new AbortController()
   const { signal } = nvdbAbort
   const seq = fetchGeneration + 1
   fetchGeneration = seq
-  inFlightAnchorLat = useLat
-  inFlightAnchorLng = useLng
+  inFlightAnchorLat = nvdbLat
+  inFlightAnchorLng = nvdbLng
 
   const online = typeof navigator === 'undefined' || navigator.onLine !== false
   const preferOffline =
@@ -751,8 +737,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   if (!online && !h.fetchRoadReferenceNearOffline) {
     inFlightAnchorLat = null
     inFlightAnchorLng = null
-    const off = offlineOrFallbackResult(useLat, useLng)
-    applyToOpenUIs(off, useLat, useLng)
+    const off = offlineOrFallbackResult(nvdbLat, nvdbLng)
+    applyToOpenUIs(off, nvdbLat, nvdbLng)
     return
   }
 
@@ -764,12 +750,12 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       let res = null
 
       if (preferOffline && h.fetchRoadReferenceNearOffline) {
-        res = await h.fetchRoadReferenceNearOffline(useLat, useLng, fetchOpts)
+        res = await h.fetchRoadReferenceNearOffline(nvdbLat, nvdbLng, fetchOpts)
       }
 
       if (!res && online && h.fetchRoadPositionDirect) {
         try {
-          res = await h.fetchRoadPositionDirect(useLat, useLng, fetchOpts)
+          res = await h.fetchRoadPositionDirect(nvdbLat, nvdbLng, fetchOpts)
         } catch (e) {
           if (/** @type {{ name?: string }} */ (e).name === 'AbortError') throw e
         }
@@ -780,7 +766,7 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
           lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
             ? /** @type {{ nvdbId?: string | number | null }} */ (lastAppliedRes).nvdbId
             : null
-        res = await h.fetchRoadReferenceNear(useLat, useLng, {
+        res = await h.fetchRoadReferenceNear(nvdbLat, nvdbLng, {
           ...fetchOpts,
           prevNvdbId: prevId ?? null,
           userHeadingDeg: effHeadingDeg,
@@ -789,19 +775,19 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       }
 
       if (!res && !online && h.fetchRoadReferenceNearOffline) {
-        res = await h.fetchRoadReferenceNearOffline(useLat, useLng, fetchOpts)
+        res = await h.fetchRoadReferenceNearOffline(nvdbLat, nvdbLng, fetchOpts)
       }
 
       if (signal.aborted) return
       if (seq !== fetchGeneration) return
       if (res) {
-        cacheLat = useLat
-        cacheLng = useLng
+        cacheLat = nvdbLat
+        cacheLng = nvdbLng
         cacheRes = res
       }
       if (seq !== fetchGeneration) return
       const applyCtx = { accuracyM, speedMps, online }
-      applyNvdbNullable(res, useLat, useLng, applyCtx)
+      applyNvdbNullable(res, nvdbLat, nvdbLng, applyCtx)
       if (
         res &&
         online &&
@@ -810,8 +796,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       ) {
         schedulePosisjonDisplayEnrichFromSegments(
           res,
-          useLat,
-          useLng,
+          nvdbLat,
+          nvdbLng,
           {
             accuracyM,
             prevNvdbId: res.nvdbId ?? null,
@@ -825,9 +811,9 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     } catch (e) {
       if (/** @type {{ name?: string }} */ (e).name === 'AbortError') return
       if (seq !== fetchGeneration) return
-      const off = offlineOrFallbackResult(useLat, useLng)
+      const off = offlineOrFallbackResult(nvdbLat, nvdbLng)
       if (seq !== fetchGeneration) return
-      applyToOpenUIs(off, useLat, useLng)
+      applyToOpenUIs(off, nvdbLat, nvdbLng)
     } finally {
       if (seq === fetchGeneration) {
         inFlightAnchorLat = null

@@ -2122,7 +2122,6 @@ const DRIVING_VEGNET_MERGE_MIN_MOVE_M = 450
 const DRIVING_VEGNET_MERGE_MIN_SPEED_MPS = 2.5
 
 /** Forside: GPS-watch som mater felles vegref-pipeline. */
-let homeVegrefGpsSeq = 0
 let homeVegrefWatchId = null
 let homeVegrefHasDisplayedResult = false
 let homeVegrefSegKey = ''
@@ -4052,8 +4051,6 @@ function startHomeVegrefTracking() {
       const { latitude, longitude, accuracy, heading } = pos.coords
       scheduleHomeWeatherFromPosition(latitude, longitude)
       if (accuracy > GPS_REJECT_M) return
-      homeVegrefGpsSeq += 1
-      const seq = homeVegrefGpsSeq
       pushTracePoint(latitude, longitude, pos.timestamp, accuracy)
       const hdg =
         heading != null && Number.isFinite(heading) ? heading : null
@@ -4081,25 +4078,8 @@ function startHomeVegrefTracking() {
         pos.timestamp,
         hdg,
       )
-      void (async () => {
-        const snapped = await snapToRoadNetwork(latitude, longitude, accuracy)
-        if (seq !== homeVegrefGpsSeq) return
-        if (view !== 'home') return
-        if (!snapped) return
-        const refLat = snapped.lat
-        const refLng = snapped.lng
-        const snapMoved = haversineM(latitude, longitude, refLat, refLng)
-        /* Unngå ekstra NVDB-runde ved minimale OSRM-justeringer (rå+snap ga ofte jitter). */
-        if (snapMoved < 4) return
-        scheduleHomeVegrefLookup(
-          refLat,
-          refLng,
-          true,
-          accuracy,
-          pos.timestamp,
-          hdg,
-        )
-      })()
+      /* Ikke OSRM-«snap» til vegref her: nærmeste kjørebane kan være hovedvei langt fra faktisk posisjon
+         (brukeren ser riktig GPS på kartet, men NVDB fikk feil punkt). */
     },
     (err) => {
       if (view !== 'home') return
