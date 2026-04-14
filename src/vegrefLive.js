@@ -23,6 +23,15 @@ import { logVegrefMetric } from './vegrefMetrics.js'
  * }} VegrefHooks
  */
 
+/** Pars meter for vegref-debug (samme logikk som parseKmtMeterInt i main). */
+function meterIntForMetric(m) {
+  if (m == null) return null
+  const t = String(m).trim()
+  if (!t || t === '–' || t === '-') return null
+  const n = parseInt(t.replace(/\D/g, ''), 10)
+  return Number.isFinite(n) ? n : null
+}
+
 /** Felles timing for forsiden og KMT – samme opplevd hastighet. */
 export const VEGREF_MIN_INTERVAL_MS = 400
 export const VEGREF_MIN_MOVE_M = 2
@@ -256,6 +265,10 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
       nid != null &&
       String(oid) !== String(nid)
     logVegrefMetric({
+      type: 'home-meter-pipeline',
+      meterM: meterIntForMetric(
+        /** @type {{ m?: unknown }} */ (res).m,
+      ),
       accuracyM: ctx.accuracyM,
       speedMps: ctx.speedMps,
       online: ctx.online !== false,

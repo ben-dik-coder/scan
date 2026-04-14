@@ -3805,6 +3805,12 @@ function startHomeVegrefMeterTweenTo(targetInt) {
     cancelHomeVegrefMeterTween()
     return
   }
+  logVegrefMetric({
+    type: 'home-meter-tween',
+    from,
+    to: targetInt,
+    accuracyM: lastVegrefGpsAccuracyM,
+  })
   cancelHomeVegrefMeterTween()
   homeVegrefMeterFrom = from
   homeVegrefMeterTo = targetInt
@@ -5965,6 +5971,7 @@ function renderMenuSettingsHtml() {
 
 function buildVegrefDebugReportText() {
   const rows = getVegrefMetrics()
+  /* home-meter-pipeline: NVDB-treff med meterM; home-meter-tween: animasjon mellom to meterverdier */
   const meterRows = rows.filter((r) => {
     const t = String(r?.type || '')
     return t.startsWith('home-meter') || t === 'home-meter-override'
