@@ -414,9 +414,9 @@ body.scanix-home-view {
   z-index: 25;
   width: 100%;
   padding-top: calc(env(safe-area-inset-top, 0px) + 0.2rem);
-  /* Samme skall som #app — kort som scroller opp forsvinner under dette, ikke over meter */
+  /* Samme flate som skallet — ingen skygge/stripe (så det ikke ser ut som et «håndtak» eller panel) */
   background-color: #2e323c;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 /* Hurtigvalg + home-main: eneste vertikale scroll på forsiden */
@@ -430,26 +430,6 @@ body.scanix-home-view {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
-  /* Myk maske øverst: innhold tones ut før det når toppfeltet (ikke hard overlap mot meter) */
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    #000 0.65rem,
-    #000 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    #000 0.65rem,
-    #000 100%
-  );
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-scroll {
-    mask-image: none;
-    -webkit-mask-image: none;
-  }
 }
 
 .home-scroll .home-dashboard {
@@ -2271,8 +2251,6 @@ form.auth-form[hidden] {
 .view-home:has(#panel-home-bilde-ai:not([hidden])) .home-scroll {
   overflow: hidden;
   padding-bottom: 0;
-  mask-image: none;
-  -webkit-mask-image: none;
 }
 
 /*
@@ -2335,8 +2313,6 @@ body.home-ai-panel-open .view-home.surface--home {
 body.home-ai-panel-open .home-scroll {
   padding-bottom: 0;
   overflow: hidden;
-  mask-image: none;
-  -webkit-mask-image: none;
 }
 
 body.home-ai-panel-open .home-user-bar,
