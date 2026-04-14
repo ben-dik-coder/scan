@@ -5026,7 +5026,15 @@ function renderHomeHtml() {
             <span class="btn-inbox-header__badge" data-inbox-badge hidden></span>
           </span>
         </button>
-        <button type="button" class="btn btn-text btn-logout" id="btn-logout">Logg ut</button>
+        <div id="home-weather" class="home-weather home-weather--toolbar" hidden aria-live="polite">
+          <div class="home-weather__inner">
+            <div class="home-weather__icon-wrap" id="home-weather-icon" aria-hidden="true"></div>
+            <div class="home-weather__meta">
+              <span id="home-weather-temp" class="home-weather__temp">—</span>
+              <span id="home-weather-desc" class="home-weather__desc"></span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>`
   return `<div class="view-home surface--home">
@@ -5043,17 +5051,7 @@ function renderHomeHtml() {
       </div>
     </div>
     <nav class="home-dashboard" aria-label="Hurtigvalg">
-      <div class="home-dashboard__hero-row">
-        <div id="home-weather" class="home-weather" hidden aria-live="polite">
-          <div class="home-weather__inner">
-            <div class="home-weather__icon-wrap" id="home-weather-icon" aria-hidden="true"></div>
-            <div class="home-weather__meta">
-              <span id="home-weather-temp" class="home-weather__temp">—</span>
-              <span id="home-weather-desc" class="home-weather__desc"></span>
-            </div>
-          </div>
-        </div>
-        <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
+      <button type="button" class="home-dash-card home-dash-card--hero home-dash-card--accent" id="btn-home-registrering">
         <span class="home-dash-card__row">
           <span class="home-dash-card__content">
             <span class="home-dash-card__title">Ny registrering</span>
@@ -5076,7 +5074,6 @@ function renderHomeHtml() {
           </span>
         </span>
       </button>
-      </div>
       <button type="button" class="home-dash-card" id="btn-home-kamera">
         <span class="home-dash-card__row">
           <span class="home-dash-card__content">
@@ -5314,6 +5311,9 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-privacy">Personvern</button>
         <button type="button" class="home-drawer__link" id="home-drawer-support">Support</button>
       </nav>
+      <div class="home-drawer__footer">
+        <button type="button" class="btn btn-text btn-logout" id="btn-logout">Logg ut</button>
+      </div>
     </aside>
   </div>`
 }

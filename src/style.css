@@ -831,7 +831,7 @@ form.auth-form[hidden] {
   gap: 0.75rem;
   margin: 0 auto 0.4rem;
   padding: 0.05rem 0.5rem 0;
-  max-width: min(22rem, 100%);
+  max-width: min(28rem, 100%);
   width: 100%;
   border-radius: 0;
   background: transparent;
@@ -1655,28 +1655,36 @@ form.auth-form[hidden] {
   }
 }
 
-/* Vær: diskret, uten egen boks — ved siden av «Ny registrering» (se .home-dashboard__hero-row) */
-.home-dashboard__hero-row {
-  display: flex;
+/* Vær: diskret, uten egen boks — i brukerlinjen (høyre), erstatter tidligere «Logg ut» */
+.home-user-bar__actions .home-weather {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 7.5rem;
+}
+
+.home-weather--toolbar .home-weather__inner {
   flex-direction: row;
-  align-items: stretch;
-  gap: clamp(1.15rem, 5vw, 2rem);
-  width: 100%;
-  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  text-align: right;
 }
 
-.home-dashboard__hero-row .home-weather {
-  flex: 0 0 auto;
-  width: auto;
-  max-width: 5.25rem;
-  margin: 0;
-  padding: 0;
-  align-self: center;
+.home-weather--toolbar .home-weather__meta {
+  align-items: flex-end;
 }
 
-.home-dashboard__hero-row .home-dash-card.home-dash-card--hero {
-  flex: 1 1 0;
-  min-width: 0;
+.home-weather--toolbar .home-weather__icon-wrap {
+  width: 32px;
+  height: 32px;
+}
+
+.home-weather--toolbar .home-weather__temp {
+  font-size: 0.88rem;
+}
+
+.home-weather--toolbar .home-weather__desc {
+  max-width: 4.5rem;
 }
 
 .home-weather__inner {
@@ -3407,6 +3415,21 @@ body.home-ai-panel-open .home-vegref {
   -webkit-overflow-scrolling: touch;
   gap: 0.35rem;
   padding-bottom: 0.75rem;
+}
+
+.home-drawer__footer {
+  flex-shrink: 0;
+  padding: 0.65rem 0.65rem 0.35rem;
+  margin-top: auto;
+  border-top: 1px solid rgba(96, 165, 250, 0.14);
+}
+
+.home-drawer__footer .btn-logout {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .menu-session-tabs {
