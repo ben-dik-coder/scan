@@ -280,19 +280,12 @@ html.app-launch-active body {
 }
 
 /*
- * Forside-skall: én vertikal gradient (samme tone per rad over hele bredden).
- * Radialgradienter med transparent + mørk bunn (#2a2d34) ga mørkere hjørner/høyre kant.
+ * Forside-skall: helt flat bakgrunn (ingen vertikal gradient — oppleves ofte som vignett).
  */
 html.scanix-home-view,
 #app.app-root--home {
   background-color: #2e323c;
-  background-image: linear-gradient(
-    180deg,
-    #383d48 0%,
-    #2e323c 42%,
-    #2e323c 100%
-  );
-  background-attachment: scroll;
+  background-image: none;
 }
 
 html.scanix-home-view {
@@ -445,9 +438,9 @@ body.scanix-home-view {
   -webkit-backdrop-filter: var(--glass-blur-strong);
   border-top: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 1.1rem 1.1rem 0 0;
+  /* Lett kant — unngå sterk oppadrettet skygge (leses som svart gradient over innhold) */
   box-shadow:
     var(--shadow-glass-edge),
-    0 -12px 40px rgba(0, 0, 0, 0.45),
     0 -2px 0 rgba(77, 163, 255, 0.06);
 }
 
