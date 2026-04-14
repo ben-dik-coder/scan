@@ -280,44 +280,33 @@ html.app-launch-active body {
 }
 
 /*
- * Forside-skall: samme gradient på html og #app slik at PC (sentrert kolonne) og
- * mobil/PWA (full bredde + WebKit-rariteter) får identisk tone — ikke bare mørk var(--bg) på #app.
+ * Forside-skall: symmetrisk (midtstilt lys) — tidligere radialer ved 16%/10% ga mørk høyre
+ * kant, spesielt synlig på Mac der html-bakgrunn fyller marg utenfor sentrert #app.
  */
 html.scanix-home-view,
 #app.app-root--home {
-  /* Fast bunn uten diagonal mørk kant (168deg ga mørkere tone mot høyre) */
-  background-color: #2c3038;
+  background-color: #2e323c;
   background-image:
     radial-gradient(
-      ellipse 95% 85% at 16% 24%,
-      rgba(255, 255, 255, 0.2) 0%,
-      transparent 58%
-    ),
-    radial-gradient(
-      ellipse 70% 58% at 50% 48%,
-      rgba(255, 255, 255, 0.09) 0%,
-      transparent 62%
-    ),
-    radial-gradient(
-      ellipse 118% 78% at 50% -22%,
-      rgba(255, 255, 255, 0.17) 0%,
-      transparent 48%
-    ),
-    radial-gradient(
-      ellipse 58% 44% at 10% 8%,
-      rgba(120, 185, 255, 0.2) 0%,
+      ellipse 130% 90% at 50% -8%,
+      rgba(255, 255, 255, 0.18) 0%,
       transparent 52%
     ),
     radial-gradient(
-      ellipse 48% 36% at 50% 94%,
-      rgba(80, 220, 160, 0.09) 0%,
-      transparent 56%
+      ellipse 85% 55% at 50% 52%,
+      rgba(255, 255, 255, 0.05) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 90% 45% at 50% 100%,
+      rgba(120, 185, 255, 0.07) 0%,
+      transparent 52%
     ),
     linear-gradient(
       180deg,
-      #3a3f4a 0%,
-      #2e323a 52%,
-      #2a2e36 100%
+      #383d48 0%,
+      #2e323c 45%,
+      #2a2d34 100%
     );
   background-attachment: scroll;
 }
@@ -329,7 +318,8 @@ html.scanix-home-view {
 }
 
 body.scanix-home-view {
-  background-color: transparent !important;
+  /* Samme tone som skall slik ingenting av var(--bg) glipper ved overscroll */
+  background-color: #2e323c !important;
   background-image: none !important;
 }
 
@@ -350,7 +340,8 @@ body.scanix-home-view {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: transparent;
+  /* Overstyr .app-body { background: var(--bg) } — unngå mørk stripe / avvik mot skallet */
+  background: transparent !important;
 }
 
 /* Sterkere glass på forsiden (lesbarhet i dagslys) */
@@ -386,7 +377,11 @@ body.scanix-home-view {
   html.scanix-home-view,
   #app.app-root--home {
     background-image: none !important;
-    background-color: #2a2e36 !important;
+    background-color: #2e323c !important;
+  }
+
+  body.scanix-home-view {
+    background-color: #2e323c !important;
   }
 
   .home-user-bar .home-weather__inner {
