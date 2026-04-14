@@ -164,7 +164,8 @@ body {
 #app {
   max-width: 720px;
   margin: 0 auto;
-  padding: 1.5rem 1.125rem 3rem;
+  /* Samme horisontale luft på mobil og desktop (unngår «annen app» på smal skjerm) */
+  padding: 1.5rem clamp(1rem, 3.5vw, 1.125rem) 3rem;
   position: relative;
   z-index: 0;
   /* Fast, ugjennomsiktig skallflate – hindrer at innhold «under» (#app) synes ved scroll/overscroll */
@@ -279,10 +280,11 @@ html.app-launch-active body {
 }
 
 /*
- * Forside-bakgrunn på html (scanix-home-view): mange mobiler/ PWA viser body/html
- * ved overscroll og safe area — gradient kun på #app kan da «mangle». Samme flate som før.
+ * Forside-skall: samme gradient på html og #app slik at PC (sentrert kolonne) og
+ * mobil/PWA (full bredde + WebKit-rariteter) får identisk tone — ikke bare mørk var(--bg) på #app.
  */
-html.scanix-home-view {
+html.scanix-home-view,
+#app.app-root--home {
   background-color: #2a2e36;
   background-image:
     radial-gradient(
@@ -332,6 +334,9 @@ html.scanix-home-view {
       #20242c 100%
     );
   background-attachment: scroll;
+}
+
+html.scanix-home-view {
   min-height: 100%;
   min-height: 100dvh;
   min-height: -webkit-fill-available;
@@ -352,9 +357,6 @@ body.scanix-home-view {
   padding-top: 0.1rem;
   position: relative;
   isolation: isolate;
-  /* Gradient ligger på html.scanix-home-view — unngå dobbelt lag og feil på WebKit */
-  background-color: transparent !important;
-  background-image: none !important;
 }
 
 #app.app-root--home .app-body {
@@ -395,14 +397,10 @@ body.scanix-home-view {
 
 @media (prefers-contrast: more) {
   /* Ikke tilbake til helt mørk --bg (typisk synlig på iOS med «øk kontrast») */
-  html.scanix-home-view {
+  html.scanix-home-view,
+  #app.app-root--home {
     background-image: none !important;
     background-color: #2a2e36 !important;
-  }
-
-  #app.app-root--home {
-    background-color: transparent !important;
-    background-image: none !important;
   }
 
   .home-weather__inner {
@@ -439,10 +437,10 @@ body.scanix-home-view {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Tettere mot topp (notch/safe area); innholdet fordeles med luftig midtfelt */
+  /* Tettere mot topp (notch/safe area); horisontalt: samme logikk som #app-padding */
   padding-top: calc(env(safe-area-inset-top, 0px) + 0.2rem);
-  padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
-  padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  padding-left: max(clamp(1rem, 3.5vw, 1.25rem), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(1rem, 3.5vw, 1.25rem), env(safe-area-inset-right, 0px));
   /* Plass til fast nedre hurtigmeny */
   padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
   /* Ingen .surface-kort på forsiden – flat sammenhengende flate */
@@ -8303,11 +8301,6 @@ body.session-map-fullscreen-open {
 }
 
 @media (max-width: 480px) {
-  #app {
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-
   .btn-row {
     gap: 0.5rem;
   }
