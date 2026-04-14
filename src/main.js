@@ -7505,10 +7505,11 @@ function renderApp() {
     ? renderPhotoFullscreenDialogHtml()
     : ''
   mount.innerHTML = `${banner}<div class="app-body">${main}</div>${kmtShell}${incomingShareSaveShell}${photoFullscreenShell}`
-  mount.classList.toggle(
-    'app-root--home',
-    Boolean(currentUser && view === 'home'),
-  )
+  const homeView = Boolean(currentUser && view === 'home')
+  mount.classList.toggle('app-root--home', homeView)
+  /* Bakgrunn på html: Safari/mobil + overscroll bruker ofte body/html — ikke bare #app */
+  document.documentElement.classList.toggle('scanix-home-view', homeView)
+  document.body.classList.toggle('scanix-home-view', homeView)
   syncLaunchSplash({ currentUser, view, appMount: mount })
   wirePhotoFullscreenDialog()
   if (view === 'menuMap') {

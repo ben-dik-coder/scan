@@ -278,17 +278,11 @@ html.app-launch-active body {
   }
 }
 
-/* Forsiden: fyll høyden slik at primærknappene kan ligge nederst */
-#app.app-root--home {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  /* Minimal luft; safe area i .view-home.surface--home */
-  padding-top: 0.1rem;
-  position: relative;
-  isolation: isolate;
-  /* Lys bunn + myke «frostet glass»-lysflater (gradient simulerer lyst blur mot mørk skall) */
+/*
+ * Forside-bakgrunn på html (scanix-home-view): mange mobiler/ PWA viser body/html
+ * ved overscroll og safe area — gradient kun på #app kan da «mangle». Samme flate som før.
+ */
+html.scanix-home-view {
   background-color: #2a2e36;
   background-image:
     radial-gradient(
@@ -337,6 +331,30 @@ html.app-launch-active body {
       #2f343e 38%,
       #20242c 100%
     );
+  background-attachment: scroll;
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
+
+body.scanix-home-view {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Forsiden: fyll høyden slik at primærknappene kan ligge nederst */
+#app.app-root--home {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  /* Minimal luft; safe area i .view-home.surface--home */
+  padding-top: 0.1rem;
+  position: relative;
+  isolation: isolate;
+  /* Gradient ligger på html.scanix-home-view — unngå dobbelt lag og feil på WebKit */
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 #app.app-root--home .app-body {
@@ -376,9 +394,15 @@ html.app-launch-active body {
 }
 
 @media (prefers-contrast: more) {
+  /* Ikke tilbake til helt mørk --bg (typisk synlig på iOS med «øk kontrast») */
+  html.scanix-home-view {
+    background-image: none !important;
+    background-color: #2a2e36 !important;
+  }
+
   #app.app-root--home {
-    background-image: none;
-    background-color: var(--bg);
+    background-color: transparent !important;
+    background-image: none !important;
   }
 
   .home-weather__inner {
