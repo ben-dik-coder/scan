@@ -1,26 +1,34 @@
 :root {
-  /* Lysere «elevated» mørk modus – iOS systemgrå + tydeligere nyanser */
-  --bg: #1c1c1e;
-  --bg-deep: #151516;
+  /* Kontrast + glass: dypere skall, tydeligere etiketter, rikere aksent */
+  --bg: #141416;
+  --bg-deep: #0a0a0c;
+  --surface-solid: #2c2c2e;
   --surface: #2c2c2e;
-  --surface-hover: #3a3a3c;
-  --border: rgba(255, 255, 255, 0.11);
-  --separator: rgba(84, 84, 88, 0.42);
+  --surface-glass: rgba(52, 52, 56, 0.58);
+  --surface-hover: #48484a;
+  --border: rgba(255, 255, 255, 0.16);
+  --border-soft: rgba(255, 255, 255, 0.1);
+  --separator: rgba(84, 84, 88, 0.55);
   --text: #ffffff;
-  --label-primary: rgba(255, 255, 255, 0.96);
-  --label-secondary: rgba(235, 235, 245, 0.64);
-  --label-tertiary: rgba(235, 235, 245, 0.42);
+  --label-primary: #ffffff;
+  --label-secondary: rgba(235, 235, 245, 0.74);
+  --label-tertiary: rgba(235, 235, 245, 0.48);
   --muted: var(--label-secondary);
-  /* Litt lysere blå på mørk bakgrunn (nær iOS vibrant) */
-  --accent: #409cff;
-  --accent-dim: rgba(64, 156, 255, 0.2);
-  --accent-glow: rgba(64, 156, 255, 0.12);
+  --accent: #4da3ff;
+  --accent-dim: rgba(77, 163, 255, 0.28);
+  --accent-glow: rgba(77, 163, 255, 0.2);
+  --accent-edge: rgba(77, 163, 255, 0.45);
+  --tint-sky: rgba(120, 185, 255, 0.14);
+  --tint-mint: rgba(80, 220, 160, 0.09);
   --danger: #ff453a;
-  --danger-dim: rgba(255, 69, 58, 0.16);
-  --plus: #32d74b;
-  --plus-dim: rgba(50, 215, 75, 0.18);
+  --danger-dim: rgba(255, 69, 58, 0.2);
+  --plus: #34d97a;
+  --plus-dim: rgba(52, 217, 122, 0.22);
+  --glass-blur: blur(28px) saturate(1.85);
+  --glass-blur-strong: blur(40px) saturate(2);
   --radius: 14px;
   --radius-sm: 11px;
+  --radius-xl: 20px;
   --font:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui,
     sans-serif;
@@ -31,9 +39,10 @@
   --anim-stack: 0.72s;
   --anim-btn: 0.55s;
   --shadow-surface:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 1px 2px rgba(0, 0, 0, 0.12);
-  --shadow-lift: 0 6px 20px rgba(0, 0, 0, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-lift: 0 10px 32px rgba(0, 0, 0, 0.38);
+  --shadow-glass-edge: 0 1px 0 rgba(255, 255, 255, 0.14) inset;
   --shell-grad: linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
   --shell-accent-glow: radial-gradient(
     ellipse 100% 100% at 50% 50%,
@@ -279,33 +288,38 @@ html.app-launch-active body {
   padding-top: 0.1rem;
   position: relative;
   isolation: isolate;
-  /* Luftigere skall: lysere grå + svak kjølig tone + myk «himmel»-lysning */
+  /* Dypere skall + tydeligere fargeaksenter (himmel / mint) + kontrast mot bunn */
   background-color: var(--bg);
   background-image:
     radial-gradient(
-      ellipse 118% 78% at 50% -20%,
-      rgba(255, 255, 255, 0.09) 0%,
-      transparent 50%
-    ),
-    radial-gradient(
-      ellipse 65% 48% at 14% 8%,
-      rgba(100, 170, 255, 0.07) 0%,
+      ellipse 118% 78% at 50% -22%,
+      rgba(255, 255, 255, 0.11) 0%,
       transparent 48%
     ),
     radial-gradient(
-      ellipse 78% 52% at 88% 12%,
-      rgba(64, 156, 255, 0.06) 0%,
-      transparent 46%
+      ellipse 58% 44% at 12% 10%,
+      var(--tint-sky) 0%,
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 52% 40% at 90% 18%,
+      rgba(77, 163, 255, 0.12) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 48% 36% at 48% 92%,
+      var(--tint-mint) 0%,
+      transparent 55%
     ),
     radial-gradient(
       ellipse 98% 58% at 50% 108%,
-      rgba(0, 0, 0, 0.28) 0%,
+      rgba(0, 0, 0, 0.52) 0%,
       transparent 54%
     ),
     linear-gradient(
       168deg,
-      #2a2a2e 0%,
-      #1e1e22 36%,
+      #242428 0%,
+      #18181c 38%,
       var(--bg-deep) 100%
     );
 }
@@ -327,6 +341,14 @@ html.app-launch-active body {
   #app.app-root--home {
     background-image: none;
     background-color: var(--bg);
+  }
+
+  .home-vegref__meter {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: var(--label-primary) !important;
+    text-shadow: none !important;
   }
 }
 
@@ -362,7 +384,7 @@ html.app-launch-active body {
   flex-direction: column;
 }
 
-/* Nedre hurtigmeny: lysere «material», tydeligere separator */
+/* Nedre hurtigmeny: sterk glass + tydelig kant/skygge */
 .home-bottom-nav {
   position: fixed;
   bottom: 0;
@@ -379,14 +401,15 @@ html.app-launch-active body {
   padding: 0.55rem 1rem;
   padding-bottom: max(0.45rem, env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
-  background: rgba(58, 58, 62, 0.78);
-  backdrop-filter: blur(28px) saturate(1.65);
-  -webkit-backdrop-filter: blur(28px) saturate(1.65);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(46, 46, 52, 0.52);
+  backdrop-filter: var(--glass-blur-strong);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 1.1rem 1.1rem 0 0;
   box-shadow:
-    0 -1px 0 rgba(255, 255, 255, 0.06) inset,
-    0 -8px 28px rgba(0, 0, 0, 0.12);
+    var(--shadow-glass-edge),
+    0 -12px 40px rgba(0, 0, 0, 0.45),
+    0 -2px 0 rgba(77, 163, 255, 0.06);
 }
 
 .home-bottom-nav__btn {
@@ -415,8 +438,8 @@ html.app-launch-active body {
 
 .home-bottom-nav__btn--active {
   color: var(--label-primary);
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .home-bottom-nav__icon {
@@ -431,11 +454,14 @@ html.app-launch-active body {
 .home-bottom-nav__icon--primary {
   background: linear-gradient(
     165deg,
-    rgba(64, 156, 255, 0.35) 0%,
-    rgba(64, 156, 255, 0.18) 100%
+    #5cb0ff 0%,
+    var(--accent) 45%,
+    #2a7fd4 100%
   );
-  color: #eaf4ff;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+  color: #ffffff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 4px 14px rgba(40, 120, 220, 0.45);
 }
 
 .home-bottom-nav__btn--active .home-bottom-nav__icon:not(.home-bottom-nav__icon--primary) {
@@ -444,7 +470,43 @@ html.app-launch-active body {
 
 @media (prefers-reduced-transparency: reduce) {
   .home-bottom-nav {
-    background: rgba(44, 44, 46, 0.97);
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .surface {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .home-app-shortcuts {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .home-app-icon-btn__icon-wrap::before {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .incoming-share-save-dialog {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .btn-home-hamburger {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .home-inbox-card {
+    background: var(--surface-solid);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -753,11 +815,13 @@ form.auth-form[hidden] {
   text-align: left;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-glass);
+  backdrop-filter: blur(18px) saturate(1.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.55);
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  box-shadow: var(--shadow-surface);
+  box-shadow: var(--shadow-glass-edge), var(--shadow-surface);
   transition:
     border-color 0.2s ease,
     background 0.2s ease,
@@ -765,8 +829,8 @@ form.auth-form[hidden] {
 }
 
 .home-inbox-card:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(72, 72, 78, 0.72);
 }
 
 .home-inbox-card:active {
@@ -799,7 +863,7 @@ form.auth-form[hidden] {
 }
 
 .home-inbox-card:focus-visible {
-  outline: 2px solid rgba(64, 156, 255, 0.55);
+  outline: 2px solid rgba(77, 163, 255, 0.55);
   outline-offset: 3px;
 }
 
@@ -1326,9 +1390,11 @@ form.auth-form[hidden] {
   padding: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   color: var(--text);
-  box-shadow: var(--shadow-lift);
+  box-shadow: var(--shadow-glass-edge), var(--shadow-lift);
 }
 
 .incoming-share-save-dialog::backdrop {
@@ -1394,22 +1460,24 @@ form.auth-form[hidden] {
   height: 2.5rem;
   padding: 0 0.45rem;
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
   border: 1px solid var(--border);
   cursor: pointer;
   font: inherit;
   color: var(--label-primary);
   flex-shrink: 0;
   touch-action: manipulation;
-  box-shadow: var(--shadow-surface);
+  box-shadow: var(--shadow-glass-edge), var(--shadow-surface);
 }
 
 .btn-home-hamburger:hover {
-  background: var(--surface-hover);
+  background: rgba(72, 72, 78, 0.72);
 }
 
 .btn-home-hamburger:focus-visible {
-  outline: 2px solid rgba(64, 156, 255, 0.55);
+  outline: 2px solid rgba(77, 163, 255, 0.55);
   outline-offset: 2px;
 }
 
@@ -1497,9 +1565,25 @@ form.auth-form[hidden] {
   line-height: 1.08;
   letter-spacing: -0.04em;
   color: var(--label-primary);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* App-ikoner under vegreferanse (PNG med alfa – ingen screen-blend) */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .home-vegref__meter {
+    background: linear-gradient(
+      185deg,
+      #ffffff 0%,
+      #d4e8ff 55%,
+      #a8d0ff 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: none;
+  }
+}
+
+/* Snarveier i glasskort mot bakgrunnen */
 .home-app-shortcuts {
   display: flex;
   flex-direction: row;
@@ -1510,9 +1594,18 @@ form.auth-form[hidden] {
   row-gap: clamp(1.35rem, 4.5vw, 2rem);
   width: 100%;
   max-width: min(42rem, 100%);
-  margin: 1.15rem auto 0;
-  padding: 0 0.75rem;
+  margin: 1.25rem auto 0;
+  padding: 1.15rem 1rem 1.3rem;
   box-sizing: border-box;
+  background: var(--surface-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    var(--shadow-glass-edge),
+    var(--shadow-surface),
+    0 0 40px rgba(77, 163, 255, 0.06);
 }
 
 .home-app-icon-btn {
@@ -1542,7 +1635,7 @@ form.auth-form[hidden] {
 }
 
 .home-app-icon-btn:focus-visible {
-  outline: 2px solid rgba(64, 156, 255, 0.55);
+  outline: 2px solid rgba(77, 163, 255, 0.55);
   outline-offset: 4px;
   border-radius: var(--radius-sm);
 }
@@ -1559,7 +1652,7 @@ form.auth-form[hidden] {
   margin-bottom: 0.2rem;
 }
 
-/* Løftet plate med lett høylys */
+/* Glass-plate per ikon */
 .home-app-icon-btn__icon-wrap::before {
   content: '';
   position: absolute;
@@ -1570,17 +1663,17 @@ form.auth-form[hidden] {
   z-index: 0;
   border-radius: var(--radius-sm);
   pointer-events: none;
-  background: linear-gradient(
-    165deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(44, 44, 46, 0.98) 42%,
-    var(--surface) 100%
-  );
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-surface);
+  background: rgba(56, 56, 62, 0.45);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border: 1px solid var(--border-soft);
+  box-shadow:
+    var(--shadow-glass-edge),
+    0 2px 12px rgba(0, 0, 0, 0.25);
   transition:
     opacity 0.18s var(--ease-apple),
-    transform 0.18s var(--ease-apple);
+    transform 0.18s var(--ease-apple),
+    border-color 0.18s var(--ease-apple);
 }
 
 .home-app-icon-btn:active .home-app-icon-btn__icon-wrap::before {
@@ -1671,7 +1764,7 @@ form.auth-form[hidden] {
 
 .home-action-split__btn--primary {
   background: var(--accent-dim);
-  border-color: rgba(64, 156, 255, 0.38);
+  border-color: rgba(77, 163, 255, 0.38);
   color: var(--text);
 }
 
@@ -1707,7 +1800,7 @@ form.auth-form[hidden] {
 }
 
 .home-bilde-tabs__tab--active {
-  border-color: rgba(64, 156, 255, 0.38);
+  border-color: rgba(77, 163, 255, 0.38);
   background: var(--accent-dim);
   color: var(--text);
 }
@@ -6378,20 +6471,27 @@ body.session-map-fullscreen-open {
 
 .surface {
   padding: 1.35rem 1.25rem;
-  background: var(--surface);
+  background: var(--surface-glass);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: var(--shadow-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow:
+    var(--shadow-glass-edge),
+    var(--shadow-surface);
   transition:
     border-color 0.32s var(--ease-enter),
-    background 0.32s var(--ease-enter);
+    background 0.32s var(--ease-enter),
+    box-shadow 0.32s var(--ease-enter);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .surface:hover {
-    border-color: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow:
+      var(--shadow-glass-edge),
+      var(--shadow-surface),
+      0 0 0 1px rgba(77, 163, 255, 0.12);
   }
 }
 
@@ -6611,12 +6711,12 @@ body.session-map-fullscreen-open {
   padding: 0.55rem 0.95rem;
   background: var(--accent-dim);
   color: var(--accent);
-  border-color: rgba(64, 156, 255, 0.32);
+  border-color: rgba(77, 163, 255, 0.32);
 }
 
 .btn-secondary:hover {
   filter: brightness(1.06);
-  border-color: rgba(64, 156, 255, 0.48);
+  border-color: rgba(77, 163, 255, 0.48);
 }
 
 .map-section__toolbar {
@@ -6648,13 +6748,13 @@ body.session-map-fullscreen-open {
 }
 
 .map-section__tab--active {
-  border-color: rgba(64, 156, 255, 0.38);
+  border-color: rgba(77, 163, 255, 0.38);
   background: var(--accent-dim);
   color: var(--text);
 }
 
 .map-section__tab:focus-visible {
-  outline: 2px solid rgba(64, 156, 255, 0.45);
+  outline: 2px solid rgba(77, 163, 255, 0.45);
   outline-offset: 2px;
 }
 
