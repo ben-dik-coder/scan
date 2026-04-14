@@ -285,7 +285,8 @@ html.app-launch-active body {
  */
 html.scanix-home-view,
 #app.app-root--home {
-  background-color: #2a2e36;
+  /* Fast bunn uten diagonal mørk kant (168deg ga mørkere tone mot høyre) */
+  background-color: #2c3038;
   background-image:
     radial-gradient(
       ellipse 95% 85% at 16% 24%,
@@ -293,7 +294,7 @@ html.scanix-home-view,
       transparent 58%
     ),
     radial-gradient(
-      ellipse 70% 58% at 48% 48%,
+      ellipse 70% 58% at 50% 48%,
       rgba(255, 255, 255, 0.09) 0%,
       transparent 62%
     ),
@@ -308,20 +309,15 @@ html.scanix-home-view,
       transparent 52%
     ),
     radial-gradient(
-      ellipse 48% 36% at 48% 94%,
+      ellipse 48% 36% at 50% 94%,
       rgba(80, 220, 160, 0.09) 0%,
       transparent 56%
     ),
-    radial-gradient(
-      ellipse 100% 58% at 50% 108%,
-      rgba(0, 0, 0, 0.26) 0%,
-      transparent 54%
-    ),
     linear-gradient(
-      168deg,
+      180deg,
       #3a3f4a 0%,
-      #2f343e 38%,
-      #20242c 100%
+      #2e323a 52%,
+      #2a2e36 100%
     );
   background-attachment: scroll;
 }
