@@ -2130,6 +2130,8 @@ let homeVegrefMeterFrom = 0
 let homeVegrefMeterTo = 0
 let homeVegrefMeterT0 = 0
 let homeVegrefDisplayedMeter = null
+/** NVDB-id for siste viste metertall — brukes til å holde telling når API midlertidig mangler meter (samme veistrekning). */
+let homeVegrefMeterNvdbId = /** @type {string | number | null} */ (null)
 let homeVegrefCompactS = '–'
 let homeVegrefCompactD = '–'
 /** Speiler siste NVDB-linjer for Excel-kolonner (Vegvei / Vegnr). */
@@ -3981,6 +3983,8 @@ function getHomeVegrefExcelSnapshot() {
 
 function setHomeVegrefPlaceholder(msg) {
   cancelHomeVegrefMeterTween()
+  homeVegrefDisplayedMeter = null
+  homeVegrefMeterNvdbId = null
   const prim = document.getElementById('home-vegref-primary')
   const typeEl = document.getElementById('home-vegref-type')
   const comp = document.getElementById('home-vegref-compact')
@@ -4087,12 +4091,16 @@ function applyHomeVegrefResult(res) {
   }
 
   const mInt = parseKmtMeterInt(res.m)
+  const nid = res.nvdbId != null ? res.nvdbId : null
 
   if (view !== 'home') {
     homeVegrefHasDisplayedResult = true
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
-    if (mInt != null) homeVegrefDisplayedMeter = mInt
+    if (mInt != null) {
+      homeVegrefDisplayedMeter = mInt
+      if (nid != null) homeVegrefMeterNvdbId = nid
+    }
     homeVegrefSegKey = segKey
     if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
     return
@@ -4131,15 +4139,21 @@ function applyHomeVegrefResult(res) {
 
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
-      /* Midlertidig NVDB-tom meter (dårlig snap ved høy fart): behold telling på samme segment. */
-      if (!segChanged && homeVegrefDisplayedMeter != null) {
+      /* Midlertidig tom meter: hold når vi fortsatt er på samme NVDB-strekning (segKey kan flakse uten reelt veksel). */
+      const nvdbAligned =
+        nid == null ||
+        homeVegrefMeterNvdbId == null ||
+        String(nid) === String(homeVegrefMeterNvdbId)
+      const holdNullMeter =
+        homeVegrefDisplayedMeter != null &&
+        nvdbAligned &&
+        (!segChanged || (nid != null && homeVegrefMeterNvdbId != null))
+      if (holdNullMeter) {
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-        setHomeVegrefUncertainUi(
-          true,
-          'Oppdaterer meter …',
-        )
+        setHomeVegrefUncertainUi(true, 'Oppdaterer meter …')
       } else {
         homeVegrefDisplayedMeter = null
+        homeVegrefMeterNvdbId = null
         setHomeVegrefCompactDom(res.s, res.d, res.m)
         setHomeVegrefUncertainUi(false, '')
       }
@@ -4178,6 +4192,9 @@ function applyHomeVegrefResult(res) {
       } else {
         startHomeVegrefMeterTweenTo(mInt)
       }
+    }
+    if (mInt != null) {
+      homeVegrefMeterNvdbId = nid != null ? nid : null
     }
     comp.hidden = false
   }
