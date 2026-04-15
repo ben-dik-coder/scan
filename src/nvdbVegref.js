@@ -426,11 +426,17 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     accuracyM >= 24 ? Math.min(18, (accuracyM - 22) * 0.55) : 0
   const denseUrbanStickiness =
     accuracyM <= 32 && speed < 14 ? (speed < 4 ? 12 : 7) : 0
+  /* God GPS + høy fart: uten ekstra hysterese hopper vi ofte mellom parallelle felt/ramper (meter/stedsnavn faller ut). */
+  const highSpeedStickiness =
+    speed >= 12 ? Math.min(34, 8 + (speed - 12) * 0.55) : 0
   const margin =
     (speed < 2 ? Math.max(baseMargin, 28) : baseMargin) +
     accBoost +
-    denseUrbanStickiness
-  if ((accuracyM >= 18 || speed < 2) && prevRow.score - best.score < margin) {
+    denseUrbanStickiness +
+    highSpeedStickiness
+  const useSegmentStickiness =
+    accuracyM >= 18 || speed < 2 || speed >= 10
+  if (useSegmentStickiness && prevRow.score - best.score < margin) {
     return {
       seg: prevRow.seg,
       chosenScore: prevRow.score,

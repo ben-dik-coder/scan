@@ -239,8 +239,14 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
         typeof ctx.accuracyM === 'number' && !Number.isNaN(ctx.accuracyM)
           ? ctx.accuracyM
           : 28
+      const spd =
+        typeof ctx.speedMps === 'number' && !Number.isNaN(ctx.speedMps)
+          ? ctx.speedMps
+          : 0
       /* Ved stor radius må vi slippe gjennom første treff oftere — ellers venter UI på to NVDB-runder. */
-      const clearOnRoad = dist <= Math.min(24, Math.max(7, acc * 0.38))
+      /* Litt slakkere terskel ved høy fart (større lateral GPS-feil vs vei). */
+      const distCap = Math.min(40, 24 + (spd > 18 ? (spd - 18) * 0.45 : 0))
+      const clearOnRoad = dist <= Math.min(distCap, Math.max(7, acc * 0.38))
       const pendingMatch =
         posisjonPendingNewNvdbId != null &&
         String(posisjonPendingNewNvdbId) === String(nid)
@@ -548,6 +554,8 @@ function schedulePosisjonDisplayEnrichFromSegments(
   applyCtx,
 ) {
   if (!res?._vegrefMeta || res._vegrefMeta.source !== 'posisjon') return
+  /* Ved høy fart gir supplerende segment-kall ofte veksling mellom offisiell linje og gatenavn — stoler på posisjon-visning. */
+  if (typeof fetchOpts.speed === 'number' && fetchOpts.speed >= 18) return
   if (!h.fetchRoadReferenceNear) return
   const nid = res.nvdbId
   if (nid == null) return

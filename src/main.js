@@ -4131,8 +4131,18 @@ function applyHomeVegrefResult(res) {
 
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
-      homeVegrefDisplayedMeter = null
-      setHomeVegrefCompactDom(res.s, res.d, res.m)
+      /* Midlertidig NVDB-tom meter (dårlig snap ved høy fart): behold telling på samme segment. */
+      if (!segChanged && homeVegrefDisplayedMeter != null) {
+        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+        setHomeVegrefUncertainUi(
+          true,
+          'Oppdaterer meter …',
+        )
+      } else {
+        homeVegrefDisplayedMeter = null
+        setHomeVegrefCompactDom(res.s, res.d, res.m)
+        setHomeVegrefUncertainUi(false, '')
+      }
     } else if (fromPosisjon) {
       if (homeVegrefDisplayedMeter != null && !segChanged) {
         const dMeter = Math.abs(mInt - homeVegrefDisplayedMeter)
