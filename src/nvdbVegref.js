@@ -369,6 +369,8 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       if (id === prevNvdbId) {
         score -= 22 * speedFactor
         if (speed < 2) score -= 14
+        /* Stikkrenne/bilde ved veikant: ofte 2–5 m fra senterlinja — lett ekstra lås til forrige vei. */
+        if (speed < 3 && dist <= 12) score -= 8
       } else {
         score += 12 * speedFactor
         if (speed < 2) score += 10
@@ -429,11 +431,20 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
   /* God GPS + høy fart: uten ekstra hysterese hopper vi ofte mellom parallelle felt/ramper (meter/stedsnavn faller ut). */
   const highSpeedStickiness =
     speed >= 12 ? Math.min(34, 8 + (speed - 12) * 0.55) : 0
+  const nearInspectionMargin =
+    speed < 3 &&
+    accuracyM <= 24 &&
+    prevRow != null &&
+    typeof prevRow.d?.distToRoadM === 'number' &&
+    prevRow.d.distToRoadM <= 12
+      ? 12
+      : 0
   const margin =
     (speed < 2 ? Math.max(baseMargin, 28) : baseMargin) +
     accBoost +
     denseUrbanStickiness +
-    highSpeedStickiness
+    highSpeedStickiness +
+    nearInspectionMargin
   const useSegmentStickiness =
     accuracyM >= 18 || speed < 2 || speed >= 10
   if (useSegmentStickiness && prevRow.score - best.score < margin) {

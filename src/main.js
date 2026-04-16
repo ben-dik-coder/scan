@@ -739,7 +739,7 @@ function resolveKmtPhotoFolderSeed(opts = {}) {
 /**
  * @param {{ road: string, compact: string, kortform: string }} v
  */
-function formatPhotoVegrefOverlayLinesHtml(v) {
+function formatPhotoVegrefOverlayLinesHtml(v, noteOpt) {
   const parts = []
   if (v.road) {
     parts.push(
@@ -756,6 +756,14 @@ function formatPhotoVegrefOverlayLinesHtml(v) {
       `<div class="photo-vegref-overlay__kf">${escapeHtml(v.kortform)}</div>`,
     )
   }
+  if (typeof noteOpt === 'string' && noteOpt.trim()) {
+    const n = noteOpt.trim().slice(0, 800)
+    if (n) {
+      parts.push(
+        `<div class="photo-vegref-overlay__note">${escapeHtml(n)}</div>`,
+      )
+    }
+  }
   return parts.join('')
 }
 
@@ -763,14 +771,26 @@ function formatPhotoVegrefOverlayLinesHtml(v) {
  * @param {{ road: string, compact: string, kortform: string }} v
  * @param {'thumb' | 'fullscreen'} variant
  */
-function formatPhotoVegrefOverlayHtml(v, variant) {
-  const inner = formatPhotoVegrefOverlayLinesHtml(v)
+function formatPhotoVegrefOverlayHtml(v, variant, noteOpt) {
+  const inner = formatPhotoVegrefOverlayLinesHtml(v, noteOpt)
   if (!inner) return ''
   const cls =
     variant === 'fullscreen'
       ? 'photo-vegref-overlay photo-vegref-overlay--fullscreen'
       : 'photo-vegref-overlay photo-vegref-overlay--thumb'
   return `<div class="${cls}" aria-hidden="true">${inner}</div>`
+}
+
+/** Miniatyr-overlay: vegreferanse og/eller valgfri kommentar. */
+function formatPhotoThumbOverlayHtml(ph) {
+  const v = ph?.vegref && normalizePhotoVegref(ph.vegref)
+  const note = typeof ph?.note === 'string' ? ph.note : ''
+  if (!v && !note.trim()) return ''
+  return formatPhotoVegrefOverlayHtml(
+    v || { road: '', compact: '', kortform: '' },
+    'thumb',
+    note,
+  )
 }
 
 function normalizePhoto(p) {
@@ -793,6 +813,11 @@ function normalizePhoto(p) {
       : null
   const imagePath =
     imageFolder != null ? `images/${imageFolder}/` : null
+  const rawNote = /** @type {{ note?: unknown }} */ (p).note
+  const note =
+    typeof rawNote === 'string' && rawNote.trim()
+      ? rawNote.trim().slice(0, 800)
+      : undefined
   return {
     id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
     timestamp: typeof p.timestamp === 'string' ? p.timestamp : nowIso(),
@@ -802,6 +827,7 @@ function normalizePhoto(p) {
       rawLng != null && !Number.isNaN(Number(rawLng)) ? Number(rawLng) : null,
     dataUrl,
     ...(vegref ? { vegref } : {}),
+    ...(note ? { note } : {}),
     ...(imageFolder != null && imagePath != null
       ? { imageFolder, imagePath }
       : {}),
@@ -1327,6 +1353,7 @@ async function flushLocalStorageAppState(key) {
         lng: p.lng,
         dataUrl: p.dataUrl,
         ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.note ? { note: p.note } : {}),
         ...(p.imageFolder != null
           ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
           : {}),
@@ -1341,6 +1368,7 @@ async function flushLocalStorageAppState(key) {
         lng: p.lng,
         idbImage: true,
         ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.note ? { note: p.note } : {}),
         ...(p.imageFolder != null
           ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
           : {}),
@@ -1354,6 +1382,7 @@ async function flushLocalStorageAppState(key) {
         lng: p.lng,
         dataUrl: p.dataUrl,
         ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.note ? { note: p.note } : {}),
         ...(p.imageFolder != null
           ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
           : {}),
@@ -3239,9 +3268,133 @@ function startKmtMeterTweenTo(targetInt) {
   kmtMeterAnim = requestAnimationFrame(tickKmtMeterTween)
 }
 
-function stopKmtCameraStream() {
+/** iPhone / iPod / iPad (inkl. iPadOS med «Macintosh»-UA). */
+function kmtIsAppleMobileWebKit() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPhone|iPod/.test(ua)) return true
+  if (/iPad/.test(ua)) return true
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    return true
+  return false
+}
+
+/**
+ * Om enheten rapporterer at torch kan styres (WebKit på iOS gir ofte ikke `torch === true`).
+ * @param {MediaStreamTrack | undefined} track
+ */
+function kmtTorchReadCaps(track) {
+  if (!track || typeof track.getCapabilities !== 'function') return false
+  try {
+    const caps = track.getCapabilities()
+    if (!caps || typeof caps !== 'object') return false
+    const t = /** @type {{ torch?: unknown }} */ (caps).torch
+    if (t === true) return true
+    if (Array.isArray(t)) return t.includes(true)
+    if (t && typeof t === 'object') {
+      const o = /** @type {{ min?: unknown, max?: unknown }} */ (t)
+      if (o.min === true || o.max === true) return true
+      if (o.min === false && o.max === true) return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Vis blits-kontroll når vi med rimelighet kan styre lommelykt (prioritet: iOS Safari).
+ * @param {MediaStreamTrack | undefined} track
+ */
+function kmtTorchUiEnabled(track) {
+  if (kmtTorchReadCaps(track)) return true
+  if (!track || track.kind !== 'video') return false
+  const sup = navigator.mediaDevices?.getSupportedConstraints?.()
+  if (sup?.torch === true) return true
+  /* Eldre iOS / rare WebKit-Bygg: ingen `torch` i supportedConstraints, men bakkamera kan likevel ta torch. */
+  if (kmtIsAppleMobileWebKit()) {
+    try {
+      const st = track.getSettings?.()
+      if (st && st.facingMode === 'environment') return true
+    } catch {
+      /* ignore */
+    }
+  }
+  return false
+}
+
+/**
+ * @param {boolean} on
+ */
+async function setKmtTorch(on) {
+  const track = kmtMediaStream?.getVideoTracks?.()?.[0]
+  if (!track || typeof track.applyConstraints !== 'function') return false
+  const want = !!on
+  try {
+    await track.applyConstraints({ advanced: [{ torch: want }] })
+    return true
+  } catch {
+    /* prøv flat constraint (noen WebKit-versjoner) */
+  }
+  try {
+    await track.applyConstraints({ torch: want })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function syncKmtTorchUi() {
+  const btn = document.getElementById('btn-kmt-torch')
+  if (!(btn instanceof HTMLButtonElement)) return
+  const track = kmtMediaStream?.getVideoTracks?.()?.[0]
+  const ok = kmtTorchUiEnabled(track)
+  btn.disabled = !ok
+  if (!ok) {
+    btn.setAttribute('aria-pressed', 'false')
+    btn.classList.remove('kmt-torch-btn--on')
+  }
+}
+
+function resetKmtCameraExtrasDom() {
+  const note = document.getElementById('kmt-photo-note')
+  if (note instanceof HTMLTextAreaElement) note.value = ''
+  const btn = document.getElementById('btn-kmt-torch')
+  if (btn instanceof HTMLButtonElement) {
+    btn.setAttribute('aria-pressed', 'false')
+    btn.classList.remove('kmt-torch-btn--on')
+    btn.disabled = true
+  }
+}
+
+async function stopKmtCameraStream() {
   cancelKmtMeterTween()
   const video = document.getElementById('kmt-video')
+  const stream = kmtMediaStream
+  const vt = stream?.getVideoTracks?.()?.[0]
+  const torchBtn = document.getElementById('btn-kmt-torch')
+  const userTorchOn =
+    torchBtn instanceof HTMLButtonElement &&
+    torchBtn.getAttribute('aria-pressed') === 'true'
+  const shouldTorchOff =
+    vt &&
+    typeof vt.applyConstraints === 'function' &&
+    (userTorchOn ||
+      kmtTorchReadCaps(vt) ||
+      (navigator.mediaDevices?.getSupportedConstraints?.()?.torch === true &&
+        kmtIsAppleMobileWebKit()))
+  if (shouldTorchOff && vt) {
+    try {
+      await vt.applyConstraints({ advanced: [{ torch: false }] })
+    } catch {
+      /* ignore */
+    }
+    try {
+      await vt.applyConstraints({ torch: false })
+    } catch {
+      /* ignore */
+    }
+  }
   if (video) {
     try {
       video.srcObject = null
@@ -3249,8 +3402,8 @@ function stopKmtCameraStream() {
       /* ignore */
     }
   }
-  if (kmtMediaStream) {
-    for (const t of kmtMediaStream.getTracks()) {
+  if (stream) {
+    for (const t of stream.getTracks()) {
       try {
         t.stop()
       } catch {
@@ -3448,6 +3601,25 @@ async function waitForKmtCaptureSettle(video) {
   }
 }
 
+/** Kort «lukker»-blink ved lagring (ikke treg UI). */
+function triggerKmtCaptureFlash() {
+  if (typeof window.matchMedia === 'function') {
+    try {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    } catch {
+      /* ignore */
+    }
+  }
+  const el = document.getElementById('kmt-capture-flash')
+  if (!el) return
+  el.classList.remove('kmt-capture-flash--pulse')
+  void el.offsetWidth
+  el.classList.add('kmt-capture-flash--pulse')
+  window.setTimeout(() => {
+    el.classList.remove('kmt-capture-flash--pulse')
+  }, 110)
+}
+
 async function captureKmtCameraPhoto() {
   const video = document.getElementById('kmt-video')
   if (!video || video.readyState < 2) {
@@ -3474,6 +3646,7 @@ async function captureKmtCameraPhoto() {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   ctx.drawImage(video, 0, 0, w, h)
+  triggerKmtCaptureFlash()
 
   /* Vegreferanse lagres som metadata + HTML-overlay, ikke innprintet piksler – skarp tekst ved zoom. */
   const roadLine =
@@ -3514,11 +3687,18 @@ async function captureKmtCameraPhoto() {
     if (st) st.textContent = 'Kunne ikke komprimere bilde.'
     return
   }
+  const noteEl = document.getElementById('kmt-photo-note')
+  const rawNote = noteEl instanceof HTMLTextAreaElement ? noteEl.value : ''
+  const noteTrim =
+    typeof rawNote === 'string' && rawNote.trim()
+      ? rawNote.trim().slice(0, 800)
+      : ''
+  /** @type {{ vegref?: NonNullable<ReturnType<typeof normalizePhotoVegref>>, note?: string }} */
+  const addOpts = {}
+  if (vegref) addOpts.vegref = vegref
+  if (noteTrim) addOpts.note = noteTrim
   try {
-    await addPhotoFromCompressedDataUrl(
-    dataUrl,
-    vegref ? { vegref } : {},
-  )
+    await addPhotoFromCompressedDataUrl(dataUrl, addOpts)
   } catch (err) {
     console.error(err)
     const stErr = document.getElementById('kmt-status')
@@ -4441,7 +4621,8 @@ async function openKmtDialog() {
   kmtRefSegmentKey = ''
   kmtDisplayedMeter = null
   cancelKmtMeterTween()
-  stopKmtCameraStream()
+  await stopKmtCameraStream()
+  resetKmtCameraExtrasDom()
   dlg.showModal()
 
   /* Som forsiden: vis siste NVDB-treff med é gang; ellers tydelig lasting mens nytt oppslag kjører. */
@@ -4496,6 +4677,9 @@ async function openKmtDialog() {
       kmtCameraMode = true
       dlg.classList.remove('kmt-dialog--camera-warmup')
       dlg.classList.add('kmt-dialog--camera')
+      syncKmtTorchUi()
+      requestAnimationFrame(() => syncKmtTorchUi())
+      window.setTimeout(() => syncKmtTorchUi(), 320)
     } catch {
       kmtCameraMode = false
       dlg.classList.remove('kmt-dialog--camera-warmup', 'kmt-dialog--camera')
@@ -5124,8 +5308,7 @@ function renderPhotosGallery() {
   }
   el.innerHTML = state.photos
     .map((ph, i) => {
-      const v = ph.vegref && normalizePhotoVegref(ph.vegref)
-      const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+      const ov = formatPhotoThumbOverlayHtml(ph)
       const folderBadge = ph.imageFolder
         ? `<span class="photo-thumb-folder" title="images/${escapeHtml(ph.imageFolder)}/">${escapeHtml(ph.imageFolder)}</span>`
         : ''
@@ -5195,6 +5378,7 @@ const KMT_CAPTURE_MAX_DIM = 2560
  *   lat?: number | null
  *   lng?: number | null
  *   vegref?: { road: string, compact: string, kortform: string } | null
+ *   note?: string
  * }} [opts] Eksplisitte koord (f.eks. EXIF) brukes først. `vegref` vises som HTML-overlay (skarp ved zoom), ikke innprintet i pikslene. Mappe (`images/…/`) utledes fra KMT-feltet `kmt-road-folder-src` + evt. vegref.
  */
 async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
@@ -5235,6 +5419,11 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
   }
 
   const folderSeed = resolveKmtPhotoFolderSeed(opts)
+  const rawNote = opts.note
+  const noteOpt =
+    typeof rawNote === 'string' && rawNote.trim()
+      ? rawNote.trim().slice(0, 800)
+      : undefined
   const entry = normalizePhoto({
     id: crypto.randomUUID(),
     timestamp: nowIso(),
@@ -5242,6 +5431,7 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
     lng,
     dataUrl,
     ...(opts.vegref ? { vegref: opts.vegref } : {}),
+    ...(noteOpt ? { note: noteOpt } : {}),
     imageFolder: folderSeed,
   })
   if (!entry) return
@@ -5917,8 +6107,7 @@ function renderMenuPhotosHtml() {
     const [folderKey, items] = row
     const thumbs = items
       .map((ph) => {
-        const v = ph.vegref && normalizePhotoVegref(ph.vegref)
-        const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+        const ov = formatPhotoThumbOverlayHtml(ph)
         return `<button type="button" class="menu-photos-thumb" data-photo-id="${escapeHtml(ph.id)}">
         <span class="menu-photos-thumb__frame">
           <img src="${ph.dataUrl}" alt="" class="menu-photos-thumb__img" loading="lazy" decoding="async" />
@@ -6782,8 +6971,7 @@ function renderStandalonePhotoAlbumGallery() {
       const cls = sel
         ? 'photo-album__cell photo-album__cell--selected'
         : 'photo-album__cell'
-      const v = ph.vegref && normalizePhotoVegref(ph.vegref)
-      const ov = v ? formatPhotoVegrefOverlayHtml(v, 'thumb') : ''
+      const ov = formatPhotoThumbOverlayHtml(ph)
       const folderBadge = ph.imageFolder
         ? `<span class="photo-album__folder" title="images/${escapeHtml(ph.imageFolder)}/">${escapeHtml(ph.imageFolder)}</span>`
         : ''
@@ -6825,10 +7013,10 @@ function appendStandalonePhotoAlbumCell(photo) {
   img.loading = 'lazy'
   img.decoding = 'async'
   wrap.appendChild(img)
-  const v = photo.vegref && normalizePhotoVegref(photo.vegref)
-  if (v) {
+  const ovHtml = formatPhotoThumbOverlayHtml(photo)
+  if (ovHtml) {
     const tmp = document.createElement('div')
-    tmp.innerHTML = formatPhotoVegrefOverlayHtml(v, 'thumb')
+    tmp.innerHTML = ovHtml
     const overlay = tmp.firstElementChild
     if (overlay) wrap.appendChild(overlay)
   }
@@ -6859,6 +7047,9 @@ function standalonePhotosToShareSessionPayload(photos) {
     }
     const vr = p.vegref && normalizePhotoVegref(p.vegref)
     if (vr) o.vegref = vr
+    if (typeof p.note === 'string' && p.note.trim()) {
+      o.note = p.note.trim().slice(0, 800)
+    }
     if (p.imageFolder) o.imageFolder = p.imageFolder
     if (p.imagePath) o.imagePath = p.imagePath
     return o
@@ -7206,7 +7397,7 @@ function bindPhotoAlbumListeners() {
         return
       }
       const ph = standalonePhotos.find((p) => p.id === id)
-      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref)
+      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref, ph.note)
     },
     { signal },
   )
@@ -7266,6 +7457,7 @@ function renderKmtDialogHtml() {
                 role="presentation"
                 title="Trykk der du vil ha skarpt (nær eller langt unna)"
               ></div>
+              <div class="kmt-capture-flash" id="kmt-capture-flash" aria-hidden="true"></div>
               <div class="kmt-ref-overlay" id="kmt-ref-overlay">
                 <div class="kmt-ref-overlay__road" id="kmt-road-line">–</div>
                 <span class="visually-hidden" id="kmt-road-folder-src" aria-hidden="true"></span>
@@ -7275,7 +7467,35 @@ function renderKmtDialogHtml() {
                 <span class="visually-hidden" id="kmt-m">–</span>
                 <div class="kmt-ref-overlay__kf" id="kmt-kortform"></div>
               </div>
-              <button type="button" class="kmt-capture-fab" id="btn-kmt-capture">Ta bilde</button>
+              <div class="kmt-camera-bottom-bar" id="kmt-camera-bottom-bar">
+                <div class="kmt-camera-bottom-bar__side kmt-camera-bottom-bar__side--left">
+                  <button
+                    type="button"
+                    class="kmt-torch-btn"
+                    id="btn-kmt-torch"
+                    disabled
+                    aria-pressed="false"
+                    aria-label="Blits"
+                    title="Blits / lommelykt"
+                  >
+                    <span class="kmt-torch-btn__glyph" aria-hidden="true">⚡</span>
+                  </button>
+                </div>
+                <div class="kmt-camera-bottom-bar__center">
+                  <button type="button" class="kmt-capture-fab" id="btn-kmt-capture">Ta bilde</button>
+                </div>
+                <div class="kmt-camera-bottom-bar__side kmt-camera-bottom-bar__side--right">
+                  <label class="visually-hidden" for="kmt-photo-note">Kommentar (valgfritt)</label>
+                  <textarea
+                    id="kmt-photo-note"
+                    class="kmt-photo-note"
+                    rows="2"
+                    maxlength="800"
+                    placeholder="Kommentar …"
+                    autocomplete="off"
+                  ></textarea>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -7450,17 +7670,26 @@ let photoFullscreenWireAbort = null
 /**
  * @param {string} dataUrl
  * @param {unknown} [vegrefRaw] lagret vegref-objekt; tekst vises som vektor-overlay (skarp ved zoom).
+ * @param {unknown} [noteRaw] valgfri kommentar lagret med bildet.
  */
-function openPhotoFullscreen(dataUrl, vegrefRaw) {
+function openPhotoFullscreen(dataUrl, vegrefRaw, noteRaw) {
   const dlg = document.getElementById('photo-fullscreen-dialog')
   const img = document.getElementById('photo-fullscreen-img')
   const vrLayer = document.getElementById('photo-fullscreen-vegref')
   if (!dlg || !img || typeof dataUrl !== 'string' || !dataUrl) return
   img.src = dataUrl
   const vr = vegrefRaw ? normalizePhotoVegref(vegrefRaw) : null
+  const note =
+    typeof noteRaw === 'string' && noteRaw.trim()
+      ? noteRaw.trim().slice(0, 800)
+      : ''
   if (vrLayer) {
-    if (vr) {
-      vrLayer.innerHTML = formatPhotoVegrefOverlayLinesHtml(vr)
+    const inner = formatPhotoVegrefOverlayLinesHtml(
+      vr || { road: '', compact: '', kortform: '' },
+      note,
+    )
+    if (inner) {
+      vrLayer.innerHTML = inner
       vrLayer.hidden = false
       vrLayer.setAttribute('aria-hidden', 'true')
     } else {
@@ -9715,7 +9944,7 @@ function bindMenuPhotosListeners() {
       const id = btn.getAttribute('data-photo-id')
       if (!id) return
       const ph = getAllPhotosFlat().find((p) => p.id === id)
-      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref)
+      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref, ph.note)
     },
     { signal },
   )
@@ -11146,7 +11375,7 @@ function bindKmtDialogListeners(signal) {
     'close',
     () => {
       kmtDialogOpen = false
-      stopKmtCameraStream()
+      void stopKmtCameraStream()
       const goAlbum = kmtStandaloneFlow
       kmtStandaloneFlow = false
       if (goAlbum && currentUser) {
@@ -11180,6 +11409,28 @@ function bindKmtDialogListeners(signal) {
   document.getElementById('btn-kmt-capture')?.addEventListener(
     'click',
     () => void captureKmtCameraPhoto(),
+    { signal },
+  )
+  document.getElementById('btn-kmt-torch')?.addEventListener(
+    'click',
+    async () => {
+      const btn = document.getElementById('btn-kmt-torch')
+      if (!(btn instanceof HTMLButtonElement) || btn.disabled) return
+      const next = btn.getAttribute('aria-pressed') !== 'true'
+      const ok = await setKmtTorch(next)
+      if (ok) {
+        btn.setAttribute('aria-pressed', next ? 'true' : 'false')
+        btn.classList.toggle('kmt-torch-btn--on', next)
+      } else {
+        btn.setAttribute('aria-pressed', 'false')
+        btn.classList.remove('kmt-torch-btn--on')
+        const st = document.getElementById('kmt-status')
+        if (st) {
+          st.textContent = 'Blits er ikke tilgjengelig på denne enheten.'
+          st.hidden = false
+        }
+      }
+    },
     { signal },
   )
   const tapLayer = document.getElementById('kmt-tap-focus-layer')
@@ -12279,7 +12530,7 @@ function bindSessionListeners() {
       const id = card.getAttribute('data-photo-id')
       if (!id) return
       const ph = state.photos.find((p) => p.id === id)
-      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref)
+      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref, ph.note)
     },
     { signal },
   )
@@ -12583,7 +12834,7 @@ function destroyMap() {
   kmtStandaloneFlow = false
   document.getElementById('kmt-dialog')?.close()
   kmtDialogOpen = false
-  stopKmtCameraStream()
+  void stopKmtCameraStream()
   vegrefStopPipeline()
   stopLocationWatch()
   resetDrivingFilters()

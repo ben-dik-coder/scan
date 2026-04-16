@@ -37,9 +37,9 @@ export const VEGREF_MIN_INTERVAL_MS = 400
 export const VEGREF_MIN_MOVE_M = 2
 
 /** Vent før supplerende segmentert-kall (veinavn) — kortere = raskere gatenavn, fortsatt unngår dobbeltkall ved kald start. */
-const POSISJON_ENRICH_SEGMENT_DELAY_MS = 850
+const POSISJON_ENRICH_SEGMENT_DELAY_MS = 700
 /** Andre forsøk når første segment-svar mangler adresse.navn (nett/GPS). */
-const POSISJON_ENRICH_RETRY_GAP_MS = 2800
+const POSISJON_ENRICH_RETRY_GAP_MS = 2400
 
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
@@ -816,6 +816,10 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   } else if (lastSpeed > 22) {
     minInterval = Math.max(300, minInterval - 70)
     minMove = Math.max(1, minMove - 1)
+  } else if (lastSpeed < 3 && accuracyM <= 28) {
+    /* Gåing / foto ved veikant: litt raskere meter/vei uten å spamme NVDB. */
+    minInterval = Math.max(320, minInterval - 55)
+    minMove = Math.max(1.2, minMove - 0.8)
   }
   const inCoordFallbackUi = isCoordFallbackDisplay(lastAppliedRes)
   /** Når vi viser koordinat-fallback: tillat oftere nytt NVDB-forsøk (samme logikk ellers). */
