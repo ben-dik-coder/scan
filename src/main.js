@@ -5956,21 +5956,21 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual home-dash-card__visual--accent" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-reg-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#5f7390"/><stop offset="1" stop-color="#3d4d62"/>
+                <linearGradient id="hp-reg-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#5b6980"/><stop offset="1" stop-color="#3a4554"/>
                 </linearGradient>
-                <linearGradient id="hp-reg-map" x1="18" y1="16" x2="62" y2="62" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#7a8ca5"/><stop offset="1" stop-color="#55667a"/>
+                <linearGradient id="hp-reg-line" x1="20" y1="50" x2="60" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#4da3ff"/>
                 </linearGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-reg-bg)"/>
-              <rect x="12" y="14" width="56" height="52" rx="10" fill="url(#hp-reg-map)" stroke="rgba(255,255,255,0.32)" stroke-width="1.25"/>
-              <path d="M20 28h40M20 38h32M20 48h36" stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-linecap="round"/>
-              <path d="M38 20v44" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M40 28c-5.2 0-9.5 4.2-9.5 9.5 0 6.8 9.5 16.5 9.5 16.5s9.5-9.7 9.5-16.5c0-5.3-4.3-9.5-9.5-9.5z" fill="#5eb0ff" stroke="rgba(255,255,255,0.55)" stroke-width="1.25"/>
-              <circle cx="40" cy="37.5" r="3.5" fill="#fff"/>
-              <circle cx="56" cy="20" r="11" fill="rgba(94,176,255,0.35)" stroke="#c8e6ff" stroke-width="1.5"/>
-              <path d="M56 14.5v11M50.5 20h11" stroke="#fff" stroke-width="2.25" stroke-linecap="round"/>
+              <rect x="12" y="14" width="56" height="52" rx="9" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.26)" stroke-width="1.25"/>
+              <path d="M20 48C28 40 34 36 40 34C46 32 52 26 60 20" stroke="url(#hp-reg-line)" stroke-width="3.5" stroke-linecap="round"/>
+              <path d="M24 22h12M24 30h8M48 48h8M52 56h4" stroke="rgba(255,255,255,0.26)" stroke-width="1.75" stroke-linecap="round"/>
+              <path d="M38 26c0-4.4 3.6-8 8-8s8 3.6 8 8c0 6-8 15-8 15s-8-9-8-15z" fill="#5eb0ff" stroke="#fff" stroke-width="1.5"/>
+              <circle cx="46" cy="26" r="3" fill="#fff"/>
+              <circle cx="58" cy="52" r="10" fill="rgba(94,176,255,0.18)" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+              <path d="M58 47v10M53 52h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -5985,18 +5985,18 @@ function renderHomeHtml() {
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
                 <linearGradient id="hp-cam-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#5f6f80"/><stop offset="1" stop-color="#3a4554"/>
+                  <stop stop-color="#566378"/><stop offset="1" stop-color="#394452"/>
                 </linearGradient>
-                <radialGradient id="hp-cam-lens" cx="40" cy="46" r="15" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#3d5068"/><stop offset="0.7" stop-color="#1e2835"/><stop offset="1" stop-color="#7ab0e8"/>
+                <radialGradient id="hp-cam-lens" cx="40" cy="44" r="16" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7cc4ff"/><stop offset="0.45" stop-color="#42556d"/><stop offset="1" stop-color="#1b2532"/>
                 </radialGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-cam-bg)"/>
-              <path d="M27 30h9l3.5-5h10l3.5 5h9" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-              <rect x="15" y="30" width="50" height="36" rx="8" fill="#4a5d72" stroke="rgba(255,255,255,0.3)" stroke-width="1.25"/>
-              <circle cx="40" cy="48" r="14" fill="url(#hp-cam-lens)" stroke="rgba(255,255,255,0.38)" stroke-width="2"/>
-              <circle cx="40" cy="48" r="6.5" fill="rgba(10,18,28,0.45)" stroke="rgba(140,200,255,0.5)" stroke-width="1.25"/>
-              <circle cx="55" cy="35" r="3.2" fill="#ffe9b8" stroke="rgba(255,255,255,0.45)" stroke-width="0.75"/>
+              <path d="M25 28h11l4-5h10l4 5h1c5 0 9 4 9 9v15c0 5-4 9-9 9H21c-5 0-9-4-9-9V37c0-5 4-9 9-9h4z" fill="rgba(255,255,255,0.09)" stroke="rgba(255,255,255,0.32)" stroke-width="1.5"/>
+              <circle cx="40" cy="44" r="16" fill="url(#hp-cam-lens)" stroke="rgba(255,255,255,0.45)" stroke-width="2"/>
+              <circle cx="40" cy="44" r="7.5" fill="rgba(15,22,30,0.55)" stroke="rgba(255,255,255,0.25)" stroke-width="1.25"/>
+              <circle cx="54.5" cy="31.5" r="3.25" fill="#ffe7a8" stroke="rgba(255,255,255,0.45)" stroke-width="0.9"/>
+              <path d="M25 58h30" stroke="rgba(255,255,255,0.16)" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -6011,18 +6011,16 @@ function renderHomeHtml() {
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
                 <linearGradient id="hp-kon-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#5c6778"/><stop offset="1" stop-color="#3e4654"/>
+                  <stop stop-color="#596679"/><stop offset="1" stop-color="#3b4553"/>
                 </linearGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-kon-bg)"/>
-              <rect x="17" y="11" width="46" height="60" rx="8" fill="#eef2f8" stroke="rgba(255,255,255,0.45)" stroke-width="1.25"/>
-              <path d="M17 21h46" stroke="#cbd5e1" stroke-width="9" stroke-linecap="round"/>
-              <path d="M46 11v12h12" stroke="#94a3b8" stroke-width="1.25" fill="none"/>
-              <path d="M25 32h30M25 40h34M25 48h28M25 56h22" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
-              <rect x="48" y="38" width="14" height="18" rx="3" fill="#5eb0ff" stroke="#7cc4ff" stroke-width="1" opacity="0.95"/>
-              <path d="M52 44h6M55 41v6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="58" cy="26" r="10" fill="rgba(94,176,255,0.35)" stroke="#d4ecff" stroke-width="1.5"/>
-              <path d="M54 26h8M58 22v8" stroke="#fff" stroke-width="1.75" stroke-linecap="round"/>
+              <path d="M24 14h22l10 10v42H24c-4.4 0-8-3.6-8-8V22c0-4.4 3.6-8 8-8z" fill="rgba(255,255,255,0.92)" stroke="rgba(255,255,255,0.42)" stroke-width="1.25"/>
+              <path d="M46 14v10h10" stroke="#94a3b8" stroke-width="1.25" stroke-linejoin="round"/>
+              <path d="M26 33h24M26 41h20M26 49h18" stroke="#8c99ab" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="56" cy="50" r="11" fill="#5eb0ff" stroke="#fff" stroke-width="1.75"/>
+              <path d="M51.5 50.5l3 3 6-7" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M50 28l4-4M56 28l-4-4" stroke="rgba(94,176,255,0.9)" stroke-width="1.75" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -6036,30 +6034,20 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-al-1" x1="14" y1="14" x2="38" y2="40" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#7a8ca3"/><stop offset="1" stop-color="#5a6b82"/>
+                <linearGradient id="hp-al-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#5a677a"/><stop offset="1" stop-color="#394554"/>
                 </linearGradient>
-                <linearGradient id="hp-al-2" x1="42" y1="14" x2="66" y2="40" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#8899b0"/><stop offset="1" stop-color="#657892"/>
-                </linearGradient>
-                <linearGradient id="hp-al-3" x1="14" y1="42" x2="38" y2="68" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#6a7b92"/><stop offset="1" stop-color="#4a5a6e"/>
-                </linearGradient>
-                <linearGradient id="hp-al-4" x1="42" y1="42" x2="66" y2="68" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#75889e"/><stop offset="1" stop-color="#56667a"/>
+                <linearGradient id="hp-al-card" x1="18" y1="16" x2="62" y2="62" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#8798ad"/><stop offset="1" stop-color="#5c6d82"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#3d4a5c"/>
-              <rect x="12" y="12" width="26" height="26" rx="5" fill="url(#hp-al-1)" stroke="rgba(255,255,255,0.35)" stroke-width="1.25"/>
-              <circle cx="22" cy="22" r="4" fill="#ffe08a"/>
-              <path d="M16 34l7-10 5 6 5-8 10 14H16z" fill="rgba(120,170,230,0.45)" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-linejoin="round"/>
-              <rect x="42" y="12" width="26" height="26" rx="5" fill="url(#hp-al-2)" stroke="rgba(255,255,255,0.3)" stroke-width="1.25"/>
-              <path d="M48 24h14M48 29h10M48 34h12" stroke="rgba(255,255,255,0.45)" stroke-width="2" stroke-linecap="round"/>
-              <rect x="12" y="42" width="26" height="26" rx="5" fill="url(#hp-al-3)" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
-              <path d="M18 62l8-10h10l8 10" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-              <rect x="42" y="42" width="26" height="26" rx="5" fill="url(#hp-al-4)" stroke="rgba(255,255,255,0.32)" stroke-width="1.25"/>
-              <circle cx="55" cy="55" r="7" fill="none" stroke="#7cc4ff" stroke-width="2"/>
-              <path d="M52 55h6M55 52v6" stroke="#7cc4ff" stroke-width="1.75" stroke-linecap="round"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-al-bg)"/>
+              <rect x="14" y="16" width="52" height="48" rx="8" fill="url(#hp-al-card)" stroke="rgba(255,255,255,0.32)" stroke-width="1.25"/>
+              <path d="M20 52l10-12 8 8 8-10 14 14" stroke="rgba(255,255,255,0.55)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="28" cy="28" r="5" fill="#ffe08a"/>
+              <path d="M20 58h40" stroke="rgba(255,255,255,0.18)" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="58" cy="22" r="9" fill="rgba(94,176,255,0.2)" stroke="rgba(255,255,255,0.42)" stroke-width="1.5"/>
+              <path d="M54 22h8M58 18v8" stroke="#fff" stroke-width="1.75" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -6073,20 +6061,20 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-cloud" x1="40" y1="28" x2="40" y2="56" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#b8d4ff"/><stop offset="1" stop-color="#6a8ec8"/>
+                <linearGradient id="hp-cloud" x1="40" y1="26" x2="40" y2="56" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#d0e3ff"/><stop offset="1" stop-color="#82a7df"/>
                 </linearGradient>
                 <linearGradient id="hp-delsky-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#4a5d78"/><stop offset="1" stop-color="#354558"/>
+                  <stop stop-color="#57667a"/><stop offset="1" stop-color="#384352"/>
                 </linearGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-delsky-bg)"/>
-              <ellipse cx="30" cy="48" rx="20" ry="13" fill="url(#hp-cloud)" stroke="rgba(255,255,255,0.35)" stroke-width="1.25"/>
-              <ellipse cx="52" cy="46" rx="16" ry="11" fill="url(#hp-cloud)" opacity="0.92" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
-              <path d="M40 38V22" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-              <path d="M32 28l8-8 8 8" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-              <rect x="24" y="54" width="32" height="12" rx="3" fill="rgba(40,55,75,0.85)" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
-              <path d="M32 60h16" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M28 56h25c8 0 14-5.1 14-11.5S61 33 54 33c-1.5-6.1-6.8-10-13.7-10C32.6 23 27 28.3 26 35.4C19.8 36.3 15 41 15 46.7C15 52 20.8 56 28 56z" fill="url(#hp-cloud)" stroke="rgba(255,255,255,0.42)" stroke-width="1.5"/>
+              <path d="M40 28v17" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+              <path d="M33 35l7-7 7 7" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              <path d="M27 61h26" stroke="rgba(255,255,255,0.28)" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="59" cy="23" r="8.5" fill="rgba(94,176,255,0.18)" stroke="rgba(255,255,255,0.42)" stroke-width="1.5"/>
+              <path d="M55 23h8" stroke="#fff" stroke-width="1.75" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -6100,23 +6088,22 @@ function renderHomeHtml() {
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-xls-bar" x1="14" y1="18" x2="66" y2="28" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#2ea86e"/><stop offset="1" stop-color="#1a7a4a"/>
+                <linearGradient id="hp-xls-bar" x1="14" y1="16" x2="66" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#34d97a"/><stop offset="1" stop-color="#17814b"/>
                 </linearGradient>
                 <linearGradient id="hp-xls-bg" x1="40" y1="14" x2="40" y2="66" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#4a5a50"/><stop offset="1" stop-color="#2d3830"/>
+                  <stop stop-color="#4f5f54"/><stop offset="1" stop-color="#303b32"/>
                 </linearGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-xls-bg)"/>
-              <rect x="12" y="14" width="56" height="52" rx="6" fill="#1e2a22" stroke="rgba(255,255,255,0.22)" stroke-width="1.25"/>
-              <rect x="12" y="14" width="56" height="14" rx="6" fill="url(#hp-xls-bar)"/>
-              <circle cx="22" cy="21" r="3" fill="#fff"/>
-              <path d="M28 21h36" stroke="rgba(255,255,255,0.45)" stroke-width="1.25" stroke-linecap="round"/>
-              <path d="M18 36h44M18 46h44M18 56h44" stroke="rgba(255,255,255,0.18)" stroke-width="1.25"/>
-              <path d="M30 34v28M42 34v28M54 34v28" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
-              <rect x="32" y="38" width="8" height="7" rx="1" fill="#4ade80" opacity="0.9"/>
-              <rect x="44" y="48" width="8" height="7" rx="1" fill="#86efac" opacity="0.75"/>
-              <rect x="32" y="50" width="8" height="7" rx="1" fill="rgba(94,176,255,0.55)"/>
+              <rect x="12" y="14" width="56" height="52" rx="7" fill="rgba(15,28,19,0.55)" stroke="rgba(255,255,255,0.24)" stroke-width="1.25"/>
+              <rect x="12" y="14" width="56" height="12" rx="7" fill="url(#hp-xls-bar)"/>
+              <path d="M24 36h36M24 46h36M24 56h36" stroke="rgba(255,255,255,0.18)" stroke-width="1.25"/>
+              <path d="M32 30v32M44 30v32M56 30v32" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+              <rect x="18" y="22" width="12" height="36" rx="3" fill="#198754" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+              <path d="M21.5 31l5 8M26.5 31l-5 8" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+              <rect x="35" y="38" width="8" height="7" rx="1.5" fill="#4ade80"/>
+              <rect x="47" y="48" width="8" height="7" rx="1.5" fill="#86efac"/>
             </svg>
           </span>
         </span>
