@@ -2358,7 +2358,7 @@ let kmtMainCameraDeviceId = null
 /** @type {string | null} */
 let kmtWideLensDeviceId = null
 let kmtUsingWideLens = false
-let kmtPinchGestureActive = false
+let kmtWideSwitchInFlight = false
 let kmtHasDisplayedResult = false
 /** S/D/veilinje – brukes til å skille «samme strekning» fra veksling (da snapper vi meter). */
 let kmtRefSegmentKey = ''
@@ -3495,10 +3495,7 @@ async function stopKmtCameraStream() {
   kmtWideLensDeviceId = null
   kmtMainCameraDeviceId = null
   kmtUsingWideLens = false
-  const wideBtn = document.getElementById('btn-kmt-wide')
-  if (wideBtn instanceof HTMLButtonElement) {
-    wideBtn.hidden = true
-  }
+  kmtWideSwitchInFlight = false
 }
 
 /**
@@ -3695,6 +3692,37 @@ function applyKmtPreviewZoomStyle() {
   inner.style.setProperty('--kmt-pan-y', `${kmtZoomPanPy}px`)
 }
 
+function getKmtEffectiveZoom() {
+  return (kmtUsingWideLens ? 0.5 : 1) * kmtZoomScale
+}
+
+function getKmtMinEffectiveZoom() {
+  return kmtWideLensDeviceId && kmtMainCameraDeviceId ? 0.5 : 1
+}
+
+/**
+ * Holder zoom-opplevelsen stabil på tvers av hovedkamera og vidvinkel.
+ * Når brukeren zoomer langt nok ut, byttes det automatisk til vidvinkel.
+ * @param {number} nextEffectiveZoom
+ */
+async function setKmtEffectiveZoom(nextEffectiveZoom) {
+  const canAutoWide = Boolean(kmtWideLensDeviceId && kmtMainCameraDeviceId)
+  const minZoom = canAutoWide ? 0.5 : 1
+  const effective = Math.max(minZoom, Math.min(3, nextEffectiveZoom))
+
+  if (canAutoWide && !kmtUsingWideLens && effective < 0.9) {
+    await switchKmtWideCamera(true, effective)
+    return
+  }
+  if (canAutoWide && kmtUsingWideLens && effective >= 1.02) {
+    await switchKmtWideCamera(false, effective)
+    return
+  }
+
+  kmtZoomScale = kmtUsingWideLens ? effective / 0.5 : effective
+  applyKmtPreviewZoomStyle()
+}
+
 /**
  * @param {HTMLVideoElement} video
  * @returns {{ sx: number, sy: number, sw: number, sh: number } | null}
@@ -3737,12 +3765,24 @@ function computeKmtCaptureSourceRect(video) {
 /** Hopper punktfokus rett etter knipe-zoom. */
 let kmtSkipNextTapFocus = false
 
-async function switchKmtWideCamera() {
-  if (!kmtWideLensDeviceId || !kmtMainCameraDeviceId) return
+async function switchKmtWideCamera(wantWide, keepEffectiveZoom = null) {
+  if (!kmtWideLensDeviceId || !kmtMainCameraDeviceId) return false
   const video = document.getElementById('kmt-video')
-  if (!video || !navigator.mediaDevices?.getUserMedia) return
-  const wantWide = !kmtUsingWideLens
+  if (!video || !navigator.mediaDevices?.getUserMedia) return false
+  if (kmtWideSwitchInFlight) return false
+  if (wantWide === kmtUsingWideLens) {
+    if (typeof keepEffectiveZoom === 'number' && Number.isFinite(keepEffectiveZoom)) {
+      kmtZoomScale = wantWide ? keepEffectiveZoom / 0.5 : keepEffectiveZoom
+      applyKmtPreviewZoomStyle()
+    }
+    return true
+  }
   const deviceId = wantWide ? kmtWideLensDeviceId : kmtMainCameraDeviceId
+  const nextEffective =
+    typeof keepEffectiveZoom === 'number' && Number.isFinite(keepEffectiveZoom)
+      ? Math.max(getKmtMinEffectiveZoom(), Math.min(3, keepEffectiveZoom))
+      : getKmtEffectiveZoom()
+  kmtWideSwitchInFlight = true
   try {
     const newStream = await navigator.mediaDevices.getUserMedia({
       video: { deviceId: { exact: deviceId } },
@@ -3763,23 +3803,24 @@ async function switchKmtWideCamera() {
     video.muted = true
     await video.play()
     kmtUsingWideLens = wantWide
-    resetKmtPreviewZoom()
+    kmtZoomScale = wantWide ? nextEffective / 0.5 : nextEffective
+    kmtZoomPanPx = 0
+    kmtZoomPanPy = 0
     applyKmtPreviewZoomStyle()
-    const wb = document.getElementById('btn-kmt-wide')
-    if (wb instanceof HTMLButtonElement) {
-      wb.setAttribute('aria-pressed', wantWide ? 'true' : 'false')
-      wb.classList.toggle('kmt-wide-btn--on', wantWide)
-    }
     const vtrack = newStream.getVideoTracks()[0]
     const farOk = await applyKmtFarFocusPreference(vtrack)
     if (!farOk) await applyKmtContinuousAutofocus(vtrack)
     syncKmtTorchUi()
+    return true
   } catch {
     const st = document.getElementById('kmt-status')
     if (st) {
       st.textContent = 'Kunne ikke bytte kamera.'
       st.hidden = false
     }
+    return false
+  } finally {
+    kmtWideSwitchInFlight = false
   }
 }
 
@@ -4894,12 +4935,7 @@ async function openKmtDialog() {
         vs && typeof vs.deviceId === 'string' ? vs.deviceId : null
       kmtUsingWideLens = false
       kmtWideLensDeviceId = null
-      const wbInit = document.getElementById('btn-kmt-wide')
-      if (wbInit instanceof HTMLButtonElement) {
-        wbInit.hidden = true
-        wbInit.setAttribute('aria-pressed', 'false')
-        wbInit.classList.remove('kmt-wide-btn--on')
-      }
+      kmtWideSwitchInFlight = false
       void (async () => {
         try {
           const devices = await navigator.mediaDevices.enumerateDevices()
@@ -4915,7 +4951,6 @@ async function openKmtDialog() {
           )
           if (ultra?.deviceId) {
             kmtWideLensDeviceId = String(ultra.deviceId)
-            if (wbInit instanceof HTMLButtonElement) wbInit.hidden = false
           }
         } catch {
           kmtWideLensDeviceId = null
@@ -7896,17 +7931,6 @@ function renderKmtDialogHtml() {
                       title="Blits / lommelykt"
                     >
                       <span class="kmt-torch-btn__glyph" aria-hidden="true">⚡</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="kmt-glass-control kmt-wide-btn"
-                      id="btn-kmt-wide"
-                      hidden
-                      aria-pressed="false"
-                      aria-label="Vidvinkelkamera"
-                      title="Bytt til vidvinkel (0,5×) om tilgjengelig"
-                    >
-                      0,5×
                     </button>
                   </div>
                   <button type="button" class="kmt-glass-control kmt-capture-fab" id="btn-kmt-capture">Ta bilde</button>
@@ -11858,12 +11882,6 @@ function bindKmtDialogListeners(signal) {
     },
     { signal },
   )
-  document.getElementById('btn-kmt-wide')?.addEventListener(
-    'click',
-    () => void switchKmtWideCamera(),
-    { signal },
-  )
-
   const tapLayer = document.getElementById('kmt-tap-focus-layer')
   const stage = document.getElementById('kmt-video-stage')
   let tapDownX = 0
@@ -11880,7 +11898,7 @@ function bindKmtDialogListeners(signal) {
       tapDownX = ev.clientX
       tapDownY = ev.clientY
       tapMoved = false
-      tapPanning = kmtZoomScale > 1.04
+      tapPanning = getKmtEffectiveZoom() > 1.04
       if (tapPanning) {
         try {
           tapLayer.setPointerCapture(ev.pointerId)
@@ -11941,8 +11959,7 @@ function bindKmtDialogListeners(signal) {
       if (e.ctrlKey || Math.abs(e.deltaY) > 0) {
         e.preventDefault()
         const delta = -e.deltaY * 0.0018
-        kmtZoomScale = Math.max(1, Math.min(3, kmtZoomScale + delta))
-        applyKmtPreviewZoomStyle()
+        void setKmtEffectiveZoom(getKmtEffectiveZoom() + delta)
       }
     },
     { passive: false, signal },
@@ -11956,7 +11973,7 @@ function bindKmtDialogListeners(signal) {
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY,
         )
-        pinchStartScale = kmtZoomScale
+        pinchStartScale = getKmtEffectiveZoom()
       }
     },
     { passive: true, signal },
@@ -11971,8 +11988,7 @@ function bindKmtDialogListeners(signal) {
         e.touches[0].clientY - e.touches[1].clientY,
       )
       const ratio = d / pinchStartDist
-      kmtZoomScale = Math.max(1, Math.min(3, pinchStartScale * ratio))
-      applyKmtPreviewZoomStyle()
+      void setKmtEffectiveZoom(pinchStartScale * ratio)
     },
     { passive: false, signal },
   )
