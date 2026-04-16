@@ -32,6 +32,28 @@ function meterIntForMetric(m) {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * 0 = E/R/F, 1 = K/ukjent, 2 = P/S — for rask recovery fra feil sideveg i posisjon-laget.
+ * @param {unknown} res
+ */
+function vegrefResultCategoryTier(res) {
+  if (!res || typeof res !== 'object') return 1
+  const vk = /** @type {{ vegkategori?: unknown }} */ (res).vegkategori
+  if (typeof vk === 'string') {
+    const c = vk.trim().toUpperCase()
+    if (c === 'E' || c === 'R' || c === 'F') return 0
+    if (c === 'K') return 1
+    if (c === 'P' || c === 'S') return 2
+  }
+  const kf = /** @type {{ kortform?: unknown }} */ (res).kortform
+  if (typeof kf === 'string') {
+    const s = kf.trim()
+    if (/^(Fv|Rv|Ev)\s/i.test(s) || /^(Fv|Rv|Ev)\d/i.test(s)) return 0
+    if (/^(Pv|Sv)\s/i.test(s) || /^(Pv|Sv)\d/i.test(s)) return 2
+  }
+  return 1
+}
+
 /** Felles timing for forsiden og KMT – samme opplevd hastighet. */
 export const VEGREF_MIN_INTERVAL_MS = 400
 export const VEGREF_MIN_MOVE_M = 2
@@ -250,7 +272,15 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
       const pendingMatch =
         posisjonPendingNewNvdbId != null &&
         String(posisjonPendingNewNvdbId) === String(nid)
-      if (clearOnRoad) {
+      const oldTier = vegrefResultCategoryTier(lastAppliedRes)
+      const newTier = vegrefResultCategoryTier(res)
+      const recoveryToPublic =
+        oldTier >= 2 &&
+        newTier <= 1 &&
+        dist <= Math.min(38, 20 + acc * 0.55)
+      if (recoveryToPublic) {
+        posisjonPendingNewNvdbId = null
+      } else if (clearOnRoad) {
         posisjonPendingNewNvdbId = null
       } else if (pendingMatch) {
         posisjonPendingNewNvdbId = null
@@ -792,6 +822,7 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     )
     if (lastSpeed > 28) coalesceRadius *= 0.45
     else if (lastSpeed > 18) coalesceRadius *= 0.65
+    if (posisjonPendingNewNvdbId != null) coalesceRadius *= 0.55
     if (!forceImmediate && movedInflight < coalesceRadius) {
       return
     }
@@ -820,6 +851,13 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     /* Gåing / foto ved veikant: litt raskere meter/vei uten å spamme NVDB. */
     minInterval = Math.max(320, minInterval - 55)
     minMove = Math.max(1.2, minMove - 0.8)
+  }
+  if (posisjonPendingNewNvdbId != null) {
+    minInterval = Math.max(160, minInterval * 0.58)
+    minMove = Math.max(0.4, minMove * 0.55)
+  } else if (lastSpeed > 20) {
+    /* Litt færre NVDB-kall i normal kjøring; meter-UI har eget dødbånd. Ikke bruk under pending recovery. */
+    minInterval = Math.min(950, minInterval + 90)
   }
   const inCoordFallbackUi = isCoordFallbackDisplay(lastAppliedRes)
   /** Når vi viser koordinat-fallback: tillat oftere nytt NVDB-forsøk (samme logikk ellers). */

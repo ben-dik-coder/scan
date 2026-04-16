@@ -9,3 +9,6 @@ dist/
 server/contract-context.txt
 .DS_Store
 *.log
+cert.pem
+key.pem
+*.backup.js

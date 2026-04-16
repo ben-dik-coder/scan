@@ -2168,11 +2168,9 @@ let homeVegrefExcelVegvei = ''
 let homeVegrefExcelVegnr = ''
 let homeVegrefLastDistSkipAt = 0
 const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
-/** Hindrer permanent meter-frys når vi ser flere "umulige" hopp på rad. */
-let homeVegrefMeterRejectSince = 0
-let homeVegrefMeterRejectCount = 0
-const HOME_VEGREF_METER_REJECT_MAX_MS = 2600
-const HOME_VEGREF_METER_REJECT_MAX_COUNT = 4
+/** Siste gang vi startet meter-tween eller snap (begrenser unødvendige oppdateringer på samme strekning). */
+let homeVegrefLastMeterUiCommitAt = 0
+const HOME_VEGREF_METER_MIN_TWEEN_GAP_MS = 720
 let homeVegrefStartupToken = 0
 let homeVegrefStartupStartedAt = 0
 let homeVegrefStartupFirstGpsAt = 0
@@ -2309,14 +2307,64 @@ function homeVegrefMeterSnapThreshold() {
   if (spd > 15) return 400
   return 240
 }
+/**
+ * Dødbånd for meter på samme segment: ignorer små hopp fra GPS/NVDB-støy.
+ * Større ved dårlig nøyaktighet og litt større ved høy fart (meter endrer seg fort, men vi vil fortsatt dempe støy).
+ */
+function homeVegrefMeterDeadbandM() {
+  const acc = lastVegrefGpsAccuracyM
+  const spd = vegrefGetLastSpeed()
+  let d = 12 + Math.min(22, acc * 0.42)
+  if (spd > 28) d += 8
+  else if (spd > 18) d += 4
+  return Math.min(48, d)
+}
+/**
+ * @param {number} mInt
+ * @param {number} displayed
+ * @param {boolean} segChanged
+ * @param {() => number} snapFn
+ * @param {number} lastCommitMs
+ */
+function shouldSkipVegrefMeterDisplayUpdate(
+  mInt,
+  displayed,
+  segChanged,
+  snapFn,
+  lastCommitMs,
+) {
+  if (segChanged) return false
+  const delta = Math.abs(mInt - displayed)
+  const snap = snapFn()
+  if (delta >= snap) return false
+  if (delta < homeVegrefMeterDeadbandM()) return true
+  if (
+    Date.now() - lastCommitMs <
+    HOME_VEGREF_METER_MIN_TWEEN_GAP_MS
+  ) {
+    return true
+  }
+  return false
+}
 let kmtCameraMode = false
 /** @type {MediaStream | null} */
 let kmtMediaStream = null
+/** Digital zoom / pan (preview); vegreferanse ligger i samme transform-lag som video). */
+let kmtZoomScale = 1
+let kmtZoomPanPx = 0
+let kmtZoomPanPy = 0
+/** @type {string | null} */
+let kmtMainCameraDeviceId = null
+/** @type {string | null} */
+let kmtWideLensDeviceId = null
+let kmtUsingWideLens = false
+let kmtPinchGestureActive = false
 let kmtHasDisplayedResult = false
 /** S/D/veilinje – brukes til å skille «samme strekning» fra veksling (da snapper vi meter). */
 let kmtRefSegmentKey = ''
 /** Sist viste metertall (for tween). */
 let kmtDisplayedMeter = null
+let kmtLastMeterUiCommitAt = 0
 let kmtMeterAnim = null
 let kmtMeterFrom = 0
 let kmtMeterTo = 0
@@ -3443,6 +3491,14 @@ async function stopKmtCameraStream() {
   kmtCameraMode = false
   const kmtDlg = document.getElementById('kmt-dialog')
   kmtDlg?.classList.remove('kmt-dialog--camera', 'kmt-dialog--camera-warmup')
+  resetKmtPreviewZoom()
+  kmtWideLensDeviceId = null
+  kmtMainCameraDeviceId = null
+  kmtUsingWideLens = false
+  const wideBtn = document.getElementById('btn-kmt-wide')
+  if (wideBtn instanceof HTMLButtonElement) {
+    wideBtn.hidden = true
+  }
 }
 
 /**
@@ -3590,6 +3646,143 @@ function showKmtFocusRipple(clientX, clientY, stageEl) {
   }, 600)
 }
 
+function resetKmtPreviewZoom() {
+  kmtZoomScale = 1
+  kmtZoomPanPx = 0
+  kmtZoomPanPy = 0
+  const inner = document.getElementById('kmt-video-zoom-inner')
+  if (inner) {
+    inner.style.setProperty('--kmt-zoom', '1')
+    inner.style.setProperty('--kmt-pan-x', '0px')
+    inner.style.setProperty('--kmt-pan-y', '0px')
+  }
+}
+
+/**
+ * @param {number} vw
+ * @param {number} vh
+ * @param {number} dispW
+ * @param {number} dispH
+ */
+function kmtVideoCoverSourceRect(vw, vh, dispW, dispH) {
+  const r = Math.max(dispW / vw, dispH / vh)
+  const sw = dispW / r
+  const sh = dispH / r
+  const sx = (vw - sw) / 2
+  const sy = (vh - sh) / 2
+  return { sx, sy, sw, sh }
+}
+
+function applyKmtPreviewZoomStyle() {
+  const inner = document.getElementById('kmt-video-zoom-inner')
+  const stage = document.getElementById('kmt-video-stage')
+  if (!inner || !stage) return
+  const sw = stage.clientWidth
+  const sh = stage.clientHeight
+  let z = Math.max(1, Math.min(3, kmtZoomScale))
+  kmtZoomScale = z
+  if (z <= 1.001) {
+    kmtZoomPanPx = 0
+    kmtZoomPanPy = 0
+  } else {
+    const maxPanX = (sw * (z - 1)) / 2
+    const maxPanY = (sh * (z - 1)) / 2
+    kmtZoomPanPx = Math.max(-maxPanX, Math.min(maxPanX, kmtZoomPanPx))
+    kmtZoomPanPy = Math.max(-maxPanY, Math.min(maxPanY, kmtZoomPanPy))
+  }
+  inner.style.setProperty('--kmt-zoom', String(z))
+  inner.style.setProperty('--kmt-pan-x', `${kmtZoomPanPx}px`)
+  inner.style.setProperty('--kmt-pan-y', `${kmtZoomPanPy}px`)
+}
+
+/**
+ * @param {HTMLVideoElement} video
+ * @returns {{ sx: number, sy: number, sw: number, sh: number } | null}
+ */
+function computeKmtCaptureSourceRect(video) {
+  const vw = video.videoWidth
+  const vh = video.videoHeight
+  if (vw < 32 || vh < 32) return null
+  const rw = video.clientWidth
+  const rh = video.clientHeight
+  if (rw < 2 || rh < 2) {
+    return { sx: 0, sy: 0, sw: vw, sh: vh }
+  }
+  const cover = kmtVideoCoverSourceRect(vw, vh, rw, rh)
+  const z = Math.max(1, Math.min(3, kmtZoomScale))
+  const dw = cover.sw / z
+  const dh = cover.sh / z
+  const maxPanSrcX = (cover.sw - dw) / 2
+  const maxPanSrcY = (cover.sh - dh) / 2
+  const stage = document.getElementById('kmt-video-stage')
+  const sw = stage?.clientWidth ?? rw
+  const sh = stage?.clientHeight ?? rh
+  const maxPanStageX = (sw * (z - 1)) / 2
+  const maxPanStageY = (sh * (z - 1)) / 2
+  let nx = 0
+  let ny = 0
+  if (maxPanStageX > 0 && maxPanSrcX > 0) {
+    nx = Math.max(-1, Math.min(1, kmtZoomPanPx / maxPanStageX))
+  }
+  if (maxPanStageY > 0 && maxPanSrcY > 0) {
+    ny = Math.max(-1, Math.min(1, kmtZoomPanPy / maxPanStageY))
+  }
+  let outSx = cover.sx + cover.sw / 2 - dw / 2 + nx * maxPanSrcX
+  let outSy = cover.sy + cover.sh / 2 - dh / 2 + ny * maxPanSrcY
+  outSx = Math.max(cover.sx, Math.min(cover.sx + cover.sw - dw, outSx))
+  outSy = Math.max(cover.sy, Math.min(cover.sy + cover.sh - dh, outSy))
+  return { sx: outSx, sy: outSy, sw: dw, sh: dh }
+}
+
+/** Hopper punktfokus rett etter knipe-zoom. */
+let kmtSkipNextTapFocus = false
+
+async function switchKmtWideCamera() {
+  if (!kmtWideLensDeviceId || !kmtMainCameraDeviceId) return
+  const video = document.getElementById('kmt-video')
+  if (!video || !navigator.mediaDevices?.getUserMedia) return
+  const wantWide = !kmtUsingWideLens
+  const deviceId = wantWide ? kmtWideLensDeviceId : kmtMainCameraDeviceId
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: deviceId } },
+      audio: false,
+    })
+    const old = kmtMediaStream
+    if (old) {
+      for (const t of old.getTracks()) {
+        try {
+          t.stop()
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    kmtMediaStream = newStream
+    video.srcObject = newStream
+    video.muted = true
+    await video.play()
+    kmtUsingWideLens = wantWide
+    resetKmtPreviewZoom()
+    applyKmtPreviewZoomStyle()
+    const wb = document.getElementById('btn-kmt-wide')
+    if (wb instanceof HTMLButtonElement) {
+      wb.setAttribute('aria-pressed', wantWide ? 'true' : 'false')
+      wb.classList.toggle('kmt-wide-btn--on', wantWide)
+    }
+    const vtrack = newStream.getVideoTracks()[0]
+    const farOk = await applyKmtFarFocusPreference(vtrack)
+    if (!farOk) await applyKmtContinuousAutofocus(vtrack)
+    syncKmtTorchUi()
+  } catch {
+    const st = document.getElementById('kmt-status')
+    if (st) {
+      st.textContent = 'Kunne ikke bytte kamera.'
+      st.hidden = false
+    }
+  }
+}
+
 /**
  * Vent på videorammer etter fokusendring (synkron med faktisk kamerafeed).
  * @param {HTMLVideoElement} video
@@ -3668,12 +3861,29 @@ async function captureKmtCameraPhoto() {
     await waitForKmtCaptureSettle(video)
   }
 
+  const crop = computeKmtCaptureSourceRect(video)
   const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  ctx.drawImage(video, 0, 0, w, h)
+  if (crop && crop.sw > 8 && crop.sh > 8) {
+    canvas.width = Math.round(crop.sw)
+    canvas.height = Math.round(crop.sh)
+    ctx.drawImage(
+      video,
+      crop.sx,
+      crop.sy,
+      crop.sw,
+      crop.sh,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    )
+  } else {
+    canvas.width = w
+    canvas.height = h
+    ctx.drawImage(video, 0, 0, w, h)
+  }
   triggerKmtCaptureFlash()
 
   /* Vegreferanse lagres som metadata + HTML-overlay, ikke innprintet piksler – skarp tekst ved zoom. */
@@ -3823,6 +4033,7 @@ function applyKmtResult(res) {
     }
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
+    kmtLastMeterUiCommitAt = 0
     kmtRefSegmentKey = ''
     line.textContent = '–'
     const folderSrcEl = document.getElementById('kmt-road-folder-src')
@@ -3880,6 +4091,7 @@ function applyKmtResult(res) {
   if (mInt == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
+    kmtLastMeterUiCommitAt = 0
     mEl.textContent = formatHomeVegrefMeterText(res.m)
     syncKmtCompactLine()
     return
@@ -3887,19 +4099,35 @@ function applyKmtResult(res) {
   if (kmtDisplayedMeter == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = mInt
+    kmtLastMeterUiCommitAt = Date.now()
     mEl.textContent = formatHomeVegrefMeterText(mInt)
     syncKmtCompactLine()
     return
   }
   const delta = Math.abs(mInt - kmtDisplayedMeter)
   const snap = kmtMeterSnapThreshold()
-  if (segmentChanged && delta > snap) {
+  if (delta >= snap) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = mInt
+    kmtLastMeterUiCommitAt = Date.now()
     mEl.textContent = formatHomeVegrefMeterText(mInt)
     syncKmtCompactLine()
     return
   }
+  if (
+    shouldSkipVegrefMeterDisplayUpdate(
+      mInt,
+      kmtDisplayedMeter,
+      segmentChanged,
+      kmtMeterSnapThreshold,
+      kmtLastMeterUiCommitAt,
+    )
+  ) {
+    mEl.textContent = formatHomeVegrefMeterText(kmtDisplayedMeter)
+    syncKmtCompactLine()
+    return
+  }
+  kmtLastMeterUiCommitAt = Date.now()
   startKmtMeterTweenTo(mInt)
 }
 
@@ -4318,10 +4546,6 @@ function applyHomeVegrefResult(res) {
     homeVegrefCompactD = res.d
     homeVegrefSegKey = segKey
 
-    const fromPosisjon =
-      /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
-        ?.source === 'posisjon'
-
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
       /* Midlertidig tom meter: hold når vi fortsatt er på samme NVDB-strekning (segKey kan flakse uten reelt veksel). */
@@ -4345,15 +4569,28 @@ function applyHomeVegrefResult(res) {
     } else if (homeVegrefDisplayedMeter == null) {
       cancelHomeVegrefMeterTween()
       homeVegrefDisplayedMeter = mInt
+      homeVegrefLastMeterUiCommitAt = Date.now()
       setHomeVegrefCompactDom(res.s, res.d, mInt)
     } else {
       const delta = Math.abs(mInt - homeVegrefDisplayedMeter)
       const snap = homeVegrefMeterSnapThreshold()
-      if (segChanged && delta > snap) {
+      if (delta >= snap) {
         cancelHomeVegrefMeterTween()
         homeVegrefDisplayedMeter = mInt
+        homeVegrefLastMeterUiCommitAt = Date.now()
         setHomeVegrefCompactDom(res.s, res.d, mInt)
+      } else if (
+        shouldSkipVegrefMeterDisplayUpdate(
+          mInt,
+          homeVegrefDisplayedMeter,
+          segChanged,
+          homeVegrefMeterSnapThreshold,
+          homeVegrefLastMeterUiCommitAt,
+        )
+      ) {
+        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
       } else {
+        homeVegrefLastMeterUiCommitAt = Date.now()
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         startHomeVegrefMeterTweenTo(mInt)
       }
@@ -4380,6 +4617,7 @@ function startHomeVegrefTracking() {
     homeVegrefWatchId = null
   }
   cancelHomeVegrefMeterTween()
+  homeVegrefLastMeterUiCommitAt = 0
   resetHomeVegrefRuntimeState()
   homeVegrefStartupToken += 1
   const startupToken = homeVegrefStartupToken
@@ -4605,6 +4843,7 @@ async function openKmtDialog() {
   kmtHasDisplayedResult = false
   kmtRefSegmentKey = ''
   kmtDisplayedMeter = null
+  kmtLastMeterUiCommitAt = 0
   cancelKmtMeterTween()
   await stopKmtCameraStream()
   resetKmtCameraExtrasDom()
@@ -4642,12 +4881,46 @@ async function openKmtDialog() {
         })
       }
       kmtMediaStream = stream
+      resetKmtPreviewZoom()
       video.srcObject = stream
       video.muted = true
       video.setAttribute('playsinline', '')
       video.playsInline = true
       await video.play()
+      applyKmtPreviewZoomStyle()
       const vtrack = stream.getVideoTracks()[0]
+      const vs = typeof vtrack.getSettings === 'function' ? vtrack.getSettings() : {}
+      kmtMainCameraDeviceId =
+        vs && typeof vs.deviceId === 'string' ? vs.deviceId : null
+      kmtUsingWideLens = false
+      kmtWideLensDeviceId = null
+      const wbInit = document.getElementById('btn-kmt-wide')
+      if (wbInit instanceof HTMLButtonElement) {
+        wbInit.hidden = true
+        wbInit.setAttribute('aria-pressed', 'false')
+        wbInit.classList.remove('kmt-wide-btn--on')
+      }
+      void (async () => {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices()
+          const ultra = devices.find(
+            (d) =>
+              d.kind === 'videoinput' &&
+              d.deviceId &&
+              kmtMainCameraDeviceId &&
+              d.deviceId !== kmtMainCameraDeviceId &&
+              /ultra|0\.5|wide|vidvinkel|dual wide|back dual wide/i.test(
+                d.label,
+              ),
+          )
+          if (ultra?.deviceId) {
+            kmtWideLensDeviceId = String(ultra.deviceId)
+            if (wbInit instanceof HTMLButtonElement) wbInit.hidden = false
+          }
+        } catch {
+          kmtWideLensDeviceId = null
+        }
+      })()
       const farOk = await applyKmtFarFocusPreference(vtrack)
       if (!farOk) {
         await applyKmtContinuousAutofocus(vtrack)
@@ -5681,19 +5954,23 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Start økt fra din posisjon</span>
           </span>
           <span class="home-dash-card__visual home-dash-card__visual--accent" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-reg-bg" x1="40" y1="10" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#1a2840"/><stop offset="1" stop-color="#0e1520"/>
+                <linearGradient id="hp-reg-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#5f7390"/><stop offset="1" stop-color="#3d4d62"/>
+                </linearGradient>
+                <linearGradient id="hp-reg-map" x1="18" y1="16" x2="62" y2="62" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7a8ca5"/><stop offset="1" stop-color="#55667a"/>
                 </linearGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-reg-bg)"/>
-              <rect x="12" y="14" width="56" height="40" rx="6" fill="rgba(20,35,55,0.85)" stroke="rgba(77,163,255,0.35)" stroke-width="1.25"/>
-              <path d="M18 48h12M18 42h20M18 36h8" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="46" cy="30" r="2.5" fill="rgba(255,255,255,0.15)"/><circle cx="58" cy="38" r="2" fill="rgba(255,255,255,0.1)"/>
-              <path d="M22 52 Q34 44 46 38 T58 28" stroke="rgba(77,163,255,0.55)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-              <path d="M38 24c0-3.3 2.7-6 6-6s6 2.7 6 6c0 4.5-6 10-6 10s-6-5.5-6-10z" fill="rgba(77,163,255,0.9)" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
-              <circle cx="44" cy="24" r="2" fill="#fff"/>
+              <rect x="12" y="14" width="56" height="52" rx="10" fill="url(#hp-reg-map)" stroke="rgba(255,255,255,0.32)" stroke-width="1.25"/>
+              <path d="M20 28h40M20 38h32M20 48h36" stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-linecap="round"/>
+              <path d="M38 20v44" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M40 28c-5.2 0-9.5 4.2-9.5 9.5 0 6.8 9.5 16.5 9.5 16.5s9.5-9.7 9.5-16.5c0-5.3-4.3-9.5-9.5-9.5z" fill="#5eb0ff" stroke="rgba(255,255,255,0.55)" stroke-width="1.25"/>
+              <circle cx="40" cy="37.5" r="3.5" fill="#fff"/>
+              <circle cx="56" cy="20" r="11" fill="rgba(94,176,255,0.35)" stroke="#c8e6ff" stroke-width="1.5"/>
+              <path d="M56 14.5v11M50.5 20h11" stroke="#fff" stroke-width="2.25" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -5705,21 +5982,21 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Bilder til økten</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-cam-bg" x1="40" y1="12" x2="40" y2="70" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#1e232e"/><stop offset="1" stop-color="#0c0f14"/>
+                <linearGradient id="hp-cam-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#5f6f80"/><stop offset="1" stop-color="#3a4554"/>
                 </linearGradient>
-                <radialGradient id="hp-cam-lens" cx="40" cy="44" r="16" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(90,140,210,0.35)"/><stop offset="1" stop-color="rgba(25,35,55,0.65)"/>
+                <radialGradient id="hp-cam-lens" cx="40" cy="46" r="15" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#3d5068"/><stop offset="0.7" stop-color="#1e2835"/><stop offset="1" stop-color="#7ab0e8"/>
                 </radialGradient>
               </defs>
               <rect width="80" height="80" rx="14" fill="url(#hp-cam-bg)"/>
-              <path d="M26 28h10l3-4h12l3 4h10" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-              <rect x="16" y="28" width="48" height="34" rx="7" fill="rgba(30,36,48,0.9)" stroke="rgba(255,255,255,0.12)" stroke-width="1.25"/>
-              <circle cx="40" cy="45" r="13" fill="url(#hp-cam-lens)" stroke="rgba(130,175,230,0.45)" stroke-width="2"/>
-              <circle cx="40" cy="45" r="6" fill="rgba(15,25,40,0.6)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-              <circle cx="54" cy="34" r="3" fill="rgba(255,220,160,0.35)" stroke="rgba(255,255,255,0.2)" stroke-width="0.75"/>
+              <path d="M27 30h9l3.5-5h10l3.5 5h9" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+              <rect x="15" y="30" width="50" height="36" rx="8" fill="#4a5d72" stroke="rgba(255,255,255,0.3)" stroke-width="1.25"/>
+              <circle cx="40" cy="48" r="14" fill="url(#hp-cam-lens)" stroke="rgba(255,255,255,0.38)" stroke-width="2"/>
+              <circle cx="40" cy="48" r="6.5" fill="rgba(10,18,28,0.45)" stroke="rgba(140,200,255,0.5)" stroke-width="1.25"/>
+              <circle cx="55" cy="35" r="3.2" fill="#ffe9b8" stroke="rgba(255,255,255,0.45)" stroke-width="0.75"/>
             </svg>
           </span>
         </span>
@@ -5731,19 +6008,21 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">AI mot kontraktskrav</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-kon-bg" x1="22" y1="14" x2="58" y2="64" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#2e3542"/><stop offset="1" stop-color="#181c24"/>
+                <linearGradient id="hp-kon-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#5c6778"/><stop offset="1" stop-color="#3e4654"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#12151c"/>
-              <rect x="18" y="14" width="44" height="54" rx="5" fill="url(#hp-kon-bg)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <path d="M38 14v10h10" stroke="rgba(255,255,255,0.1)" stroke-width="1.25" fill="none"/>
-              <path d="M24 34h32M24 42h28M24 50h32M24 58h20" stroke="rgba(230,235,245,0.18)" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="52" cy="24" r="10" fill="rgba(77,163,255,0.2)" stroke="rgba(77,163,255,0.5)" stroke-width="1.25"/>
-              <path d="M48 24h8M52 20v8" stroke="rgba(77,163,255,0.85)" stroke-width="1.75" stroke-linecap="round"/>
-              <circle cx="46" cy="32" r="1.2" fill="rgba(120,200,255,0.9)"/><circle cx="52" cy="30" r="1.2" fill="rgba(120,200,255,0.7)"/><circle cx="58" cy="32" r="1.2" fill="rgba(120,200,255,0.9)"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-kon-bg)"/>
+              <rect x="17" y="11" width="46" height="60" rx="8" fill="#eef2f8" stroke="rgba(255,255,255,0.45)" stroke-width="1.25"/>
+              <path d="M17 21h46" stroke="#cbd5e1" stroke-width="9" stroke-linecap="round"/>
+              <path d="M46 11v12h12" stroke="#94a3b8" stroke-width="1.25" fill="none"/>
+              <path d="M25 32h30M25 40h34M25 48h28M25 56h22" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+              <rect x="48" y="38" width="14" height="18" rx="3" fill="#5eb0ff" stroke="#7cc4ff" stroke-width="1" opacity="0.95"/>
+              <path d="M52 44h6M55 41v6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="58" cy="26" r="10" fill="rgba(94,176,255,0.35)" stroke="#d4ecff" stroke-width="1.5"/>
+              <path d="M54 26h8M58 22v8" stroke="#fff" stroke-width="1.75" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -5755,26 +6034,32 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Bilder og filer</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-al-1" x1="14" y1="18" x2="38" y2="42" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#4a5568"/><stop offset="1" stop-color="#2a3038"/>
+                <linearGradient id="hp-al-1" x1="14" y1="14" x2="38" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7a8ca3"/><stop offset="1" stop-color="#5a6b82"/>
                 </linearGradient>
-                <linearGradient id="hp-al-2" x1="42" y1="18" x2="66" y2="42" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#5a6578"/><stop offset="1" stop-color="#343c48"/>
+                <linearGradient id="hp-al-2" x1="42" y1="14" x2="66" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#8899b0"/><stop offset="1" stop-color="#657892"/>
+                </linearGradient>
+                <linearGradient id="hp-al-3" x1="14" y1="42" x2="38" y2="68" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6a7b92"/><stop offset="1" stop-color="#4a5a6e"/>
+                </linearGradient>
+                <linearGradient id="hp-al-4" x1="42" y1="42" x2="66" y2="68" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#75889e"/><stop offset="1" stop-color="#56667a"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#101218"/>
-              <rect x="14" y="16" width="24" height="24" rx="4" fill="url(#hp-al-1)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
-              <path d="M18 36l6-8 4 5 4-6 8 12" stroke="rgba(120,170,255,0.4)" stroke-width="1.25" fill="none" stroke-linejoin="round"/>
-              <circle cx="22" cy="22" r="2.5" fill="rgba(255,210,120,0.55)"/>
-              <rect x="42" y="16" width="24" height="24" rx="4" fill="url(#hp-al-2)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <path d="M48 28h12M48 32h8M48 36h10" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" stroke-linecap="round"/>
-              <rect x="14" y="44" width="24" height="24" rx="4" fill="rgba(35,42,54,0.95)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <path d="M20 58l6-7h12l6 7" stroke="rgba(180,195,220,0.25)" stroke-width="1.25" fill="none"/>
-              <rect x="42" y="44" width="24" height="24" rx="4" fill="rgba(38,46,58,0.95)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <circle cx="54" cy="54" r="5" fill="none" stroke="rgba(77,163,255,0.35)" stroke-width="1.5"/>
-              <path d="M52 54h4M54 52v4" stroke="rgba(77,163,255,0.6)" stroke-width="1.25" stroke-linecap="round"/>
+              <rect width="80" height="80" rx="14" fill="#3d4a5c"/>
+              <rect x="12" y="12" width="26" height="26" rx="5" fill="url(#hp-al-1)" stroke="rgba(255,255,255,0.35)" stroke-width="1.25"/>
+              <circle cx="22" cy="22" r="4" fill="#ffe08a"/>
+              <path d="M16 34l7-10 5 6 5-8 10 14H16z" fill="rgba(120,170,230,0.45)" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-linejoin="round"/>
+              <rect x="42" y="12" width="26" height="26" rx="5" fill="url(#hp-al-2)" stroke="rgba(255,255,255,0.3)" stroke-width="1.25"/>
+              <path d="M48 24h14M48 29h10M48 34h12" stroke="rgba(255,255,255,0.45)" stroke-width="2" stroke-linecap="round"/>
+              <rect x="12" y="42" width="26" height="26" rx="5" fill="url(#hp-al-3)" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
+              <path d="M18 62l8-10h10l8 10" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+              <rect x="42" y="42" width="26" height="26" rx="5" fill="url(#hp-al-4)" stroke="rgba(255,255,255,0.32)" stroke-width="1.25"/>
+              <circle cx="55" cy="55" r="7" fill="none" stroke="#7cc4ff" stroke-width="2"/>
+              <path d="M52 55h6M55 52v6" stroke="#7cc4ff" stroke-width="1.75" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -5786,18 +6071,22 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Del til sky</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-cloud" x1="40" y1="22" x2="40" y2="50" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(140,175,230,0.45)"/><stop offset="1" stop-color="rgba(55,75,115,0.5)"/>
+                <linearGradient id="hp-cloud" x1="40" y1="28" x2="40" y2="56" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#b8d4ff"/><stop offset="1" stop-color="#6a8ec8"/>
+                </linearGradient>
+                <linearGradient id="hp-delsky-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#4a5d78"/><stop offset="1" stop-color="#354558"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#12141c"/>
-              <rect x="22" y="48" width="36" height="22" rx="3" fill="rgba(35,42,58,0.9)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <path d="M40 46V34" stroke="rgba(77,163,255,0.75)" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M36 38l4-4 4 4" stroke="rgba(77,163,255,0.75)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              <ellipse cx="32" cy="50" rx="18" ry="11" fill="url(#hp-cloud)"/>
-              <ellipse cx="48" cy="48" rx="14" ry="9" fill="url(#hp-cloud)" opacity="0.9"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-delsky-bg)"/>
+              <ellipse cx="30" cy="48" rx="20" ry="13" fill="url(#hp-cloud)" stroke="rgba(255,255,255,0.35)" stroke-width="1.25"/>
+              <ellipse cx="52" cy="46" rx="16" ry="11" fill="url(#hp-cloud)" opacity="0.92" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+              <path d="M40 38V22" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+              <path d="M32 28l8-8 8 8" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              <rect x="24" y="54" width="32" height="12" rx="3" fill="rgba(40,55,75,0.85)" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+              <path d="M32 60h16" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </span>
         </span>
@@ -5809,20 +6098,25 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Eksporter regneark</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-xls-bar" x1="16" y1="20" x2="64" y2="26" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#217346"/><stop offset="1" stop-color="#185c37"/>
+                <linearGradient id="hp-xls-bar" x1="14" y1="18" x2="66" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2ea86e"/><stop offset="1" stop-color="#1a7a4a"/>
+                </linearGradient>
+                <linearGradient id="hp-xls-bg" x1="40" y1="14" x2="40" y2="66" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#4a5a50"/><stop offset="1" stop-color="#2d3830"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#0f1218"/>
-              <rect x="14" y="16" width="52" height="48" rx="4" fill="#1a1f28" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <rect x="14" y="16" width="52" height="10" rx="4" fill="url(#hp-xls-bar)"/>
-              <circle cx="22" cy="21" r="2.5" fill="rgba(255,255,255,0.9)"/>
-              <path d="M26 21h34" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-linecap="round"/>
-              <path d="M18 34h44M18 44h44M18 54h44M30 28v32M42 28v32M54 28v32" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-              <rect x="30" y="36" width="10" height="6" rx="0.5" fill="rgba(33,115,70,0.45)"/>
-              <rect x="42" y="46" width="10" height="6" rx="0.5" fill="rgba(77,163,255,0.2)"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-xls-bg)"/>
+              <rect x="12" y="14" width="56" height="52" rx="6" fill="#1e2a22" stroke="rgba(255,255,255,0.22)" stroke-width="1.25"/>
+              <rect x="12" y="14" width="56" height="14" rx="6" fill="url(#hp-xls-bar)"/>
+              <circle cx="22" cy="21" r="3" fill="#fff"/>
+              <path d="M28 21h36" stroke="rgba(255,255,255,0.45)" stroke-width="1.25" stroke-linecap="round"/>
+              <path d="M18 36h44M18 46h44M18 56h44" stroke="rgba(255,255,255,0.18)" stroke-width="1.25"/>
+              <path d="M30 34v28M42 34v28M54 34v28" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+              <rect x="32" y="38" width="8" height="7" rx="1" fill="#4ade80" opacity="0.9"/>
+              <rect x="44" y="48" width="8" height="7" rx="1" fill="#86efac" opacity="0.75"/>
+              <rect x="32" y="50" width="8" height="7" rx="1" fill="rgba(94,176,255,0.55)"/>
             </svg>
           </span>
         </span>
@@ -5834,21 +6128,24 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Segment og avstand</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
               <defs>
-                <linearGradient id="hp-route" x1="18" y1="38" x2="62" y2="26" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="rgba(77,163,255,0.7)"/><stop offset="1" stop-color="rgba(120,190,255,0.3)"/>
+                <linearGradient id="hp-route" x1="16" y1="30" x2="64" y2="36" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#4da3ff"/>
+                </linearGradient>
+                <linearGradient id="hp-str-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#566378"/><stop offset="1" stop-color="#3a4454"/>
                 </linearGradient>
               </defs>
-              <rect width="80" height="80" rx="14" fill="#12151c"/>
-              <rect x="10" y="50" width="60" height="10" rx="2" fill="rgba(38,46,58,0.9)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-              <path d="M14 54h4M22 54h4M30 54h4M38 54h4M46 54h4M54 54h4M62 54h4" stroke="rgba(255,255,255,0.14)" stroke-width="1.2" stroke-linecap="round"/>
-              <path d="M18 58v-4M62 58v-4" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M22 36 C34 22 46 22 58 34" stroke="url(#hp-route)" stroke-width="2.75" fill="none" stroke-linecap="round" stroke-dasharray="5 4"/>
-              <path d="M22 36 L22 44 L18 48 L26 48 L22 44" fill="rgba(77,163,255,0.9)" stroke="rgba(255,255,255,0.35)" stroke-width="0.75"/>
-              <circle cx="22" cy="32" r="2.5" fill="#fff"/>
-              <path d="M58 34 L58 42 L54 46 L62 46 L58 42" fill="rgba(100,180,255,0.35)" stroke="rgba(77,163,255,0.75)" stroke-width="1"/>
-              <circle cx="58" cy="30" r="2.5" fill="rgba(255,255,255,0.85)"/>
+              <rect width="80" height="80" rx="14" fill="url(#hp-str-bg)"/>
+              <rect x="8" y="52" width="64" height="12" rx="3" fill="#4a5568" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
+              <path d="M14 58h52" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linecap="round"/>
+              <path d="M20 26 C32 14 48 14 60 26" stroke="url(#hp-route)" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+              <circle cx="20" cy="26" r="7" fill="#34d97a" stroke="#fff" stroke-width="2"/>
+              <circle cx="20" cy="26" r="2.5" fill="#fff"/>
+              <circle cx="60" cy="26" r="7" fill="#5eb0ff" stroke="#fff" stroke-width="2"/>
+              <circle cx="60" cy="26" r="2.5" fill="#fff"/>
+              <rect x="36" y="54" width="8" height="8" rx="1" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
             </svg>
           </span>
         </span>
@@ -5923,22 +6220,39 @@ function renderHomeHtml() {
     <nav class="home-bottom-nav" aria-label="Hurtigvalg">
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-new" aria-label="Ny registrering">
         <span class="home-bottom-nav__icon home-bottom-nav__icon--primary" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 21.5c-3.3-2.8-6-6.5-6-10.5a6 6 0 1 1 12 0c0 4-2.7 7.7-6 10.5z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+            <circle cx="12" cy="11" r="2.25" fill="currentColor" stroke="none"/>
+            <circle cx="12" cy="11" r="5.5" stroke="currentColor" stroke-width="1.5" opacity="0.35"/>
+          </svg>
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-camera" aria-label="Ta bilde">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 9h3l1.5-2h7L17 9h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+            <circle cx="12" cy="14" r="3.75" stroke="currentColor" stroke-width="1.75"/>
+            <circle cx="17" cy="10" r="1.35" fill="currentColor"/>
+          </svg>
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="Kontraktskontroll">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+            <path d="M14 2v6h6" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+            <path d="M9 15l2 2 4-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-history" aria-label="Økter og historikk">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 19.5A5.5 5.5 0 0 1 9.5 14H12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+            <path d="M4 4v6h6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.75"/>
+            <path d="M12 8v4.5l3 2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </span>
       </button>
     </nav>
@@ -7549,58 +7863,71 @@ function renderKmtDialogHtml() {
           <p class="kmt-dialog__status kmt-dialog__status--floating" id="kmt-status" hidden></p>
           <div class="kmt-stack" id="kmt-stack">
             <div class="kmt-video-stage" id="kmt-video-stage">
-              <video
-                id="kmt-video"
-                class="kmt-video"
-                playsinline
-                muted
-                autoplay
-                aria-label="Kameravisning"
-              ></video>
-              <div
-                class="kmt-camera-warmup"
-                id="kmt-camera-warmup"
-                aria-hidden="true"
-              ></div>
-              <div
-                class="kmt-tap-focus-layer"
-                id="kmt-tap-focus-layer"
-                role="presentation"
-                title="Trykk der du vil ha skarpt (nær eller langt unna)"
-              ></div>
-              <div class="kmt-capture-flash" id="kmt-capture-flash" aria-hidden="true"></div>
-              <div class="kmt-ref-overlay" id="kmt-ref-overlay">
-                <div class="kmt-ref-overlay__road" id="kmt-road-line">–</div>
-                <span class="visually-hidden" id="kmt-road-folder-src" aria-hidden="true"></span>
-                <div class="kmt-ref-overlay__compact" id="kmt-ref-compact">S – · D – · m –</div>
-                <span class="visually-hidden" id="kmt-s">–</span>
-                <span class="visually-hidden" id="kmt-d">–</span>
-                <span class="visually-hidden" id="kmt-m">–</span>
-                <div class="kmt-ref-overlay__kf" id="kmt-kortform"></div>
+              <div class="kmt-video-zoom-root" id="kmt-video-zoom-root">
+                <div class="kmt-video-zoom-inner" id="kmt-video-zoom-inner">
+                  <video
+                    id="kmt-video"
+                    class="kmt-video"
+                    playsinline
+                    muted
+                    autoplay
+                    aria-label="Kameravisning"
+                  ></video>
+                  <div
+                    class="kmt-camera-warmup"
+                    id="kmt-camera-warmup"
+                    aria-hidden="true"
+                  ></div>
+                  <div
+                    class="kmt-tap-focus-layer"
+                    id="kmt-tap-focus-layer"
+                    role="presentation"
+                    title="Trykk for fokus · knipe for zoom"
+                  ></div>
+                  <div class="kmt-ref-overlay" id="kmt-ref-overlay">
+                    <div class="kmt-ref-overlay__road" id="kmt-road-line">–</div>
+                    <span class="visually-hidden" id="kmt-road-folder-src" aria-hidden="true"></span>
+                    <div class="kmt-ref-overlay__compact" id="kmt-ref-compact">S – · D – · m –</div>
+                    <span class="visually-hidden" id="kmt-s">–</span>
+                    <span class="visually-hidden" id="kmt-d">–</span>
+                    <span class="visually-hidden" id="kmt-m">–</span>
+                    <div class="kmt-ref-overlay__kf" id="kmt-kortform"></div>
+                  </div>
+                </div>
               </div>
+              <div class="kmt-capture-flash" id="kmt-capture-flash" aria-hidden="true"></div>
               <div class="kmt-camera-bottom-bar" id="kmt-camera-bottom-bar">
-                <div class="kmt-camera-bottom-bar__side kmt-camera-bottom-bar__side--left">
-                  <button
-                    type="button"
-                    class="kmt-torch-btn"
-                    id="btn-kmt-torch"
-                    disabled
-                    aria-pressed="false"
-                    aria-label="Blits"
-                    title="Blits / lommelykt"
-                  >
-                    <span class="kmt-torch-btn__glyph" aria-hidden="true">⚡</span>
-                  </button>
-                </div>
-                <div class="kmt-camera-bottom-bar__center">
-                  <button type="button" class="kmt-capture-fab" id="btn-kmt-capture">Ta bilde</button>
-                </div>
-                <div class="kmt-camera-bottom-bar__side kmt-camera-bottom-bar__side--right">
+                <div class="kmt-camera-bottom-bar__row">
+                  <div class="kmt-camera-bottom-bar__cluster kmt-camera-bottom-bar__cluster--left">
+                    <button
+                      type="button"
+                      class="kmt-glass-control kmt-torch-btn"
+                      id="btn-kmt-torch"
+                      disabled
+                      aria-pressed="false"
+                      aria-label="Blits"
+                      title="Blits / lommelykt"
+                    >
+                      <span class="kmt-torch-btn__glyph" aria-hidden="true">⚡</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="kmt-glass-control kmt-wide-btn"
+                      id="btn-kmt-wide"
+                      hidden
+                      aria-pressed="false"
+                      aria-label="Vidvinkelkamera"
+                      title="Bytt til vidvinkel (0,5×) om tilgjengelig"
+                    >
+                      0,5×
+                    </button>
+                  </div>
+                  <button type="button" class="kmt-glass-control kmt-capture-fab" id="btn-kmt-capture">Ta bilde</button>
                   <label class="visually-hidden" for="kmt-photo-note">Kommentar (valgfritt)</label>
                   <textarea
                     id="kmt-photo-note"
-                    class="kmt-photo-note"
-                    rows="2"
+                    class="kmt-glass-control kmt-photo-note"
+                    rows="1"
                     maxlength="800"
                     placeholder="Kommentar …"
                     autocomplete="off"
@@ -11544,18 +11871,137 @@ function bindKmtDialogListeners(signal) {
     },
     { signal },
   )
+  document.getElementById('btn-kmt-wide')?.addEventListener(
+    'click',
+    () => void switchKmtWideCamera(),
+    { signal },
+  )
+
   const tapLayer = document.getElementById('kmt-tap-focus-layer')
-  const onTapFocus = (ev) => {
-    if (!(ev instanceof PointerEvent)) return
-    if (ev.pointerType === 'mouse' && ev.button !== 0) return
-    const video = document.getElementById('kmt-video')
-    const track = kmtMediaStream?.getVideoTracks?.()?.[0]
-    if (!track || !video) return
-    const stage = document.getElementById('kmt-video-stage')
-    showKmtFocusRipple(ev.clientX, ev.clientY, stage)
-    void applyKmtPointFocus(track, ev.clientX, ev.clientY, video)
-  }
-  tapLayer?.addEventListener('pointerup', onTapFocus, { signal })
+  const stage = document.getElementById('kmt-video-stage')
+  let tapDownX = 0
+  let tapDownY = 0
+  let tapMoved = false
+  let tapPanning = false
+  let pinchStartDist = 0
+  let pinchStartScale = 1
+
+  tapLayer?.addEventListener(
+    'pointerdown',
+    (ev) => {
+      if (!(ev instanceof PointerEvent) || !ev.isPrimary) return
+      tapDownX = ev.clientX
+      tapDownY = ev.clientY
+      tapMoved = false
+      tapPanning = kmtZoomScale > 1.04
+      if (tapPanning) {
+        try {
+          tapLayer.setPointerCapture(ev.pointerId)
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    { signal },
+  )
+  tapLayer?.addEventListener(
+    'pointermove',
+    (ev) => {
+      if (!(ev instanceof PointerEvent)) return
+      const dx = ev.clientX - tapDownX
+      const dy = ev.clientY - tapDownY
+      if (Math.hypot(dx, dy) > 8) tapMoved = true
+      if (!tapPanning) return
+      kmtZoomPanPx += ev.clientX - tapDownX
+      kmtZoomPanPy += ev.clientY - tapDownY
+      tapDownX = ev.clientX
+      tapDownY = ev.clientY
+      applyKmtPreviewZoomStyle()
+    },
+    { signal },
+  )
+  tapLayer?.addEventListener(
+    'pointerup',
+    (ev) => {
+      if (!(ev instanceof PointerEvent) || !ev.isPrimary) return
+      if (tapPanning) {
+        try {
+          tapLayer.releasePointerCapture(ev.pointerId)
+        } catch {
+          /* ignore */
+        }
+        tapPanning = false
+        return
+      }
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return
+      if (tapMoved || kmtSkipNextTapFocus) return
+      const video = document.getElementById('kmt-video')
+      const track = kmtMediaStream?.getVideoTracks?.()?.[0]
+      if (!track || !video) return
+      const stg = document.getElementById('kmt-video-stage')
+      showKmtFocusRipple(ev.clientX, ev.clientY, stg)
+      void applyKmtPointFocus(track, ev.clientX, ev.clientY, video)
+    },
+    { signal },
+  )
+
+  stage?.addEventListener(
+    'wheel',
+    (e) => {
+      if (!kmtCameraMode || !kmtDialogOpen) return
+      const t = /** @type {HTMLElement} */ (e.target)
+      if (t.closest?.('#kmt-camera-bottom-bar')) return
+      if (e.ctrlKey || Math.abs(e.deltaY) > 0) {
+        e.preventDefault()
+        const delta = -e.deltaY * 0.0018
+        kmtZoomScale = Math.max(1, Math.min(3, kmtZoomScale + delta))
+        applyKmtPreviewZoomStyle()
+      }
+    },
+    { passive: false, signal },
+  )
+
+  stage?.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length === 2) {
+        pinchStartDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY,
+        )
+        pinchStartScale = kmtZoomScale
+      }
+    },
+    { passive: true, signal },
+  )
+  stage?.addEventListener(
+    'touchmove',
+    (e) => {
+      if (e.touches.length !== 2 || pinchStartDist <= 4) return
+      e.preventDefault()
+      const d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY,
+      )
+      const ratio = d / pinchStartDist
+      kmtZoomScale = Math.max(1, Math.min(3, pinchStartScale * ratio))
+      applyKmtPreviewZoomStyle()
+    },
+    { passive: false, signal },
+  )
+  stage?.addEventListener(
+    'touchend',
+    () => {
+      if (pinchStartDist > 4) {
+        kmtSkipNextTapFocus = true
+        window.setTimeout(() => {
+          kmtSkipNextTapFocus = false
+        }, 420)
+      }
+      pinchStartDist = 0
+    },
+    { signal },
+  )
 }
 
 /** @param {'quit' | 'pdf'} tab */

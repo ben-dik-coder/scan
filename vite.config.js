@@ -1,9 +1,14 @@
 import { defineConfig } from 'vite'
-import basicSsl from '@vitejs/plugin-basic-ssl'
+import fs from 'node:fs'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // USE_HTTP=1 → kun HTTP (LAN/mobil). VITE_POLL_WATCH=1 → iCloud/nettverksdisk (unngå ETIMEDOUT).
 const usePlainHttp = process.env.USE_HTTP === '1'
+
+const localHttps =
+  !usePlainHttp && fs.existsSync('cert.pem') && fs.existsSync('key.pem')
+    ? { cert: fs.readFileSync('cert.pem'), key: fs.readFileSync('key.pem') }
+    : false
 
 /** Lang timeout: kontrakt-RAG (embedding + rerank + modell) kan ta mange minutter. */
 const apiProxy = {
@@ -30,7 +35,6 @@ const watchDist =
 
 export default defineConfig({
   plugins: [
-    ...(usePlainHttp ? [] : [basicSsl()]),
     VitePWA({
       registerType: 'autoUpdate',
       manifest: false,
@@ -56,8 +60,8 @@ export default defineConfig({
     port: 5173,
     // Samme port → stabil localStorage; ikke endre uten grunn.
     strictPort: true,
-    https: usePlainHttp ? false : undefined,
-    allowedHosts: usePlainHttp ? true : undefined,
+    https: localHttps || false,
+    allowedHosts: true,
     watch: pollWatch,
     proxy: {
       '/api/osrm': {
@@ -72,7 +76,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
     strictPort: true,
-    https: usePlainHttp ? false : undefined,
+    https: localHttps || false,
     allowedHosts: true,
     proxy: {
       '/api/osrm': {

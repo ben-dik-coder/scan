@@ -270,6 +270,10 @@ export function describeSegmentForPoint(seg, lat, lng, accuracyM = 28) {
     distToRoadM: distM,
     skipMeterUpdate: distM > meterDistThreshold,
     nvdbId: segmentStableId(/** @type {object} */ (seg)),
+    vegkategori:
+      typeof vref?.vegsystem?.vegkategori === 'string'
+        ? vref.vegsystem.vegkategori
+        : null,
   }
 }
 
@@ -284,6 +288,38 @@ function roadKindPenalty(seg) {
 function segmentVegkategori(seg) {
   const vs = seg?.vegsystemreferanse?.vegsystem
   return vs && typeof vs === 'object' ? vs.vegkategori : null
+}
+
+/**
+ * 0 = E/R/F, 1 = K/ukjent, 2 = P/S (myk «sideveg»-tier for hysterese).
+ * @param {string | null | undefined} cat
+ */
+function roadCategoryTierFromCode(cat) {
+  if (!cat || typeof cat !== 'string') return 1
+  const c = cat.trim().toUpperCase()
+  if (c === 'E' || c === 'R' || c === 'F') return 0
+  if (c === 'K') return 1
+  if (c === 'P' || c === 'S') return 2
+  return 1
+}
+
+/** @param {object} seg */
+function roadCategoryTierFromSeg(seg) {
+  return roadCategoryTierFromCode(segmentVegkategori(seg))
+}
+
+/**
+ * Myk straff på totalscore (lavere er bedre): P/S etter E/R/F/K når avstand ellers er lik.
+ * @param {object} seg
+ */
+function roadCategoryScorePenalty(seg) {
+  const cat = segmentVegkategori(seg)
+  if (!cat || typeof cat !== 'string') return 5
+  const c = cat.trim().toUpperCase()
+  if (c === 'E' || c === 'R' || c === 'F') return 0
+  if (c === 'K') return 4
+  if (c === 'P' || c === 'S') return 12
+  return 5
 }
 
 /**
@@ -364,7 +400,7 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     if (!d) continue
     const id = segmentStableId(seg)
     const dist = Math.min(d.distToRoadM, 100)
-    let score = dist + roadKindPenalty(seg)
+    let score = dist + roadKindPenalty(seg) + roadCategoryScorePenalty(seg)
     if (prevNvdbId != null && id !== null) {
       if (id === prevNvdbId) {
         score -= 22 * speedFactor
@@ -439,12 +475,43 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     prevRow.d.distToRoadM <= 12
       ? 12
       : 0
-  const margin =
+  let margin =
     (speed < 2 ? Math.max(baseMargin, 28) : baseMargin) +
     accBoost +
     denseUrbanStickiness +
     highSpeedStickiness +
     nearInspectionMargin
+
+  const prevTier = roadCategoryTierFromSeg(prevRow.seg)
+  const bestTier = roadCategoryTierFromSeg(best.seg)
+  if (prevTier <= 1 && bestTier >= 2) {
+    margin += 10
+  }
+  if (prevTier >= 2 && bestTier <= 1) {
+    margin -= 14
+  }
+  const dPrev = prevRow.d.distToRoadM
+  const dBest = best.d.distToRoadM
+  if (
+    typeof dPrev === 'number' &&
+    typeof dBest === 'number' &&
+    prevTier >= 2 &&
+    bestTier <= 1 &&
+    dBest + 6 < dPrev
+  ) {
+    margin -= 10
+  }
+  if (userHeadingDeg != null && prevTier >= 2 && bestTier <= 1) {
+    const hBest = segmentRoadHeadingDeg(best.seg, lat, lng)
+    const hPrev = segmentRoadHeadingDeg(prevRow.seg, lat, lng)
+    if (hBest != null && hPrev != null) {
+      const hdB = headingDiffDeg(userHeadingDeg, hBest)
+      const hdP = headingDiffDeg(userHeadingDeg, hPrev)
+      if (hdB + 12 < hdP) margin -= 8
+    }
+  }
+  margin = Math.max(0, margin)
+
   const useSegmentStickiness =
     accuracyM >= 18 || speed < 2 || speed >= 10
   if (useSegmentStickiness && prevRow.score - best.score < margin) {
@@ -850,6 +917,7 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
     distToRoadM: distToRoad,
     skipMeterUpdate: false,
     nvdbId: stableNvdbId,
+    vegkategori: typeof vk === 'string' ? vk : null,
     _vegrefMeta: { source: 'posisjon' },
   }
 }
