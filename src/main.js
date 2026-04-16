@@ -2291,9 +2291,24 @@ function getBufferedHomeVegrefFix() {
 }
 /** Siste nøyaktighet brukt til dist-skip (oppdateres i feedVegrefFromGps). */
 let lastVegrefGpsAccuracyM = 28
-const HOME_VEGREF_METER_TWEEN_MS = 260
-/** Hopp mellom metertall oftere = færre tween-rammer (jevnere ved rask kjøring). */
-const HOME_VEGREF_METER_SNAP = 240
+/** Dynamisk tween-varighet: kort ved høy fart slik at telleren flyter jevnt uten at en ny oppdatering kansellerer den forrige for tidlig. */
+function homeVegrefMeterTweenMs() {
+  const spd = vegrefGetLastSpeed()
+  if (spd > 25) return 140
+  if (spd > 15) return 180
+  if (spd > 6) return 220
+  return 260
+}
+/**
+ * Snap-terskel: over dette hoppes direkte (veiskifte/teleport).
+ * Ved høy fart er store δ normalt, så tillat mer tween.
+ */
+function homeVegrefMeterSnapThreshold() {
+  const spd = vegrefGetLastSpeed()
+  if (spd > 25) return 600
+  if (spd > 15) return 400
+  return 240
+}
 let kmtCameraMode = false
 /** @type {MediaStream | null} */
 let kmtMediaStream = null
@@ -2306,8 +2321,19 @@ let kmtMeterAnim = null
 let kmtMeterFrom = 0
 let kmtMeterTo = 0
 let kmtMeterT0 = 0
-const KMT_METER_TWEEN_MS = 420
-const KMT_METER_SNAP_IF_DELTA = 280
+function kmtMeterTweenMs() {
+  const spd = vegrefGetLastSpeed()
+  if (spd > 25) return 140
+  if (spd > 15) return 180
+  if (spd > 6) return 260
+  return 380
+}
+function kmtMeterSnapThreshold() {
+  const spd = vegrefGetLastSpeed()
+  if (spd > 25) return 600
+  if (spd > 15) return 400
+  return 280
+}
 /** True når KMT er åpnet fra forsiden – bilder til album, tilbake → album (ikke økt). */
 let kmtStandaloneFlow = false
 
@@ -3211,13 +3237,14 @@ function cancelKmtMeterTween() {
   }
 }
 
+let kmtMeterTweenDur = 380
 function tickKmtMeterTween(now) {
   const el = document.getElementById('kmt-m')
   if (!el) {
     kmtMeterAnim = null
     return
   }
-  const u = Math.min(1, (now - kmtMeterT0) / KMT_METER_TWEEN_MS)
+  const u = Math.min(1, (now - kmtMeterT0) / kmtMeterTweenDur)
   const ease = 1 - (1 - u) ** 3
   const v = Math.round(kmtMeterFrom + (kmtMeterTo - kmtMeterFrom) * ease)
   el.textContent = formatHomeVegrefMeterText(v)
@@ -3265,6 +3292,7 @@ function startKmtMeterTweenTo(targetInt) {
   kmtMeterFrom = from
   kmtMeterTo = targetInt
   kmtMeterT0 = performance.now()
+  kmtMeterTweenDur = kmtMeterTweenMs()
   kmtMeterAnim = requestAnimationFrame(tickKmtMeterTween)
 }
 
@@ -3849,21 +3877,6 @@ function applyKmtResult(res) {
     return
   }
   const mInt = parseKmtMeterInt(res.m)
-  const kmtFromPosisjon =
-    /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
-      ?.source === 'posisjon'
-  if (kmtFromPosisjon) {
-    cancelKmtMeterTween()
-    if (mInt == null) {
-      kmtDisplayedMeter = null
-      mEl.textContent = formatHomeVegrefMeterText(res.m)
-    } else {
-      kmtDisplayedMeter = mInt
-      mEl.textContent = formatHomeVegrefMeterText(mInt)
-    }
-    syncKmtCompactLine()
-    return
-  }
   if (mInt == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
@@ -3871,26 +3884,16 @@ function applyKmtResult(res) {
     syncKmtCompactLine()
     return
   }
-  if (segmentChanged || kmtDisplayedMeter == null) {
-    if (segmentChanged && kmtDisplayedMeter != null && mInt != null) {
-      if (Math.abs(mInt - kmtDisplayedMeter) > 200) {
-        cancelKmtMeterTween()
-        kmtDisplayedMeter = mInt
-        mEl.textContent = formatHomeVegrefMeterText(mInt)
-        syncKmtCompactLine()
-      } else {
-        startKmtMeterTweenTo(mInt)
-      }
-    } else {
-      cancelKmtMeterTween()
-      kmtDisplayedMeter = mInt
-      mEl.textContent = formatHomeVegrefMeterText(mInt)
-      syncKmtCompactLine()
-    }
+  if (kmtDisplayedMeter == null) {
+    cancelKmtMeterTween()
+    kmtDisplayedMeter = mInt
+    mEl.textContent = formatHomeVegrefMeterText(mInt)
+    syncKmtCompactLine()
     return
   }
-  const prev = kmtDisplayedMeter
-  if (Math.abs(mInt - prev) > KMT_METER_SNAP_IF_DELTA) {
+  const delta = Math.abs(mInt - kmtDisplayedMeter)
+  const snap = kmtMeterSnapThreshold()
+  if (segmentChanged && delta > snap) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = mInt
     mEl.textContent = formatHomeVegrefMeterText(mInt)
@@ -3956,13 +3959,14 @@ function cancelHomeVegrefMeterTween() {
   }
 }
 
+let homeVegrefMeterTweenDur = 260
 function tickHomeVegrefMeterTween(now) {
   const mEl = document.getElementById('home-vegref-meter')
   if (!mEl || view !== 'home') {
     homeVegrefMeterAnim = null
     return
   }
-  const u = Math.min(1, (now - homeVegrefMeterT0) / HOME_VEGREF_METER_TWEEN_MS)
+  const u = Math.min(1, (now - homeVegrefMeterT0) / homeVegrefMeterTweenDur)
   const ease = 1 - (1 - u) ** 3
   const v = Math.round(
     homeVegrefMeterFrom + (homeVegrefMeterTo - homeVegrefMeterFrom) * ease,
@@ -3999,6 +4003,7 @@ function startHomeVegrefMeterTweenTo(targetInt) {
   homeVegrefMeterFrom = from
   homeVegrefMeterTo = targetInt
   homeVegrefMeterT0 = performance.now()
+  homeVegrefMeterTweenDur = homeVegrefMeterTweenMs()
   homeVegrefMeterAnim = requestAnimationFrame(tickHomeVegrefMeterTween)
 }
 
@@ -4337,39 +4342,19 @@ function applyHomeVegrefResult(res) {
         setHomeVegrefCompactDom(res.s, res.d, res.m)
         setHomeVegrefUncertainUi(false, '')
       }
-    } else if (fromPosisjon) {
-      if (homeVegrefDisplayedMeter != null && !segChanged) {
-        const dMeter = Math.abs(mInt - homeVegrefDisplayedMeter)
-        const snapBand =
-          lastVegrefGpsAccuracyM > 45
-            ? 300
-            : lastVegrefGpsAccuracyM > 32
-              ? 270
-              : HOME_VEGREF_METER_SNAP
-        if (dMeter <= snapBand) {
-          setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-          startHomeVegrefMeterTweenTo(mInt)
-        } else {
-          cancelHomeVegrefMeterTween()
-          homeVegrefDisplayedMeter = mInt
-          setHomeVegrefCompactDom(res.s, res.d, mInt)
-        }
-      } else {
-        cancelHomeVegrefMeterTween()
-        homeVegrefDisplayedMeter = mInt
-        setHomeVegrefCompactDom(res.s, res.d, mInt)
-      }
-    } else if (segChanged || homeVegrefDisplayedMeter == null) {
+    } else if (homeVegrefDisplayedMeter == null) {
       cancelHomeVegrefMeterTween()
       homeVegrefDisplayedMeter = mInt
       setHomeVegrefCompactDom(res.s, res.d, mInt)
     } else {
-      setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-      if (Math.abs(mInt - homeVegrefDisplayedMeter) > HOME_VEGREF_METER_SNAP) {
+      const delta = Math.abs(mInt - homeVegrefDisplayedMeter)
+      const snap = homeVegrefMeterSnapThreshold()
+      if (segChanged && delta > snap) {
         cancelHomeVegrefMeterTween()
         homeVegrefDisplayedMeter = mInt
         setHomeVegrefCompactDom(res.s, res.d, mInt)
       } else {
+        setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         startHomeVegrefMeterTweenTo(mInt)
       }
     }
@@ -5364,6 +5349,118 @@ function compressDataUrlToDataUrl(dataUrl, maxDim, quality) {
     img.onerror = () => reject(new Error('image'))
     img.src = dataUrl
   })
+}
+
+/**
+ * Tegn vegreferanse + evt. kommentar inn i canvas (nederst, hvit tekst m/skygge).
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} w canvas width
+ * @param {number} h canvas height
+ * @param {{ road?: string, compact?: string, kortform?: string } | null | undefined} vr
+ * @param {string} [note]
+ */
+function burnVegrefOntoCanvas(ctx, w, h, vr, note) {
+  const lines = []
+  if (vr?.road) lines.push(vr.road)
+  if (vr?.compact) lines.push(vr.compact)
+  if (vr?.kortform) lines.push(vr.kortform)
+  const trimNote = typeof note === 'string' ? note.trim().slice(0, 200) : ''
+  if (trimNote) lines.push(trimNote)
+  if (!lines.length) return
+  const fontSize = Math.max(14, Math.round(w * 0.028))
+  ctx.save()
+  ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+  ctx.textBaseline = 'bottom'
+  ctx.textAlign = 'left'
+  const lineH = fontSize * 1.35
+  const padX = Math.round(w * 0.025)
+  const padBottom = Math.round(h * 0.02)
+  const blockH = lines.length * lineH + padBottom + Math.round(h * 0.01)
+  const grd = ctx.createLinearGradient(0, h - blockH * 1.6, 0, h)
+  grd.addColorStop(0, 'rgba(0,0,0,0)')
+  grd.addColorStop(0.45, 'rgba(0,0,0,0.35)')
+  grd.addColorStop(1, 'rgba(0,0,0,0.72)')
+  ctx.fillStyle = grd
+  ctx.fillRect(0, h - blockH * 1.6, w, blockH * 1.6)
+  ctx.shadowColor = 'rgba(0,0,0,0.85)'
+  ctx.shadowBlur = 4
+  ctx.shadowOffsetX = 0
+  ctx.shadowOffsetY = 1
+  ctx.fillStyle = '#ffffff'
+  for (let i = 0; i < lines.length; i++) {
+    const y = h - padBottom - (lines.length - 1 - i) * lineH
+    ctx.fillText(lines[i], padX, y)
+  }
+  ctx.restore()
+}
+
+/**
+ * Lager en JPEG data-url med vegreferanse/note innbrent i pikslene.
+ * @param {string} srcDataUrl
+ * @param {{ road?: string, compact?: string, kortform?: string } | null | undefined} vr
+ * @param {string} [note]
+ * @returns {Promise<string>}
+ */
+function stampPhotoWithVegref(srcDataUrl, vr, note) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const { width: w, height: h } = img
+      const c = document.createElement('canvas')
+      c.width = w
+      c.height = h
+      const ctx = c.getContext('2d')
+      if (!ctx) {
+        reject(new Error('canvas'))
+        return
+      }
+      ctx.drawImage(img, 0, 0, w, h)
+      burnVegrefOntoCanvas(ctx, w, h, vr, note)
+      resolve(c.toDataURL('image/jpeg', 0.93))
+    }
+    img.onerror = () => reject(new Error('image'))
+    img.src = srcDataUrl
+  })
+}
+
+/**
+ * Lagrer et bilde med innprintet vegreferanse til enheten (iOS: Share Sheet → Lagre; andre: download).
+ * @param {NonNullable<ReturnType<typeof normalizePhoto>>} ph
+ */
+async function savePhotoToDevice(ph) {
+  if (!ph?.dataUrl) return
+  const vr = ph.vegref ? normalizePhotoVegref(ph.vegref) : null
+  const note = typeof ph.note === 'string' ? ph.note : ''
+  let dataUrl
+  try {
+    dataUrl = (vr || note.trim())
+      ? await stampPhotoWithVegref(ph.dataUrl, vr, note)
+      : ph.dataUrl
+  } catch {
+    dataUrl = ph.dataUrl
+  }
+  const blob = await (await fetch(dataUrl)).blob()
+  const ts = ph.timestamp
+    ? ph.timestamp.replace(/[:.]/g, '-').slice(0, 19)
+    : new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
+  const filename = `bilde-${ts}.jpg`
+  if (navigator.share && navigator.canShare) {
+    try {
+      const file = new File([blob], filename, { type: 'image/jpeg' })
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] })
+        return
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
+    }
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 /** Maks kant på lagrede bilder (album / opplasting). */
@@ -7283,6 +7380,19 @@ function bindPhotoAlbumListeners() {
     { signal },
   )
 
+  document.getElementById('btn-photo-album-save')?.addEventListener(
+    'click',
+    async () => {
+      const photos = photoAlbumMarkerMode && photoAlbumSelectedIds.size
+        ? standalonePhotos.filter((p) => photoAlbumSelectedIds.has(p.id))
+        : standalonePhotos
+      if (!photos.length) return
+      for (const ph of photos) {
+        await savePhotoToDevice(ph)
+      }
+    },
+    { signal },
+  )
   document.getElementById('btn-photo-album-share')?.addEventListener(
     'click',
     () => {
@@ -7411,6 +7521,7 @@ function renderPhotoAlbumHtml() {
       <header class="photo-album__top">
         <button type="button" class="photo-album__back btn btn-text" id="btn-photo-album-back" aria-label="Tilbake">←</button>
         <div class="photo-album__top-actions">
+          <button type="button" class="photo-album__save" id="btn-photo-album-save" aria-label="Lagre bilde på mobil">Lagre</button>
           <button type="button" class="photo-album__share" id="btn-photo-album-share" aria-label="Del bilder">Del</button>
           <button type="button" class="photo-album__marker" id="btn-photo-album-marker" aria-pressed="false">Marker</button>
         </div>

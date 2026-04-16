@@ -790,8 +790,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       VEGREF_INFLIGHT_COALESCE_BASE_M,
       accuracyM * 0.42,
     )
-    if (lastSpeed > 28) coalesceRadius *= 0.68
-    else if (lastSpeed > 18) coalesceRadius *= 0.82
+    if (lastSpeed > 28) coalesceRadius *= 0.45
+    else if (lastSpeed > 18) coalesceRadius *= 0.65
     if (!forceImmediate && movedInflight < coalesceRadius) {
       return
     }
@@ -811,11 +811,11 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   let minMove =
     accuracyM > 48 ? 5.5 : accuracyM > 36 ? 4 : VEGREF_MIN_MOVE_M
   if (lastSpeed > 32) {
-    minInterval = Math.max(260, minInterval - 110)
-    minMove = Math.max(1, minMove - 2)
+    minInterval = Math.max(180, minInterval - 180)
+    minMove = Math.max(0.5, minMove - 3)
   } else if (lastSpeed > 22) {
-    minInterval = Math.max(300, minInterval - 70)
-    minMove = Math.max(1, minMove - 1)
+    minInterval = Math.max(220, minInterval - 140)
+    minMove = Math.max(0.8, minMove - 2)
   } else if (lastSpeed < 3 && accuracyM <= 28) {
     /* Gåing / foto ved veikant: litt raskere meter/vei uten å spamme NVDB. */
     minInterval = Math.max(320, minInterval - 55)
