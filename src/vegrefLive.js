@@ -59,9 +59,14 @@ export const VEGREF_MIN_INTERVAL_MS = 400
 export const VEGREF_MIN_MOVE_M = 2
 
 /** Vent før supplerende segmentert-kall (veinavn) — kortere = raskere gatenavn, fortsatt unngår dobbeltkall ved kald start. */
-const POSISJON_ENRICH_SEGMENT_DELAY_MS = 700
+const POSISJON_ENRICH_SEGMENT_DELAY_MS = 260
 /** Andre forsøk når første segment-svar mangler adresse.navn (nett/GPS). */
-const POSISJON_ENRICH_RETRY_GAP_MS = 2400
+const POSISJON_ENRICH_RETRY_GAP_MS = 1300
+/**
+ * Pending-segmentbytte aksepteres uansett etter denne tiden, slik at GPS-støy
+ * mellom parallelle veier ikke «låser» UI på feil vei.
+ */
+const POSISJON_PENDING_ACCEPT_MS = 1500
 
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
@@ -89,6 +94,8 @@ let lastConfidenceDecayAt = 0
  * forespørsler med samme nye ID (samme som pickBestSegment-idéen).
  */
 let posisjonPendingNewNvdbId = /** @type {string | number | null} */ (null)
+/** Tidspunkt (ms) da vi først så en kandidat-ny-id — brukes til å akseptere etter timeout. */
+let posisjonPendingFirstSeenAt = 0
 
 /**
  * Unngå gjentatte segmentert-kall for samme posisjon-NVDB-id når visning allerede er beriket
@@ -278,14 +285,28 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
         oldTier >= 2 &&
         newTier <= 1 &&
         dist <= Math.min(38, 20 + acc * 0.55)
-      if (recoveryToPublic) {
+      const pendingAgedOut =
+        posisjonPendingNewNvdbId != null &&
+        posisjonPendingFirstSeenAt > 0 &&
+        Date.now() - posisjonPendingFirstSeenAt >= POSISJON_PENDING_ACCEPT_MS
+      if (
+        recoveryToPublic ||
+        clearOnRoad ||
+        pendingMatch ||
+        pendingAgedOut
+      ) {
         posisjonPendingNewNvdbId = null
-      } else if (clearOnRoad) {
-        posisjonPendingNewNvdbId = null
-      } else if (pendingMatch) {
-        posisjonPendingNewNvdbId = null
+        posisjonPendingFirstSeenAt = 0
       } else {
-        posisjonPendingNewNvdbId = nid
+        /* Nullstill timer bare hvis ID-en faktisk er en ny kandidat — ellers
+         * mister vi retning når posisjon-API flakser mellom to paralleller. */
+        if (
+          posisjonPendingNewNvdbId == null ||
+          String(posisjonPendingNewNvdbId) !== String(nid)
+        ) {
+          posisjonPendingNewNvdbId = nid
+          posisjonPendingFirstSeenAt = Date.now()
+        }
         return
       }
     } else if (
@@ -294,6 +315,7 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
       String(nid) === String(oid)
     ) {
       posisjonPendingNewNvdbId = null
+      posisjonPendingFirstSeenAt = 0
     }
 
     const segmentChanged =
@@ -362,6 +384,7 @@ export function vegrefHydrateFromPersisted(lat, lng, res) {
   lastAppliedLat = lat
   lastAppliedLng = lng
   posisjonPendingNewNvdbId = null
+  posisjonPendingFirstSeenAt = 0
 }
 
 export function initVegrefLive(h) {
@@ -584,8 +607,8 @@ function schedulePosisjonDisplayEnrichFromSegments(
   applyCtx,
 ) {
   if (!res?._vegrefMeta || res._vegrefMeta.source !== 'posisjon') return
-  /* Ved høy fart gir supplerende segment-kall ofte veksling mellom offisiell linje og gatenavn — stoler på posisjon-visning. */
-  if (typeof fetchOpts.speed === 'number' && fetchOpts.speed >= 18) return
+  /* Bare hopp over ved ekstrem fart (~115 km/t+) hvor segment-kall ofte viser utdatert nabo-lenke. */
+  if (typeof fetchOpts.speed === 'number' && fetchOpts.speed >= 32) return
   if (!h.fetchRoadReferenceNear) return
   const nid = res.nvdbId
   if (nid == null) return
@@ -710,6 +733,7 @@ export function vegrefResetSessionCache() {
   lastSpeed = 0
   lastPosForSpeed = null
   posisjonPendingNewNvdbId = null
+  posisjonPendingFirstSeenAt = 0
   lastPosisjonEnrichNvdbId = null
 }
 
@@ -855,9 +879,6 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   if (posisjonPendingNewNvdbId != null) {
     minInterval = Math.max(160, minInterval * 0.58)
     minMove = Math.max(0.4, minMove * 0.55)
-  } else if (lastSpeed > 20) {
-    /* Litt færre NVDB-kall i normal kjøring; meter-UI har eget dødbånd. Ikke bruk under pending recovery. */
-    minInterval = Math.min(950, minInterval + 90)
   }
   const inCoordFallbackUi = isCoordFallbackDisplay(lastAppliedRes)
   /** Når vi viser koordinat-fallback: tillat oftere nytt NVDB-forsøk (samme logikk ellers). */
