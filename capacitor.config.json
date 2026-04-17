@@ -1,0 +1,9 @@
+{
+  "appId": "no.scanix.app",
+  "appName": "Scanix",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  }
+}

@@ -12,3 +12,17 @@ server/contract-context.txt
 cert.pem
 key.pem
 *.backup.js
+
+# Capacitor - native build outputs
+ios/App/Pods/
+ios/App/App/public/
+ios/DerivedData/
+android/.gradle/
+android/app/build/
+android/app/src/main/assets/public/
+android/build/
+android/captures/
+android/local.properties
+android/.idea/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/

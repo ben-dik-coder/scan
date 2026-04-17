@@ -38,6 +38,13 @@ import {
   scheduleHomeWeatherFromPosition,
 } from './homeWeather.js'
 import { getVegrefMetrics, logVegrefMetric } from './vegrefMetrics.js'
+import {
+  getVegrefDebugTraceEntries,
+  isVegrefDebugTraceEnabled,
+  setVegrefDebugTraceEnabled,
+  vegrefDebugTrace,
+  clearVegrefDebugTrace,
+} from './vegrefDebugTrace.js'
 import appPackage from '../package.json'
 import {
   buildCurrentUserFromSession,
@@ -1709,6 +1716,27 @@ function scheduleSupabaseAppStatePush() {
   }, 1600)
 }
 
+/**
+ * WebKit (iOS) gir ofte bare «Load failed» / «Failed to fetch» ved nett/CORS-feil mot API.
+ * @param {string} raw
+ */
+function mapFetchErrorToUserMessage(raw) {
+  if (typeof raw !== 'string') return ''
+  const m = raw.trim()
+  if (!m) return ''
+  const lower = m.toLowerCase()
+  if (
+    lower.includes('load failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('network request failed') ||
+    lower.includes('the internet connection appears to be offline')
+  ) {
+    return 'Kunne ikke koble til serveren. Sjekk Wi‑Fi eller mobilnett og prøv igjen.'
+  }
+  return m
+}
+
 /** @param {import('@supabase/supabase-js').AuthError | Error | null} err */
 function mapSupabaseAuthError(err) {
   const m = err && typeof err.message === 'string' ? err.message : ''
@@ -1727,6 +1755,8 @@ function mapSupabaseAuthError(err) {
   if (m.includes('Email not confirmed')) {
     return 'Bekreft e-postadressen din (lenke i e-post), deretter logg inn.'
   }
+  const net = mapFetchErrorToUserMessage(m)
+  if (net !== m) return net
   return m || 'Noe gikk galt. Prøv igjen.'
 }
 
@@ -2140,6 +2170,33 @@ function clearDrivingGpsStuckPoll() {
 /** Siste lagrede NVDB-treff for forsiden (offline / rask gjenoppretting). */
 const VEGREF_PERSIST_KEY = 'scanix-vegref-last-v1'
 
+/** Dedupliser `home_ui`-linjer i vegrefDebugTrace (unngå å fylle buffer ved hver ramme). */
+let vegrefDebugLastHomeSig = ''
+let vegrefDebugLastHomeAt = 0
+
+/**
+ * @param {object} res
+ */
+function maybeTraceHomeVegrefApply(res) {
+  if (!isVegrefDebugTraceEnabled() || !res || view !== 'home') return
+  const sig = `${res.nvdbId}|${String(res.m)}|${String(res.roadLineDisplay || res.roadLine || '').slice(0, 80)}`
+  const now = Date.now()
+  if (now - vegrefDebugLastHomeAt < 1100 && sig === vegrefDebugLastHomeSig) return
+  vegrefDebugLastHomeAt = now
+  vegrefDebugLastHomeSig = sig
+  vegrefDebugTrace('home_ui', {
+    source: String(
+      /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
+        ?.source || '',
+    ),
+    nvdbId: res.nvdbId != null ? String(res.nvdbId) : null,
+    m: res.m != null ? String(res.m) : null,
+    s: res.s != null ? String(res.s) : null,
+    d: res.d != null ? String(res.d) : null,
+    primary: String(res.roadLineDisplay || res.roadLine || '').slice(0, 180),
+  })
+}
+
 /** Throttle for inkrementell lagring av vegnett mens brukeren kjører (samme NVDB-kall som vegreferanse). */
 let lastDrivingVegnetMergeAt = 0
 /** @type {number | null} */
@@ -2153,7 +2210,23 @@ const DRIVING_VEGNET_MERGE_MIN_SPEED_MPS = 2.5
 /** Forside: GPS-watch som mater felles vegref-pipeline. */
 let homeVegrefWatchId = null
 let homeVegrefHasDisplayedResult = false
+/** Siste autoritative NVDB-meter (for ekstrapolasjonsretning). */
+let homeVegrefPrevAuthMeter = null
+/** +1 / −1 langs strekningen — fra to siste NVDB-metere. */
+let homeVegrefMeterExtrapDir = 1
+/** @type {number | null} */
+let homeVegrefMeterLiveRaf = null
+let homeVegrefMeterLiveLastTs = 0
+
 let homeVegrefSegKey = ''
+/** Behold sekundær gatelinje (type) på samme segment når NVDB veksler mellom beriket og kort svar. */
+let homeVegrefStickyStreetLine = ''
+let homeVegrefStickySegKey = ''
+/** Siste wall-clock fra rå watchPosition (også ved avvist nøyaktighet). */
+let homeVegrefLastRawGpsWallMs = 0
+/** Siste kjente kjørefart for coast når GPS mangler. */
+let homeVegrefCoastSpeedMps = 0
+let homeVegrefCoastStartedAt = 0
 let homeVegrefMeterAnim = null
 let homeVegrefMeterFrom = 0
 let homeVegrefMeterTo = 0
@@ -2170,7 +2243,9 @@ let homeVegrefLastDistSkipAt = 0
 const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
 /** Siste gang vi startet meter-tween eller snap (begrenser unødvendige oppdateringer på samme strekning). */
 let homeVegrefLastMeterUiCommitAt = 0
-const HOME_VEGREF_METER_MIN_TWEEN_GAP_MS = 720
+const HOME_VEGREF_METER_MIN_TWEEN_GAP_MS = 400
+/** Første tidspunkt vi så null-meter med hold (for debounce av «Oppdaterer meter …»). */
+let homeVegrefMeterNullSinceMs = 0
 let homeVegrefStartupToken = 0
 let homeVegrefStartupStartedAt = 0
 let homeVegrefStartupFirstGpsAt = 0
@@ -2185,6 +2260,12 @@ let homeVegrefGpsBuffer = []
 const HOME_VEGREF_GPS_BUFFER_MAX = 5
 const HOME_VEGREF_STALE_REUSE_MS = 8 * 60 * 1000
 const HOME_VEGREF_UNCERTAIN_HOLD_MS = 15_000
+/** Ingen fersk GPS-callback → vurder coast for meter-ekstrapolasjon (tunnel / tapt fix). */
+const HOME_VEGREF_GPS_STALE_MS = 4500
+/** Min fart for å huske coast-hastighet (typisk kjøring). */
+const HOME_VEGREF_COAST_MIN_SPEED_MPS = 2.2
+/** Maks varighet for estimert telling etter tapt GPS. */
+const HOME_VEGREF_COAST_MAX_MS = 120_000
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -2226,6 +2307,7 @@ function logHomeVegrefStartupMetric(type, extra = {}) {
 function resetHomeVegrefRuntimeState() {
   homeVegrefGpsBuffer = []
   homeVegrefUiUncertain = false
+  homeVegrefMeterNullSinceMs = 0
 }
 
 /**
@@ -2314,10 +2396,10 @@ function homeVegrefMeterSnapThreshold() {
 function homeVegrefMeterDeadbandM() {
   const acc = lastVegrefGpsAccuracyM
   const spd = vegrefGetLastSpeed()
-  let d = 12 + Math.min(22, acc * 0.42)
+  let d = 6 + Math.min(14, acc * 0.25)
   if (spd > 28) d += 8
   else if (spd > 18) d += 4
-  return Math.min(48, d)
+  return Math.min(20, d)
 }
 /**
  * @param {number} mInt
@@ -4228,6 +4310,83 @@ function cancelHomeVegrefMeterTween() {
   }
 }
 
+function cancelHomeVegrefMeterLiveExtrap() {
+  if (homeVegrefMeterLiveRaf != null) {
+    cancelAnimationFrame(homeVegrefMeterLiveRaf)
+    homeVegrefMeterLiveRaf = null
+  }
+  homeVegrefMeterLiveLastTs = 0
+}
+
+function tickHomeVegrefMeterLive() {
+  if (homeVegrefMeterLiveRaf == null) return
+  if (view !== 'home') {
+    cancelHomeVegrefMeterLiveExtrap()
+    return
+  }
+  if (homeVegrefMeterAnim != null) {
+    homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
+    return
+  }
+  const mEl = document.getElementById('home-vegref-meter')
+  if (!mEl || homeVegrefDisplayedMeter == null) {
+    cancelHomeVegrefMeterLiveExtrap()
+    return
+  }
+  const nowWall = Date.now()
+  const staleMs =
+    homeVegrefLastRawGpsWallMs > 0 ? nowWall - homeVegrefLastRawGpsWallMs : 0
+  const gpsStale = staleMs > HOME_VEGREF_GPS_STALE_MS
+  if (
+    gpsStale &&
+    homeVegrefLastStableRes &&
+    homeVegrefCoastSpeedMps >= HOME_VEGREF_COAST_MIN_SPEED_MPS
+  ) {
+    if (!homeVegrefCoastStartedAt) homeVegrefCoastStartedAt = nowWall
+  } else {
+    homeVegrefCoastStartedAt = 0
+  }
+  const coastAge =
+    homeVegrefCoastStartedAt > 0 ? nowWall - homeVegrefCoastStartedAt : 0
+  const coastOk =
+    gpsStale &&
+    homeVegrefCoastStartedAt > 0 &&
+    coastAge <= HOME_VEGREF_COAST_MAX_MS &&
+    homeVegrefLastStableRes &&
+    homeVegrefCoastSpeedMps >= HOME_VEGREF_COAST_MIN_SPEED_MPS
+
+  let spd = vegrefGetLastSpeed()
+  if (coastOk && spd < 0.8) {
+    spd = homeVegrefCoastSpeedMps
+  }
+  if (!coastOk && lastVegrefGpsAccuracyM > 55 && spd > 22) {
+    spd = 22
+  }
+  if (spd < 0.8) {
+    homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
+    return
+  }
+  const now = performance.now()
+  const dt = homeVegrefMeterLiveLastTs
+    ? (now - homeVegrefMeterLiveLastTs) / 1000
+    : 0
+  homeVegrefMeterLiveLastTs = now
+  if (dt > 0 && dt < 2.5) {
+    const delta = spd * dt * homeVegrefMeterExtrapDir
+    const v = Math.round(homeVegrefDisplayedMeter + delta)
+    homeVegrefDisplayedMeter = v
+    mEl.textContent = formatHomeVegrefMeterText(v)
+  }
+  homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
+}
+
+function startHomeVegrefMeterLiveExtrap() {
+  if (view !== 'home' || homeVegrefDisplayedMeter == null) return
+  cancelHomeVegrefMeterLiveExtrap()
+  homeVegrefMeterLiveLastTs = performance.now()
+  homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
+}
+
 let homeVegrefMeterTweenDur = 260
 function tickHomeVegrefMeterTween(now) {
   const mEl = document.getElementById('home-vegref-meter')
@@ -4248,18 +4407,21 @@ function tickHomeVegrefMeterTween(now) {
     homeVegrefMeterAnim = null
     mEl.textContent = formatHomeVegrefMeterText(homeVegrefMeterTo)
     homeVegrefDisplayedMeter = homeVegrefMeterTo
+    startHomeVegrefMeterLiveExtrap()
   }
 }
 
 function startHomeVegrefMeterTweenTo(targetInt) {
   const mEl = document.getElementById('home-vegref-meter')
   if (!mEl) return
+  cancelHomeVegrefMeterLiveExtrap()
   const from =
     homeVegrefDisplayedMeter != null ? homeVegrefDisplayedMeter : targetInt
   if (from === targetInt) {
     mEl.textContent = formatHomeVegrefMeterText(targetInt)
     homeVegrefDisplayedMeter = targetInt
     cancelHomeVegrefMeterTween()
+    startHomeVegrefMeterLiveExtrap()
     return
   }
   logVegrefMetric({
@@ -4320,6 +4482,12 @@ function feedVegrefFromGps(
         ? userHeadingDeg
         : null,
   })
+  const s = vegrefGetLastSpeed()
+  if (s >= HOME_VEGREF_COAST_MIN_SPEED_MPS) {
+    homeVegrefCoastSpeedMps = s
+  } else if (s < 1.1) {
+    homeVegrefCoastSpeedMps = 0
+  }
 }
 
 function scheduleHomeVegrefLookup(
@@ -4436,6 +4604,7 @@ function getHomeVegrefExcelSnapshot() {
 }
 
 function setHomeVegrefPlaceholder(msg) {
+  vegrefDebugTrace('home_placeholder', { msg: String(msg).slice(0, 200) })
   cancelHomeVegrefMeterTween()
   homeVegrefDisplayedMeter = null
   homeVegrefMeterNvdbId = null
@@ -4542,6 +4711,10 @@ function applyHomeVegrefResult(res) {
   if (segChanged) {
     vegrefClearSegmentLock()
     cancelHomeVegrefMeterTween()
+    cancelHomeVegrefMeterLiveExtrap()
+    homeVegrefPrevAuthMeter = null
+    homeVegrefStickyStreetLine = ''
+    homeVegrefStickySegKey = ''
   }
 
   const mInt = parseKmtMeterInt(res.m)
@@ -4552,6 +4725,7 @@ function applyHomeVegrefResult(res) {
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
     if (mInt != null) {
+      homeVegrefMeterNullSinceMs = 0
       homeVegrefDisplayedMeter = mInt
       if (nid != null) homeVegrefMeterNvdbId = nid
     }
@@ -4566,7 +4740,10 @@ function applyHomeVegrefResult(res) {
   if (!prim) return
 
   homeVegrefHasDisplayedResult = true
-  setHomeVegrefUncertainUi(false, '')
+  if (mInt != null) {
+    homeVegrefMeterNullSinceMs = 0
+    setHomeVegrefUncertainUi(false, '')
+  }
   prim.textContent = display || officialShort
   if (typeEl) {
     const isStreet =
@@ -4576,6 +4753,15 @@ function applyHomeVegrefResult(res) {
       officialShort
     if (isStreet) {
       typeEl.textContent = officialShort
+      typeEl.hidden = false
+      homeVegrefStickyStreetLine = officialShort
+      homeVegrefStickySegKey = segKey
+    } else if (
+      homeVegrefStickyStreetLine &&
+      homeVegrefStickySegKey === segKey &&
+      !segChanged
+    ) {
+      typeEl.textContent = homeVegrefStickyStreetLine
       typeEl.hidden = false
     } else {
       typeEl.textContent = ''
@@ -4589,6 +4775,7 @@ function applyHomeVegrefResult(res) {
 
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
+      cancelHomeVegrefMeterLiveExtrap()
       /* Midlertidig tom meter: hold når vi fortsatt er på samme NVDB-strekning (segKey kan flakse uten reelt veksel). */
       const nvdbAligned =
         nid == null ||
@@ -4600,8 +4787,14 @@ function applyHomeVegrefResult(res) {
         (!segChanged || (nid != null && homeVegrefMeterNvdbId != null))
       if (holdNullMeter) {
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-        setHomeVegrefUncertainUi(true, 'Oppdaterer meter …')
+        if (homeVegrefMeterNullSinceMs === 0) {
+          homeVegrefMeterNullSinceMs = Date.now()
+        }
+        if (Date.now() - homeVegrefMeterNullSinceMs >= 500) {
+          setHomeVegrefUncertainUi(true, 'Oppdaterer meter …')
+        }
       } else {
+        homeVegrefMeterNullSinceMs = 0
         homeVegrefDisplayedMeter = null
         homeVegrefMeterNvdbId = null
         setHomeVegrefCompactDom(res.s, res.d, res.m)
@@ -4612,6 +4805,11 @@ function applyHomeVegrefResult(res) {
       homeVegrefDisplayedMeter = mInt
       homeVegrefLastMeterUiCommitAt = Date.now()
       setHomeVegrefCompactDom(res.s, res.d, mInt)
+      if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
+        homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
+      }
+      homeVegrefPrevAuthMeter = mInt
+      startHomeVegrefMeterLiveExtrap()
     } else {
       const delta = Math.abs(mInt - homeVegrefDisplayedMeter)
       const snap = homeVegrefMeterSnapThreshold()
@@ -4620,6 +4818,11 @@ function applyHomeVegrefResult(res) {
         homeVegrefDisplayedMeter = mInt
         homeVegrefLastMeterUiCommitAt = Date.now()
         setHomeVegrefCompactDom(res.s, res.d, mInt)
+        if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
+          homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
+        }
+        homeVegrefPrevAuthMeter = mInt
+        startHomeVegrefMeterLiveExtrap()
       } else if (
         shouldSkipVegrefMeterDisplayUpdate(
           mInt,
@@ -4630,9 +4833,18 @@ function applyHomeVegrefResult(res) {
         )
       ) {
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+        if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
+          homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
+        }
+        homeVegrefPrevAuthMeter = mInt
+        startHomeVegrefMeterLiveExtrap()
       } else {
         homeVegrefLastMeterUiCommitAt = Date.now()
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+        if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
+          homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
+        }
+        homeVegrefPrevAuthMeter = mInt
         startHomeVegrefMeterTweenTo(mInt)
       }
     }
@@ -4649,6 +4861,7 @@ function applyHomeVegrefResult(res) {
     homeVegrefLastStableRes = res
     homeVegrefLastStableAt = Date.now()
   }
+  maybeTraceHomeVegrefApply(res)
   maybePersistHomeVegref(res)
 }
 
@@ -4658,7 +4871,14 @@ function startHomeVegrefTracking() {
     homeVegrefWatchId = null
   }
   cancelHomeVegrefMeterTween()
+  cancelHomeVegrefMeterLiveExtrap()
+  homeVegrefPrevAuthMeter = null
   homeVegrefLastMeterUiCommitAt = 0
+  homeVegrefLastRawGpsWallMs = Date.now()
+  homeVegrefCoastStartedAt = 0
+  homeVegrefCoastSpeedMps = 0
+  homeVegrefStickyStreetLine = ''
+  homeVegrefStickySegKey = ''
   resetHomeVegrefRuntimeState()
   homeVegrefStartupToken += 1
   const startupToken = homeVegrefStartupToken
@@ -4732,6 +4952,7 @@ function startHomeVegrefTracking() {
       })
       if (startupToken !== homeVegrefStartupToken || view !== 'home') return
       const { latitude, longitude, accuracy, heading } = pos.coords
+      homeVegrefLastRawGpsWallMs = Date.now()
       if (!homeVegrefStartupFirstGpsAt) {
         homeVegrefStartupFirstGpsAt = Date.now()
         logHomeVegrefStartupMetric('warm-gps', {
@@ -4797,6 +5018,7 @@ function startHomeVegrefTracking() {
   homeVegrefWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       if (view !== 'home') return
+      homeVegrefLastRawGpsWallMs = Date.now()
       const { latitude, longitude, accuracy, heading } = pos.coords
       if (!homeVegrefStartupFirstGpsAt) {
         homeVegrefStartupFirstGpsAt = Date.now()
@@ -5882,6 +6104,15 @@ function insecureContextBannerHtml() {
   </div>`
 }
 
+/** Synlig når enheten rapporterer frakoblet nett (Capacitor/safari). */
+function offlineModeBannerHtml() {
+  if (typeof navigator === 'undefined' || navigator.onLine !== false) return ''
+  const hint = offlineVegrefReady
+    ? 'Du er offline. Vegreferanse bruker nedlastet kartdata der det finnes. Sky-synk krever nett.'
+    : 'Du er offline. Last ned «Offline vegreferanse» under Innstillinger for bedre veivisning uten nett.'
+  return `<div class="offline-mode-banner" role="status">${escapeHtml(hint)}</div>`
+}
+
 function renderAuthHtml() {
   const isLogin = authScreen === 'login'
   return `<div class="view-auth view-promo-shell">
@@ -5895,6 +6126,14 @@ function renderAuthHtml() {
         </div>
       </div>
       <div class="auth-card auth-card--glass auth-card--form">
+        ${
+          isSupabaseConfigured()
+            ? ''
+            : `<p class="auth-hint auth-hint--local-only" role="status">
+          Denne installasjonen har ikke sky-innlogging (mangler <code class="auth-hint-code">VITE_SUPABASE_*</code> i bygget).
+          Logg inn med en bruker du har opprettet her, eller legg <code class="auth-hint-code">.env</code> med Supabase-URL og anon-nøkkel i samme mappe som <code class="auth-hint-code">package.json</code>, kjør <code class="auth-hint-code">npm run build</code> og <code class="auth-hint-code">npx cap sync</code>.
+        </p>`
+        }
         <form id="form-auth-login" class="auth-form" aria-label="Logg inn" ${isLogin ? '' : 'hidden'}>
           <label class="auth-label">E-post
             <input type="email" id="auth-login-email" class="auth-input auth-input--glass" autocomplete="email" required />
@@ -5902,7 +6141,7 @@ function renderAuthHtml() {
           <label class="auth-label">Passord
             <input type="password" id="auth-login-password" class="auth-input auth-input--glass" autocomplete="current-password" required />
           </label>
-          <button type="submit" class="btn-auth-gradient">Logg inn</button>
+          <button type="submit" id="btn-auth-login-submit" class="btn-auth-gradient">Logg inn</button>
         </form>
         <form id="form-auth-register" class="auth-form" aria-label="Registrer bruker" ${!isLogin ? '' : 'hidden'}>
           <label class="auth-label">Navn
@@ -5915,7 +6154,7 @@ function renderAuthHtml() {
             <input type="password" id="auth-reg-password" class="auth-input auth-input--glass" autocomplete="new-password" minlength="${AUTH_PASSWORD_MIN_LEN}" required />
           </label>
           <p class="auth-hint">Minst ${AUTH_PASSWORD_MIN_LEN} tegn.</p>
-          <button type="submit" class="btn-auth-gradient btn-auth-gradient--teal">Opprett bruker</button>
+          <button type="submit" id="btn-auth-register-submit" class="btn-auth-gradient btn-auth-gradient--teal">Opprett bruker</button>
         </form>
         <p id="auth-error" class="auth-error" role="alert" aria-live="polite"></p>
         <p class="auth-disclaimer">Passord lagres kryptert på denne enheten. Bruk kun på egen enhet du stoler på.</p>
@@ -5989,24 +6228,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Start økt fra din posisjon</span>
           </span>
           <span class="home-dash-card__visual home-dash-card__visual--accent" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-reg-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#566378"/><stop offset="1" stop-color="#3a4454"/>
-                </linearGradient>
-                <linearGradient id="hp-reg-route" x1="18" y1="52" x2="58" y2="24" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#4da3ff"/>
-                </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-reg-bg)"/>
-              <rect x="13" y="15" width="54" height="50" rx="9" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
-              <path d="M20 36h22M44 30h14" stroke="rgba(255,255,255,0.22)" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M22 50c12-14 22-22 42-32" stroke="url(#hp-reg-route)" stroke-width="3.75" stroke-linecap="round" fill="none"/>
-              <path d="M48 44c0-5 4-9 9-9s9 4 9 9c0 6.5-9 16-9 16s-9-9.5-9-16z" fill="#5eb0ff" stroke="#fff" stroke-width="1.6"/>
-              <circle cx="57" cy="44" r="3.2" fill="#fff"/>
-              <circle cx="66" cy="54" r="10" fill="#4da3ff" stroke="#fff" stroke-width="2"/>
-              <path d="M66 49.5v9M61.5 54h9" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/ny-registrering.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6017,23 +6239,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Bilder til økten</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-cam-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#566378"/><stop offset="1" stop-color="#394452"/>
-                </linearGradient>
-                <radialGradient id="hp-cam-lens" cx="42" cy="42" r="15" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#a8d8ff"/><stop offset="0.42" stop-color="#4a6b86"/><stop offset="1" stop-color="#141c26"/>
-                </radialGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-cam-bg)"/>
-              <path d="M30 26h20l3 3h7c4 0 7 3 7 7v18c0 4-3 7-7 7H20c-4 0-7-3-7-7V33c0-4 3-7 7-7h3v-3h7v3z" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.34)" stroke-width="1.5" stroke-linejoin="round"/>
-              <rect x="16" y="34" width="11" height="22" rx="2.5" fill="rgba(0,0,0,0.18)" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
-              <circle cx="42" cy="42" r="15.5" fill="url(#hp-cam-lens)" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>
-              <circle cx="42" cy="42" r="8" fill="rgba(8,12,18,0.72)" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
-              <ellipse cx="45" cy="39" rx="3.5" ry="2.5" fill="rgba(255,255,255,0.35)" transform="rotate(-35 45 39)"/>
-              <circle cx="56" cy="30" r="2.8" fill="#ffd89a" stroke="rgba(255,255,255,0.5)" stroke-width="0.8"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/kamera.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6044,20 +6250,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">AI mot kontraktskrav</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-kon-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#596679"/><stop offset="1" stop-color="#3b4553"/>
-                </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-kon-bg)"/>
-              <path d="M22 16h24l9 9v37H22c-3.8 0-7-3.2-7-7V23c0-3.8 3.2-7 7-7z" fill="rgba(255,255,255,0.94)" stroke="rgba(255,255,255,0.45)" stroke-width="1.25"/>
-              <path d="M46 16v9h9" stroke="#94a3b8" stroke-width="1.2" stroke-linejoin="round" fill="none"/>
-              <path d="M26 34h22M26 42h18M26 50h14" stroke="#8a97a8" stroke-width="2.2" stroke-linecap="round"/>
-              <circle cx="54" cy="48" r="12" fill="#4da3ff" stroke="#fff" stroke-width="2"/>
-              <path d="M48.5 48.5l4 4 8-9" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-              <path d="M52 22l3-3M58 22l-3-3" stroke="#7cc4ff" stroke-width="2" stroke-linecap="round"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/kontrakter.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6068,22 +6261,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Bilder og filer</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-al-bg" x1="40" y1="8" x2="40" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#5a677a"/><stop offset="1" stop-color="#394554"/>
-                </linearGradient>
-                <linearGradient id="hp-al-sky" x1="24" y1="30" x2="56" y2="44" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#4a6d94"/>
-                </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-al-bg)"/>
-              <rect x="16" y="14" width="48" height="52" rx="6" fill="rgba(255,255,255,0.96)" stroke="rgba(255,255,255,0.5)" stroke-width="1.35"/>
-              <rect x="20" y="18" width="40" height="34" rx="4" fill="url(#hp-al-sky)"/>
-              <circle cx="30" cy="28" r="4.5" fill="#ffe9a8"/>
-              <path d="M22 46l10-9 7 7 10-11 11 13v6H22v-6z" fill="rgba(255,255,255,0.22)"/>
-              <path d="M22 46l10-9 7 7 10-11 11 13" stroke="rgba(255,255,255,0.55)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/album.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6094,20 +6272,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Del til sky</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-cloud" x1="40" y1="28" x2="40" y2="54" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#e8f2ff"/><stop offset="1" stop-color="#8eb4e8"/>
-                </linearGradient>
-                <linearGradient id="hp-delsky-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#57667a"/><stop offset="1" stop-color="#384352"/>
-                </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-delsky-bg)"/>
-              <path d="M26 54h28c9.5 0 17-6 17-13.5 0-6.5-4.5-12-11-13.2C57.5 22 50.5 17 42.5 17 34 17 27.5 22.5 26 30.2 19.5 31.2 15 36 15 41.8 15 48.2 20 54 26 54z" fill="url(#hp-cloud)" stroke="rgba(255,255,255,0.45)" stroke-width="1.5"/>
-              <path d="M40 62V44" stroke="#fff" stroke-width="3.25" stroke-linecap="round"/>
-              <path d="M31 49l9-10 9 10" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/delsky.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6118,24 +6283,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Eksporter regneark</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-xls-bar" x1="14" y1="16" x2="66" y2="28" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#3dd98a"/><stop offset="1" stop-color="#14804a"/>
-                </linearGradient>
-                <linearGradient id="hp-xls-bg" x1="40" y1="14" x2="40" y2="66" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#4a5c50"/><stop offset="1" stop-color="#2d382f"/>
-                </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-xls-bg)"/>
-              <rect x="12" y="14" width="56" height="52" rx="8" fill="rgba(12,22,16,0.65)" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
-              <rect x="12" y="14" width="56" height="14" rx="8" fill="url(#hp-xls-bar)"/>
-              <path d="M26 34h10M40 34h14M26 44h28M26 54h20" stroke="rgba(255,255,255,0.28)" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M34 32v28M48 32v28" stroke="rgba(255,255,255,0.16)" stroke-width="1.2"/>
-              <rect x="16" y="36" width="14" height="22" rx="3" fill="#1b7a4c" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
-              <path d="M20 42l4 7M24 42l-4 7" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-              <rect x="36" y="40" width="22" height="10" rx="2" fill="rgba(74,222,128,0.35)" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/excel.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6146,25 +6294,7 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Segment og avstand</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <svg class="home-dash-card__preview" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-              <defs>
-                <linearGradient id="hp-route" x1="16" y1="30" x2="64" y2="36" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#4da3ff"/>
-                </linearGradient>
-                <linearGradient id="hp-str-bg" x1="40" y1="6" x2="40" y2="74" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#566378"/><stop offset="1" stop-color="#3a4454"/>
-                </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="14" fill="url(#hp-str-bg)"/>
-              <rect x="8" y="52" width="64" height="12" rx="3" fill="#4a5568" stroke="rgba(255,255,255,0.28)" stroke-width="1.25"/>
-              <path d="M14 58h52" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linecap="round"/>
-              <path d="M20 26 C32 14 48 14 60 26" stroke="url(#hp-route)" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-              <circle cx="20" cy="26" r="7" fill="#34d97a" stroke="#fff" stroke-width="2"/>
-              <circle cx="20" cy="26" r="2.5" fill="#fff"/>
-              <circle cx="60" cy="26" r="7" fill="#5eb0ff" stroke="#fff" stroke-width="2"/>
-              <circle cx="60" cy="26" r="2.5" fill="#fff"/>
-              <rect x="36" y="54" width="8" height="8" rx="1" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
-            </svg>
+            <img class="home-dash-card__preview" src="/icons/home-dash/strekning.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
           </span>
         </span>
       </button>
@@ -6237,39 +6367,27 @@ function renderHomeHtml() {
     </div>
     <nav class="home-bottom-nav" aria-label="Hurtigvalg">
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-new" aria-label="Ny registrering">
-        <span class="home-bottom-nav__icon home-bottom-nav__icon--primary" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M12 21.5c-3.3-2.8-6-6.5-6-10.5a6 6 0 1 1 12 0c0 4-2.7 7.7-6 10.5z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
-            <circle cx="12" cy="11" r="2.25" fill="currentColor" stroke="none"/>
-            <circle cx="12" cy="11" r="5.5" stroke="currentColor" stroke-width="1.5" opacity="0.35"/>
-          </svg>
+        <span class="home-bottom-nav__icon" aria-hidden="true">
+          <img class="home-bottom-nav__dash-img" src="/icons/home-dash/ny-registrering.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-camera" aria-label="Ta bilde">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M4 9h3l1.5-2h7L17 9h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
-            <circle cx="12" cy="14" r="3.75" stroke="currentColor" stroke-width="1.75"/>
-            <circle cx="17" cy="10" r="1.35" fill="currentColor"/>
-          </svg>
+          <img class="home-bottom-nav__dash-img" src="/icons/home-dash/kamera.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="Kontraktskontroll">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
-            <path d="M14 2v6h6" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
-            <path d="M9 15l2 2 4-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <img class="home-bottom-nav__dash-img" src="/icons/home-dash/kontrakter.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-history" aria-label="Økter og historikk">
         <span class="home-bottom-nav__icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M4 19.5A5.5 5.5 0 0 1 9.5 14H12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
-            <path d="M4 4v6h6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.75"/>
-            <path d="M12 8v4.5l3 2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M5.2 11.2a7.35 7.35 0 0 1 12.2-4.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.42"/>
+            <path d="M16.2 5.6l1.35-1.9 1.35 1.9" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="13.25" r="7.1" stroke="currentColor" stroke-width="1.65"/>
+            <path d="M12 9.4v4.35l2.9 1.75" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </span>
       </button>
@@ -6601,17 +6719,27 @@ function renderMenuSettingsHtml() {
   const offlineError = offlineVegrefSyncError
     ? `<p class="menu-info-prose" role="alert">${escapeHtml(offlineVegrefSyncError)}</p>`
     : ''
+  const traceOn = isVegrefDebugTraceEnabled()
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-settings">← Meny</button>
     <h2 class="subview-title">Innstillinger</h2>
     <p class="menu-info-prose">Her kommer app-innstillinger (språk, varsler, lagring) i en senere versjon.</p>
     <div class="menu-card">
       <h3 class="menu-card__title">Offline vegreferanse</h3>
+      <p class="menu-info-prose">Uten nett eller når NVDB ikke svarer, brukes nedlastede segmenter automatisk der de dekker posisjonen.</p>
       <p class="menu-info-prose">Status: ${escapeHtml(offlineVegrefSyncStatus)}</p>
       <p class="menu-info-prose">Generert: ${generatedAt}</p>
       ${offlineError}
       <button type="button" class="btn btn-primary" id="btn-settings-download-offline-vegref"${offlineVegrefSyncBusy ? ' disabled' : ''}>${offlineVegrefReady ? 'Oppdater offline-pakke' : 'Last ned offline-pakke'}</button>
-      <button type="button" class="btn btn-ghost" id="btn-settings-copy-vegref-debug">Kopier vegref-debug</button>
+      <label class="menu-settings-trace-label">
+        <input type="checkbox" id="chk-vegref-debug-trace"${traceOn ? ' checked' : ''} />
+        Spill inn detaljert vegref-spor (GPS → pipeline → skjerm)
+      </label>
+      <p class="menu-info-prose menu-info-prose--compact">Når på: lagrer siste steg lokalt (ca. 180 hendelser). Slå på før du reproduserer feilen, deretter trykk «Kopier vegref-debug» og lim inn i chat.</p>
+      <div class="menu-settings-trace-actions">
+        <button type="button" class="btn btn-ghost" id="btn-settings-copy-vegref-debug">Kopier vegref-debug</button>
+        <button type="button" class="btn btn-ghost" id="btn-settings-clear-vegref-trace">Tøm spor</button>
+      </div>
     </div>
   </div>`
 }
@@ -6631,12 +6759,27 @@ function buildVegrefDebugReportText() {
     const key = `${String(r.type || 'unknown')}:${String(r.reason || 'n/a')}`
     byReason[key] = (byReason[key] || 0) + 1
   }
+  const trace = getVegrefDebugTraceEntries()
+  let ua = ''
+  try {
+    ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  } catch {
+    ua = ''
+  }
   return JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
       appVersion: String(appPackage?.version || 'unknown'),
+      userAgent: ua.slice(0, 400),
+      onLine:
+        typeof navigator !== 'undefined' ? navigator.onLine : null,
+      secureContext:
+        typeof window !== 'undefined' ? window.isSecureContext : null,
       offlineVegrefReady,
       offlineVegrefStatus: offlineVegrefSyncStatus,
+      vegrefDetailTraceEnabled: isVegrefDebugTraceEnabled(),
+      vegrefDetailTraceCount: trace.length,
+      vegrefDetailTrace: trace.slice(-120),
       totalMetrics: rows.length,
       meterMetrics: meterRows.length,
       startupMetrics: startupRows.length,
@@ -8478,7 +8621,7 @@ function renderApp() {
     orphanAiPanel.remove()
     syncHomeAiPanelBodyClass()
   }
-  const banner = insecureContextBannerHtml()
+  const banner = insecureContextBannerHtml() + offlineModeBannerHtml()
   let main = ''
   if (!currentUser) {
     main = renderAuthHtml()
@@ -8579,11 +8722,46 @@ let shareStandaloneRecipientDisplayName = null
 let shareStandalonePendingPhotos = null
 
 /**
+ * `user_app_state` kan henge (nett/PostgREST). Vi faller tilbake til lokalt i stedet for å stoppe innlogging.
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb
+ * @param {string} userId
+ */
+async function fetchUserAppStateWithTimeBudget(sb, userId) {
+  const ms = 22_000
+  try {
+    return await awaitWithTimeout(fetchUserAppState(sb, userId), ms, 'Synk')
+  } catch {
+    console.warn(
+      `Scanix: user_app_state avbrutt etter ${ms}ms — fortsetter med lokale data.`,
+    )
+    return null
+  }
+}
+
+/**
  * @param {import('@supabase/supabase-js').SupabaseClient} sb
  * @param {import('@supabase/supabase-js').Session} session
  */
 async function applySupabaseSessionAndNavigate(sb, session) {
-  currentUser = await buildCurrentUserFromSession(sb, session)
+  let profileUser
+  try {
+    profileUser = await awaitWithTimeout(
+      buildCurrentUserFromSession(sb, session),
+      42_000,
+      'Profil',
+    )
+  } catch {
+    console.warn('Scanix: profil (ensureProfile) tidsavbrudd')
+    void sb.auth.signOut()
+    currentUser = null
+    const errEl = document.getElementById('auth-error')
+    if (errEl) {
+      errEl.textContent =
+        'Kunne ikke hente brukerprofil i tide. Sjekk nett og prøv igjen.'
+    }
+    return
+  }
+  currentUser = profileUser
   if (!tryWriteAuthSession(currentUser)) {
     currentUser = null
     void sb.auth.signOut()
@@ -8593,7 +8771,7 @@ async function applySupabaseSessionAndNavigate(sb, session) {
   }
   void requestPersistedStorageIfSupported()
   void backupAuthToIdb(loadUsersFromStorage(), currentUser)
-  const remote = await fetchUserAppState(sb, session.user.id)
+  const remote = await fetchUserAppStateWithTimeBudget(sb, session.user.id)
   const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
   if (remote) {
     const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
@@ -8677,6 +8855,13 @@ function bindAuthListeners() {
     'submit',
     async (e) => {
       e.preventDefault()
+      const submitBtn = document.getElementById('btn-auth-login-submit')
+      const setBusy = (busy) => {
+        if (submitBtn) {
+          submitBtn.disabled = busy
+          submitBtn.setAttribute('aria-busy', busy ? 'true' : 'false')
+        }
+      }
       if (errEl) errEl.textContent = ''
       const emailInp = document.getElementById('auth-login-email')
       const passInp = document.getElementById('auth-login-password')
@@ -8694,94 +8879,152 @@ function bindAuthListeners() {
           }
           return
         }
-        const { data, error } = await sb.auth.signInWithPassword({
-          email,
-          password,
-        })
-        if (error || !data.session) {
-          if (errEl) {
-            errEl.textContent = mapSupabaseAuthError(
-              error ?? new Error('Ingen sesjon'),
-            )
+        setBusy(true)
+        if (errEl) errEl.textContent = 'Logger inn…'
+        try {
+          const { data, error } = await awaitWithTimeout(
+            sb.auth.signInWithPassword({
+              email,
+              password,
+            }),
+            55_000,
+            'Innlogging',
+          )
+          if (error || !data.session) {
+            if (errEl) {
+              errEl.textContent = mapSupabaseAuthError(
+                error ?? new Error('Ingen sesjon'),
+              )
+            }
+            return
           }
-          return
+          if (errEl) errEl.textContent = 'Laster data…'
+          await awaitWithTimeout(
+            applySupabaseSessionAndNavigate(sb, data.session),
+            95_000,
+            'Laster brukerdata',
+          )
+        } catch (err) {
+          console.warn('Scanix login (Supabase):', err)
+          if (errEl) {
+            const m = err instanceof Error ? err.message : String(err)
+            if (m.includes('timeout')) {
+              if (m.includes('Innlogging')) {
+                errEl.textContent =
+                  'Innlogging tok for lang tid. Sjekk nett og prøv igjen.'
+              } else if (m.includes('Profil')) {
+                errEl.textContent =
+                  'Kunne ikke hente profil i tide. Sjekk nett og prøv igjen.'
+              } else {
+                errEl.textContent =
+                  'Tidsavbrudd under innlasting. Sjekk nett og prøv igjen.'
+              }
+            } else {
+              const friendly = mapFetchErrorToUserMessage(m)
+              errEl.textContent =
+                friendly !== m
+                  ? friendly
+                  : m.length > 0 && m.length < 220
+                    ? m
+                    : 'Noe gikk galt ved innlogging. Prøv igjen.'
+            }
+          }
+        } finally {
+          setBusy(false)
         }
-        await applySupabaseSessionAndNavigate(sb, data.session)
         return
       }
-      const users = loadUsersFromStorage()
-      const u = users.find((x) => x.emailLower === email.toLowerCase())
-      if (!u) {
-        if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
-        return
-      }
-      if (!u.salt || password.length < AUTH_PASSWORD_MIN_LEN) {
-        if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
-        return
-      }
-      if (!u.passwordHash) {
-        if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
-        return
-      }
+      setBusy(true)
+      if (errEl) errEl.textContent = 'Logger inn…'
       try {
-        const hash = await hashPasswordWithSalt(password, u.salt)
-        if (hash !== u.passwordHash) {
+        const users = loadUsersFromStorage()
+        const u = users.find((x) => x.emailLower === email.toLowerCase())
+        if (!u) {
           if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
           return
         }
-      } catch {
-        if (errEl) errEl.textContent = 'Kunne ikke verifisere passord.'
-        return
-      }
-      currentUser = {
-        id: u.id,
-        name:
-          typeof u.name === 'string' && u.name.trim()
-            ? u.name.trim().slice(0, AUTH_NAME_MAX_LEN)
-            : 'Bruker',
-        email: typeof u.email === 'string' ? u.email : email,
-        ...(isValidStoredShortId(
-          /** @type {{ shortId?: string }} */ (u).shortId,
-        )
-          ? { shortId: /** @type {{ shortId?: string }} */ (u).shortId }
-          : {}),
-      }
-      if (!tryWriteAuthSession(currentUser)) {
-        currentUser = null
-        if (errEl) errEl.textContent = authStorageFailedUserMessage()
-        return
-      }
-      if (!verifyAuthSessionForUser(u.id)) {
-        clearAuthSession()
-        currentUser = null
-        if (errEl) {
-          errEl.textContent =
-            'Innlogging ble ikke bekreftet lagret. Prøv igjen, eller bruk nøyaktig samme nettadresse som sist.'
+        if (!u.salt || password.length < AUTH_PASSWORD_MIN_LEN) {
+          if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
+          return
         }
-        return
-      }
-      void requestPersistedStorageIfSupported()
-      void backupAuthToIdb(loadUsersFromStorage(), currentUser)
-      const app = await loadAppStateFromStorageForUser(u.id)
-      sessions = app.sessions
-      currentSessionId = app.currentSessionId
-      standalonePhotos = app.standalonePhotos
-      frictionMeasurements = app.frictionMeasurements
-      if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
-        currentSessionId = null
-      }
-      state = loadCurrentSessionState()
-      if (currentSessionId) {
-        view = 'session'
-      } else {
-        view = 'home'
-      }
-      renderApp()
-      if (view === 'session') {
-        void initSessionMapAndWatch()
-        bindSessionListeners()
-      } else {
-        bindHomeListeners()
+        if (!u.passwordHash) {
+          if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
+          return
+        }
+        try {
+          const hash = await hashPasswordWithSalt(password, u.salt)
+          if (hash !== u.passwordHash) {
+            if (errEl) errEl.textContent = 'Ukjent e-post eller feil passord.'
+            return
+          }
+        } catch {
+          if (errEl) errEl.textContent = 'Kunne ikke verifisere passord.'
+          return
+        }
+        currentUser = {
+          id: u.id,
+          name:
+            typeof u.name === 'string' && u.name.trim()
+              ? u.name.trim().slice(0, AUTH_NAME_MAX_LEN)
+              : 'Bruker',
+          email: typeof u.email === 'string' ? u.email : email,
+          ...(isValidStoredShortId(
+            /** @type {{ shortId?: string }} */ (u).shortId,
+          )
+            ? { shortId: /** @type {{ shortId?: string }} */ (u).shortId }
+            : {}),
+        }
+        if (!tryWriteAuthSession(currentUser)) {
+          currentUser = null
+          if (errEl) errEl.textContent = authStorageFailedUserMessage()
+          return
+        }
+        if (!verifyAuthSessionForUser(u.id)) {
+          clearAuthSession()
+          currentUser = null
+          if (errEl) {
+            errEl.textContent =
+              'Innlogging ble ikke bekreftet lagret. Prøv igjen, eller bruk nøyaktig samme nettadresse som sist.'
+          }
+          return
+        }
+        void requestPersistedStorageIfSupported()
+        void backupAuthToIdb(loadUsersFromStorage(), currentUser)
+        const app = await loadAppStateFromStorageForUser(u.id)
+        sessions = app.sessions
+        currentSessionId = app.currentSessionId
+        standalonePhotos = app.standalonePhotos
+        frictionMeasurements = app.frictionMeasurements
+        if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
+          currentSessionId = null
+        }
+        state = loadCurrentSessionState()
+        if (currentSessionId) {
+          view = 'session'
+        } else {
+          view = 'home'
+        }
+        renderApp()
+        if (view === 'session') {
+          void initSessionMapAndWatch()
+          bindSessionListeners()
+        } else {
+          bindHomeListeners()
+        }
+      } catch (err) {
+        console.warn('Scanix login (lokal):', err)
+        if (errEl) {
+          const m = err instanceof Error ? err.message : String(err)
+          const friendly = mapFetchErrorToUserMessage(m)
+          errEl.textContent =
+            friendly !== m
+              ? friendly
+              : m.length > 0 && m.length < 220
+                ? m
+                : 'Noe gikk galt ved innlogging. Prøv igjen.'
+        }
+      } finally {
+        setBusy(false)
       }
     },
     { signal },
@@ -8814,26 +9057,61 @@ function bindAuthListeners() {
       }
       const sbReg = getSupabase()
       if (sbReg) {
-        const { data, error } = await sbReg.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: name.slice(0, AUTH_NAME_MAX_LEN) },
-          },
-        })
-        if (error) {
-          if (errEl) errEl.textContent = mapSupabaseAuthError(error)
-          return
-        }
-        if (!data.session) {
-          if (errEl) {
-            errEl.textContent =
-              'Konto opprettet. Sjekk e-posten og bekreft adressen, deretter logg inn.'
+        try {
+          const { data, error } = await awaitWithTimeout(
+            sbReg.auth.signUp({
+              email,
+              password,
+              options: {
+                data: { full_name: name.slice(0, AUTH_NAME_MAX_LEN) },
+              },
+            }),
+            55_000,
+            'Registrering',
+          )
+          if (error) {
+            if (errEl) errEl.textContent = mapSupabaseAuthError(error)
+            return
           }
-          return
+          if (!data.session) {
+            if (errEl) {
+              errEl.textContent =
+                'Konto opprettet. Sjekk e-posten og bekreft adressen, deretter logg inn.'
+            }
+            return
+          }
+          await awaitWithTimeout(
+            applySupabaseSessionAndNavigate(sbReg, data.session),
+            95_000,
+            'Laster brukerdata',
+          )
+          saveAppState()
+        } catch (err) {
+          console.warn('Scanix registrering (Supabase):', err)
+          if (errEl) {
+            const m = err instanceof Error ? err.message : String(err)
+            if (m.includes('timeout')) {
+              if (m.includes('Registrering')) {
+                errEl.textContent =
+                  'Registrering tok for lang tid. Sjekk nett og prøv igjen.'
+              } else if (m.includes('Profil')) {
+                errEl.textContent =
+                  'Kunne ikke hente profil i tide. Sjekk nett og prøv igjen.'
+              } else {
+                errEl.textContent =
+                  'Tidsavbrudd under innlasting. Sjekk nett og prøv igjen.'
+              }
+            } else {
+              const friendly = mapFetchErrorToUserMessage(m)
+              errEl.textContent =
+                friendly !== m
+                  ? friendly
+                  : m.length > 0 && m.length < 220
+                    ? m
+                    : 'Noe gikk galt ved registrering. Prøv igjen.'
+            }
+          }
         }
-        await applySupabaseSessionAndNavigate(sbReg, data.session)
-        saveAppState()
         return
       }
       const beforeSnap = loadUsersFromStorage()
@@ -10435,6 +10713,26 @@ function bindMenuInfoListeners() {
       },
       { signal },
     )
+  document.getElementById('chk-vegref-debug-trace')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      setVegrefDebugTraceEnabled(Boolean(el?.checked))
+    },
+    { signal },
+  )
+  document.getElementById('btn-settings-clear-vegref-trace')?.addEventListener(
+    'click',
+    () => {
+      clearVegrefDebugTrace()
+      vegrefDebugLastHomeSig = ''
+      vegrefDebugLastHomeAt = 0
+      alert('Vegref-spor er tømt.')
+    },
+    { signal },
+  )
 }
 
 async function logoutUser() {
@@ -13239,6 +13537,12 @@ async function bootstrap() {
       navigator.onLine === false,
     getViewHome: () => view === 'home',
     getKmtOpen: () => kmtDialogOpen,
+    getRecentTrace: () =>
+      traceBuffer.slice(-10).map((p) => ({
+        lat: p.lat,
+        lng: p.lng,
+        at: p.timestamp,
+      })),
     applyHome: applyHomeVegrefResult,
     applyKmt: applyKmtResult,
     beforeNvdbFetch: () => {
@@ -13261,6 +13565,21 @@ async function bootstrap() {
         timestamp: Date.now(),
       })
     }
+    if (currentUser && view === 'home') renderApp()
+  })
+  window.addEventListener('offline', () => {
+    if (
+      lastLiveCoords &&
+      (view === 'home' || kmtDialogOpen)
+    ) {
+      vegrefResetThrottle()
+      vegrefNotifyGps(lastLiveCoords.lat, lastLiveCoords.lng, {
+        forceImmediate: true,
+        accuracyM: lastLiveCoords.accuracy,
+        timestamp: Date.now(),
+      })
+    }
+    if (currentUser && view === 'home') renderApp()
   })
   /* Ikke start stor nedlasting samtidig med første render / NVDB. */
   if (typeof requestIdleCallback === 'function') {

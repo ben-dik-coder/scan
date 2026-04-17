@@ -10,6 +10,40 @@ const NVDB_SEGMENTERT =
 const NVDB_POSISJON =
   'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/posisjon'
 
+/** Maks tid på ett NVDB-HTTP-kall før avbrudd (mobil / treg tunnel / 4G-hull). */
+const NVDB_FETCH_TIMEOUT_MS = 12_000
+
+/**
+ * Kombinerer kallers AbortSignal med maks ventetid.
+ * @param {AbortSignal | undefined} signal
+ * @returns {AbortSignal | undefined}
+ */
+function nvdbCombinedFetchSignal(signal) {
+  if (typeof AbortSignal === 'undefined' || !AbortSignal.timeout) {
+    return signal
+  }
+  const t = AbortSignal.timeout(NVDB_FETCH_TIMEOUT_MS)
+  if (!signal) return t
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([signal, t])
+  }
+  return signal
+}
+
+/** Kort TTL for segmentert-oppslag (samme idé som posisjon-cache i vegrefLive). */
+const SEGMENT_NEAR_CACHE_TTL_MS = 30_000
+const SEGMENT_NEAR_CACHE_MAX = 48
+/** @type {Map<string, { at: number, res: object | null }>} */
+let segmentNearCache = new Map()
+
+function segmentNearCacheKey(lat, lng) {
+  return `${Math.round(lat * 1e4)}:${Math.round(lng * 1e4)}`
+}
+
+export function clearSegmentNearCache() {
+  segmentNearCache.clear()
+}
+
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000
   const toR = (d) => (d * Math.PI) / 180
@@ -232,7 +266,10 @@ export function describeSegmentForPoint(seg, lat, lng, accuracyM = 28) {
       ? Math.min(60, Math.max(8, accuracyM))
       : 28
   /* Litt romsligere ved siden av kjørebane (rå GPS) — ellers blir meter ofte «–». */
-  const meterDistThreshold = Math.min(88, Math.max(26, Math.round(acc * 1.22)))
+  const meterDistThreshold = Math.min(
+    92,
+    Math.max(24, Math.round(acc * 1.28)),
+  )
   if (
     distM <= meterDistThreshold &&
     typeof fraM === 'number' &&
@@ -369,7 +406,7 @@ function segmentRoadHeadingDeg(seg, lat, lng) {
  * @param {object[]} objekter
  * @param {number} lat
  * @param {number} lng
- * @param {{ accuracyM?: number, prevNvdbId?: string | number | null, userHeadingDeg?: number | null, speed?: number }} [opts]
+ * @param {{ accuracyM?: number, prevNvdbId?: string | number | null, userHeadingDeg?: number | null, speed?: number, traceSamples?: Array<{ lat: number, lng: number, at: number }> }} [opts]
  * @returns {{
  *   seg: object
  *   chosenScore: number
@@ -401,6 +438,44 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     const id = segmentStableId(seg)
     const dist = Math.min(d.distToRoadM, 100)
     let score = dist + roadKindPenalty(seg) + roadCategoryScorePenalty(seg)
+    const traceSamples = opts.traceSamples
+    if (
+      Array.isArray(traceSamples) &&
+      traceSamples.length >= 4 &&
+      d.distToRoadM < 40
+    ) {
+      const newest = traceSamples[traceSamples.length - 1]
+      if (
+        newest &&
+        typeof newest.at === 'number' &&
+        Date.now() - newest.at <= 5000
+      ) {
+        let wsum = 0
+        let dsum = 0
+        for (let ti = 0; ti < traceSamples.length; ti++) {
+          const w = ti === traceSamples.length - 1 ? 3 : 1
+          const pt = traceSamples[ti]
+          if (
+            typeof pt.lat !== 'number' ||
+            typeof pt.lng !== 'number' ||
+            !Number.isFinite(pt.lat) ||
+            !Number.isFinite(pt.lng)
+          ) {
+            continue
+          }
+          const di = describeSegmentForPoint(seg, pt.lat, pt.lng, accuracyM)
+          if (!di) continue
+          dsum += di.distToRoadM * w
+          wsum += w
+        }
+        if (wsum > 0) {
+          const wmean = dsum / wsum
+          if (wmean < 20) {
+            score -= 12 * (1 - wmean / 20)
+          }
+        }
+      }
+    }
     if (prevNvdbId != null && id !== null) {
       if (id === prevNvdbId) {
         score -= 22 * speedFactor
@@ -591,10 +666,11 @@ function dedupeNvdbObjekter(rows) {
  *   prevNvdbId?: string | number | null
  *   userHeadingDeg?: number | null
  *   speed?: number
+ *   traceSamples?: Array<{ lat: number, lng: number, at: number }>
  * }} [opts]
  */
 export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) {
-  const { accuracyM, prevNvdbId, userHeadingDeg, speed } = opts
+  const { accuracyM, prevNvdbId, userHeadingDeg, speed, traceSamples } = opts
   const objs = Array.isArray(objekter) ? objekter : []
   if (!Array.isArray(objs) || objs.length === 0) return null
 
@@ -603,6 +679,7 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
     prevNvdbId: prevNvdbId ?? null,
     userHeadingDeg: userHeadingDeg ?? null,
     speed: speed ?? 0,
+    traceSamples: Array.isArray(traceSamples) ? traceSamples : undefined,
   })
   if (!picked) return null
 
@@ -636,11 +713,24 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
  *   prevNvdbId?: string | number | null
  *   userHeadingDeg?: number | null
  *   speed?: number
+ *   traceSamples?: Array<{ lat: number, lng: number, at: number }>
  *   onRawSegments?: (objekter: object[]) => void
  * }} [opts]
  */
 export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   const { signal, onRawSegments } = opts
+  if (typeof onRawSegments !== 'function') {
+    const ck = segmentNearCacheKey(lat, lng)
+    const hit = segmentNearCache.get(ck)
+    if (
+      hit &&
+      Date.now() - hit.at < SEGMENT_NEAR_CACHE_TTL_MS &&
+      !signal?.aborted
+    ) {
+      return hit.res ? { ...hit.res } : null
+    }
+  }
+  const fetchSignal = nvdbCombinedFetchSignal(signal)
   const speedMps =
     typeof opts.speed === 'number' && !Number.isNaN(opts.speed) ? opts.speed : 0
   const accM =
@@ -684,11 +774,11 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   const url = new URL(NVDB_SEGMENTERT)
   url.searchParams.set('kartutsnitt', kartutsnitt)
   url.searchParams.set('srid', '4326')
-  url.searchParams.set('antall', denseUrbanMode ? '160' : '100')
+  url.searchParams.set('antall', denseUrbanMode ? '160' : '120')
   url.searchParams.set('inkluderAntall', 'false')
 
   const r = await fetch(url.toString(), {
-    signal,
+    signal: fetchSignal,
     headers: {
       'X-Client': 'Scanix',
       Accept: 'application/json',
@@ -724,10 +814,10 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
       speedMps > 22 ||
       denseUrbanMode)
 
-  if (wantExtraPage && !signal?.aborted) {
+  if (wantExtraPage && !fetchSignal?.aborted) {
     try {
       const r2 = await fetch(nesteHref, {
-        signal,
+        signal: fetchSignal,
         headers: {
           'X-Client': 'Scanix',
           Accept: 'application/json',
@@ -750,7 +840,19 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
       /* ikke blokker vegreferanse ved cache-feil */
     }
   }
-  return resolveRoadReferenceFromSegments(allObjs, lat, lng, opts)
+  const described = resolveRoadReferenceFromSegments(allObjs, lat, lng, opts)
+  if (typeof onRawSegments !== 'function' && described) {
+    const ck = segmentNearCacheKey(lat, lng)
+    segmentNearCache.set(ck, {
+      at: Date.now(),
+      res: /** @type {object} */ ({ ...described }),
+    })
+    while (segmentNearCache.size > SEGMENT_NEAR_CACHE_MAX) {
+      const first = segmentNearCache.keys().next().value
+      if (first) segmentNearCache.delete(first)
+    }
+  }
+  return described
 }
 
 /**
@@ -763,6 +865,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
  *   prevNvdbId?: string | number | null
  *   userHeadingDeg?: number | null
  *   speed?: number
+ *   traceSamples?: Array<{ lat: number, lng: number, at: number }>
  *   onRawSegments?: (objekter: object[]) => void
  * }} [opts]
  */
@@ -781,7 +884,7 @@ export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {
       const name = e && typeof e === 'object' && 'name' in e ? String(e.name) : ''
       if (name === 'AbortError' || signal?.aborted) throw e
       if (attempt < 2) {
-        await sleepMs(400 * (attempt + 1))
+        await sleepMs(attempt === 0 ? 250 : 500)
       }
     }
   }
@@ -834,6 +937,7 @@ function extractAdresseNavnFromPosisjonHit(hit) {
  */
 async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
   const { signal } = opts
+  const fetchSignal = nvdbCombinedFetchSignal(signal)
   const accM =
     typeof opts.accuracyM === 'number' && !Number.isNaN(opts.accuracyM)
       ? opts.accuracyM
@@ -846,7 +950,7 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
   url.searchParams.set('maks_avstand', String(maksAvstand))
 
   const r = await fetch(url.toString(), {
-    signal,
+    signal: fetchSignal,
     headers: {
       'X-Client': 'Scanix',
       Accept: 'application/json',
@@ -923,7 +1027,7 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
 }
 
 /**
- * Posisjon-API med retry (maks 2 forsøk).
+ * Posisjon-API med retry (samme mønster som segmentert — mobil/tunnel).
  * @param {number} lat
  * @param {number} lng
  * @param {{ signal?: AbortSignal, accuracyM?: number }} [opts]
@@ -931,7 +1035,7 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
 export async function fetchRoadPositionDirect(lat, lng, opts = {}) {
   const { signal } = opts
   let lastErr = null
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     try {
       return await fetchRoadPositionDirectOnce(lat, lng, opts)
@@ -939,7 +1043,9 @@ export async function fetchRoadPositionDirect(lat, lng, opts = {}) {
       lastErr = e
       const name = e && typeof e === 'object' && 'name' in e ? String(e.name) : ''
       if (name === 'AbortError' || signal?.aborted) throw e
-      if (attempt < 1) await sleepMs(350)
+      if (attempt < 2) {
+        await sleepMs(attempt === 0 ? 250 : 480)
+      }
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('NVDB posisjon: oppslag feilet')

@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const url =
+  typeof import.meta.env.VITE_SUPABASE_URL === 'string'
+    ? import.meta.env.VITE_SUPABASE_URL.trim()
+    : ''
+const anonKey =
+  typeof import.meta.env.VITE_SUPABASE_ANON_KEY === 'string'
+    ? import.meta.env.VITE_SUPABASE_ANON_KEY.trim()
+    : ''
 
 /** @type {ReturnType<typeof createClient> | null} */
 let client = null
