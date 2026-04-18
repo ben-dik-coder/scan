@@ -2055,12 +2055,21 @@ function addLogEntry(state, entry) {
 }
 
 let pinIcon = null
+/** Variant for registrering som venter på posisjon eller vegreferanse. */
+let pendingPinIcon = null
 let userLocationIcon = null
 function ensureSessionPinIcons() {
   if (pinIcon || !Leaflet) return
   pinIcon = Leaflet.divIcon({
     className: 'map-pin-wrap',
     html: '<div class="map-pin" aria-hidden="true"></div>',
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    popupAnchor: [0, -36],
+  })
+  pendingPinIcon = Leaflet.divIcon({
+    className: 'map-pin-wrap',
+    html: '<div class="map-pin map-pin--pending" aria-hidden="true"></div>',
     iconSize: [32, 40],
     iconAnchor: [16, 40],
     popupAnchor: [0, -36],
@@ -2399,6 +2408,12 @@ function homeVegrefMeterDeadbandM() {
   let d = 6 + Math.min(14, acc * 0.25)
   if (spd > 28) d += 8
   else if (spd > 18) d += 4
+  /* Fix H1: ved reell bevegelse og god nøyaktighet er Δm reell distanse, ikke støy.
+     Uten denne krympingen havner typiske 6–9 m NVDB-inkrementer under baseline 8 m
+     og UI står stille i flere sekunder. */
+  if (spd >= 3 && acc <= 15) {
+    d = Math.max(2, Math.min(d, 3 + acc * 0.12))
+  }
   return Math.min(20, d)
 }
 /**
@@ -2504,14 +2519,17 @@ const LIVE_POS_MAX_AGE_MS = 30000
  * Hvis watch nettopp leverte en fix med god nok nøyaktighet, bruk den direkte for «Registrer»
  * (sparer typisk 200–800 ms vs. getCurrentPosition).
  */
-const REGISTER_CLICK_FAST_PATH_MAX_MS = 2200
+const REGISTER_CLICK_FAST_PATH_MAX_MS = 5000
 
 /** Sekvens for å ignorere utdaterte async OSRM-svar. */
 let positionSeq = 0
 
 const GPS_REJECT_M = 220
-/** Maks. GPS-uncertainty (m) for at «Registrer» skal godtas og sette nål. */
-const REGISTER_MAX_GPS_ACCURACY_M = 8
+/** «God nok» GPS-uncertainty (m): under dette er ikke pendingGps. Over → lagres med pending-flagg. */
+const REGISTER_MAX_GPS_ACCURACY_M = 25
+
+/** Maks. alder på registrering som kan få oppgradert posisjon fra ny GPS-fix. */
+const PENDING_GPS_UPGRADE_WINDOW_MS = 60000
 let navTargetLat = null
 let navTargetLng = null
 let navDisplayLat = null
@@ -2968,27 +2986,153 @@ function computeAllMarkerDisplayPositions() {
   return { clickLatLng, photoLatLng }
 }
 
+/** Leaflet: mørk kort-popup på øktkart (matcher forsideskall). */
+const SESSION_MAP_POPUP_OPTIONS = Object.freeze({
+  className: 'session-map-popup-wrap',
+  maxWidth: 300,
+})
+
 /**
- * HTML til kart-popup for lagret vegreferanse ved registrering (vegnr + meter, valgfritt S/D).
- * @param {{ vegrefAtClick?: { vegnr?: string, meter?: string, s?: string, d?: string } }} c
+ * Vegref + statuslinjer for popup (BEM: session-map-popup__*).
+ * @param {{ vegrefAtClick?: { vegnr?: string, meter?: string, s?: string, d?: string }, pendingGps?: boolean, pendingVegref?: boolean, lat?: unknown, lng?: unknown }} c
  */
-function sessionClickVegrefPopupFragment(c) {
+function buildSessionMapPopupVegrefHtml(c) {
+  const statusMsgs = []
+  if (c.pendingGps && (c.lat == null || c.lng == null)) {
+    statusMsgs.push('Venter på posisjon …')
+  } else if (c.pendingGps) {
+    statusMsgs.push('Upresis posisjon (oppdateres ved bedre GPS)')
+  }
   const v = c.vegrefAtClick
-  if (!v || typeof v !== 'object') return ''
-  const nr = typeof v.vegnr === 'string' ? v.vegnr.trim() : ''
-  const m = typeof v.meter === 'string' ? v.meter.trim() : ''
-  const s = typeof v.s === 'string' ? v.s.trim() : ''
-  const d = typeof v.d === 'string' ? v.d.trim() : ''
-  const mainParts = []
-  if (nr) mainParts.push(`(${escapeHtml(nr)})`)
-  if (m) mainParts.push(`Meter ${escapeHtml(m)}`)
-  const mainLine = mainParts.join(' · ')
-  const sdLine =
-    s && d
-      ? `<span style="font-size:0.78rem;opacity:0.92;display:block;margin-top:0.2rem">S ${escapeHtml(s)} · D ${escapeHtml(d)}</span>`
+  const hasVegObj = v && typeof v === 'object'
+  const nr = hasVegObj && typeof v.vegnr === 'string' ? v.vegnr.trim() : ''
+  const m = hasVegObj && typeof v.meter === 'string' ? v.meter.trim() : ''
+  const s = hasVegObj && typeof v.s === 'string' ? v.s.trim() : ''
+  const d = hasVegObj && typeof v.d === 'string' ? v.d.trim() : ''
+  const hasMain = Boolean(nr || m)
+  const hasSd = Boolean(s && d)
+  if (c.pendingVegref && !hasMain && !hasSd) {
+    statusMsgs.push('Venter på vegreferanse …')
+  }
+
+  const rows = []
+  if (nr) {
+    rows.push(
+      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">Vegnr</dt><dd class="session-map-popup__dd">${escapeHtml(nr)}</dd></div>`,
+    )
+  }
+  if (m) {
+    rows.push(
+      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">Meter</dt><dd class="session-map-popup__dd session-map-popup__dd--tabular">${escapeHtml(m)}</dd></div>`,
+    )
+  }
+  if (hasSd) {
+    rows.push(
+      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">S</dt><dd class="session-map-popup__dd session-map-popup__dd--tabular">${escapeHtml(s)}</dd></div>`,
+      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">D</dt><dd class="session-map-popup__dd session-map-popup__dd--tabular">${escapeHtml(d)}</dd></div>`,
+    )
+  }
+
+  let html = ''
+  if (statusMsgs.length) {
+    html += `<div class="session-map-popup__status" role="status">${statusMsgs
+      .map(
+        (msg) =>
+          `<p class="session-map-popup__status-line">${escapeHtml(msg)}</p>`,
+      )
+      .join('')}</div>`
+  }
+  if (rows.length) {
+    html += `<section class="session-map-popup__veg" aria-label="Vegreferanse"><dl class="session-map-popup__dl">${rows.join('')}</dl></section>`
+  }
+  return html
+}
+
+/**
+ * @param {object} c clickHistory entry
+ * @param {number} index 0-basert
+ */
+function buildSessionClickPopupHtml(c, index) {
+  const n = index + 1
+  const title = `Trykk #${n}`
+  const catLabel =
+    typeof c.category === 'string' && c.category
+      ? getObjectCategoryLabel(c.category)
       : ''
-  if (!mainLine && !sdLine) return ''
-  return `<br><span style="font-size:0.85rem;line-height:1.4;display:block;margin:0.25rem 0 0">${mainLine}${sdLine}</span>`
+  const vegHtml = buildSessionMapPopupVegrefHtml(c)
+  const timeStr =
+    c.timestamp && !Number.isNaN(Date.parse(c.timestamp))
+      ? formatNb(new Date(c.timestamp))
+      : ''
+  const isoAttr =
+    c.timestamp && !Number.isNaN(Date.parse(c.timestamp))
+      ? escapeHtml(c.timestamp)
+      : ''
+
+  return `<article class="session-map-popup session-map-popup--click">
+    <header class="session-map-popup__head">
+      <span class="session-map-popup__eyebrow">Registrering</span>
+      <h2 class="session-map-popup__title">${escapeHtml(title)}</h2>
+    </header>
+    ${
+      catLabel
+        ? `<p class="session-map-popup__chip-wrap"><span class="session-map-popup__chip">${escapeHtml(catLabel)}</span></p>`
+        : ''
+    }
+    ${vegHtml}
+    ${
+      timeStr
+        ? `<footer class="session-map-popup__foot"><time class="session-map-popup__time" datetime="${isoAttr}">${escapeHtml(timeStr)}</time></footer>`
+        : ''
+    }
+  </article>`
+}
+
+/**
+ * @param {object} ph photo entry
+ * @param {number} index 0-basert
+ */
+function buildSessionPhotoPopupHtml(ph, index) {
+  const n = index + 1
+  const timeStr =
+    ph.timestamp && !Number.isNaN(Date.parse(ph.timestamp))
+      ? formatNb(new Date(ph.timestamp))
+      : ''
+  const isoAttr =
+    ph.timestamp && !Number.isNaN(Date.parse(ph.timestamp))
+      ? escapeHtml(ph.timestamp)
+      : ''
+  const vr = ph.vegref && normalizePhotoVegref(ph.vegref)
+  const vegLines = vr
+    ? [vr.road, vr.compact, vr.kortform].filter(Boolean)
+    : []
+  const vegLabels = ['Strekning', 'Kompakt', 'Kortform']
+  let vegSection = ''
+  if (vegLines.length) {
+    const rows = vegLines
+      .map((line, idx) => {
+        const lab = vegLabels[idx] || `Linje ${idx + 1}`
+        return `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">${escapeHtml(lab)}</dt><dd class="session-map-popup__dd">${escapeHtml(line)}</dd></div>`
+      })
+      .join('')
+    vegSection = `<section class="session-map-popup__veg" aria-label="Vegreferanse"><dl class="session-map-popup__dl">${rows}</dl></section>`
+  }
+
+  return `<article class="session-map-popup session-map-popup--photo">
+    <header class="session-map-popup__head">
+      <span class="session-map-popup__eyebrow">Bilde</span>
+      <h2 class="session-map-popup__title">Bilde #${n}</h2>
+    </header>
+    ${vegSection}
+    <div class="session-map-popup__media">
+      <img src="${ph.dataUrl}" alt="" class="session-map-popup__img" loading="lazy" decoding="async" />
+    </div>
+    ${
+      timeStr
+        ? `<footer class="session-map-popup__foot"><time class="session-map-popup__time" datetime="${isoAttr}">${escapeHtml(timeStr)}</time></footer>`
+        : ''
+    }
+  </article>`
 }
 
 /**
@@ -3012,11 +3156,89 @@ async function enrichClickEntryWithVegrefFromPosisjon(clickId, lat, lng) {
         s: snap.s,
         d: snap.d,
       },
+      pendingVegref: false,
     }
     persist()
     if (view === 'session' && map) rebuildMarkers()
   } catch {
-    /* nettverk / API */
+    /* nettverk / API — pendingVegref forblir true */
+  }
+}
+
+/** @type {Promise<void> | null} */
+let enrichPendingClicksPromise = null
+
+/**
+ * Beriker alle registreringer som mangler vegreferanse (online), med throttling.
+ */
+function enrichPendingClicks() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return Promise.resolve()
+  }
+  if (enrichPendingClicksPromise) return enrichPendingClicksPromise
+  enrichPendingClicksPromise = (async () => {
+    const ids = state.clickHistory
+      .filter(
+        (c) =>
+          c &&
+          c.pendingVegref === true &&
+          c.lat != null &&
+          c.lng != null &&
+          Number.isFinite(Number(c.lat)) &&
+          Number.isFinite(Number(c.lng)),
+      )
+      .map((c) => c.id)
+    for (const id of ids) {
+      const c = state.clickHistory.find((x) => x.id === id)
+      if (!c || !c.pendingVegref) continue
+      await enrichClickEntryWithVegrefFromPosisjon(
+        id,
+        Number(c.lat),
+        Number(c.lng),
+      )
+      await new Promise((r) => setTimeout(r, 300))
+    }
+  })().finally(() => {
+    enrichPendingClicksPromise = null
+  })
+  return enrichPendingClicksPromise
+}
+
+/**
+ * Oppgraderer pending registreringer når bedre GPS-fix kommer (innen tidsvindu).
+ */
+function maybeFixPendingGps(lat, lng, accuracy) {
+  if (
+    typeof lat !== 'number' ||
+    typeof lng !== 'number' ||
+    typeof accuracy !== 'number' ||
+    accuracy > REGISTER_MAX_GPS_ACCURACY_M ||
+    !state.clickHistory.length
+  ) {
+    return
+  }
+  const now = Date.now()
+  let changed = false
+  for (let i = 0; i < state.clickHistory.length; i++) {
+    const c = state.clickHistory[i]
+    if (!c || !c.pendingGps) continue
+    const t = c.timestamp ? Date.parse(c.timestamp) : 0
+    const inWindow = t && now - t <= PENDING_GPS_UPGRADE_WINDOW_MS
+    if (!inWindow) continue
+    state.clickHistory[i] = {
+      ...c,
+      lat,
+      lng,
+      gpsAccuracyM: accuracy,
+      pendingGps: false,
+      positionSource: 'watch-upgrade',
+    }
+    changed = true
+  }
+  if (changed) {
+    persist()
+    if (view === 'session' && map) rebuildMarkers()
+    void enrichPendingClicks()
   }
 }
 
@@ -3034,18 +3256,14 @@ function rebuildMarkers() {
   state.clickHistory.forEach((c, i) => {
     if (c.lat == null || c.lng == null) return
     const ll = clickLatLng.get(i) || [c.lat, c.lng]
+    const usePending =
+      Boolean(c.pendingGps || c.pendingVegref) &&
+      pendingPinIcon != null
     const m = Leaflet.marker(ll, {
-      icon: pinIcon,
+      icon: usePending ? pendingPinIcon : pinIcon,
       ...sessionMarkerInteractionDefaults,
     })
-    const catPart =
-      typeof c.category === 'string' && c.category
-        ? `${escapeHtml(getObjectCategoryLabel(c.category))}<br>`
-        : ''
-    const vegFrag = sessionClickVegrefPopupFragment(c)
-    m.bindPopup(
-      `Trykk #${i + 1}<br>${catPart}${vegFrag}${vegFrag ? '<br>' : ''}${formatNb(new Date(c.timestamp))}`,
-    )
+    m.bindPopup(buildSessionClickPopupHtml(c, i), SESSION_MAP_POPUP_OPTIONS)
     m.addTo(map)
     markers.push(m)
   })
@@ -3056,18 +3274,7 @@ function rebuildMarkers() {
       icon: photoThumbnailIcon(ph.dataUrl),
       ...sessionMarkerInteractionDefaults,
     })
-    const t = ph.timestamp ? formatNb(new Date(ph.timestamp)) : ''
-    const vr = ph.vegref && normalizePhotoVegref(ph.vegref)
-    const vegLines = vr
-      ? [vr.road, vr.compact, vr.kortform].filter(Boolean)
-      : []
-    const vegBlock =
-      vegLines.length > 0
-        ? `<span style="font-size:0.78rem;line-height:1.35;display:block;margin:0.35rem 0 0.25rem">${vegLines.map((x) => escapeHtml(x)).join('<br>')}</span>`
-        : ''
-    m.bindPopup(
-      `<strong>Bilde #${i + 1}</strong><br>${t}${vegBlock}<br><img src="${ph.dataUrl}" alt="" style="max-width:220px;height:auto;border-radius:8px;margin-top:8px;display:block"/>`,
-    )
+    m.bindPopup(buildSessionPhotoPopupHtml(ph, i), SESSION_MAP_POPUP_OPTIONS)
     m.addTo(map)
     markers.push(m)
   })
@@ -3284,7 +3491,7 @@ async function getFreshPositionForRegisterClick() {
   const pos = await getCurrentPositionOnce({
     enableHighAccuracy: true,
     maximumAge: 0,
-    timeout: 12000,
+    timeout: 3500,
   })
   return coordsFromPosition(pos)
 }
@@ -3294,6 +3501,7 @@ async function getFreshPositionForRegisterClick() {
  * Bruker rå enhets-GPS: fersk getCurrentPosition (maximumAge: 0), ikke navTarget
  * (som kan være glattet og/eller OSRM-justert) og ikke interpolert visning (navDisplay*).
  * Rask bane: nylig watch-fix med god nok nøyaktighet brukes direkte (sparer ventetid).
+ * Deretter eldre watch-fix (unngår lang getCurrentPosition-ventetid), så fersk fix.
  */
 async function getPositionForClick() {
   const w = lastRawGpsFromWatch
@@ -3312,10 +3520,30 @@ async function getPositionForClick() {
       lat: w.lat,
       lng: w.lng,
       accuracy: w.accuracy,
+      positionSource: 'watch-fresh',
+    }
+  }
+  const wStale = lastRawGpsFromWatch
+  if (
+    wStale &&
+    now - wStale.ts < LIVE_POS_MAX_AGE_MS &&
+    wStale.lat != null &&
+    wStale.lng != null &&
+    !Number.isNaN(Number(wStale.lat)) &&
+    !Number.isNaN(Number(wStale.lng))
+  ) {
+    const a = wStale.accuracy
+    return {
+      lat: wStale.lat,
+      lng: wStale.lng,
+      accuracy:
+        typeof a === 'number' && !Number.isNaN(a) ? a : 50,
+      positionSource: 'watch-stale',
     }
   }
   try {
-    return await getFreshPositionForRegisterClick()
+    const c = await getFreshPositionForRegisterClick()
+    return { ...c, positionSource: 'fresh' }
   } catch {
     /* prøv reserve fra watch */
   }
@@ -3335,9 +3563,11 @@ async function getPositionForClick() {
       lng: lastRawGpsFromWatch.lng,
       accuracy:
         typeof a === 'number' && !Number.isNaN(a) ? a : 20,
+      positionSource: 'watch-stale',
     }
   }
-  return getPosition()
+  const p = await getPosition()
+  return { ...p, positionSource: 'fallback' }
 }
 
 function stopLocationWatch() {
@@ -4775,7 +5005,9 @@ function applyHomeVegrefResult(res) {
 
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
-      cancelHomeVegrefMeterLiveExtrap()
+      /* Fix H3: ikke skru av live-ekstrapolering proaktivt — vi må ticke meter
+         videre basert på fart når NVDB kortvarig ikke har meter (drift 25–60 m
+         fra vei). Vi kansellerer bare i else-grenen der holdet ikke lykkes. */
       /* Midlertidig tom meter: hold når vi fortsatt er på samme NVDB-strekning (segKey kan flakse uten reelt veksel). */
       const nvdbAligned =
         nid == null ||
@@ -4785,8 +5017,31 @@ function applyHomeVegrefResult(res) {
         homeVegrefDisplayedMeter != null &&
         nvdbAligned &&
         (!segChanged || (nid != null && homeVegrefMeterNvdbId != null))
+      // #region agent log H3
+      vegrefDebugTrace('hold_null', {
+        hyp: 'H3',
+        holdNullMeter,
+        nvdbAligned,
+        segChanged,
+        displayed: homeVegrefDisplayedMeter,
+        nid: nid != null ? String(nid) : null,
+        prevNid: homeVegrefMeterNvdbId != null ? String(homeVegrefMeterNvdbId) : null,
+        resSource: String(
+          /** @type {any} */ (res)._vegrefMeta?.source || '',
+        ),
+        resM: res.m != null ? String(res.m) : null,
+        resDist:
+          typeof /** @type {any} */ (res).distToRoadM === 'number'
+            ? Math.round(/** @type {any} */ (res).distToRoadM * 10) / 10
+            : null,
+      })
+      // #endregion
       if (holdNullMeter) {
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+        /* Fix H3: hold meter + ekstrapoler videre basert på fart, slik at UI
+           ikke fryser flere sekunder når bruker driver kortvarig 25–60 m fra
+           vei og NVDB returnerer segment uten meter. */
+        startHomeVegrefMeterLiveExtrap()
         if (homeVegrefMeterNullSinceMs === 0) {
           homeVegrefMeterNullSinceMs = Date.now()
         }
@@ -4794,6 +5049,7 @@ function applyHomeVegrefResult(res) {
           setHomeVegrefUncertainUi(true, 'Oppdaterer meter …')
         }
       } else {
+        cancelHomeVegrefMeterLiveExtrap()
         homeVegrefMeterNullSinceMs = 0
         homeVegrefDisplayedMeter = null
         homeVegrefMeterNvdbId = null
@@ -4813,6 +5069,32 @@ function applyHomeVegrefResult(res) {
     } else {
       const delta = Math.abs(mInt - homeVegrefDisplayedMeter)
       const snap = homeVegrefMeterSnapThreshold()
+      const _deadband = homeVegrefMeterDeadbandM()
+      const _skipped =
+        delta < snap &&
+        shouldSkipVegrefMeterDisplayUpdate(
+          mInt,
+          homeVegrefDisplayedMeter,
+          segChanged,
+          homeVegrefMeterSnapThreshold,
+          homeVegrefLastMeterUiCommitAt,
+        )
+      // #region agent log H1
+      vegrefDebugTrace('skip_meter', {
+        hyp: 'H1',
+        mInt,
+        displayed: homeVegrefDisplayedMeter,
+        delta,
+        deadband: Math.round(_deadband * 10) / 10,
+        snap,
+        segChanged,
+        skipped: _skipped,
+        willSnap: delta >= snap,
+        sinceCommitMs: homeVegrefLastMeterUiCommitAt
+          ? Date.now() - homeVegrefLastMeterUiCommitAt
+          : -1,
+      })
+      // #endregion
       if (delta >= snap) {
         cancelHomeVegrefMeterTween()
         homeVegrefDisplayedMeter = mInt
@@ -4823,15 +5105,7 @@ function applyHomeVegrefResult(res) {
         }
         homeVegrefPrevAuthMeter = mInt
         startHomeVegrefMeterLiveExtrap()
-      } else if (
-        shouldSkipVegrefMeterDisplayUpdate(
-          mInt,
-          homeVegrefDisplayedMeter,
-          segChanged,
-          homeVegrefMeterSnapThreshold,
-          homeVegrefLastMeterUiCommitAt,
-        )
-      ) {
+      } else if (_skipped) {
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
           homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
@@ -5273,6 +5547,7 @@ async function handleDrivingPosition(pos, seq, gpsStatusEl, firstFixRef) {
     accuracy: acc,
     ts: Date.now(),
   }
+  maybeFixPendingGps(latitude, longitude, acc)
 
   const initial = firstFixRef.v
   if (firstFixRef.v) firstFixRef.v = false
@@ -6208,6 +6483,22 @@ function renderHomeHtml() {
       </div>
     </div>`
   return `<div class="view-home surface--home">
+    <div id="home-pull-refresh" class="home-pull-refresh" aria-hidden="true">
+      <div class="home-pull-refresh__track">
+        <div class="home-pull-refresh__spinner-wrap">
+          <svg class="home-pull-refresh__spinner-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle class="home-pull-refresh__spinner-ring" cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-dasharray="44 999" />
+          </svg>
+        </div>
+      </div>
+      <div id="home-pull-refresh-overlay" class="home-pull-refresh__overlay" hidden>
+        <div class="home-pull-refresh__overlay-inner" role="status" aria-live="polite" aria-label="Oppdaterer …">
+          <svg class="home-pull-refresh__overlay-spinner" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle class="home-pull-refresh__overlay-ring" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="48 999" />
+          </svg>
+        </div>
+      </div>
+    </div>
     ${userBar || ''}
     <div class="home-vegref" role="status" aria-live="off">
       <p id="home-vegref-primary" class="home-vegref__primary">Henter posisjon …</p>
@@ -6228,7 +6519,21 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Start økt fra din posisjon</span>
           </span>
           <span class="home-dash-card__visual home-dash-card__visual--accent" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/ny-registrering.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-reg-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2b4b7d"/><stop offset="1" stop-color="#0e1a30"/>
+                </linearGradient>
+                <linearGradient id="hp-reg-pin" x1="40" y1="12" x2="40" y2="56" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#8ddcff"/><stop offset="1" stop-color="#3a8fff"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-reg-bg)"/>
+              <path d="M40 12c-9.4 0-17 7.3-17 16.4 0 11.8 15.2 27 16.2 28a1 1 0 0 0 1.6 0c1-1 16.2-16.2 16.2-28C57 19.3 49.4 12 40 12z" fill="url(#hp-reg-pin)" stroke="#fff" stroke-width="3"/>
+              <circle cx="40" cy="28" r="7.5" fill="#0c1a33" stroke="#fff" stroke-width="2"/>
+              <circle cx="62" cy="60" r="12" fill="#34d97a" stroke="#fff" stroke-width="3"/>
+              <path d="M62 54v12M56 60h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+            </svg>
           </span>
         </span>
       </button>
@@ -6239,7 +6544,27 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Bilder til økten</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/kamera.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-cam-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#3a4354"/><stop offset="1" stop-color="#161c27"/>
+                </linearGradient>
+                <linearGradient id="hp-cam-body" x1="40" y1="22" x2="40" y2="66" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#ffffff"/><stop offset="1" stop-color="#b3bccd"/>
+                </linearGradient>
+                <radialGradient id="hp-cam-lens" cx="40" cy="45" r="16" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7fd0ff"/><stop offset="0.55" stop-color="#1b3a66"/><stop offset="1" stop-color="#050912"/>
+                </radialGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-cam-bg)"/>
+              <rect x="30" y="15" width="20" height="9" rx="2.5" fill="#d8dfec" stroke="#0c1220" stroke-width="1.5"/>
+              <rect x="10" y="22" width="60" height="44" rx="9" fill="url(#hp-cam-body)" stroke="#0c1220" stroke-width="2.5"/>
+              <circle cx="40" cy="45" r="15" fill="url(#hp-cam-lens)" stroke="#0c1220" stroke-width="2.5"/>
+              <circle cx="40" cy="45" r="7" fill="#050912" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+              <ellipse cx="45" cy="40" rx="3.6" ry="2.6" fill="rgba(255,255,255,0.55)" transform="rotate(-30 45 40)"/>
+              <circle cx="60" cy="31" r="2.8" fill="#ffce56" stroke="#0c1220" stroke-width="1.2"/>
+              <rect x="13" y="26" width="8" height="4" rx="1.2" fill="#0c1220" opacity="0.7"/>
+            </svg>
           </span>
         </span>
       </button>
@@ -6250,7 +6575,19 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">AI mot kontraktskrav</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/kontrakter.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-kon-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#3c4a5e"/><stop offset="1" stop-color="#141c29"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-kon-bg)"/>
+              <path d="M20 12h26l14 14v38a6 6 0 0 1-6 6H20a6 6 0 0 1-6-6V18a6 6 0 0 1 6-6z" fill="#ffffff" stroke="#0c1220" stroke-width="2.5"/>
+              <path d="M46 12v14h14" fill="none" stroke="#0c1220" stroke-width="2.5" stroke-linejoin="round"/>
+              <path d="M22 36h26M22 46h30M22 56h18" stroke="#0c1220" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
+              <circle cx="58" cy="58" r="13" fill="#4da3ff" stroke="#0c1220" stroke-width="2.5"/>
+              <text x="58" y="63" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="13" fill="#fff">Ai</text>
+            </svg>
           </span>
         </span>
       </button>
@@ -6261,7 +6598,24 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Bilder og filer</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/album.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-al-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#3c4a5e"/><stop offset="1" stop-color="#141c29"/>
+                </linearGradient>
+                <linearGradient id="hp-al-sky" x1="20" y1="22" x2="60" y2="48" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#3370a8"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-al-bg)"/>
+              <g transform="rotate(-12 28 48)"><rect x="14" y="30" width="32" height="36" rx="3" fill="#fff" stroke="#0c1220" stroke-width="2"/></g>
+              <g transform="rotate(10 52 38)"><rect x="36" y="22" width="32" height="36" rx="3" fill="#fff" stroke="#0c1220" stroke-width="2"/></g>
+              <rect x="22" y="18" width="36" height="46" rx="4" fill="#fff" stroke="#0c1220" stroke-width="2.5"/>
+              <rect x="26" y="22" width="28" height="30" rx="2" fill="url(#hp-al-sky)"/>
+              <circle cx="48" cy="30" r="4" fill="#ffd96a" stroke="#0c1220" stroke-width="1"/>
+              <path d="M26 52l7-10 6 6 6-8 9 12h-28z" fill="rgba(255,255,255,0.9)" stroke="#0c1220" stroke-width="1" stroke-linejoin="round"/>
+              <path d="M26 56h28M26 60h22" stroke="#0c1220" stroke-width="2" stroke-linecap="round" opacity="0.65"/>
+            </svg>
           </span>
         </span>
       </button>
@@ -6272,7 +6626,17 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Del til sky</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/delsky.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-delsky-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2a4568"/><stop offset="1" stop-color="#101a2b"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-delsky-bg)"/>
+              <path d="M22 58h36a13 13 0 0 0 2.5-25.8C58.5 22 50.8 16.5 42 16.5c-8.5 0-15.8 5.2-17.4 12.6C17.5 30.2 12 35.7 12 42.6 12 51 16.5 58 22 58z" fill="#fff" stroke="#0c1220" stroke-width="2.8"/>
+              <path d="M40 70V44" stroke="#0c1220" stroke-width="6" stroke-linecap="round"/>
+              <path d="M28 50l12-12 12 12" fill="none" stroke="#0c1220" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </span>
         </span>
       </button>
@@ -6283,7 +6647,22 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Eksporter regneark</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/excel.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-xls-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2a3a31"/><stop offset="1" stop-color="#0d1a13"/>
+                </linearGradient>
+                <linearGradient id="hp-xls-body" x1="40" y1="12" x2="40" y2="68" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#3ee08f"/><stop offset="1" stop-color="#0e7a45"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-xls-bg)"/>
+              <rect x="12" y="12" width="56" height="56" rx="10" fill="url(#hp-xls-body)" stroke="#0c1220" stroke-width="2.5"/>
+              <rect x="12" y="12" width="56" height="16" rx="10" fill="#0e6e3b"/>
+              <text x="40" y="24" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="900" font-size="11" fill="#fff" letter-spacing="1.5">XLSX</text>
+              <path d="M22 40h36M22 50h36M22 60h28" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/>
+              <path d="M40 36v28" stroke="#fff" stroke-width="1.8" opacity="0.55"/>
+            </svg>
           </span>
         </span>
       </button>
@@ -6294,7 +6673,24 @@ function renderHomeHtml() {
             <span class="home-dash-card__hint">Segment og avstand</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img class="home-dash-card__preview" src="/icons/home-dash/strekning.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+            <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+              <defs>
+                <linearGradient id="hp-str-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2e4868"/><stop offset="1" stop-color="#0e1a2d"/>
+                </linearGradient>
+              </defs>
+              <rect width="80" height="80" rx="14" fill="url(#hp-str-bg)"/>
+              <path d="M20 66 C 22 48, 58 48, 60 14" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+              <path d="M20 66 C 22 48, 58 48, 60 14" stroke="#0c1220" stroke-width="2.5" stroke-dasharray="4 6" fill="none" stroke-linecap="round"/>
+              <g transform="translate(13 12)">
+                <path d="M7 0C3.1 0 0 3.1 0 7c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#34d97a" stroke="#0c1220" stroke-width="2.5"/>
+                <text x="7" y="10" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="9" font-weight="900" fill="#0c1220">A</text>
+              </g>
+              <g transform="translate(53 50)">
+                <path d="M7 0C3.1 0 0 3.1 0 7c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#4da3ff" stroke="#0c1220" stroke-width="2.5"/>
+                <text x="7" y="10" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="9" font-weight="900" fill="#0c1220">B</text>
+              </g>
+            </svg>
           </span>
         </span>
       </button>
@@ -6367,27 +6763,37 @@ function renderHomeHtml() {
     </div>
     <nav class="home-bottom-nav" aria-label="Hurtigvalg">
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-new" aria-label="Ny registrering">
-        <span class="home-bottom-nav__icon" aria-hidden="true">
-          <img class="home-bottom-nav__dash-img" src="/icons/home-dash/ny-registrering.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+        <span class="home-bottom-nav__icon home-bottom-nav__icon--primary" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 2a6.5 6.5 0 0 1 6.5 6.5c0 4.8-4.8 10.2-6.1 11.6a.55.55 0 0 1-.8 0C10.3 18.7 5.5 13.3 5.5 8.5A6.5 6.5 0 0 1 12 2z" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+            <circle cx="12" cy="8.5" r="2.6" fill="currentColor"/>
+          </svg>
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-camera" aria-label="Ta bilde">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <img class="home-bottom-nav__dash-img" src="/icons/home-dash/kamera.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M9 4.5h6l1.5 2.5H20a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5L9 4.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="12" cy="14" r="4.2" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="14" r="1.6" fill="currentColor"/>
+          </svg>
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="Kontraktskontroll">
         <span class="home-bottom-nav__icon" aria-hidden="true">
-          <img class="home-bottom-nav__dash-img" src="/icons/home-dash/kontrakter.png" alt="" width="80" height="80" decoding="async" loading="lazy" />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6 3h8l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M14 3v5h5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 14l3 3 5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </span>
       </button>
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-history" aria-label="Økter og historikk">
         <span class="home-bottom-nav__icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M5.2 11.2a7.35 7.35 0 0 1 12.2-4.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.42"/>
-            <path d="M16.2 5.6l1.35-1.9 1.35 1.9" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="12" cy="13.25" r="7.1" stroke="currentColor" stroke-width="1.65"/>
-            <path d="M12 9.4v4.35l2.9 1.75" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 12a8 8 0 1 0 2.4-5.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+            <path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 8v4.5l3 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </span>
       </button>
@@ -8363,7 +8769,6 @@ function renderSessionHtml() {
         <button type="button" class="btn btn-text btn-back-session" id="btn-back-menu">← Meny</button>
       </div>
       <div class="session-top__toolbar">
-        ${sessionDatetimeHtml}
         <div class="session-top__tab-group session-top__tab-group--equal session-top__tab-group--icons" role="toolbar" aria-label="Handlinger i oppdraget">
           <button type="button" class="session-action-tab session-action-tab--icon" id="btn-kmt" aria-expanded="false" aria-controls="kmt-dialog" aria-label="Ta bilde">
             <svg class="session-action-tab__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -8386,6 +8791,7 @@ function renderSessionHtml() {
             </svg>
           </button>
         </div>
+        ${sessionDatetimeHtml}
         ${roadBlock ? `<div class="session-top__road">${roadBlock}</div>` : ''}
       </div>
     </header>
@@ -8615,6 +9021,8 @@ function renderApp() {
   }
   /** Fjern ev. gammelt AI-overlay lagt på body (unngå usynlig lag som blokkerer klikk). */
   document.querySelector('body > #home-ai-fullscreen')?.remove()
+  /** Pull-to-refresh-overlay kan være flyttet til body for korrekt fullskjerm; fjern før ny DOM. */
+  document.querySelector('body > #home-pull-refresh-overlay')?.remove()
   /** AI-dokumentering kan være flyttet til body for korrekt fixed-stack; fjern før #app byttes (unngår spøkelseslag / duplikat-ID). */
   const orphanAiPanel = document.getElementById('panel-home-bilde-ai')
   if (orphanAiPanel && orphanAiPanel.parentElement === document.body) {
@@ -9341,6 +9749,232 @@ function openMenuExcelExportView() {
   bindMenuExcelExportListeners()
 }
 
+/** Safe area top (px) for pull-to-refresh sone. */
+function getHomePullSafeInsetTop() {
+  if (typeof document === 'undefined') return 0
+  const el = document.createElement('div')
+  el.style.cssText =
+    'position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top, 0px)'
+  document.body.appendChild(el)
+  const pt = getComputedStyle(el).paddingTop
+  document.body.removeChild(el)
+  const n = parseFloat(pt)
+  return Number.isFinite(n) ? n : 0
+}
+
+function homePullRefreshAllowed() {
+  if (view !== 'home') return false
+  if (kmtDialogOpen) return false
+  const ai = document.getElementById('panel-home-bilde-ai')
+  if (ai && !ai.hasAttribute('hidden')) return false
+  const dr = document.getElementById('home-drawer')
+  if (dr && !dr.hasAttribute('hidden')) return false
+  return true
+}
+
+/**
+ * Hindre tekstvalg/kopiering i vegreferansefeltet (iOS WebView ignorerer ofte user-select på barn).
+ * @param {AbortSignal} signal
+ */
+function setupHomeVegrefBlockTextSelection(signal) {
+  const host = document.getElementById('home-vegref')
+  if (!host) return
+  const block = (e) => {
+    e.preventDefault()
+  }
+  host.addEventListener('selectstart', block, { signal, capture: true })
+  host.addEventListener('dragstart', block, { signal, capture: true })
+  host.addEventListener('contextmenu', block, { signal, capture: true })
+}
+
+/**
+ * Forside: hold ~0,1 s i øvre sone, deretter dra ned for full reload (Capacitor/WebView).
+ * @param {AbortSignal} signal
+ */
+function setupHomePullToRefresh(signal) {
+  const HOLD_MS = 100
+  const TOP_EXTRA_PX = 118
+  const MOVE_CANCEL_PX = 14
+  const TRIGGER_PX = 72
+  const MAX_VISUAL_PX = 96
+
+  let phase = /** @type {'idle' | 'holding' | 'armed' | 'refreshing'} */ ('idle')
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let holdTimer = null
+  let startY = 0
+  let startX = 0
+  let activeId = /** @type {number | null} */ (null)
+  let maxPull = 0
+
+  const root = () => document.getElementById('home-pull-refresh')
+
+  const setDy = (px) => {
+    const el = root()
+    if (el) {
+      el.style.setProperty(
+        '--home-pull-dy',
+        `${Math.max(0, Math.min(MAX_VISUAL_PX, Math.round(px)))}px`,
+      )
+    }
+  }
+
+  const resetUi = () => {
+    const el = root()
+    if (el) {
+      el.classList.remove('home-pull-refresh--armed')
+      el.style.setProperty('--home-pull-dy', '0px')
+    }
+  }
+
+  const clearHold = () => {
+    if (holdTimer != null) {
+      clearTimeout(holdTimer)
+      holdTimer = null
+    }
+  }
+
+  const findTouch = (e, id) => {
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === id) return e.touches[i]
+    }
+    return null
+  }
+
+  /**
+   * @param {TouchEvent} e
+   */
+  const onStart = (e) => {
+    if (phase === 'refreshing') return
+    if (e.touches.length !== 1) return
+    const t = e.touches[0]
+    if (!homePullRefreshAllowed()) return
+    const topBound = getHomePullSafeInsetTop() + TOP_EXTRA_PX
+    if (t.clientY > topBound) return
+
+    clearHold()
+    phase = 'holding'
+    startY = t.clientY
+    startX = t.clientX
+    activeId = t.identifier
+    maxPull = 0
+    resetUi()
+    setDy(0)
+
+    holdTimer = window.setTimeout(() => {
+      holdTimer = null
+      if (phase !== 'holding') return
+      const el = root()
+      if (!el) return
+      phase = 'armed'
+      el.classList.add('home-pull-refresh--armed')
+      try {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(10)
+        }
+      } catch {
+        /* ignore */
+      }
+    }, HOLD_MS)
+  }
+
+  /**
+   * @param {TouchEvent} e
+   */
+  const onMove = (e) => {
+    if (phase !== 'holding' && phase !== 'armed') return
+    if (activeId == null) return
+    const t = findTouch(e, activeId)
+    if (!t) return
+
+    if (phase === 'holding') {
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        clearHold()
+        phase = 'idle'
+        resetUi()
+        activeId = null
+      }
+      return
+    }
+
+    if (phase === 'armed') {
+      const pull = t.clientY - startY
+      maxPull = Math.max(maxPull, pull)
+      setDy(Math.min(Math.max(pull, 0), MAX_VISUAL_PX))
+      if (pull > 10) {
+        e.preventDefault()
+      }
+    }
+  }
+
+  /**
+   * @param {TouchEvent} e
+   */
+  const onEnd = (e) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const c = e.changedTouches[i]
+      if (c.identifier !== activeId) continue
+      if (phase === 'armed') {
+        const pull = c.clientY - startY
+        maxPull = Math.max(maxPull, pull)
+      }
+      break
+    }
+
+    let matched = false
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeId) {
+        matched = true
+        break
+      }
+    }
+    if (!matched) return
+
+    clearHold()
+
+    if (phase === 'holding') {
+      phase = 'idle'
+      resetUi()
+      activeId = null
+      return
+    }
+
+    if (phase === 'armed') {
+      if (maxPull >= TRIGGER_PX) {
+        phase = 'refreshing'
+        const el = root()
+        el?.classList.remove('home-pull-refresh--armed')
+        const ov = document.getElementById('home-pull-refresh-overlay')
+        if (ov) {
+          ov.removeAttribute('hidden')
+          if (ov.parentElement !== document.body) {
+            document.body.appendChild(ov)
+          }
+        }
+        document.getElementById('app')?.setAttribute('aria-busy', 'true')
+        requestAnimationFrame(() => {
+          window.setTimeout(() => {
+            window.location.reload()
+          }, 150)
+        })
+      } else {
+        resetUi()
+        phase = 'idle'
+      }
+      activeId = null
+      return
+    }
+
+    activeId = null
+  }
+
+  window.addEventListener('touchstart', onStart, { capture: true, passive: true, signal })
+  window.addEventListener('touchmove', onMove, { capture: true, passive: false, signal })
+  window.addEventListener('touchend', onEnd, { capture: true, passive: true, signal })
+  window.addEventListener('touchcancel', onEnd, { capture: true, passive: true, signal })
+}
+
 function bindHomeListeners() {
   if (homeAbort) homeAbort.abort()
   homeAbort = new AbortController()
@@ -9475,6 +10109,8 @@ function bindHomeListeners() {
   bindKmtDialogListeners(signal)
   bindHomeAiDocumentationListeners(signal)
   setupSessionShareInbox()
+  setupHomeVegrefBlockTextSelection(signal)
+  setupHomePullToRefresh(signal)
   startHomeVegrefTracking()
   refreshHomeWeatherOnHomeEnter()
 }
@@ -12095,6 +12731,7 @@ async function initSessionMapAndWatch() {
         createAppMapTileLayer(Leaflet).addTo(map)
         setTimeout(() => map?.invalidateSize(), 100)
         rebuildMarkers()
+        void enrichPendingClicks()
         renderCount()
         renderLog()
         renderPhotosGallery()
@@ -13194,12 +13831,17 @@ function bindSessionListeners() {
       let lat
       let lng
       let accuracy
+      /** @type {string} */
+      let positionSource = 'unknown'
       let gpsErrorText = null
       try {
         const p = await getPositionForClick()
         lat = p.lat
         lng = p.lng
         accuracy = p.accuracy
+        if (typeof p.positionSource === 'string') {
+          positionSource = p.positionSource
+        }
       } catch (err) {
         gpsErrorText = describeGeolocationFailure(err)
         if (gpsEl) gpsEl.textContent = gpsErrorText
@@ -13208,41 +13850,41 @@ function bindSessionListeners() {
         accuracy = null
       }
 
-      if (lat == null || lng == null) {
-        addLogEntry(state, {
-          message: `Ikke registrert · ${
-            gpsErrorText ? gpsErrorText : 'ingen posisjon'
-          }`,
-        })
-        persist()
-        return
-      }
-      const accNum =
-        typeof accuracy === 'number' && !Number.isNaN(accuracy) ? accuracy : null
-      if (accNum == null) {
-        if (gpsEl) {
-          gpsEl.textContent =
-            'Kunne ikke måle nøyaktighet. Prøv igjen om et øyeblikk.'
-        }
-        addLogEntry(state, {
-          message: 'Ikke registrert – ukjent nøyaktighet',
-        })
-        persist()
-        return
-      }
-      if (accNum > REGISTER_MAX_GPS_ACCURACY_M) {
-        if (gpsEl) {
-          gpsEl.textContent = `For usikkert (ca. ±${Math.round(accNum)} m). Trenger ca. ±${REGISTER_MAX_GPS_ACCURACY_M} m – vent på bedre dekning.`
-        }
-        addLogEntry(state, {
-          message: `Ikke registrert – ca. ±${Math.round(accNum)} m (trenger ±${REGISTER_MAX_GPS_ACCURACY_M} m)`,
-        })
-        persist()
-        return
+      if (
+        (lat == null || lng == null) &&
+        lastLiveCoords &&
+        lastLiveCoords.lat != null &&
+        lastLiveCoords.lng != null
+      ) {
+        lat = lastLiveCoords.lat
+        lng = lastLiveCoords.lng
+        accuracy =
+          typeof lastLiveCoords.accuracy === 'number'
+            ? lastLiveCoords.accuracy
+            : null
+        positionSource = 'lastLiveCoords'
       }
 
+      const accNum =
+        typeof accuracy === 'number' && !Number.isNaN(accuracy) ? accuracy : null
+      const pendingGps =
+        lat == null ||
+        lng == null ||
+        accNum == null ||
+        accNum > REGISTER_MAX_GPS_ACCURACY_M
+
       if (gpsEl) {
-        gpsEl.textContent = `Nøyaktighet ca. ${Math.round(accNum)} m`
+        if (pendingGps && lat != null && lng != null && accNum != null) {
+          gpsEl.textContent = `Registrert med ca. ±${Math.round(accNum)} m (oppdateres ved bedre GPS)`
+        } else if (pendingGps && (lat == null || lng == null)) {
+          gpsEl.textContent =
+            gpsErrorText ||
+            'Registrert uten koordinat – venter på posisjon ved bedre dekning'
+        } else if (accNum != null) {
+          gpsEl.textContent = `Nøyaktighet ca. ${Math.round(accNum)} m`
+        } else {
+          gpsEl.textContent = 'Posisjon lagret – vent på vegreferanse'
+        }
       }
 
       state.count += 1
@@ -13258,14 +13900,23 @@ function bindSessionListeners() {
             ? state.activeCategoryId
             : cats[0]
       }
-      const clickEntry = { id, lat, lng, timestamp: ts }
+      const clickEntry = {
+        id,
+        lat: lat ?? null,
+        lng: lng ?? null,
+        timestamp: ts,
+        pendingGps,
+        pendingVegref: true,
+        gpsAccuracyM: accNum,
+        positionSource,
+      }
       if (categoryId) clickEntry.category = categoryId
       state.clickHistory.push(clickEntry)
 
       rebuildMarkers()
-      void enrichClickEntryWithVegrefFromPosisjon(id, lat, lng)
+      void enrichPendingClicks()
       animateSessionPinDrop()
-      if (map) {
+      if (map && lat != null && lng != null) {
         followUserOnMap = false
         map.flyTo([lat, lng], Math.max(map.getZoom(), 15), {
           duration: 0.5,
@@ -13273,12 +13924,18 @@ function bindSessionListeners() {
         })
       }
 
-      const coordStr = `${lat.toFixed(5)}, ${lng.toFixed(5)} · nøyaktighet ca. ${Math.round(accNum)} m`
       const typePart =
         categoryId != null ? ` · ${getObjectCategoryLabel(categoryId)}` : ''
-      addLogEntry(state, {
-        message: `Oppført${typePart} · ${state.count} · ${coordStr}`,
-      })
+      if (pendingGps) {
+        addLogEntry(state, {
+          message: `Oppført${typePart} · ${state.count} · venter på posisjon/vegreferanse`,
+        })
+      } else {
+        const coordStr = `${lat.toFixed(5)}, ${lng.toFixed(5)} · nøyaktighet ca. ${Math.round(accNum)} m`
+        addLogEntry(state, {
+          message: `Oppført${typePart} · ${state.count} · ${coordStr}`,
+        })
+      }
       persist()
       showSessionToast('Registrert ✓')
     },
@@ -13553,6 +14210,7 @@ async function bootstrap() {
     },
   })
   window.addEventListener('online', () => {
+    void enrichPendingClicks()
     if (
       lastLiveCoords &&
       Date.now() - lastLiveCoords.ts < 90000 &&
@@ -13600,6 +14258,9 @@ async function bootstrap() {
     }
     if (document.visibilityState === 'visible') {
       queueRefreshLeafletAfterResume()
+      if (view === 'session') {
+        void enrichPendingClicks()
+      }
       if (
         currentUser &&
         lastLiveCoords &&

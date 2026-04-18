@@ -58,8 +58,11 @@ function vegrefResultCategoryTier(res) {
 }
 
 /** Felles timing for forsiden og KMT – samme opplevd hastighet. */
-export const VEGREF_MIN_INTERVAL_MS = 400
-export const VEGREF_MIN_MOVE_M = 2
+/* Fix H4: strammet fra 400/2 → 300/1.2 slik at pipeline fyrer oftere ved
+   moderat fart (en ny NVDB-respons per ~sekund matcher typisk GPS-cadence,
+   og 1.2 m min-move slipper gjennom oppdateringer også ved gåtempo). */
+export const VEGREF_MIN_INTERVAL_MS = 300
+export const VEGREF_MIN_MOVE_M = 1.2
 
 /** LRU-cache for /posisjon-svar (reduserer gjentatte kall ved GPS-jitter). */
 const POSISJON_CACHE_TTL_MS = 32_000
@@ -374,12 +377,43 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
         posisjonPendingNewNvdbId != null &&
         posisjonPendingFirstSeenAt > 0 &&
         Date.now() - posisjonPendingFirstSeenAt >= POSISJON_PENDING_ACCEPT_MS
-      if (
-        recoveryToPublic ||
-        clearOnRoad ||
-        pendingMatch ||
-        pendingAgedOut
-      ) {
+      /* Fix H2: vls:-IDer (unsegmented veglenkesekvens) er ofte 1-tick-treff
+         i kryss/avkjørsler — aldri aksept via clearOnRoad alene. Krev minst
+         én bekreftelse (pendingMatch) eller timeout. Segmenterte kf:-IDer
+         beholder rask aksept. */
+      const isVlsOnly =
+        typeof nid === 'string' && nid.startsWith('vls:')
+      const _clearOnRoadEff = clearOnRoad && !isVlsOnly
+      const _pendingAccepted =
+        recoveryToPublic || _clearOnRoadEff || pendingMatch || pendingAgedOut
+      // #region agent log H2
+      vegrefDebugTrace('pending_dec', {
+        hyp: 'H2',
+        accepted: _pendingAccepted,
+        reason: recoveryToPublic
+          ? 'recoveryToPublic'
+          : _clearOnRoadEff
+            ? 'clearOnRoad'
+            : pendingMatch
+              ? 'pendingMatch'
+              : pendingAgedOut
+                ? 'pendingAgedOut'
+                : clearOnRoad && isVlsOnly
+                  ? 'waitVlsConfirm'
+                  : 'wait',
+        oid: oid != null ? String(oid) : null,
+        nid: nid != null ? String(nid) : null,
+        dist: Math.round(dist * 10) / 10,
+        acc: Math.round(acc * 10) / 10,
+        spd: Math.round(spd * 100) / 100,
+        distCapClear: Math.round(Math.min(distCap, Math.max(7, acc * 0.38)) * 10) / 10,
+        oldTier,
+        newTier,
+        isVlsOnly,
+        runId: 'post-fix',
+      })
+      // #endregion
+      if (_pendingAccepted) {
         posisjonPendingNewNvdbId = null
         posisjonPendingFirstSeenAt = 0
       } else {
@@ -803,6 +837,16 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     else if (lastSpeed > 18) coalesceRadius *= 0.65
     if (posisjonPendingNewNvdbId != null) coalesceRadius *= 0.55
     if (!forceImmediate && movedInflight < coalesceRadius) {
+      // #region agent log H4
+      vegrefDebugTrace('coalesce_skip', {
+        hyp: 'H4',
+        movedInflight: Math.round(movedInflight * 10) / 10,
+        coalesceRadius: Math.round(coalesceRadius * 10) / 10,
+        accuracyM: Math.round(accuracyM * 10) / 10,
+        speed: Math.round(lastSpeed * 100) / 100,
+        pendingId: posisjonPendingNewNvdbId != null ? String(posisjonPendingNewNvdbId) : null,
+      })
+      // #endregion
       return
     }
   }
@@ -844,7 +888,21 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     (inCoordFallbackUi
       ? now - lastFetchMs < recoverMs && moved < recoverMoveM
       : now - lastFetchMs < minInterval && moved < minMove)
-  if (throttled) return
+  if (throttled) {
+    // #region agent log H4
+    vegrefDebugTrace('throttle_skip', {
+      hyp: 'H4',
+      sinceLastMs: now - lastFetchMs,
+      moved: Math.round(moved * 10) / 10,
+      minInterval,
+      minMove: Math.round(minMove * 10) / 10,
+      accuracyM: Math.round(accuracyM * 10) / 10,
+      speed: Math.round(lastSpeed * 100) / 100,
+      inCoordFallbackUi,
+    })
+    // #endregion
+    return
+  }
 
   lastFetchMs = now
   lastFetchLat = nvdbLat
@@ -905,16 +963,54 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         h.fetchRoadPositionDirect &&
         h.fetchRoadReferenceNear
       ) {
+        // #region agent log H5
+        const _t0 = Date.now()
+        let _posMs = -1
+        let _segMs = -1
+        // #endregion
         const [pos, seg] = await Promise.all([
-          fetchRoadPositionDirectCached(h, nvdbLat, nvdbLng, fetchOpts).catch(
-            () => null,
-          ),
-          h.fetchRoadReferenceNear(nvdbLat, nvdbLng, segmentFetchOpts).catch(
-            () => null,
-          ),
+          fetchRoadPositionDirectCached(h, nvdbLat, nvdbLng, fetchOpts)
+            .then((r) => {
+              _posMs = Date.now() - _t0
+              return r
+            })
+            .catch(() => {
+              _posMs = Date.now() - _t0
+              return null
+            }),
+          h.fetchRoadReferenceNear(nvdbLat, nvdbLng, segmentFetchOpts)
+            .then((r) => {
+              _segMs = Date.now() - _t0
+              return r
+            })
+            .catch(() => {
+              _segMs = Date.now() - _t0
+              return null
+            }),
         ])
         const merged = mergePosisjonAndSegmentParallelResults(pos, seg)
         res = merged || pos || seg
+        // #region agent log H5
+        vegrefDebugTrace('fetch_split', {
+          hyp: 'H5',
+          totalMs: Date.now() - _t0,
+          posMs: _posMs,
+          segMs: _segMs,
+          posOk: Boolean(pos),
+          segOk: Boolean(seg),
+          mergedOk: Boolean(merged),
+          posSrc: pos && /** @type {any} */ (pos)._vegrefMeta?.source
+            ? String(/** @type {any} */ (pos)._vegrefMeta.source)
+            : null,
+          segHasMeter: Boolean(seg && /** @type {any} */ (seg).m != null && !isDashMeter(/** @type {any} */ (seg).m)),
+          segDist:
+            seg && typeof /** @type {any} */ (seg).distToRoadM === 'number'
+              ? Math.round(/** @type {any} */ (seg).distToRoadM * 10) / 10
+              : null,
+          accuracyM: Math.round(accuracyM * 10) / 10,
+          speed: Math.round(speedMps * 100) / 100,
+        })
+        // #endregion
       }
 
       if (!res && online && h.fetchRoadPositionDirect) {

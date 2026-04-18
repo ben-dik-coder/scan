@@ -420,6 +420,116 @@ body.scanix-home-view {
   -webkit-backdrop-filter: none;
 }
 
+/* Pull-to-refresh: hold ~0,3 s i topp-sone, deretter dra ned (under drawer/modaler) */
+.home-pull-refresh {
+  --home-pull-dy: 0px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.home-pull-refresh__track {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-top: env(safe-area-inset-top, 0px);
+  transform: translateY(calc(-100% + var(--home-pull-dy)));
+  will-change: transform;
+  transition: transform 0.12s ease-out;
+}
+
+.home-pull-refresh--armed .home-pull-refresh__track {
+  transition: none;
+}
+
+.home-pull-refresh__spinner-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.88);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.home-pull-refresh--armed .home-pull-refresh__spinner-wrap {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-pull-refresh__spinner-icon {
+  width: 28px;
+  height: 28px;
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+
+.home-pull-refresh--armed .home-pull-refresh__spinner-icon {
+  animation: home-pull-spin 0.85s linear infinite;
+}
+
+.home-pull-refresh__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Litt mer dekkende bakgrunn – blur-kant på iOS kan gi tynn lys/stripete kant */
+  background: rgba(14, 16, 22, 0.88);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  pointer-events: none;
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  box-sizing: border-box;
+}
+
+.home-pull-refresh__overlay[hidden] {
+  display: none !important;
+}
+
+.home-pull-refresh__overlay-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: rgba(20, 24, 34, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.home-pull-refresh__overlay-spinner {
+  width: 40px;
+  height: 40px;
+  color: rgba(147, 197, 253, 0.98);
+  animation: home-pull-spin 0.75s linear infinite;
+}
+
+@keyframes home-pull-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-pull-refresh--armed .home-pull-refresh__spinner-icon,
+  .home-pull-refresh__overlay-spinner {
+    animation-duration: 1.4s;
+  }
+}
+
 .home-main {
   flex: 1 1 auto;
   min-height: 0;
@@ -519,14 +629,6 @@ body.scanix-home-view {
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.28) inset,
     0 4px 14px rgba(40, 120, 220, 0.45);
-}
-
-.home-bottom-nav__dash-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 14px;
 }
 
 .home-bottom-nav__btn--active .home-bottom-nav__icon:not(.home-bottom-nav__icon--primary) {
@@ -1599,6 +1701,19 @@ form.auth-form[hidden] {
   box-sizing: border-box;
 }
 
+/* Ingen tekstmarkering/kopiering i vegreferansefeltet (iOS/WebView ignorerer ofte arv; eksplisitt på barn). */
+.home-vegref,
+.home-vegref .home-vegref__primary,
+.home-vegref .home-vegref__type,
+.home-vegref .home-vegref__compact,
+.home-vegref .home-vegref__sd-row,
+.home-vegref .home-vegref__line,
+.home-vegref .home-vegref__meter {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .home-vegref--uncertain .home-vegref__primary {
   opacity: 0.92;
 }
@@ -2094,7 +2209,16 @@ form.auth-form[hidden] {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 14px;
+}
+
+#app.app-root--home .home-dash-card__preview {
+  filter: contrast(1.05) saturate(1.07) brightness(1.04);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  #app.app-root--home .home-dash-card__preview {
+    filter: contrast(1.03);
+  }
 }
 
 .home-action-split {
@@ -3427,7 +3551,7 @@ body.home-ai-panel-open .home-vegref {
   pointer-events: auto;
 }
 
-/* Kun container: samme gradientfamilie som hovedbakgrunn + mørk overlay + skygge for tydelig lag */
+/* Skuff: lysere enn forsiden (#2e323c) men fortsatt i samme blågrå familie — tydelig kontrast mot skallet */
 .home-drawer {
   position: fixed;
   top: 0;
@@ -3436,11 +3560,16 @@ body.home-ai-panel-open .home-vegref {
   width: min(18rem, 86vw);
   height: 100dvh;
   max-height: 100vh;
-  background-color: var(--bg);
-  border-left: 1px solid rgba(147, 197, 253, 0.38);
+  background: linear-gradient(
+    195deg,
+    #4a5364 0%,
+    #3e4654 42%,
+    #363e4c 100%
+  );
+  border-left: 1px solid rgba(180, 200, 230, 0.28);
   box-shadow:
-    -32px 0 80px rgba(0, 0, 0, 0.65),
-    -1px 0 0 rgba(255, 255, 255, 0.06) inset;
+    -32px 0 80px rgba(0, 0, 0, 0.55),
+    inset 1px 0 0 rgba(255, 255, 255, 0.1);
   transform: translateX(100%);
   transition: transform 0.34s var(--ease-out);
   display: flex;
@@ -3460,7 +3589,7 @@ body.home-ai-panel-open .home-vegref {
   align-items: center;
   justify-content: space-between;
   padding: 0 0.5rem 0.75rem 0.85rem;
-  border-bottom: 1px solid rgba(96, 165, 250, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   margin-bottom: 0.5rem;
 }
 
@@ -3477,7 +3606,7 @@ body.home-ai-panel-open .home-vegref {
   height: 2.25rem;
   border: none;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.15);
   color: var(--text);
   font-size: 1.35rem;
   line-height: 1;
@@ -3500,8 +3629,8 @@ body.home-ai-panel-open .home-vegref {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(96, 165, 250, 0.12);
+  background: rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   cursor: pointer;
   font: inherit;
@@ -3511,8 +3640,8 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .home-drawer__link:hover {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(96, 165, 250, 0.28);
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(147, 197, 253, 0.35);
 }
 
 .home-drawer__nav--stack {
@@ -3528,7 +3657,7 @@ body.home-ai-panel-open .home-vegref {
   flex-shrink: 0;
   padding: 0.65rem 0.65rem 0.35rem;
   margin-top: auto;
-  border-top: 1px solid rgba(96, 165, 250, 0.14);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .home-drawer__footer .btn-logout {
@@ -4898,7 +5027,7 @@ body.home-ai-panel-open .home-vegref {
 
 /* Øktvisning: luft under statuslinje/notch (unngår overlap med klokke på telefon) */
 .app-stack--session .session-top {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 0.85rem);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.28rem);
   padding-left: max(0, env(safe-area-inset-left, 0px));
   padding-right: max(0, env(safe-area-inset-right, 0px));
   box-sizing: border-box;
@@ -6146,6 +6275,17 @@ body.home-ai-panel-open .home-vegref {
   gap: 0;
   min-height: 100dvh;
   overflow-x: hidden;
+  /* Glassmorfisme: mørkere tint enn «for lyst», fortsatt frost + kant */
+  --session-glass-bg: rgba(12, 16, 26, 0.32);
+  --session-glass-bg-hover: rgba(12, 16, 26, 0.42);
+  --session-glass-bg-active: rgba(59, 130, 246, 0.22);
+  --session-glass-border: rgba(255, 255, 255, 0.14);
+  --session-glass-border-strong: rgba(255, 255, 255, 0.24);
+  --session-glass-blur: blur(36px) saturate(1.65);
+  --session-glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --session-glass-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.22),
+    var(--session-glass-inset);
 }
 
 /* Kart: full viewport bak innhold (pointer-events på kart-container) */
@@ -6193,23 +6333,25 @@ body.home-ai-panel-open .home-vegref {
   left: 0;
   right: 0;
   z-index: 100;
-  gap: 0.42rem;
+  gap: 0.18rem;
   margin-bottom: 0;
-  padding-bottom: 0.65rem;
-  background: rgba(12, 16, 26, 0.45);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  padding-bottom: 0.28rem;
+  background: rgba(12, 16, 26, 0.36);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 
 @supports (backdrop-filter: blur(12px)) {
   .app-stack--session .session-top {
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    backdrop-filter: blur(40px) saturate(1.65);
+    -webkit-backdrop-filter: blur(40px) saturate(1.65);
   }
 }
 
 .app-stack--session .session-top .session-preview-banner {
-  margin: 0 0.75rem 0.5rem;
+  margin: 0 0.65rem 0.32rem;
   text-shadow: none;
 }
 
@@ -6222,20 +6364,36 @@ body.home-ai-panel-open .home-vegref {
   color: #ffffff;
 }
 
-.app-stack--session .session-top__toolbar {
+.app-stack--session .session-top__bar {
   gap: 0.28rem;
+  padding: 0;
+  margin: 0;
+}
+
+.app-stack--session .session-top__bar .btn-back-session {
+  padding: 0.15rem 0.1rem 0.15rem 0;
+  line-height: 1.2;
+  font-size: 0.88rem;
+}
+
+.app-stack--session .session-top__toolbar {
+  gap: 0.1rem;
+}
+
+.app-stack--session .session-top__tab-group {
+  gap: 0.22rem;
 }
 
 .app-stack--session .session-top__datetime {
-  margin: 0 0 0.35rem;
+  margin: 0.04rem 0 0;
   padding: 0;
   text-align: center;
-  font-size: 0.88rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: #f1f5f9;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  line-height: 1.4;
+  line-height: 1.25;
 }
 
 .app-stack--session .session-top__datetime time {
@@ -6243,33 +6401,41 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .app-stack--session .session-action-tab {
-  border-radius: 7px;
+  border-radius: 10px;
   color: #f1f5f9;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px) saturate(1.3);
-  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--session-glass-border);
+  background: var(--session-glass-bg);
+  box-shadow: var(--session-glass-shadow);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
 }
 
 .app-stack--session .session-action-tab:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.32);
+  background: var(--session-glass-bg-hover);
+  border-color: var(--session-glass-border-strong);
   color: #ffffff;
 }
 
 .app-stack--session .session-action-tab--icon {
-  min-height: 2.55rem;
-  padding: 0.42rem 0.35rem;
+  min-height: 1.95rem;
+  padding: 0.2rem 0.22rem;
 }
 
 .app-stack--session .session-action-tab__icon {
-  width: 1.32rem;
-  height: 1.32rem;
+  width: 1.2rem;
+  height: 1.2rem;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
+.app-stack--session .session-top__road {
+  margin-top: 0.02rem;
+}
+
 .app-stack--session .session-top__road .session-road-side {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.25;
   color: #e2e8f0;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
@@ -6285,12 +6451,12 @@ body.home-ai-panel-open .home-vegref {
   z-index: 60;
   overflow: hidden;
   border-radius: 20px 20px 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--session-glass-border);
   border-bottom: none;
-  background: rgba(12, 16, 26, 0.38);
+  background: rgba(12, 16, 26, 0.34);
   box-shadow:
-    0 -20px 56px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 -24px 64px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   box-sizing: border-box;
   transition: height 0.26s cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -6299,9 +6465,9 @@ body.home-ai-panel-open .home-vegref {
 
 @supports (backdrop-filter: blur(12px)) {
   .app-stack--session .session-bottom-sheet {
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
-    background: rgba(12, 16, 26, 0.36);
+    backdrop-filter: blur(40px) saturate(1.7);
+    -webkit-backdrop-filter: blur(40px) saturate(1.7);
+    background: rgba(12, 16, 26, 0.3);
   }
 }
 
@@ -6398,15 +6564,15 @@ body.home-ai-panel-open .home-vegref {
   font-weight: 800;
   letter-spacing: 0.02em;
   border-radius: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(12, 16, 26, 0.4);
   color: #f8fafc;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px) saturate(1.35);
-  -webkit-backdrop-filter: blur(12px) saturate(1.35);
+    0 8px 28px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(28px) saturate(1.55);
+  -webkit-backdrop-filter: blur(28px) saturate(1.55);
   transition:
     transform 0.22s cubic-bezier(0.25, 0.1, 0.25, 1),
     filter 0.2s ease,
@@ -6415,8 +6581,8 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .app-stack--session .btn-register-dominant:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(12, 16, 26, 0.5);
+  border-color: rgba(255, 255, 255, 0.26);
 }
 
 .app-stack--session .btn-register-dominant:active {
@@ -6430,18 +6596,18 @@ body.home-ai-panel-open .home-vegref {
   font-size: 0.84rem;
   font-weight: 700;
   color: #f1f5f9;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  background: rgba(12, 16, 26, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(10px) saturate(1.25);
-  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(26px) saturate(1.55);
+  -webkit-backdrop-filter: blur(26px) saturate(1.55);
 }
 
 .app-stack--session .btn-ghost-action:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(12, 16, 26, 0.46);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .app-stack--session .btn-ghost-action:active {
@@ -6450,10 +6616,12 @@ body.home-ai-panel-open .home-vegref {
 
 .app-stack--session .map-section.surface {
   padding: 0.85rem 1rem 0.75rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(12, 16, 26, 0.55);
-  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.22);
+  border-radius: 16px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(12, 16, 26, 0.3);
+  box-shadow: var(--session-glass-shadow);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
 }
 
 .app-stack--session .map-section {
@@ -6480,6 +6648,200 @@ body.home-ai-panel-open .home-vegref {
     'Helvetica Neue',
     Arial,
     sans-serif;
+}
+
+/* Øktkart: Leaflet-popup som mørkt glass-kort (samme tone som forsiden) */
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap {
+  color-scheme: dark;
+}
+
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap .leaflet-popup-content-wrapper {
+  padding: 0;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap .leaflet-popup-content {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap .leaflet-popup-tip-container {
+  margin-top: -1px;
+}
+
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap .leaflet-popup-tip {
+  box-shadow: none;
+  /* Matcher nedre tone i kortgradienten */
+  background: #2e323c;
+}
+
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap a.leaflet-popup-close-button {
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  font:
+    1.35rem/1.5rem system-ui,
+    sans-serif;
+  font-weight: 600;
+  color: var(--label-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.app-stack--session .session-map-root .leaflet-popup.session-map-popup-wrap a.leaflet-popup-close-button:hover {
+  color: var(--label-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-stack--session .session-map-root .session-map-popup {
+  position: relative;
+  box-sizing: border-box;
+  max-width: min(280px, calc(100vw - 2rem));
+  padding: 0.75rem 2rem 0.65rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(
+    165deg,
+    rgba(68, 72, 82, 0.45) 0%,
+    rgba(46, 50, 60, 0.62) 100%
+  );
+  backdrop-filter: blur(32px) saturate(1.85);
+  -webkit-backdrop-filter: blur(32px) saturate(1.85);
+  box-shadow:
+    var(--shadow-glass-edge),
+    0 6px 26px rgba(0, 0, 0, 0.2);
+  color: var(--label-primary);
+}
+
+.app-stack--session .session-map-root .session-map-popup__head {
+  margin: 0 0 0.35rem;
+}
+
+.app-stack--session .session-map-root .session-map-popup__eyebrow {
+  display: block;
+  margin: 0 0 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--label-tertiary);
+}
+
+.app-stack--session .session-map-root .session-map-popup__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.app-stack--session .session-map-root .session-map-popup__chip-wrap {
+  margin: 0 0 0.5rem;
+}
+
+.app-stack--session .session-map-root .session-map-popup__chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-edge);
+  box-shadow: 0 0 0 1px rgba(77, 163, 255, 0.12);
+}
+
+.app-stack--session .session-map-root .session-map-popup__status {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+  background: rgba(77, 163, 255, 0.08);
+}
+
+.app-stack--session .session-map-root .session-map-popup__status-line {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--label-secondary);
+}
+
+.app-stack--session .session-map-root .session-map-popup__status-line + .session-map-popup__status-line {
+  margin-top: 0.25rem;
+}
+
+.app-stack--session .session-map-root .session-map-popup__veg {
+  margin: 0 0 0.5rem;
+}
+
+.app-stack--session .session-map-root .session-map-popup__dl {
+  display: grid;
+  gap: 0.28rem 0.5rem;
+  margin: 0;
+}
+
+.app-stack--session .session-map-root .session-map-popup__dl-row {
+  display: grid;
+  grid-template-columns: minmax(3.5rem, 32%) 1fr;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.app-stack--session .session-map-root .session-map-popup__dt {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--label-tertiary);
+}
+
+.app-stack--session .session-map-root .session-map-popup__dd {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--label-secondary);
+  word-break: break-word;
+}
+
+.app-stack--session .session-map-root .session-map-popup__dd--tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.app-stack--session .session-map-root .session-map-popup__foot {
+  margin: 0.45rem 0 0;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.app-stack--session .session-map-root .session-map-popup__time {
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--label-tertiary);
+}
+
+.app-stack--session .session-map-root .session-map-popup__media {
+  margin: 0.35rem 0 0.45rem;
+}
+
+.app-stack--session .session-map-root .session-map-popup__img {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .app-stack--session .session-map-root .map-locate-btn {
@@ -6564,9 +6926,13 @@ body.home-ai-panel-open .home-vegref {
 
 .app-stack--session .map-section__more {
   margin-top: 0.5rem;
-  border-radius: 10px;
-  border: 1px solid rgba(42, 49, 66, 0.85);
-  background: rgba(18, 22, 32, 0.55);
+  border-radius: 12px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(12, 16, 26, 0.28);
+  box-shadow: var(--session-glass-shadow);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
+  overflow: hidden;
 }
 
 .app-stack--session .map-section__more-summary {
@@ -6628,9 +6994,36 @@ body.home-ai-panel-open .home-vegref {
 }
 
 .app-stack--session .map-section__tab {
-  padding: 0.4rem 0.45rem;
+  padding: 0.48rem 0.5rem;
   font-size: 0.76rem;
-  border-radius: 8px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid var(--session-glass-border);
+  background: var(--session-glass-bg);
+  color: rgba(226, 232, 240, 0.92);
+  box-shadow: var(--session-glass-inset);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.app-stack--session .map-section__tab:hover {
+  background: var(--session-glass-bg-hover);
+  border-color: var(--session-glass-border-strong);
+  color: #f8fafc;
+}
+
+.app-stack--session .map-section__tab--active {
+  border-color: rgba(147, 197, 253, 0.48);
+  background: var(--session-glass-bg-active);
+  color: #f8fafc;
+  box-shadow:
+    var(--session-glass-inset),
+    0 4px 20px rgba(37, 99, 235, 0.22);
 }
 
 .app-stack--session .map-section__panel .btn-fit {
@@ -6640,12 +7033,101 @@ body.home-ai-panel-open .home-vegref {
 .app-stack--session .session-photos-strip.surface {
   padding: 0.5rem 0.75rem 0.65rem;
   margin-top: 0.2rem;
-  border-radius: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(12, 16, 26, 0.28);
+  box-shadow: var(--session-glass-shadow);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
 }
 
 .app-stack--session .logg-folder.surface {
   padding: 0.65rem 0.85rem 0.75rem;
-  border-radius: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(12, 16, 26, 0.28);
+  box-shadow: var(--session-glass-shadow);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
+}
+
+/* Notater: sammendrag + detalj-rader som glass */
+.app-stack--session .logg-folder__summary {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem 0.65rem;
+  background: rgba(12, 16, 26, 0.26);
+  backdrop-filter: blur(24px) saturate(1.55);
+  -webkit-backdrop-filter: blur(24px) saturate(1.55);
+}
+
+.app-stack--session .logg-folder__inner {
+  padding-top: 0.65rem;
+}
+
+.app-stack--session .logg-details {
+  border-radius: 12px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(12, 16, 26, 0.28);
+  box-shadow: var(--session-glass-inset);
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
+}
+
+.app-stack--session .logg-details[open] {
+  border-color: rgba(147, 197, 253, 0.28);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+/* Bilderutenett: hvert kort som frostet glass */
+.app-stack--session .photos-gallery .photo-thumb-card {
+  border-radius: 12px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(12, 16, 26, 0.3);
+  box-shadow: var(--session-glass-shadow);
+  overflow: hidden;
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
+}
+
+.app-stack--session .photos-gallery .photo-thumb-meta {
+  background: rgba(8, 10, 16, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Kart-faner: deling / tekstfelt */
+.app-stack--session .map-share-textarea {
+  border-radius: 10px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(8, 10, 16, 0.35);
+  color: rgba(226, 232, 240, 0.96);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+}
+
+.app-stack--session .map-section .btn-secondary {
+  border-radius: 10px;
+  border: 1px solid var(--session-glass-border);
+  background: var(--session-glass-bg);
+  color: #e2e8f0;
+  backdrop-filter: var(--session-glass-blur);
+  -webkit-backdrop-filter: var(--session-glass-blur);
+  box-shadow: var(--session-glass-inset);
+}
+
+.app-stack--session .map-section .btn-secondary:hover {
+  background: var(--session-glass-bg-hover);
+  border-color: var(--session-glass-border-strong);
+}
+
+.app-stack--session .session-photos-folders-summary {
+  border-radius: 10px;
+  border: 1px solid var(--session-glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(203, 213, 225, 0.95);
+  backdrop-filter: blur(14px) saturate(1.35);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
 }
 
 .session-road-side {
@@ -6908,7 +7390,8 @@ body.home-ai-panel-open .home-vegref {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    /* none: unngå at fixed-underordnede forankres mot .view-home etter animasjon */
+    transform: none;
   }
 }
 
@@ -8293,6 +8776,12 @@ body.home-ai-panel-open .home-vegref {
   transform-origin: 50% 100%;
   border: 3px solid #fff;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+}
+
+.map-pin.map-pin--pending {
+  opacity: 0.82;
+  border-style: dashed;
+  background: linear-gradient(145deg, #f97316, #c2410c);
 }
 
 @media (prefers-reduced-motion: no-preference) {

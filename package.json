@@ -13,6 +13,7 @@
     "dev:lan": "USE_HTTP=1 vite",
     "hint:net": "node scripts/dev-network-hint.mjs",
     "build": "vite build",
+    "build:ios": "npm run build && npx cap sync ios",
     "watch:dist": "VITE_WATCH_DIST=1 vite build",
     "build:watch": "npm run watch:dist",
     "preview": "vite preview",
@@ -31,7 +32,6 @@
     "delsky:white-alpha": "node scripts/registrering-white-to-alpha.mjs public/icons/delsky.png",
     "delsky:edge-dark-alpha": "node scripts/edge-dark-to-alpha.mjs public/icons/delsky.png",
     "icons:normalize-home": "node scripts/normalize-home-icons.mjs",
-    "icons:extract-home-dash": "node scripts/extract-home-dash-icons.mjs",
     "kamera:edge-dark-alpha": "node scripts/edge-dark-to-alpha.mjs public/icons/kamera.png"
   },
   "devDependencies": {
