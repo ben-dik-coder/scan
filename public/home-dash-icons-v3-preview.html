@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Forside-ikoner v3 — tydeligere</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f141c;
+        --surface: #1c232f;
+        --line: rgba(255, 255, 255, 0.09);
+        --fg: #eef2fa;
+        --muted: #9aa3b5;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 32px 20px 60px;
+        background:
+          radial-gradient(1200px 600px at 15% -10%, #233046 0%, transparent 65%),
+          radial-gradient(900px 500px at 110% 15%, #1b283c 0%, transparent 65%),
+          var(--bg);
+        color: var(--fg);
+        font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          system-ui, sans-serif;
+      }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      h2 { font-size: 16px; margin: 36px 0 12px; }
+      p.lead { margin: 0 0 22px; color: var(--muted); }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        max-width: 1180px;
+      }
+      .tile {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px 14px;
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+        text-align: center;
+      }
+      .art {
+        width: 128px; height: 128px; border-radius: 22px; overflow: hidden;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+      }
+      .art svg { display: block; width: 100%; height: 100%; }
+      .label { font-weight: 600; }
+      .hint { color: var(--muted); font-size: 12.5px; }
+
+      .bar {
+        margin-top: 28px; max-width: 1180px;
+        padding: 12px 16px; border-radius: 22px;
+        background: rgba(38, 42, 52, 0.66);
+        backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex; gap: 10px;
+      }
+      .bar .btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; color: #dbe4f5; }
+      .bar .icon { width: 46px; height: 46px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+      .bar .icon--primary {
+        background: linear-gradient(165deg, #5cb0ff 0%, #4da3ff 45%, #2a7fd4 100%);
+        color: #fff;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 5px 14px rgba(40,120,220,0.5);
+      }
+      .bar .icon svg { width: 26px; height: 26px; }
+      .label-small { font-size: 11px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <h1>Forside-ikoner v3 — tydeligere</h1>
+    <p class="lead">Større motiver, enklere former, sterkere kontrast. Alt kodet som SVG.</p>
+
+    <h2>Hurtigkort (80×80)</h2>
+    <div class="grid">
+      <!-- 1. Ny registrering -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-reg-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#2b4b7d"/><stop offset="1" stop-color="#0e1a30"/>
+              </linearGradient>
+              <linearGradient id="v3-reg-pin" x1="40" y1="12" x2="40" y2="56" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#8ddcff"/><stop offset="1" stop-color="#3a8fff"/>
+              </linearGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-reg-bg)"/>
+            <path d="M40 12c-9.4 0-17 7.3-17 16.4 0 11.8 15.2 27 16.2 28a1 1 0 0 0 1.6 0c1-1 16.2-16.2 16.2-28C57 19.3 49.4 12 40 12z"
+                  fill="url(#v3-reg-pin)" stroke="#fff" stroke-width="3"/>
+            <circle cx="40" cy="28" r="7.5" fill="#0c1a33" stroke="#fff" stroke-width="2"/>
+            <circle cx="62" cy="60" r="12" fill="#34d97a" stroke="#fff" stroke-width="3"/>
+            <path d="M62 54v12M56 60h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="label">Ny registrering</div>
+        <div class="hint">Stor blå nål + grønn «+»</div>
+      </div>
+
+      <!-- 2. Kamera -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-cam-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#3a4354"/><stop offset="1" stop-color="#161c27"/>
+              </linearGradient>
+              <linearGradient id="v3-cam-body" x1="40" y1="22" x2="40" y2="66" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#ffffff"/><stop offset="1" stop-color="#b3bccd"/>
+              </linearGradient>
+              <radialGradient id="v3-cam-lens" cx="40" cy="45" r="16" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7fd0ff"/><stop offset="0.55" stop-color="#1b3a66"/><stop offset="1" stop-color="#050912"/>
+              </radialGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-cam-bg)"/>
+            <rect x="30" y="15" width="20" height="9" rx="2.5" fill="#d8dfec" stroke="#0c1220" stroke-width="1.5"/>
+            <rect x="10" y="22" width="60" height="44" rx="9" fill="url(#v3-cam-body)" stroke="#0c1220" stroke-width="2.5"/>
+            <circle cx="40" cy="45" r="15" fill="url(#v3-cam-lens)" stroke="#0c1220" stroke-width="2.5"/>
+            <circle cx="40" cy="45" r="7" fill="#050912" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <ellipse cx="45" cy="40" rx="3.6" ry="2.6" fill="rgba(255,255,255,0.55)" transform="rotate(-30 45 40)"/>
+            <circle cx="60" cy="31" r="2.8" fill="#ffce56" stroke="#0c1220" stroke-width="1.2"/>
+            <rect x="13" y="26" width="8" height="4" rx="1.2" fill="#0c1220" opacity="0.7"/>
+          </svg>
+        </div>
+        <div class="label">Kamera</div>
+        <div class="hint">Stor objektiv, klare omriss</div>
+      </div>
+
+      <!-- 3. Kontrakter -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-kon-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#3c4a5e"/><stop offset="1" stop-color="#141c29"/>
+              </linearGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-kon-bg)"/>
+            <path d="M20 12h26l14 14v38a6 6 0 0 1-6 6H20a6 6 0 0 1-6-6V18a6 6 0 0 1 6-6z" fill="#ffffff" stroke="#0c1220" stroke-width="2.5"/>
+            <path d="M46 12v14h14" fill="none" stroke="#0c1220" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M22 36h26M22 46h30M22 56h18" stroke="#0c1220" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
+            <circle cx="58" cy="58" r="13" fill="#4da3ff" stroke="#0c1220" stroke-width="2.5"/>
+            <text x="58" y="63" text-anchor="middle" font-family="-apple-system,sans-serif" font-weight="800" font-size="13" fill="#fff">Ai</text>
+          </svg>
+        </div>
+        <div class="label">Kontrakter</div>
+        <div class="hint">Ark + tydelig «Ai»-badge</div>
+      </div>
+
+      <!-- 4. Album -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-al-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#3c4a5e"/><stop offset="1" stop-color="#141c29"/>
+              </linearGradient>
+              <linearGradient id="v3-al-sky" x1="20" y1="22" x2="60" y2="48" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7cc4ff"/><stop offset="1" stop-color="#3370a8"/>
+              </linearGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-al-bg)"/>
+            <g transform="rotate(-12 28 48)"><rect x="14" y="30" width="32" height="36" rx="3" fill="#fff" stroke="#0c1220" stroke-width="2"/></g>
+            <g transform="rotate(10 52 38)"><rect x="36" y="22" width="32" height="36" rx="3" fill="#fff" stroke="#0c1220" stroke-width="2"/></g>
+            <rect x="22" y="18" width="36" height="46" rx="4" fill="#fff" stroke="#0c1220" stroke-width="2.5"/>
+            <rect x="26" y="22" width="28" height="30" rx="2" fill="url(#v3-al-sky)"/>
+            <circle cx="48" cy="30" r="4" fill="#ffd96a" stroke="#0c1220" stroke-width="1"/>
+            <path d="M26 52l7-10 6 6 6-8 9 12h-28z" fill="rgba(255,255,255,0.9)" stroke="#0c1220" stroke-width="1" stroke-linejoin="round"/>
+            <path d="M26 56h28M26 60h22" stroke="#0c1220" stroke-width="2" stroke-linecap="round" opacity="0.65"/>
+          </svg>
+        </div>
+        <div class="label">Album</div>
+        <div class="hint">Sterkere kontur + ren horisont</div>
+      </div>
+
+      <!-- 5. DelSky -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-ds-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#2a4568"/><stop offset="1" stop-color="#101a2b"/>
+              </linearGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-ds-bg)"/>
+            <path d="M22 58h36a13 13 0 0 0 2.5-25.8C58.5 22 50.8 16.5 42 16.5c-8.5 0-15.8 5.2-17.4 12.6C17.5 30.2 12 35.7 12 42.6 12 51 16.5 58 22 58z"
+                  fill="#fff" stroke="#0c1220" stroke-width="2.8"/>
+            <path d="M40 70V44" stroke="#0c1220" stroke-width="6" stroke-linecap="round"/>
+            <path d="M28 50l12-12 12 12" fill="none" stroke="#0c1220" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="label">DelSky</div>
+        <div class="hint">Stor hvit sky + kraftig pil</div>
+      </div>
+
+      <!-- 6. Excel -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-xl-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#2a3a31"/><stop offset="1" stop-color="#0d1a13"/>
+              </linearGradient>
+              <linearGradient id="v3-xl-body" x1="40" y1="12" x2="40" y2="68" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#3ee08f"/><stop offset="1" stop-color="#0e7a45"/>
+              </linearGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-xl-bg)"/>
+            <rect x="12" y="12" width="56" height="56" rx="10" fill="url(#v3-xl-body)" stroke="#0c1220" stroke-width="2.5"/>
+            <rect x="12" y="12" width="56" height="16" rx="10" fill="#0e6e3b"/>
+            <text x="40" y="24" text-anchor="middle" font-family="-apple-system,sans-serif" font-weight="900" font-size="11" fill="#fff" letter-spacing="1.5">XLSX</text>
+            <path d="M22 40h36M22 50h36M22 60h28" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/>
+            <path d="M40 36v28" stroke="#fff" stroke-width="1.8" opacity="0.55"/>
+          </svg>
+        </div>
+        <div class="label">Excel</div>
+        <div class="hint">Rent grønt regneark, stor «XLSX»</div>
+      </div>
+
+      <!-- 7. Strekning -->
+      <div class="tile">
+        <div class="art">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="v3-str-bg" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#2e4868"/><stop offset="1" stop-color="#0e1a2d"/>
+              </linearGradient>
+            </defs>
+            <rect width="80" height="80" rx="18" fill="url(#v3-str-bg)"/>
+            <path d="M20 66 C 22 48, 58 48, 60 14" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+            <path d="M20 66 C 22 48, 58 48, 60 14" stroke="#0c1220" stroke-width="2.5" stroke-dasharray="4 6" fill="none" stroke-linecap="round"/>
+            <g transform="translate(13 12)">
+              <path d="M7 0C3.1 0 0 3.1 0 7c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#34d97a" stroke="#0c1220" stroke-width="2.5"/>
+              <text x="7" y="10" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" font-weight="900" fill="#0c1220">A</text>
+            </g>
+            <g transform="translate(53 50)">
+              <path d="M7 0C3.1 0 0 3.1 0 7c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#4da3ff" stroke="#0c1220" stroke-width="2.5"/>
+              <text x="7" y="10" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" font-weight="900" fill="#0c1220">B</text>
+            </g>
+          </svg>
+        </div>
+        <div class="label">Strekning</div>
+        <div class="hint">Tjukk hvit vei, store A/B-pins</div>
+      </div>
+    </div>
+
+    <h2>Bunnfelt (24×24, tydeligere strek 2.0)</h2>
+    <div class="bar">
+      <div class="btn">
+        <div class="icon icon--primary">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 2a6.5 6.5 0 0 1 6.5 6.5c0 4.8-4.8 10.2-6.1 11.6a.55.55 0 0 1-.8 0C10.3 18.7 5.5 13.3 5.5 8.5A6.5 6.5 0 0 1 12 2z" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+            <circle cx="12" cy="8.5" r="2.6" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="label-small">Ny registrering</div>
+      </div>
+      <div class="btn">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M9 4.5h6l1.5 2.5H20a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5L9 4.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="12" cy="14" r="4.2" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="14" r="1.6" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="label-small">Ta bilde</div>
+      </div>
+      <div class="btn">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6 3h8l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M14 3v5h5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 14l3 3 5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="label-small">Kontraktskontroll</div>
+      </div>
+      <div class="btn">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 12a8 8 0 1 0 2.4-5.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+            <path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 8v4.5l3 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="label-small">Økter og historikk</div>
+      </div>
+    </div>
+  </body>
+</html>
