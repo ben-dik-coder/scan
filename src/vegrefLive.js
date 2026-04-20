@@ -4,7 +4,11 @@
  * Når nett er «på» men NVDB feiler: forsøk nedlastet segmentpakke (IndexedDB) før koordinat-fallback.
  */
 
-import { bearingDeg, clearSegmentNearCache } from './nvdbVegref.js'
+import {
+  bearingDeg,
+  clearSegmentNearCache,
+  normalizeSurfacePreference,
+} from './nvdbVegref.js'
 import { vegrefDebugTrace } from './vegrefDebugTrace.js'
 import { logVegrefMetric } from './vegrefMetrics.js'
 
@@ -23,6 +27,7 @@ import { logVegrefMetric } from './vegrefMetrics.js'
  *   applyHome: (res: VegrefDescribeResult) => void
  *   applyKmt: (res: VegrefDescribeResult | null) => void
  *   beforeNvdbFetch?: () => void
+ *   getSurfacePreference?: () => string
  * }} VegrefHooks
  */
 
@@ -641,6 +646,13 @@ function posisjonEnrichSameVegsystemAsPosisjon(res, segRes) {
     /** @type {{ roadLineShort?: unknown }} */ (segRes).roadLineShort,
   )
   if (rsh && ssh && rsh === ssh) return true
+  /* Oppstart / parallelle API-kall: kortform og veilinje kan mangle den ene runden — S/D
+   * er like stabile identifikatorer og tillater merge som ellers gir mergedOk=false. */
+  const rs = String(/** @type {{ s?: unknown }} */ (res).s ?? '').trim()
+  const rd = String(/** @type {{ d?: unknown }} */ (res).d ?? '').trim()
+  const ss = String(/** @type {{ s?: unknown }} */ (segRes).s ?? '').trim()
+  const sd = String(/** @type {{ d?: unknown }} */ (segRes).d ?? '').trim()
+  if (rs && rd && ss && sd && rs === ss && rd === sd) return true
   return false
 }
 
@@ -935,7 +947,11 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
 
   void (async () => {
     try {
-      const fetchOpts = { signal, accuracyM }
+      const surfacePreference =
+        typeof h.getSurfacePreference === 'function'
+          ? normalizeSurfacePreference(h.getSurfacePreference())
+          : 'motor'
+      const fetchOpts = { signal, accuracyM, surfacePreference }
       let res = null
       const currentShownId =
         lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
@@ -1115,7 +1131,31 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
             : String(e).slice(0, 400),
       })
       if (seq !== fetchGeneration) return
-      const off = offlineOrFallbackResult(nvdbLat, nvdbLng)
+      /** @type {VegrefDescribeResult | null} */
+      let errRes = null
+      if (h.fetchRoadReferenceNearOffline) {
+        try {
+          const surfacePreference =
+            typeof h.getSurfacePreference === 'function'
+              ? normalizeSurfacePreference(h.getSurfacePreference())
+              : 'motor'
+          const fetchOpts = { signal, accuracyM, surfacePreference }
+          errRes = await h.fetchRoadReferenceNearOffline(
+            nvdbLat,
+            nvdbLng,
+            fetchOpts,
+          )
+        } catch {
+          /* manglende pakke eller IndexedDB */
+        }
+      }
+      if (seq !== fetchGeneration) return
+      if (errRes) {
+        cacheLat = nvdbLat
+        cacheLng = nvdbLng
+        cacheRes = errRes
+      }
+      const off = errRes || offlineOrFallbackResult(nvdbLat, nvdbLng)
       if (seq !== fetchGeneration) return
       applyToOpenUIs(off, nvdbLat, nvdbLng)
     } finally {

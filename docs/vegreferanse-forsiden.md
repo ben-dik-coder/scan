@@ -82,6 +82,7 @@ Se `applyHomeVegrefResult` og `setHomeVegrefCompactDom` i [`src/main.js`](../src
 3. **Ingen NVDB-treff (`null`):** forsiden **tømmes ikke** bevisst – siste gode visning beholdes.
 4. **Stor avstand til veg:** hvis `distToRoadM > 95` m og det allerede finnes et resultat, ignoreres nytt treff (`HOME_VEGREF_MAX_DIST_SKIP_M` i `main.js`) – mot «hopp» ved dårlig GPS.
 5. **Segmentvalg:** `pickBestSegment` i `nvdbVegref.js` scorer avstand + vegtype-straff (gang/sykkel +45 m); **hysterese** mot forrige `prevNvdbId` for å unngå hopp mellom parallelle veier.
+6. **Samme strekning på forsiden** (`main.js`): `homeVegrefSegmentIdentityKey` bruker **S/D + NVDB-id** (evt. kortform når id mangler), ikke full `roadLine`-streng — ordlyd i NVDB kan variere mellom kall uten at vegen skifter. Når et nytt svar mangler `roadLineDisplay` men treffet matcher forrige **stabile** (samme NVDB-id, eller typisk **vls: → kf:**-oppgradering med samme S/D), gjenbrukes veinavn i UI så primær/type ikke «blinker» bort fra vegnummer-raden. **Meter:** dødbånd og min. tween-gap skalerer med fart og nøyaktighet for å redusere opplevd lag ved kjøring uten å åpne for mye jitter.
 
 ## Styling
 
@@ -93,3 +94,7 @@ CSS under `.home-vegref` i [`src/style.css`](../src/style.css) (søk etter `home
 - I **Innstillinger**: sjekk status for `Offline vegreferanse` og at manifest/datafil er lastet ned ved behov.
 - I **Network**: NVDB-kallet til `nvdbapiles.atlas.vegvesen.no`, eller offline-manifestet `/offline/vegref-manifest.json` når lokal pakke importeres.
 - I **logikk**: **`s` / `d` / `m`** kommer fra NVDB `vegsystemreferanse` + geometri; **`roadLine*`** fra `vegkategori` + nummer eller adressenavn for K-veger.
+
+## Tolking av `vegrefDetailTrace`-kjørelogger
+
+Når du eksporterer detaljert spor fra appen (`vegrefDetailTrace`), se [tolking-vegref-detail-trace.md](./tolking-vegref-detail-trace.md) for hendelse-for-hendelse-forklaring (H1/H2/H5) og typiske kjørescenarier.

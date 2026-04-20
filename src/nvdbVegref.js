@@ -36,8 +36,26 @@ const SEGMENT_NEAR_CACHE_MAX = 48
 /** @type {Map<string, { at: number, res: object | null }>} */
 let segmentNearCache = new Map()
 
-function segmentNearCacheKey(lat, lng) {
-  return `${Math.round(lat * 1e4)}:${Math.round(lng * 1e4)}`
+/**
+ * Trafikantgruppe for segment-scoring: kjørende vs gående/syklende.
+ * Eldre lagring `balanced` tolkes som kjørende (motor).
+ * @param {unknown} v
+ * @returns {'motor'|'active'}
+ */
+export function normalizeSurfacePreference(v) {
+  const s = typeof v === 'string' ? v.trim().toLowerCase() : ''
+  if (s === 'active') return 'active'
+  return 'motor'
+}
+
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {unknown} [surfacePreference]
+ */
+function segmentNearCacheKey(lat, lng, surfacePreference) {
+  const p = normalizeSurfacePreference(surfacePreference)
+  return `${Math.round(lat * 1e4)}:${Math.round(lng * 1e4)}:${p}`
 }
 
 export function clearSegmentNearCache() {
@@ -314,10 +332,24 @@ export function describeSegmentForPoint(seg, lat, lng, accuracyM = 28) {
   }
 }
 
-function roadKindPenalty(seg) {
+/**
+ * Lavere score er bedre. `motor` = historisk atferd i appen.
+ * @param {object} seg
+ * @param {unknown} [surfacePreference]
+ */
+function roadKindPenalty(seg, surfacePreference = 'motor') {
   const t = `${seg?.typeVeg || ''} ${seg?.typeVeg_sosi || ''}`
-  if (/bilveg|kjørebane|rampe|kollektiv/i.test(t)) return 0
-  if (/gang|sykkel|fortau/i.test(t)) return 45
+  const pref = normalizeSurfacePreference(surfacePreference)
+  const isMotor = /bilveg|kjørebane|rampe|kollektiv/i.test(t)
+  const isPath = /gang|sykkel|fortau/i.test(t)
+  if (pref === 'active') {
+    if (isMotor) return 30
+    if (isPath) return 0
+    return 10
+  }
+  /* motor — historisk atferd */
+  if (isMotor) return 0
+  if (isPath) return 45
   return 12
 }
 
@@ -406,7 +438,7 @@ function segmentRoadHeadingDeg(seg, lat, lng) {
  * @param {object[]} objekter
  * @param {number} lat
  * @param {number} lng
- * @param {{ accuracyM?: number, prevNvdbId?: string | number | null, userHeadingDeg?: number | null, speed?: number, traceSamples?: Array<{ lat: number, lng: number, at: number }> }} [opts]
+ * @param {{ accuracyM?: number, prevNvdbId?: string | number | null, userHeadingDeg?: number | null, speed?: number, traceSamples?: Array<{ lat: number, lng: number, at: number }>, surfacePreference?: unknown }} [opts]
  * @returns {{
  *   seg: object
  *   chosenScore: number
@@ -416,6 +448,7 @@ function segmentRoadHeadingDeg(seg, lat, lng) {
  * } | null}
  */
 function pickBestSegment(objekter, lat, lng, opts = {}) {
+  const surfacePreference = normalizeSurfacePreference(opts.surfacePreference)
   const accuracyM =
     typeof opts.accuracyM === 'number' && !Number.isNaN(opts.accuracyM)
       ? Math.min(120, Math.max(8, opts.accuracyM))
@@ -437,7 +470,8 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     if (!d) continue
     const id = segmentStableId(seg)
     const dist = Math.min(d.distToRoadM, 100)
-    let score = dist + roadKindPenalty(seg) + roadCategoryScorePenalty(seg)
+    let score =
+      dist + roadKindPenalty(seg, surfacePreference) + roadCategoryScorePenalty(seg)
     const traceSamples = opts.traceSamples
     if (
       Array.isArray(traceSamples) &&
@@ -667,10 +701,12 @@ function dedupeNvdbObjekter(rows) {
  *   userHeadingDeg?: number | null
  *   speed?: number
  *   traceSamples?: Array<{ lat: number, lng: number, at: number }>
+ *   surfacePreference?: unknown
  * }} [opts]
  */
 export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) {
-  const { accuracyM, prevNvdbId, userHeadingDeg, speed, traceSamples } = opts
+  const { accuracyM, prevNvdbId, userHeadingDeg, speed, traceSamples, surfacePreference } =
+    opts
   const objs = Array.isArray(objekter) ? objekter : []
   if (!Array.isArray(objs) || objs.length === 0) return null
 
@@ -680,6 +716,7 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
     userHeadingDeg: userHeadingDeg ?? null,
     speed: speed ?? 0,
     traceSamples: Array.isArray(traceSamples) ? traceSamples : undefined,
+    surfacePreference,
   })
   if (!picked) return null
 
@@ -715,12 +752,14 @@ export function resolveRoadReferenceFromSegments(objekter, lat, lng, opts = {}) 
  *   speed?: number
  *   traceSamples?: Array<{ lat: number, lng: number, at: number }>
  *   onRawSegments?: (objekter: object[]) => void
+ *   surfacePreference?: unknown
  * }} [opts]
  */
 export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   const { signal, onRawSegments } = opts
+  const surfacePrefNorm = normalizeSurfacePreference(opts.surfacePreference)
   if (typeof onRawSegments !== 'function') {
-    const ck = segmentNearCacheKey(lat, lng)
+    const ck = segmentNearCacheKey(lat, lng, surfacePrefNorm)
     const hit = segmentNearCache.get(ck)
     if (
       hit &&
@@ -780,7 +819,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   const r = await fetch(url.toString(), {
     signal: fetchSignal,
     headers: {
-      'X-Client': 'Scanix',
+      'X-Client': 'Inspekt',
       Accept: 'application/json',
     },
   })
@@ -819,7 +858,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
       const r2 = await fetch(nesteHref, {
         signal: fetchSignal,
         headers: {
-          'X-Client': 'Scanix',
+          'X-Client': 'Inspekt',
           Accept: 'application/json',
         },
       })
@@ -842,7 +881,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
   }
   const described = resolveRoadReferenceFromSegments(allObjs, lat, lng, opts)
   if (typeof onRawSegments !== 'function' && described) {
-    const ck = segmentNearCacheKey(lat, lng)
+    const ck = segmentNearCacheKey(lat, lng, surfacePrefNorm)
     segmentNearCache.set(ck, {
       at: Date.now(),
       res: /** @type {object} */ ({ ...described }),
@@ -867,6 +906,7 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
  *   speed?: number
  *   traceSamples?: Array<{ lat: number, lng: number, at: number }>
  *   onRawSegments?: (objekter: object[]) => void
+ *   surfacePreference?: unknown
  * }} [opts]
  */
 export async function fetchRoadReferenceNearOnline(lat, lng, opts = {}) {
@@ -952,7 +992,7 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
   const r = await fetch(url.toString(), {
     signal: fetchSignal,
     headers: {
-      'X-Client': 'Scanix',
+      'X-Client': 'Inspekt',
       Accept: 'application/json',
     },
   })

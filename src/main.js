@@ -1,5 +1,10 @@
 import { registerSW } from 'virtual:pwa-register'
-import { fetchRoadReferenceNearOnline, fetchRoadPositionDirect } from './nvdbVegref.js'
+import {
+  clearSegmentNearCache,
+  fetchRoadReferenceNearOnline,
+  fetchRoadPositionDirect,
+  normalizeSurfacePreference,
+} from './nvdbVegref.js'
 import {
   clearOfflineVegrefPackage,
   getOfflineVegrefMeta,
@@ -8,6 +13,12 @@ import {
   mergeNvdbSegmentsIntoOfflineDb,
   resolveOfflineRoadReferenceNear,
 } from './vegrefLocal.js'
+import {
+  bboxIsValid,
+  expandBboxKm,
+  estimateAreaKm2,
+  fetchNvdbSegmentsForBbox,
+} from './nvdbSegmentertBulk.js'
 import {
   initVegrefLive,
   vegrefNotifyGps,
@@ -88,6 +99,9 @@ const AUTH_IDB_KEY_USERS = 'users-v1'
 const AUTH_IDB_KEY_SESSION = 'session-v1'
 const SESSION_TITLE_MAX_LEN = 120
 const SESSION_REGISTERED_NOTE_MAX_LEN = 2000
+/** Kart-popup for enkeltregistrering: valgfri tittel + kommentar. */
+const CLICK_ENTRY_LABEL_MAX_LEN = 120
+const CLICK_ENTRY_COMMENT_MAX_LEN = 1200
 const AUTH_PASSWORD_MIN_LEN = 8
 const AUTH_NAME_MAX_LEN = 120
 const AUTH_SHORT_ID_LEN = 5
@@ -268,11 +282,29 @@ function rerenderIfViewingSettings() {
   bindListenersForCurrentView()
 }
 
+/** @type {Promise<object | null> | null} */
+let offlineVegrefEnsurePromise = null
+
 /**
  * @param {{ force?: boolean }} [options]
  *   `force: true` laster ned på nytt selv om pakke finnes (knappen «Oppdater offline-pakke»).
  */
 async function ensureOfflineVegrefPackage(options = {}) {
+  const force = Boolean(options.force)
+  if (!force && offlineVegrefEnsurePromise) {
+    return offlineVegrefEnsurePromise
+  }
+  const p = ensureOfflineVegrefPackageImpl(options)
+  if (!force) {
+    offlineVegrefEnsurePromise = p
+    void p.finally(() => {
+      if (offlineVegrefEnsurePromise === p) offlineVegrefEnsurePromise = null
+    })
+  }
+  return p
+}
+
+async function ensureOfflineVegrefPackageImpl(options = {}) {
   const force = Boolean(options.force)
   await refreshOfflineVegrefState()
   if (offlineVegrefReady && !force) return offlineVegrefMeta
@@ -800,6 +832,49 @@ function formatPhotoThumbOverlayHtml(ph) {
   )
 }
 
+/**
+ * Primær tittel på album-rad (samme logikk som mappe-badge FV…).
+ * @param {{ imageFolder?: string | null, vegref?: unknown, note?: string }} ph
+ */
+function formatPhotoAlbumRowTitle(ph) {
+  if (ph?.imageFolder && String(ph.imageFolder).trim()) {
+    return String(ph.imageFolder).trim()
+  }
+  const v = ph?.vegref && normalizePhotoVegref(ph.vegref)
+  if (v?.road) {
+    const r = v.road
+    return r.length > 40 ? `${r.slice(0, 38)}…` : r
+  }
+  const note = typeof ph?.note === 'string' ? ph.note.trim() : ''
+  if (note) return note.length > 28 ? `${note.slice(0, 26)}…` : note
+  return 'Bilde'
+}
+
+/**
+ * Sekundær linje under tittel (kompakt vegref / notat).
+ * @param {{ vegref?: unknown, note?: string }} ph
+ * @param {string} [titleStr] — unngå duplikat når tittel = samme som hint
+ */
+function formatPhotoAlbumRowHint(ph, titleStr = '') {
+  const v = ph?.vegref && normalizePhotoVegref(ph.vegref)
+  let hint = ''
+  if (v?.compact) hint = v.compact
+  else if (v?.kortform) hint = v.kortform
+  else if (v?.road) hint = v.road
+  if (!hint) {
+    const note = typeof ph?.note === 'string' ? ph.note.trim() : ''
+    if (note) hint = note.length > 52 ? `${note.slice(0, 50)}…` : note
+  }
+  if (!hint) return 'Trykk for å åpne'
+  if (titleStr && hint === titleStr) {
+    const note = typeof ph?.note === 'string' ? ph.note.trim() : ''
+    if (note && note !== titleStr)
+      return note.length > 52 ? `${note.slice(0, 50)}…` : note
+    return 'Trykk for å åpne'
+  }
+  return hint
+}
+
 function normalizePhoto(p) {
   if (!p || typeof p !== 'object') return null
   const dataUrl =
@@ -898,6 +973,35 @@ async function hydrateSessionsFromDiskJson(disk) {
     if (n) out.push(n)
   }
   return out
+}
+
+/**
+ * Parser lagret JSON uten IndexedDB: trengs for sammenslåing av clickHistory
+ * (flere faner) uten å laste alle bilder inn i minnet på nytt ved hvert lagringsskritt.
+ * @param {unknown} disk
+ * @returns {{
+ *   clickById: Map<string, unknown[]>,
+ *   rawById: Map<string, Record<string, unknown>>,
+ * }}
+ */
+function parseDiskSessionsLite(disk) {
+  /** @type {Map<string, unknown[]>} */
+  const clickById = new Map()
+  /** @type {Map<string, Record<string, unknown>>} */
+  const rawById = new Map()
+  if (!disk || typeof disk !== 'object') return { clickById, rawById }
+  const raw = /** @type {{ sessions?: unknown }} */ (disk).sessions
+  if (!Array.isArray(raw)) return { clickById, rawById }
+  for (const s of raw) {
+    if (!s || typeof s !== 'object') continue
+    const o = /** @type {Record<string, unknown>} */ (s)
+    const id = typeof o.id === 'string' ? o.id : null
+    if (!id) continue
+    const ch = o.clickHistory
+    clickById.set(id, Array.isArray(ch) ? ch : [])
+    rawById.set(id, o)
+  }
+  return { clickById, rawById }
 }
 
 function mergeStandalonePhotoLists(a, b) {
@@ -1446,39 +1550,47 @@ async function flushLocalStorageAppState(key) {
 async function saveAppStateWorker() {
   if (!currentUser?.id) return
   const key = sessionsKeyForUser(currentUser.id)
-  let diskSessions = []
+  /** @type {typeof sessions} */
+  let mergedSessions = sessions
+  let mergedChanged = false
   try {
     const raw = localStorage.getItem(key)
     if (raw) {
       const disk = JSON.parse(raw)
-      diskSessions = await hydrateSessionsFromDiskJson(disk)
+      const { clickById, rawById } = parseDiskSessionsLite(disk)
+      const memIds = new Set(sessions.map((s) => s.id))
+      const merged = sessions.map((local) => {
+        const diskClicks = clickById.get(local.id)
+        if (!diskClicks) return local
+        const mergedClicks = mergeClickHistoryArrays(
+          local.clickHistory,
+          diskClicks,
+        )
+        const localLen = local.clickHistory?.length ?? 0
+        const diskLen = diskClicks.length
+        if (mergedClicks.length === localLen && localLen === diskLen) return local
+        mergedChanged = true
+        return {
+          ...local,
+          clickHistory: mergedClicks,
+          count: mergedClicks.length,
+          updatedAt: nowIso(),
+        }
+      })
+      /** @type {typeof sessions} */
+      const extra = []
+      for (const [id, row] of rawById) {
+        if (memIds.has(id)) continue
+        const photos = Array.isArray(row.photos)
+          ? await hydratePhotoRecordsArray(row.photos)
+          : []
+        const n = normalizeSession({ ...row, photos })
+        if (n) extra.push(n)
+      }
+      mergedSessions = extra.length ? [...merged, ...extra] : merged
     }
   } catch {
     /* ignore corrupt disk */
-  }
-  const diskById = new Map(diskSessions.map((s) => [s.id, s]))
-  const memIds = new Set(sessions.map((s) => s.id))
-  let mergedChanged = false
-  const mergedSessions = sessions.map((local) => {
-    const disk = diskById.get(local.id)
-    if (!disk) return local
-    const mergedClicks = mergeClickHistoryArrays(
-      local.clickHistory,
-      disk.clickHistory,
-    )
-    const localLen = local.clickHistory?.length ?? 0
-    const diskLen = disk.clickHistory?.length ?? 0
-    if (mergedClicks.length === localLen && localLen === diskLen) return local
-    mergedChanged = true
-    return {
-      ...local,
-      clickHistory: mergedClicks,
-      count: mergedClicks.length,
-      updatedAt: nowIso(),
-    }
-  })
-  for (const d of diskSessions) {
-    if (!memIds.has(d.id)) mergedSessions.push(d)
   }
   sessions = mergedSessions
   if (currentSessionId && mergedChanged) {
@@ -1508,7 +1620,7 @@ function saveAppState() {
     appStateSaveChain = appStateSaveChain
       .then(() => saveAppStateWorker())
       .catch((e) => console.warn('saveAppState:', e))
-  }, 80)
+  }, 220)
 }
 
 function loadCurrentSessionState() {
@@ -1577,7 +1689,7 @@ let currentSessionId = null
 let standalonePhotos = []
 /** Lagrede friksjonsmålinger (start–stopp + verdi), per bruker i app-lagring. */
 let frictionMeasurements = []
-/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuSettings' | 'menuPrivacy' | 'menuSupport' | 'menuExcelExport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
+/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuTrafficGroup' | 'menuSettings' | 'menuOfflineVegref' | 'menuPrivacy' | 'menuSupport' | 'menuExcelExport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
 let view = 'home'
 /** Faner under «Økten»: oversikt, gjenoppta, last ned, importer. */
 let menuSessionTab = 'sessions'
@@ -2226,6 +2338,9 @@ let homeVegrefMeterExtrapDir = 1
 /** @type {number | null} */
 let homeVegrefMeterLiveRaf = null
 let homeVegrefMeterLiveLastTs = 0
+/** Når farten er lav: ikke spinne rAF 60 Hz — sjekk igjen etter et øyeblikk. */
+/** @type {ReturnType<typeof setTimeout> | null} */
+let homeVegrefMeterLiveSlowTimer = null
 
 let homeVegrefSegKey = ''
 /** Behold sekundær gatelinje (type) på samme segment når NVDB veksler mellom beriket og kort svar. */
@@ -2252,6 +2367,7 @@ let homeVegrefLastDistSkipAt = 0
 const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
 /** Siste gang vi startet meter-tween eller snap (begrenser unødvendige oppdateringer på samme strekning). */
 let homeVegrefLastMeterUiCommitAt = 0
+/** Min tid mellom tween-steg; senkes dynamisk ved god nøyaktighet + fart (se shouldSkip…). */
 const HOME_VEGREF_METER_MIN_TWEEN_GAP_MS = 400
 /** Første tidspunkt vi så null-meter med hold (for debounce av «Oppdaterer meter …»). */
 let homeVegrefMeterNullSinceMs = 0
@@ -2380,6 +2496,71 @@ function getBufferedHomeVegrefFix() {
 }
 /** Siste nøyaktighet brukt til dist-skip (oppdateres i feedVegrefFromGps). */
 let lastVegrefGpsAccuracyM = 28
+
+/**
+ * Segment-identitet uten oscillerende veilinje-tekst (flakser mellom NVDB-svar).
+ * @param {object | null | undefined} res
+ */
+function homeVegrefSegmentIdentityKey(res) {
+  if (!res || typeof res !== 'object') return ''
+  const s = String(/** @type {{ s?: unknown }} */ (res).s ?? '').trim()
+  const d = String(/** @type {{ d?: unknown }} */ (res).d ?? '').trim()
+  const nidRaw = /** @type {{ nvdbId?: unknown }} */ (res).nvdbId
+  const n =
+    nidRaw != null && String(nidRaw).trim() !== '' ? String(nidRaw).trim() : ''
+  const kf = String(/** @type {{ kortform?: unknown }} */ (res).kortform ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+  if (n) return `${s}|${d}|${n}`
+  if (kf) return `${s}|${d}|k:${kf}`
+  return `${s}|${d}|`
+}
+
+/**
+ * Samme veg så lenge S/D og NVDB-id samsvar (der begge er satt).
+ * @param {object | null | undefined} a
+ * @param {object | null | undefined} b
+ */
+function homeVegrefSameRoadGeometry(a, b) {
+  if (!a || !b) return false
+  if (String(a.s) !== String(b.s) || String(a.d) !== String(b.d)) return false
+  const na = a.nvdbId != null ? String(a.nvdbId).trim() : ''
+  const nb = b.nvdbId != null ? String(b.nvdbId).trim() : ''
+  return na === nb
+}
+
+/**
+ * Samme kjørebane når NVDB går fra vls: til kf: (segmentering) med uendret S/D — da skal veinavn
+ * fortsatt kunne låses fra forrige stabile treff.
+ */
+function homeVegrefVlsKfSegmentUpgradeSameSd(a, b) {
+  if (!a || !b) return false
+  if (String(a.s) !== String(b.s) || String(a.d) !== String(b.d)) return false
+  const na = a.nvdbId != null ? String(a.nvdbId).trim() : ''
+  const nb = b.nvdbId != null ? String(b.nvdbId).trim() : ''
+  if (!na || !nb || na === nb) return false
+  const isVls = (id) => /^vls:/i.test(id)
+  const isKf = (id) => /^kf:/i.test(id)
+  return (isVls(na) && isKf(nb)) || (isKf(na) && isVls(nb))
+}
+
+/** Stabilt treff matcher nåværende for veinavn-lås (eksakt geometri eller vls/kf-oppgradering). */
+function homeVegrefStableMatchesForNameLatch(stab, res) {
+  if (homeVegrefSameRoadGeometry(stab, res)) return true
+  return homeVegrefVlsKfSegmentUpgradeSameSd(stab, res)
+}
+
+/** Kortere gap mellom tween-commits ved god GPS + fart → mer responsiv meter. */
+function homeVegrefMeterMinTweenGapMs() {
+  const acc = lastVegrefGpsAccuracyM
+  const spd = vegrefGetLastSpeed()
+  if (spd >= 14 && acc <= 10) return 260
+  if (spd >= 8 && acc <= 12) return 300
+  if (spd >= 5 && acc <= 15) return 280
+  return HOME_VEGREF_METER_MIN_TWEEN_GAP_MS
+}
+
 /** Dynamisk tween-varighet: kort ved høy fart slik at telleren flyter jevnt uten at en ny oppdatering kansellerer den forrige for tidlig. */
 function homeVegrefMeterTweenMs() {
   const spd = vegrefGetLastSpeed()
@@ -2413,6 +2594,9 @@ function homeVegrefMeterDeadbandM() {
      og UI står stille i flere sekunder. */
   if (spd >= 3 && acc <= 15) {
     d = Math.max(2, Math.min(d, 3 + acc * 0.12))
+  } else if (spd >= 3 && acc <= 20) {
+    /* Litt videre nøyaktighet (12–20 m): fortsatt kjøring — hold dødbånd nede, men ikke så stramt som ≤15 m. */
+    d = Math.max(3, Math.min(d, 5 + acc * 0.1))
   }
   return Math.min(20, d)
 }
@@ -2435,10 +2619,7 @@ function shouldSkipVegrefMeterDisplayUpdate(
   const snap = snapFn()
   if (delta >= snap) return false
   if (delta < homeVegrefMeterDeadbandM()) return true
-  if (
-    Date.now() - lastCommitMs <
-    HOME_VEGREF_METER_MIN_TWEEN_GAP_MS
-  ) {
+  if (Date.now() - lastCommitMs < homeVegrefMeterMinTweenGapMs()) {
     return true
   }
   return false
@@ -2586,6 +2767,35 @@ function maybeMergeNvdbSegmentsWhileDriving(segments, lat, lng, speedMps) {
       void refreshOfflineVegrefState()
     })
     .catch(() => {})
+}
+
+const SCANIX_SURFACE_PREF_KEY = 'scanix-surface-preference'
+
+function getSurfacePreference() {
+  try {
+    if (typeof localStorage === 'undefined') return 'motor'
+    const raw = localStorage.getItem(SCANIX_SURFACE_PREF_KEY)
+    const p = normalizeSurfacePreference(raw)
+    /* Migrer f.eks. eldre «balanced» til motor ved lesing */
+    if (raw != null && raw !== p) {
+      localStorage.setItem(SCANIX_SURFACE_PREF_KEY, p)
+    }
+    return p
+  } catch {
+    return 'motor'
+  }
+}
+
+function setSurfacePreference(pref) {
+  const p = normalizeSurfacePreference(pref)
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SCANIX_SURFACE_PREF_KEY, p)
+    }
+  } catch {
+    /* ignore */
+  }
+  return p
 }
 
 /**
@@ -3027,9 +3237,9 @@ function buildSessionMapPopupVegrefHtml(c) {
     )
   }
   if (hasSd) {
+    const sdKort = `S${s}D${d}`
     rows.push(
-      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">S</dt><dd class="session-map-popup__dd session-map-popup__dd--tabular">${escapeHtml(s)}</dd></div>`,
-      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">D</dt><dd class="session-map-popup__dd session-map-popup__dd--tabular">${escapeHtml(d)}</dd></div>`,
+      `<div class="session-map-popup__dl-row"><dt class="session-map-popup__dt">S/D</dt><dd class="session-map-popup__dd session-map-popup__dd--tabular session-map-popup__dd--sd-kort">${escapeHtml(sdKort)}</dd></div>`,
     )
   }
 
@@ -3054,7 +3264,12 @@ function buildSessionMapPopupVegrefHtml(c) {
  */
 function buildSessionClickPopupHtml(c, index) {
   const n = index + 1
-  const title = `Trykk #${n}`
+  const defaultTitle = String(n)
+  const labelRaw =
+    typeof c.label === 'string'
+      ? c.label.trim().slice(0, CLICK_ENTRY_LABEL_MAX_LEN)
+      : ''
+  const displayTitle = labelRaw || defaultTitle
   const catLabel =
     typeof c.category === 'string' && c.category
       ? getObjectCategoryLabel(c.category)
@@ -3068,11 +3283,20 @@ function buildSessionClickPopupHtml(c, index) {
     c.timestamp && !Number.isNaN(Date.parse(c.timestamp))
       ? escapeHtml(c.timestamp)
       : ''
+  const idAttr =
+    typeof c.id === 'string' && c.id ? escapeHtml(c.id) : ''
+  const commentRaw =
+    typeof c.comment === 'string'
+      ? c.comment.trim().slice(0, CLICK_ENTRY_COMMENT_MAX_LEN)
+      : ''
+  const commentBlock = commentRaw
+    ? `<section class="session-map-popup__comment" aria-label="Kommentar"><p class="session-map-popup__comment-text">${escapeHtml(commentRaw)}</p></section>`
+    : ''
 
-  return `<article class="session-map-popup session-map-popup--click">
+  return `<article class="session-map-popup session-map-popup--click" data-scanix-click-id="${idAttr}" data-scanix-click-idx="${index}" tabindex="0">
     <header class="session-map-popup__head">
       <span class="session-map-popup__eyebrow">Registrering</span>
-      <h2 class="session-map-popup__title">${escapeHtml(title)}</h2>
+      <h2 class="session-map-popup__title">${escapeHtml(displayTitle)}</h2>
     </header>
     ${
       catLabel
@@ -3080,11 +3304,13 @@ function buildSessionClickPopupHtml(c, index) {
         : ''
     }
     ${vegHtml}
+    ${commentBlock}
     ${
       timeStr
         ? `<footer class="session-map-popup__foot"><time class="session-map-popup__time" datetime="${isoAttr}">${escapeHtml(timeStr)}</time></footer>`
         : ''
     }
+    <p class="session-map-popup__edit-hint">Dobbelttrykk for å redigere. <button type="button" class="session-map-popup__edit-fallback">Rediger</button></p>
   </article>`
 }
 
@@ -3133,6 +3359,140 @@ function buildSessionPhotoPopupHtml(ph, index) {
         : ''
     }
   </article>`
+}
+
+/** Index i state.clickHistory under redigering i dialog (eller -1). */
+let clickEntryEditTargetIndex = -1
+
+function resolveClickHistoryIndexFromPopupDataset(card) {
+  const id = card.dataset.scanixClickId
+  if (id) {
+    const ix = state.clickHistory.findIndex((x) => x.id === id)
+    if (ix >= 0) return ix
+  }
+  const ix = Number(card.dataset.scanixClickIdx)
+  if (Number.isFinite(ix) && state.clickHistory[ix]) return ix
+  return -1
+}
+
+function openClickEntryEditDialogFromCard(card) {
+  if (!(card instanceof HTMLElement)) return
+  const idx = resolveClickHistoryIndexFromPopupDataset(card)
+  if (idx < 0 || !state.clickHistory[idx]) return
+  const c = state.clickHistory[idx]
+  clickEntryEditTargetIndex = idx
+  const dlg = document.getElementById('click-entry-edit-dialog')
+  const titleInp = document.getElementById('click-entry-edit-title')
+  const commentTa = document.getElementById('click-entry-edit-comment')
+  if (
+    !dlg ||
+    !(titleInp instanceof HTMLInputElement) ||
+    !(commentTa instanceof HTMLTextAreaElement)
+  ) {
+    return
+  }
+  titleInp.value = typeof c.label === 'string' ? c.label : ''
+  commentTa.value = typeof c.comment === 'string' ? c.comment : ''
+  map?.closePopup()
+  dlg.showModal()
+}
+
+function applyClickEntryEditFromDialog() {
+  const idx = clickEntryEditTargetIndex
+  if (idx < 0 || !state.clickHistory[idx]) return
+  const titleInp = document.getElementById('click-entry-edit-title')
+  const commentTa = document.getElementById('click-entry-edit-comment')
+  const label =
+    titleInp instanceof HTMLInputElement
+      ? titleInp.value.trim().slice(0, CLICK_ENTRY_LABEL_MAX_LEN)
+      : ''
+  const comment =
+    commentTa instanceof HTMLTextAreaElement
+      ? commentTa.value.trim().slice(0, CLICK_ENTRY_COMMENT_MAX_LEN)
+      : ''
+  const prev = state.clickHistory[idx]
+  const next = { ...prev }
+  if (label) next.label = label
+  else delete next.label
+  if (comment) next.comment = comment
+  else delete next.comment
+  state.clickHistory[idx] = next
+  clickEntryEditTargetIndex = -1
+  document.getElementById('click-entry-edit-dialog')?.close()
+  persist()
+  if (view === 'session' && map) rebuildMarkers()
+  showSessionToast('Lagret')
+}
+
+function wireClickEntryEditDialogListeners(signal) {
+  document.getElementById('click-entry-edit-save')?.addEventListener(
+    'click',
+    () => applyClickEntryEditFromDialog(),
+    { signal },
+  )
+  document.getElementById('click-entry-edit-cancel')?.addEventListener(
+    'click',
+    () => {
+      clickEntryEditTargetIndex = -1
+      document.getElementById('click-entry-edit-dialog')?.close()
+    },
+    { signal },
+  )
+  const dlg = document.getElementById('click-entry-edit-dialog')
+  dlg?.addEventListener(
+    'cancel',
+    (ev) => {
+      ev.preventDefault()
+      clickEntryEditTargetIndex = -1
+      dlg.close()
+    },
+    { signal },
+  )
+}
+
+function attachSessionClickPopupEditGestures(card) {
+  if (!map) return
+  const ac = new AbortController()
+  const { signal } = ac
+  const open = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    openClickEntryEditDialogFromCard(card)
+  }
+  let lastTouchEnd = 0
+  card.addEventListener('dblclick', open, { signal })
+  card.addEventListener(
+    'touchend',
+    (e) => {
+      const t = Date.now()
+      if (t - lastTouchEnd < 320) {
+        open(e)
+        lastTouchEnd = 0
+      } else {
+        lastTouchEnd = t
+      }
+    },
+    { signal, passive: false },
+  )
+  card
+    .querySelector('.session-map-popup__edit-fallback')
+    ?.addEventListener('click', open, { signal })
+  const onClose = () => ac.abort()
+  map.once('popupclose', onClose)
+}
+
+function onSessionMapPopupOpen(e) {
+  if (!map) return
+  const popup = /** @type {{ getElement?: () => HTMLElement | undefined }} */ (
+    e.popup
+  )
+  const el = popup.getElement?.()
+  if (!el) return
+  const card = el.querySelector(
+    '.session-map-popup--click[data-scanix-click-idx]',
+  )
+  if (!(card instanceof HTMLElement)) return
+  attachSessionClickPopupEditGestures(card)
 }
 
 /**
@@ -3283,6 +3643,7 @@ function rebuildMarkers() {
 function fitAllPins() {
   if (!map) return
   followUserOnMap = false
+  syncSessionMapExploreButton()
   const { clickLatLng, photoLatLng } = computeAllMarkerDisplayPositions()
   const pts = []
   state.clickHistory.forEach((c, i) => {
@@ -3304,10 +3665,19 @@ function fitAllPins() {
   map.fitBounds(b, { padding: [40, 40], maxZoom: 17 })
 }
 
+function syncSessionMapExploreButton() {
+  const btn = document.getElementById('btn-map-explore')
+  if (!btn) return
+  const show = Boolean(map) && followUserOnMap
+  btn.hidden = !show
+  btn.setAttribute('aria-hidden', show ? 'false' : 'true')
+}
+
 /** Flytter kartet til gjeldende posisjon (blå markør / siste GPS). */
 function centerMapOnUserPosition() {
   if (!map) return
   followUserOnMap = true
+  syncSessionMapExploreButton()
   const gpsEl = document.getElementById('gps-status')
   let lat = navDisplayLat
   let lng = navDisplayLng
@@ -3349,7 +3719,7 @@ function centerMapOnUserPosition() {
       })
       if (gpsEl) {
         gpsEl.textContent =
-          'Tillat posisjon – kartet følger deg. Dra i kartet for å se rundt; «Min posisjon» sentrerer igjen.'
+          'Tillat posisjon – kartet følger deg. Dra i kartet eller trykk «Fri kart» for å utforske; ⌂ «Min posisjon» følger GPS igjen.'
       }
     },
     (err) => {
@@ -4545,7 +4915,21 @@ function cancelHomeVegrefMeterLiveExtrap() {
     cancelAnimationFrame(homeVegrefMeterLiveRaf)
     homeVegrefMeterLiveRaf = null
   }
+  if (homeVegrefMeterLiveSlowTimer != null) {
+    clearTimeout(homeVegrefMeterLiveSlowTimer)
+    homeVegrefMeterLiveSlowTimer = null
+  }
   homeVegrefMeterLiveLastTs = 0
+}
+
+function scheduleHomeVegrefMeterLiveRecheck() {
+  if (homeVegrefMeterLiveSlowTimer != null) return
+  homeVegrefMeterLiveSlowTimer = setTimeout(() => {
+    homeVegrefMeterLiveSlowTimer = null
+    if (view !== 'home' || homeVegrefDisplayedMeter == null) return
+    if (homeVegrefMeterAnim != null) return
+    startHomeVegrefMeterLiveExtrap()
+  }, 320)
 }
 
 function tickHomeVegrefMeterLive() {
@@ -4555,7 +4939,7 @@ function tickHomeVegrefMeterLive() {
     return
   }
   if (homeVegrefMeterAnim != null) {
-    homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
+    homeVegrefMeterLiveRaf = null
     return
   }
   const mEl = document.getElementById('home-vegref-meter')
@@ -4593,7 +4977,8 @@ function tickHomeVegrefMeterLive() {
     spd = 22
   }
   if (spd < 0.8) {
-    homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
+    homeVegrefMeterLiveRaf = null
+    scheduleHomeVegrefMeterLiveRecheck()
     return
   }
   const now = performance.now()
@@ -4922,6 +5307,52 @@ function applyHomeVegrefResult(res) {
     String(res.d).trim() !== ''
   if (!display && !officialShort && !hasSdPair) return
 
+  let longDisplayEff = longDisplay
+  let longOfficialEff = longOfficial
+  let displayEff = display
+  let officialShortEff = officialShort
+  const stab = homeVegrefLastStableRes
+  const stabSrc = stab
+    ? String(
+        /** @type {{ _vegrefMeta?: { source?: string } }} */ (stab)._vegrefMeta
+          ?.source || '',
+      )
+    : ''
+  if (
+    stab &&
+    stabSrc !== 'coord-fallback' &&
+    homeVegrefStableMatchesForNameLatch(
+      /** @type {{ s?: unknown, d?: unknown, nvdbId?: unknown }} */ (stab),
+      res,
+    ) &&
+    !longDisplay
+  ) {
+    const ld = String(
+      /** @type {{ roadLineDisplay?: unknown }} */ (stab).roadLineDisplay || '',
+    ).trim()
+    if (ld) {
+      longDisplayEff = ld
+      longOfficialEff =
+        String(/** @type {{ roadLine?: unknown }} */ (stab).roadLine || '').trim() ||
+        longOfficialEff
+      displayEff =
+        String(
+          /** @type {{ roadLineDisplayShort?: unknown, roadLineShort?: unknown, roadLineDisplay?: unknown, roadLine?: unknown }} */ (
+            stab
+          ).roadLineDisplayShort ||
+            stab.roadLineShort ||
+            stab.roadLineDisplay ||
+            stab.roadLine ||
+            '',
+        ).trim() || displayEff
+      officialShortEff =
+        String(/** @type {{ roadLineShort?: unknown }} */ (stab).roadLineShort || '')
+          .trim() ||
+        String(/** @type {{ roadLine?: unknown }} */ (stab).roadLine || '').trim() ||
+        officialShortEff
+    }
+  }
+
   if (!homeVegrefStartupFirstRenderAt) {
     homeVegrefStartupFirstRenderAt = Date.now()
     homeVegrefStartupFirstRenderSource = String(
@@ -4930,14 +5361,14 @@ function applyHomeVegrefResult(res) {
     )
     logHomeVegrefStartupMetric('first-render', {
       source: homeVegrefStartupFirstRenderSource,
-      roadLine: display || officialShort || '',
+      roadLine: displayEff || officialShortEff || '',
     })
   }
 
   syncHomeVegrefExcelFromRes(res)
 
-  const segKey = `${longOfficial}|${res.s}|${res.d}`
-  const segChanged = segKey !== homeVegrefSegKey
+  const segKeyId = homeVegrefSegmentIdentityKey(res)
+  const segChanged = segKeyId !== homeVegrefSegKey
   if (segChanged) {
     vegrefClearSegmentLock()
     cancelHomeVegrefMeterTween()
@@ -4959,7 +5390,7 @@ function applyHomeVegrefResult(res) {
       homeVegrefDisplayedMeter = mInt
       if (nid != null) homeVegrefMeterNvdbId = nid
     }
-    homeVegrefSegKey = segKey
+    homeVegrefSegKey = segKeyId
     if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
     return
   }
@@ -4974,21 +5405,21 @@ function applyHomeVegrefResult(res) {
     homeVegrefMeterNullSinceMs = 0
     setHomeVegrefUncertainUi(false, '')
   }
-  prim.textContent = display || officialShort
+  prim.textContent = displayEff || officialShortEff
   if (typeEl) {
     const isStreet =
-      longDisplay &&
-      longOfficial &&
-      longDisplay !== longOfficial &&
-      officialShort
+      longDisplayEff &&
+      longOfficialEff &&
+      longDisplayEff !== longOfficialEff &&
+      officialShortEff
     if (isStreet) {
-      typeEl.textContent = officialShort
+      typeEl.textContent = officialShortEff
       typeEl.hidden = false
-      homeVegrefStickyStreetLine = officialShort
-      homeVegrefStickySegKey = segKey
+      homeVegrefStickyStreetLine = officialShortEff
+      homeVegrefStickySegKey = segKeyId
     } else if (
       homeVegrefStickyStreetLine &&
-      homeVegrefStickySegKey === segKey &&
+      homeVegrefStickySegKey === segKeyId &&
       !segChanged
     ) {
       typeEl.textContent = homeVegrefStickyStreetLine
@@ -5001,7 +5432,7 @@ function applyHomeVegrefResult(res) {
   if (comp) {
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
-    homeVegrefSegKey = segKey
+    homeVegrefSegKey = segKeyId
 
     if (mInt == null) {
       cancelHomeVegrefMeterTween()
@@ -5166,7 +5597,7 @@ function startHomeVegrefTracking() {
     const offlineAtStart =
       typeof navigator !== 'undefined' && navigator.onLine === false
     if (offlineAtStart) {
-      await ensureOfflineVegrefPackage().catch(() => null)
+      await refreshOfflineVegrefState().catch(() => null)
     }
     try {
       const raw = localStorage.getItem(VEGREF_PERSIST_KEY)
@@ -5183,19 +5614,35 @@ function startHomeVegrefTracking() {
             typeof p.savedAt === 'number' && Number.isFinite(p.savedAt)
               ? Date.now() - p.savedAt
               : Infinity
-          if (ageMs <= HOME_VEGREF_STALE_REUSE_MS) {
-            vegrefHydrateFromPersisted(p.lat, p.lng, p.res)
-            homeVegrefLastStableRes = p.res
-            homeVegrefLastStableAt = Date.now()
-            vegrefReapplyLastToDom()
-            if (!offlineAtStart) {
-              setHomeVegrefUncertainUi(true, 'Sist kjente vei - oppdaterer ...')
-            }
-            logHomeVegrefStartupMetric('persisted-hydrate', {
-              ageMs: Math.round(ageMs),
-              offline: offlineAtStart,
-            })
-          }
+          /*
+           * Hydrer alltid sist kjente vegref ved oppstart, uavhengig av alder.
+           * Brukeren har lukket og åpnet appen igjen og forventer å se sist
+           * kjente strekning umiddelbart (likt med f.eks. Vegviseren). Trygt
+           * fordi:
+           *   - cache-treff i offlineOrFallbackResult har avstandsjekk → en
+           *     gammel, langt unna ref returneres ikke som ny posisjon-treff.
+           *   - Pipelinen henter alltid fersk vegref ved første GPS-fix og
+           *     overskriver hydratiseringen så snart noe nytt foreligger.
+           *   - shouldPersistHomeVegrefRes hindrer at rå-koord-fallbacks
+           *     persisteres i utgangspunktet — det vi hydrer er ekte vegref.
+           * UI-flagget «Sist kjente vei …» kommuniserer at refen er gammel.
+           */
+          vegrefHydrateFromPersisted(p.lat, p.lng, p.res)
+          homeVegrefLastStableRes = p.res
+          homeVegrefLastStableAt = Date.now()
+          vegrefReapplyLastToDom()
+          const isStale = !Number.isFinite(ageMs) || ageMs > HOME_VEGREF_STALE_REUSE_MS
+          const label = offlineAtStart
+            ? isStale
+              ? 'Sist kjente vei (uten nett)'
+              : 'Sist kjente vei – uten nett'
+            : 'Sist kjente vei – oppdaterer …'
+          setHomeVegrefUncertainUi(true, label)
+          logHomeVegrefStartupMetric('persisted-hydrate', {
+            ageMs: Number.isFinite(ageMs) ? Math.round(ageMs) : -1,
+            offline: offlineAtStart,
+            stale: isStale,
+          })
         }
       }
     } catch {
@@ -6384,7 +6831,7 @@ function offlineModeBannerHtml() {
   if (typeof navigator === 'undefined' || navigator.onLine !== false) return ''
   const hint = offlineVegrefReady
     ? 'Du er offline. Vegreferanse bruker nedlastet kartdata der det finnes. Sky-synk krever nett.'
-    : 'Du er offline. Last ned «Offline vegreferanse» under Innstillinger for bedre veivisning uten nett.'
+    : 'Du er offline. Koble til nett for at appen skal kunne laste ned veidata automatisk; uten pakke vises posisjon som koordinater der det ikke finnes tidligere treff.'
   return `<div class="offline-mode-banner" role="status">${escapeHtml(hint)}</div>`
 }
 
@@ -6812,6 +7259,8 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-photos">Bilder</button>
         <button type="button" class="home-drawer__link" id="home-drawer-friction">Friksjonsmåling</button>
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-traffic-group">Trafikantgruppe</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-offline-vegref">Veg uten nett</button>
         <button type="button" class="home-drawer__link" id="home-drawer-messages">Meldinger</button>
         <button type="button" class="home-drawer__link" id="home-drawer-settings">Innstillinger</button>
         <button type="button" class="home-drawer__link" id="home-drawer-excel-export">Eksporter til Excel</button>
@@ -7042,11 +7491,14 @@ function renderMenuPhotosHtml() {
   const all = getAllPhotosFlat()
   if (!all.length) {
     menuPhotosOpenFolderKey = null
-    return `<div class="view-sub view-menu-photos surface view-panel-enter">
-    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos">← Meny</button>
-    <h2 class="subview-title">Bilder</h2>
-    <p class="menu-session-panel__lead">Ingen bilder ennå. Ta bilde fra forsiden eller i en økt.</p>
-    <p class="sub-empty">Når du har bilder, vises de i mapper etter sted/vei.</p>
+    return `<div class="view-sub view-menu-photos view-home surface--home view-photo-album-page view-panel-enter">
+    <header class="traffic-group-top" aria-label="Bilder">
+      <button type="button" class="traffic-group-back-btn" id="btn-back-from-menu-photos">← Meny</button>
+      <h1 class="traffic-group-title">Bilder</h1>
+      <span class="traffic-group-top-spacer" aria-hidden="true"></span>
+    </header>
+    <p class="menu-photos-page-lead">Ingen bilder ennå. Ta bilde fra forsiden eller i en økt.</p>
+    <p class="menu-photos-page-sub">Når du har bilder, vises de i mapper etter sted/vei.</p>
   </div>`
   }
   const grouped = groupPhotosByRoadFolder(all)
@@ -7060,38 +7512,56 @@ function renderMenuPhotosHtml() {
     const [folderKey, items] = row
     const thumbs = items
       .map((ph) => {
-        const ov = formatPhotoThumbOverlayHtml(ph)
-        return `<button type="button" class="menu-photos-thumb" data-photo-id="${escapeHtml(ph.id)}">
-        <span class="menu-photos-thumb__frame">
-          <img src="${ph.dataUrl}" alt="" class="menu-photos-thumb__img" loading="lazy" decoding="async" />
-          ${ov}
+        const t = formatPhotoAlbumRowTitle(ph)
+        const h = formatPhotoAlbumRowHint(ph, t)
+        return `<button type="button" class="home-dash-card menu-photos-thumb" data-photo-id="${escapeHtml(ph.id)}">
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">${escapeHtml(t)}</span>
+            <span class="home-dash-card__hint">${escapeHtml(h)}</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <img src="${ph.dataUrl}" alt="" class="home-dash-card__preview" loading="lazy" decoding="async" />
+          </span>
         </span>
       </button>`
       })
       .join('')
-    return `<div class="view-sub view-menu-photos surface view-panel-enter">
-    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos" aria-label="Tilbake til mapper">← Mapper</button>
-    <h2 class="subview-title menu-photos-detail__heading"><span class="menu-photos-detail__heading-icon" aria-hidden="true">${menuPhotosMacFolderIconSvg()}</span><span class="menu-photos-detail__heading-text">${escapeHtml(folderKey)}</span></h2>
+    return `<div class="view-sub view-menu-photos view-home surface--home view-photo-album-page view-panel-enter">
+    <header class="traffic-group-top" aria-label="Mappe">
+      <button type="button" class="traffic-group-back-btn" id="btn-back-from-menu-photos" aria-label="Tilbake til mapper">← Mapper</button>
+      <h1 class="traffic-group-title">${escapeHtml(folderKey)}</h1>
+      <span class="traffic-group-top-spacer" aria-hidden="true"></span>
+    </header>
     <p class="menu-photos-detail__meta">${items.length} ${items.length === 1 ? 'bilde' : 'bilder'}</p>
-    <div class="menu-photos-folder__grid" id="menu-photos-folders">${thumbs}</div>
+    <div class="menu-photos-detail-list" id="menu-photos-folders">${thumbs}</div>
   </div>`
   }
 
   const foldersHtml = grouped
-    .map(([folderKey]) => {
-      return `<button type="button" class="menu-photos-folder-row" data-folder-key="${escapeHtml(folderKey)}">
-      <span class="menu-photos-folder-row__icon">${menuPhotosMacFolderIconSvg()}</span>
-      <span class="menu-photos-folder-row__text">
-        <span class="menu-photos-folder-row__name">${escapeHtml(folderKey)}</span>
+    .map(([folderKey, items]) => {
+      const n = items.length
+      const hint =
+        n === 1 ? '1 bilde' : `${n} bilder`
+      return `<button type="button" class="home-dash-card menu-photos-folder-row" data-folder-key="${escapeHtml(folderKey)}">
+      <span class="home-dash-card__row menu-photos-folder-row__dash">
+        <span class="home-dash-card__content">
+          <span class="home-dash-card__title">${escapeHtml(folderKey)}</span>
+          <span class="home-dash-card__hint">${hint}</span>
+        </span>
+        <span class="home-dash-card__visual menu-photos-folder-row__visual" aria-hidden="true">${menuPhotosMacFolderIconSvg()}</span>
+        <span class="menu-photos-folder-row__chevron" aria-hidden="true">›</span>
       </span>
-      <span class="menu-photos-folder-row__chevron" aria-hidden="true">›</span>
     </button>`
     })
     .join('')
-  return `<div class="view-sub view-menu-photos surface view-panel-enter">
-    <button type="button" class="btn btn-back" id="btn-back-from-menu-photos" aria-label="Tilbake til meny">← Meny</button>
-    <h2 class="subview-title">Bilder</h2>
-    <p class="menu-session-panel__lead">Åpne en mappe for å se bildene. Navnet følger vei/sted.</p>
+  return `<div class="view-sub view-menu-photos view-home surface--home view-photo-album-page view-panel-enter">
+    <header class="traffic-group-top" aria-label="Bilder">
+      <button type="button" class="traffic-group-back-btn" id="btn-back-from-menu-photos" aria-label="Tilbake til meny">← Meny</button>
+      <h1 class="traffic-group-title">Bilder</h1>
+      <span class="traffic-group-top-spacer" aria-hidden="true"></span>
+    </header>
+    <p class="menu-photos-page-lead">Åpne en mappe for å se bildene. Navnet følger vei/sted.</p>
     <div class="menu-photos-folder-list" id="menu-photos-folders">${foldersHtml}</div>
   </div>`
 }
@@ -7117,6 +7587,243 @@ function renderMenuContactsHtml() {
   </div>`
 }
 
+function renderMenuTrafficGroupHtml() {
+  const surfacePref = getSurfacePreference()
+  const motorOn = surfacePref === 'motor'
+  const activeOn = surfacePref === 'active'
+  return `<div class="view-traffic-group view-home surface--home view-panel-enter">
+    <header class="traffic-group-top" aria-label="Trafikantgruppe">
+      <button type="button" class="traffic-group-back-btn" id="btn-back-from-menu-traffic-group">← Meny</button>
+      <h1 class="traffic-group-title">Trafikantgruppe</h1>
+      <span class="traffic-group-top-spacer" aria-hidden="true"></span>
+    </header>
+    <div class="traffic-group-stack">
+      <nav class="home-dashboard traffic-group-dashboard" aria-label="Velg trafikantgruppe">
+        <button type="button" class="home-dash-card traffic-group-choice${
+          motorOn ? ' home-dash-card--accent' : ''
+        }" data-traffic-pref="motor" aria-pressed="${motorOn}">
+          <span class="home-dash-card__row">
+            <span class="home-dash-card__content">
+              <span class="home-dash-card__title">Kjørende</span>
+            </span>
+          </span>
+        </button>
+        <button type="button" class="home-dash-card traffic-group-choice${
+          activeOn ? ' home-dash-card--accent' : ''
+        }" data-traffic-pref="active" aria-pressed="${activeOn}">
+          <span class="home-dash-card__row">
+            <span class="home-dash-card__content">
+              <span class="home-dash-card__title">Sykkel/gangsti</span>
+            </span>
+          </span>
+        </button>
+        <p class="traffic-group-below-copy">Når kjørebane og gang-/sykkelvei ligger like nær GPS, styrer dette hvilket segment som brukes til vegreferansen.</p>
+      </nav>
+    </div>
+  </div>`
+}
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   label: string,
+ *   bbox: { minLng: number, minLat: number, maxLng: number, maxLat: number },
+ * }} OfflineVegSuggestion
+ */
+
+/** Forslag-tilstand er kun i minnet og resettes når visningen forlates. */
+/** @type {OfflineVegSuggestion[]} */
+let offlineVegSuggestions = []
+/** @type {OfflineVegSuggestion | null} */
+let offlineVegSelected = null
+/** Buffer rundt bbox i km – juster med slider. */
+let offlineVegBufferKm = 1.5
+let offlineVegSearchQuery = ''
+let offlineVegSearchBusy = false
+let offlineVegSearchError = ''
+let offlineVegDownloadBusy = false
+let offlineVegDownloadStatus = ''
+let offlineVegDownloadError = ''
+/** @type {AbortController | null} */
+let offlineVegSearchAbort = null
+/** @type {AbortController | null} */
+let offlineVegDownloadAbort = null
+/** @type {ReturnType<typeof setTimeout> | null} */
+let offlineVegSearchDebounce = null
+/** @type {import('leaflet').Map | null} */
+let offlineVegMap = null
+/** @type {import('leaflet').Rectangle | null} */
+let offlineVegRect = null
+
+const OFFLINE_VEG_BUFFER_MIN_KM = 0.5
+const OFFLINE_VEG_BUFFER_MAX_KM = 15
+
+/**
+ * Brukerens valg + buffer → bbox.
+ *
+ * Strategi for å håndtere både korte og lange strekninger uten å sende hele
+ * Norge til NVDB:
+ *  - Hvis Nominatim-treffet selv er lite/middels (passer innenfor MAX_BBOX_DEG
+ *    med plass til buffer), bruker vi treffets faktiske bbox + buffer. Da
+ *    følger nedlastingen formen på vegen.
+ *  - Hvis treffet er stort (typisk en hel kommune/region), klamper vi til
+ *    midtpunktet og lar slideren bli effektiv radius i hver retning.
+ *  - Til slutt klamper vi alltid til MAX_BBOX_DEG som siste sikkerhetsnett.
+ */
+function offlineVegEffectiveBbox() {
+  if (!offlineVegSelected) return null
+  const b = offlineVegSelected.bbox
+  const dLat = b.maxLat - b.minLat
+  const dLng = b.maxLng - b.minLng
+  const SAFE_NOMINATIM_DEG = 0.18
+  let seed
+  if (dLat <= SAFE_NOMINATIM_DEG && dLng <= SAFE_NOMINATIM_DEG) {
+    seed = b
+  } else {
+    const midLat = (b.minLat + b.maxLat) / 2
+    const midLng = (b.minLng + b.maxLng) / 2
+    seed = {
+      minLat: midLat,
+      maxLat: midLat + 1e-6,
+      minLng: midLng,
+      maxLng: midLng + 1e-6,
+    }
+  }
+  const expanded = expandBboxKm(seed, offlineVegBufferKm)
+  const clamped = clampBboxToMaxDeg(expanded)
+  return bboxIsValid(clamped) ? clamped : null
+}
+
+/**
+ * Sjekker om brukerens valg er for langt til å lastes ned i én bit.
+ * Returnerer null hvis det ikke er for langt; ellers et objekt som beskriver
+ * den faktiske lengden og hvor mye som faller utenfor.
+ *
+ * «For langt» betyr at Nominatim-treffet selv strekker seg lenger enn
+ * MAX_BBOX_DEG (~38 km) i minst én retning, slik at vi har klampet til
+ * midtpunkt + radius og dermed ikke får med endene av strekningen.
+ *
+ * @returns {{ lengthKm: number, coveredKm: number, missingKm: number } | null}
+ */
+function offlineVegSelectionTooLong() {
+  if (!offlineVegSelected) return null
+  const b = offlineVegSelected.bbox
+  const dLat = b.maxLat - b.minLat
+  const dLng = b.maxLng - b.minLng
+  const midLat = (b.minLat + b.maxLat) / 2
+  const cosLat = Math.max(0.05, Math.cos((midLat * Math.PI) / 180))
+  const km = Math.max(dLat * 111, dLng * 111 * cosLat)
+  const MAX_DEG = 0.35
+  const longestDeg = Math.max(dLat, dLng)
+  if (longestDeg <= MAX_DEG) return null
+  const coveredKm = MAX_DEG * (dLat >= dLng ? 111 : 111 * cosLat)
+  return {
+    lengthKm: km,
+    coveredKm,
+    missingKm: Math.max(0, km - coveredKm),
+  }
+}
+
+/**
+ * Klamp bboxen rundt midtpunktet slik at hver dimensjon ikke overskrider
+ * MAX_BBOX_DEG. Brukes som siste sikkerhetsnett mot urimelige forespørsler.
+ * @param {{minLat:number,maxLat:number,minLng:number,maxLng:number}} b
+ */
+function clampBboxToMaxDeg(b) {
+  const max = 0.35
+  const dLat = b.maxLat - b.minLat
+  const dLng = b.maxLng - b.minLng
+  const midLat = (b.minLat + b.maxLat) / 2
+  const midLng = (b.minLng + b.maxLng) / 2
+  const halfLat = Math.min(dLat, max) / 2
+  const halfLng = Math.min(dLng, max) / 2
+  return {
+    minLat: midLat - halfLat,
+    maxLat: midLat + halfLat,
+    minLng: midLng - halfLng,
+    maxLng: midLng + halfLng,
+  }
+}
+
+function renderMenuOfflineVegrefHtml() {
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+  const meta = offlineVegrefMeta
+  const segCount =
+    meta && typeof meta.count === 'number' ? meta.count : 0
+  const segCountStr = segCount.toLocaleString('nb-NO')
+  const bbox = offlineVegEffectiveBbox()
+  const areaKm2 = bbox ? estimateAreaKm2(bbox) : 0
+  const areaStr = areaKm2 > 0 ? `${areaKm2.toFixed(1)} km²` : '–'
+  const sliderValue = String(offlineVegBufferKm)
+  const sliderHint = `${offlineVegBufferKm.toFixed(1).replace('.', ',')} km`
+  const downloadDisabled =
+    offline || offlineVegDownloadBusy || !offlineVegSelected
+  const downloadLabel = offlineVegDownloadBusy
+    ? 'Laster ned …'
+    : 'Last ned til telefon'
+  const queryAttr = escapeHtml(offlineVegSearchQuery)
+  const offlineNotice = offline
+    ? '<p class="offline-veg-banner" role="status">Du er uten nett. Søk og nedlasting krever tilkobling.</p>'
+    : ''
+  return `<div class="view-offline-veg view-traffic-group view-home surface--home view-panel-enter">
+    <header class="traffic-group-top" aria-label="Veg uten nett">
+      <button type="button" class="traffic-group-back-btn" id="btn-back-from-menu-offline-vegref">← Meny</button>
+      <h1 class="traffic-group-title">Veg uten nett</h1>
+      <span class="traffic-group-top-spacer" aria-hidden="true"></span>
+    </header>
+    <div class="offline-veg-stack">
+      ${offlineNotice}
+      <section class="offline-veg-card auth-card--glass" aria-labelledby="offline-veg-search-label">
+        <label class="offline-veg-card__label" id="offline-veg-search-label" for="offline-veg-search-input">Søk etter veg eller sted</label>
+        <input
+          type="search"
+          id="offline-veg-search-input"
+          class="offline-veg-card__input auth-input--glass"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          inputmode="search"
+          placeholder="F.eks. E6 Beisfjord, Saltstraumen, Rv 80"
+          value="${queryAttr}"
+        />
+        <ul class="offline-veg-suggest" role="listbox" aria-label="Forslag"></ul>
+        <div class="offline-veg-search-error-slot"></div>
+      </section>
+
+      <section class="offline-veg-card auth-card--glass" aria-labelledby="offline-veg-area-label">
+        <div class="offline-veg-card__head">
+          <span class="offline-veg-card__label" id="offline-veg-area-label">Område</span>
+          <span class="offline-veg-card__meta">${escapeHtml(areaStr)}</span>
+        </div>
+        <div id="offline-veg-map" class="offline-veg-map" aria-label="Forhåndsvisning av nedlastingsområdet"></div>
+        <label class="offline-veg-slider" for="offline-veg-buffer">
+          <span class="offline-veg-slider__row">
+            <span>Utvid område</span>
+            <span class="offline-veg-slider__value">${escapeHtml(sliderHint)}</span>
+          </span>
+          <input
+            type="range"
+            id="offline-veg-buffer"
+            min="${OFFLINE_VEG_BUFFER_MIN_KM}"
+            max="${OFFLINE_VEG_BUFFER_MAX_KM}"
+            step="0.5"
+            value="${sliderValue}"
+          />
+        </label>
+        <div class="offline-veg-toolong-slot"></div>
+      </section>
+
+      <section class="offline-veg-card auth-card--glass offline-veg-card--actions">
+        <button type="button" class="offline-veg-action btn-auth-gradient btn-auth-gradient--teal" id="btn-offline-veg-download"${downloadDisabled ? ' disabled' : ''}>${downloadLabel}</button>
+        <div class="offline-veg-download-status-slot"></div>
+        <div class="offline-veg-download-error-slot"></div>
+        <p class="offline-veg-fineprint">Lagret lokalt: <span class="offline-veg-fineprint-count">${segCountStr}</span> segmenter. Nedlastingen legger til vegdata fra Statens vegvesen (NVDB) for området du har valgt. Søkeforslagene er fra OpenStreetMap-geokoder.</p>
+        <p class="offline-veg-fineprint offline-veg-fineprint--muted">«Oppdater offline-pakke» under Innstillinger erstatter alt — inkludert områder du har lastet ned her.</p>
+      </section>
+    </div>
+  </div>`
+}
+
 function renderMenuSettingsHtml() {
   const generatedAt =
     offlineVegrefMeta && typeof offlineVegrefMeta.generatedAt === 'string'
@@ -7129,10 +7836,11 @@ function renderMenuSettingsHtml() {
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-settings">← Meny</button>
     <h2 class="subview-title">Innstillinger</h2>
-    <p class="menu-info-prose">Her kommer app-innstillinger (språk, varsler, lagring) i en senere versjon.</p>
     <div class="menu-card">
       <h3 class="menu-card__title">Offline vegreferanse</h3>
       <p class="menu-info-prose">Uten nett eller når NVDB ikke svarer, brukes nedlastede segmenter automatisk der de dekker posisjonen.</p>
+      <p class="menu-info-prose">Har du nett, forsøker appen å laste ned eller oppdatere pakken i bakgrunnen (etter oppstart og når tilkoblingen kommer tilbake). Knappen under starter nedlasting med én gang eller tvinger oppdatering.</p>
+      <p class="menu-info-prose menu-info-prose--warn">«Oppdater offline-pakke» erstatter alt — inkludert egne strekninger lastet ned i «Veg uten nett».</p>
       <p class="menu-info-prose">Status: ${escapeHtml(offlineVegrefSyncStatus)}</p>
       <p class="menu-info-prose">Generert: ${generatedAt}</p>
       ${offlineError}
@@ -7183,6 +7891,7 @@ function buildVegrefDebugReportText() {
         typeof window !== 'undefined' ? window.isSecureContext : null,
       offlineVegrefReady,
       offlineVegrefStatus: offlineVegrefSyncStatus,
+      surfacePreference: getSurfacePreference(),
       vegrefDetailTraceEnabled: isVegrefDebugTraceEnabled(),
       vegrefDetailTraceCount: trace.length,
       vegrefDetailTrace: trace.slice(-120),
@@ -7947,17 +8656,19 @@ function renderStandalonePhotoAlbumGallery() {
     .map((ph) => {
       const sel = photoAlbumSelectedIds.has(ph.id)
       const cls = sel
-        ? 'photo-album__cell photo-album__cell--selected'
-        : 'photo-album__cell'
-      const ov = formatPhotoThumbOverlayHtml(ph)
-      const folderBadge = ph.imageFolder
-        ? `<span class="photo-album__folder" title="images/${escapeHtml(ph.imageFolder)}/">${escapeHtml(ph.imageFolder)}</span>`
-        : ''
+        ? 'home-dash-card photo-album__row photo-album__row--selected'
+        : 'home-dash-card photo-album__row'
+      const title = formatPhotoAlbumRowTitle(ph)
+      const hint = formatPhotoAlbumRowHint(ph, title)
       return `<button type="button" class="${cls}" data-photo-id="${escapeHtml(ph.id)}" aria-pressed="${sel ? 'true' : 'false'}">
-        <span class="photo-album__thumb-wrap">
-          <img src="${ph.dataUrl}" alt="" class="photo-album__thumb" loading="lazy" decoding="async" />
-          ${ov}
-          ${folderBadge}
+        <span class="home-dash-card__row">
+          <span class="home-dash-card__content">
+            <span class="home-dash-card__title">${escapeHtml(title)}</span>
+            <span class="home-dash-card__hint">${escapeHtml(hint)}</span>
+          </span>
+          <span class="home-dash-card__visual" aria-hidden="true">
+            <img src="${ph.dataUrl}" alt="" class="home-dash-card__preview" loading="lazy" decoding="async" />
+          </span>
         </span>
       </button>`
     })
@@ -7975,37 +8686,39 @@ function appendStandalonePhotoAlbumCell(photo) {
   el.querySelector('.photo-album__empty')?.remove()
   const sel = photoAlbumSelectedIds.has(photo.id)
   const cls = sel
-    ? 'photo-album__cell photo-album__cell--selected'
-    : 'photo-album__cell'
+    ? 'home-dash-card photo-album__row photo-album__row--selected'
+    : 'home-dash-card photo-album__row'
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = cls
   btn.dataset.photoId = photo.id
   btn.setAttribute('aria-pressed', sel ? 'true' : 'false')
-  const wrap = document.createElement('span')
-  wrap.className = 'photo-album__thumb-wrap'
+  const row = document.createElement('span')
+  row.className = 'home-dash-card__row'
+  const content = document.createElement('span')
+  content.className = 'home-dash-card__content'
+  const titleEl = document.createElement('span')
+  titleEl.className = 'home-dash-card__title'
+  const title = formatPhotoAlbumRowTitle(photo)
+  titleEl.textContent = title
+  const hintEl = document.createElement('span')
+  hintEl.className = 'home-dash-card__hint'
+  hintEl.textContent = formatPhotoAlbumRowHint(photo, title)
+  content.appendChild(titleEl)
+  content.appendChild(hintEl)
+  const vis = document.createElement('span')
+  vis.className = 'home-dash-card__visual'
+  vis.setAttribute('aria-hidden', 'true')
   const img = document.createElement('img')
   img.src = photo.dataUrl
   img.alt = ''
-  img.className = 'photo-album__thumb'
+  img.className = 'home-dash-card__preview'
   img.loading = 'lazy'
   img.decoding = 'async'
-  wrap.appendChild(img)
-  const ovHtml = formatPhotoThumbOverlayHtml(photo)
-  if (ovHtml) {
-    const tmp = document.createElement('div')
-    tmp.innerHTML = ovHtml
-    const overlay = tmp.firstElementChild
-    if (overlay) wrap.appendChild(overlay)
-  }
-  if (photo.imageFolder) {
-    const fb = document.createElement('span')
-    fb.className = 'photo-album__folder'
-    fb.title = `images/${photo.imageFolder}/`
-    fb.textContent = photo.imageFolder
-    wrap.appendChild(fb)
-  }
-  btn.appendChild(wrap)
+  vis.appendChild(img)
+  row.appendChild(content)
+  row.appendChild(vis)
+  btn.appendChild(row)
   el.appendChild(btn)
 }
 
@@ -8248,11 +8961,11 @@ function bindPhotoAlbumListeners() {
         photoAlbumSelectedIds = new Set()
         document
           .querySelectorAll(
-            '#standalone-photos-gallery .photo-album__cell--selected',
+            '#standalone-photos-gallery .photo-album__row--selected',
           )
           .forEach((cell) => {
             if (!(cell instanceof HTMLElement)) return
-            cell.classList.remove('photo-album__cell--selected')
+            cell.classList.remove('photo-album__row--selected')
             cell.setAttribute('aria-pressed', 'false')
           })
       }
@@ -8377,11 +9090,11 @@ function bindPhotoAlbumListeners() {
       if (photoAlbumMarkerMode) {
         if (photoAlbumSelectedIds.has(id)) {
           photoAlbumSelectedIds.delete(id)
-          btn.classList.remove('photo-album__cell--selected')
+          btn.classList.remove('photo-album__row--selected')
           btn.setAttribute('aria-pressed', 'false')
         } else {
           photoAlbumSelectedIds.add(id)
-          btn.classList.add('photo-album__cell--selected')
+          btn.classList.add('photo-album__row--selected')
           btn.setAttribute('aria-pressed', 'true')
         }
         syncPhotoAlbumChrome()
@@ -8398,18 +9111,22 @@ function bindPhotoAlbumListeners() {
 
 function renderPhotoAlbumHtml() {
   return `<div class="view-photo-album-wrap">
-    <div class="view-photo-album surface view-panel-enter" aria-label="Bilder uten økt">
-      <header class="photo-album__top">
-        <button type="button" class="photo-album__back btn btn-text" id="btn-photo-album-back" aria-label="Tilbake">←</button>
-        <div class="photo-album__top-actions">
-          <button type="button" class="photo-album__save" id="btn-photo-album-save" aria-label="Lagre bilde på mobil">Lagre</button>
-          <button type="button" class="photo-album__share" id="btn-photo-album-share" aria-label="Del bilder">Del</button>
-          <button type="button" class="photo-album__marker" id="btn-photo-album-marker" aria-pressed="false">Marker</button>
+    <div class="view-photo-album view-home surface--home view-photo-album-page view-panel-enter" aria-label="Album">
+      <header class="photo-album__header" aria-label="Album">
+        <div class="traffic-group-top">
+          <button type="button" class="traffic-group-back-btn" id="btn-photo-album-back" aria-label="Tilbake">←</button>
+          <h1 class="traffic-group-title">Album</h1>
+          <span class="traffic-group-top-spacer" aria-hidden="true"></span>
+        </div>
+        <div class="photo-album__toolbar" role="toolbar" aria-label="Handlinger">
+          <button type="button" class="photo-album__action" id="btn-photo-album-save" aria-label="Lagre bilde på mobil">Lagre</button>
+          <button type="button" class="photo-album__action" id="btn-photo-album-share" aria-label="Del bilder">Del</button>
+          <button type="button" class="photo-album__action photo-album__marker" id="btn-photo-album-marker" aria-pressed="false">Marker</button>
         </div>
       </header>
       <div class="photo-album__body">
-        <p id="standalone-photos-folders-summary" class="session-photos-folders-summary" hidden aria-live="polite"></p>
-        <div id="standalone-photos-gallery" class="photo-album__grid" aria-live="polite"></div>
+        <p id="standalone-photos-folders-summary" class="session-photos-folders-summary session-photos-folders-summary--album" hidden aria-live="polite"></p>
+        <div id="standalone-photos-gallery" class="photo-album__list" aria-live="polite"></div>
       </div>
     </div>
     ${renderShareStandalonePhotosDialogHtml()}
@@ -8861,16 +9578,40 @@ function renderSessionHtml() {
       </div>
     </dialog>
 
+    <dialog id="click-entry-edit-dialog" class="session-end-dialog click-entry-edit-dialog" aria-labelledby="click-entry-edit-heading">
+      <div class="session-end-dialog__inner">
+        <h2 id="click-entry-edit-heading" class="session-end-dialog__title">Rediger registrering</h2>
+        <p class="session-end-dialog__lead">Tittel vises på kartet i stedet for standard registreringsnummer (f.eks. 13). Kommentar er valgfri.</p>
+        <label class="session-end-label" for="click-entry-edit-title">Tittel (valgfritt)</label>
+        <input type="text" id="click-entry-edit-title" class="session-end-input" maxlength="${CLICK_ENTRY_LABEL_MAX_LEN}" autocomplete="off" placeholder="F.eks. Hindring" />
+        <label class="session-end-label" for="click-entry-edit-comment">Kommentar (valgfritt)</label>
+        <textarea id="click-entry-edit-comment" class="session-end-textarea" rows="4" maxlength="${CLICK_ENTRY_COMMENT_MAX_LEN}" autocomplete="off" placeholder="Notater …"></textarea>
+        <div class="session-end-dialog__actions">
+          <button type="button" class="btn btn-secondary" id="click-entry-edit-cancel">Avbrytt</button>
+          <button type="button" class="btn btn-home btn-home--primary" id="click-entry-edit-save">Lagre</button>
+        </div>
+      </div>
+    </dialog>
+
     <div class="session-map-root" id="session-map-root" aria-hidden="false">
       <div class="map-frame session-map-frame" id="session-map-frame">
         <div id="map" class="map"></div>
         <p id="gps-status" class="gps-status map-gps-chip" role="status"></p>
         <button
           type="button"
+          id="btn-map-explore"
+          class="map-explore-btn"
+          aria-label="Fri kart: slå av automatisk følging av GPS"
+          title="Fri kart (panorer uten at kartet følger posisjon)"
+        >
+          Fri kart
+        </button>
+        <button
+          type="button"
           id="btn-map-locate"
           class="map-locate-btn"
-          aria-label="Gå til min posisjon"
-          title="Min posisjon"
+          aria-label="Til min posisjon og følg GPS"
+          title="Til min posisjon · følg GPS"
         >
           <span class="map-locate-btn__icon" aria-hidden="true">⌂</span>
         </button>
@@ -9043,6 +9784,8 @@ function renderApp() {
   else if (view === 'menuFriction') main = renderMenuFrictionHtml()
   else if (view === 'menuPhotos') main = renderMenuPhotosHtml()
   else if (view === 'menuContacts') main = renderMenuContactsHtml()
+  else if (view === 'menuTrafficGroup') main = renderMenuTrafficGroupHtml()
+  else if (view === 'menuOfflineVegref') main = renderMenuOfflineVegrefHtml()
   else if (view === 'menuSettings') main = renderMenuSettingsHtml()
   else if (view === 'menuPrivacy') main = renderMenuPrivacyHtml()
   else if (view === 'menuSupport') main = renderMenuSupportHtml()
@@ -9062,11 +9805,18 @@ function renderApp() {
     ? renderPhotoFullscreenDialogHtml()
     : ''
   mount.innerHTML = `${banner}<div class="app-body">${main}</div>${kmtShell}${incomingShareSaveShell}${photoFullscreenShell}`
-  const homeView = Boolean(currentUser && view === 'home')
-  mount.classList.toggle('app-root--home', homeView)
+  const homeShellView = Boolean(
+    currentUser &&
+      (view === 'home' ||
+        view === 'menuTrafficGroup' ||
+        view === 'menuOfflineVegref' ||
+        view === 'photoAlbum' ||
+        view === 'menuPhotos'),
+  )
+  mount.classList.toggle('app-root--home', homeShellView)
   /* Bakgrunn på html: Safari/mobil + overscroll bruker ofte body/html — ikke bare #app */
-  document.documentElement.classList.toggle('scanix-home-view', homeView)
-  document.body.classList.toggle('scanix-home-view', homeView)
+  document.documentElement.classList.toggle('scanix-home-view', homeShellView)
+  document.body.classList.toggle('scanix-home-view', homeShellView)
   syncLaunchSplash({ currentUser, view, appMount: mount })
   wirePhotoFullscreenDialog()
   if (view === 'menuMap') {
@@ -9078,6 +9828,11 @@ function renderApp() {
     queueMicrotask(() => void initFrictionMap())
   } else {
     destroyFrictionMap()
+  }
+  if (view === 'menuOfflineVegref') {
+    queueMicrotask(() => void initOfflineVegMap())
+  } else {
+    destroyOfflineVegMap()
   }
 }
 
@@ -9091,6 +9846,7 @@ let menuPhotosAbort = null
 /** Når satt: vis bilder i denne mappen; null = kun mappeoversikt. */
 let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
 let menuContactsAbort = null
+let menuTrafficGroupAbort = null
 let menuInfoAbort = null
 let menuExcelExportAbort = null
 /** Under programmatisk oppdatering av veg-celler (unngå at det telles som brukerredigering). */
@@ -9701,6 +10457,33 @@ function openMenuContactsView() {
   bindMenuContactsListeners()
 }
 
+function openMenuTrafficGroupView() {
+  closeHomeDrawer()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuTrafficGroup'
+  saveAppState()
+  renderApp()
+  bindMenuTrafficGroupListeners()
+}
+
+function openMenuOfflineVegrefView() {
+  closeHomeDrawer()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuOfflineVegref'
+  offlineVegSearchError = ''
+  offlineVegDownloadError = ''
+  offlineVegDownloadStatus = ''
+  saveAppState()
+  renderApp()
+  bindMenuOfflineVegrefListeners()
+}
+
 function openMenuSettingsView() {
   closeHomeDrawer()
   flushCurrentSession()
@@ -10073,6 +10856,16 @@ function bindHomeListeners() {
   document.getElementById('home-drawer-contacts')?.addEventListener(
     'click',
     () => openMenuContactsView(),
+    { signal },
+  )
+  document.getElementById('home-drawer-traffic-group')?.addEventListener(
+    'click',
+    () => openMenuTrafficGroupView(),
+    { signal },
+  )
+  document.getElementById('home-drawer-offline-vegref')?.addEventListener(
+    'click',
+    () => openMenuOfflineVegrefView(),
     { signal },
   )
   document.getElementById('home-drawer-messages')?.addEventListener(
@@ -11318,6 +12111,56 @@ function bindMenuContactsListeners() {
     ?.addEventListener('click', () => goHome(), { signal })
 }
 
+function bindMenuTrafficGroupListeners() {
+  if (menuTrafficGroupAbort) menuTrafficGroupAbort.abort()
+  menuTrafficGroupAbort = new AbortController()
+  const { signal } = menuTrafficGroupAbort
+  document
+    .getElementById('btn-back-from-menu-traffic-group')
+    ?.addEventListener('click', () => goHome(), { signal })
+  const applyTrafficGroupPreferenceSideEffects = () => {
+    clearSegmentNearCache()
+    vegrefResetThrottle()
+    if (
+      lastLiveCoords &&
+      typeof lastLiveCoords.lat === 'number' &&
+      typeof lastLiveCoords.lng === 'number' &&
+      !Number.isNaN(lastLiveCoords.lat) &&
+      !Number.isNaN(lastLiveCoords.lng)
+    ) {
+      vegrefNotifyGps(lastLiveCoords.lat, lastLiveCoords.lng, {
+        forceImmediate: true,
+        accuracyM:
+          typeof lastLiveCoords.accuracy === 'number'
+            ? lastLiveCoords.accuracy
+            : 28,
+        timestamp: Date.now(),
+      })
+    }
+  }
+  const syncTrafficGroupChoiceUi = () => {
+    const cur = getSurfacePreference()
+    document.querySelectorAll('.traffic-group-choice').forEach((el) => {
+      const pref = el.getAttribute('data-traffic-pref')
+      const on = pref === cur
+      el.classList.toggle('home-dash-card--accent', on)
+      el.setAttribute('aria-pressed', on ? 'true' : 'false')
+    })
+  }
+  document.querySelectorAll('.traffic-group-choice').forEach((btn) => {
+    btn.addEventListener(
+      'click',
+      () => {
+        const pref = btn.getAttribute('data-traffic-pref')
+        setSurfacePreference(typeof pref === 'string' ? pref : 'motor')
+        syncTrafficGroupChoiceUi()
+        applyTrafficGroupPreferenceSideEffects()
+      },
+      { signal },
+    )
+  })
+}
+
 function bindMenuInfoListeners() {
   if (menuInfoAbort) menuInfoAbort.abort()
   menuInfoAbort = new AbortController()
@@ -11336,6 +12179,12 @@ function bindMenuInfoListeners() {
     ?.addEventListener(
       'click',
       () => {
+        if (offlineVegrefReady) {
+          const ok = window.confirm(
+            'Dette erstatter alle lokale vegdata, også strekninger du har lastet ned i «Veg uten nett». Fortsette?',
+          )
+          if (!ok) return
+        }
         void ensureOfflineVegrefPackage({ force: true })
       },
       { signal },
@@ -12724,10 +13573,15 @@ async function initSessionMapAndWatch() {
         Leaflet.control.zoom({ position: 'topright' }).addTo(map)
         map.on('dragstart', () => {
           followUserOnMap = false
+          syncSessionMapExploreButton()
         })
         map.on('zoomstart', (ev) => {
-          if (ev.originalEvent) followUserOnMap = false
+          if (ev.originalEvent) {
+            followUserOnMap = false
+            syncSessionMapExploreButton()
+          }
         })
+        map.on('popupopen', onSessionMapPopupOpen)
         createAppMapTileLayer(Leaflet).addTo(map)
         setTimeout(() => map?.invalidateSize(), 100)
         rebuildMarkers()
@@ -12738,6 +13592,7 @@ async function initSessionMapAndWatch() {
         updateMapSharePanel()
         const gpsEl = document.getElementById('gps-status')
         requestLocationOnLoad(gpsEl)
+        syncSessionMapExploreButton()
       } catch (e) {
         console.error('initSessionMapAndWatch', e)
       }
@@ -13167,7 +14022,7 @@ async function exportSessionReportPdf() {
   if (statusEl) statusEl.textContent = 'Genererer PDF …'
   const cats = normalizeObjectCategoryList(state.objectCategories)
   const payload = {
-    appName: 'Scanix',
+    appName: 'Inspekt',
     appVersion: appPackage.version,
     userName:
       typeof currentUser?.name === 'string' && currentUser.name.trim()
@@ -13194,6 +14049,11 @@ async function exportSessionReportPdf() {
       lng: p.lng,
       timestamp: p.timestamp,
       categoryLabel: p.category ? getObjectCategoryLabel(p.category) : null,
+      label: typeof p.label === 'string' && p.label.trim() ? p.label.trim() : null,
+      comment:
+        typeof p.comment === 'string' && p.comment.trim()
+          ? p.comment.trim()
+          : null,
     })),
     log: state.log.map((e) => ({
       timestamp: e.timestamp,
@@ -13605,6 +14465,7 @@ function bindSessionListeners() {
   const { signal } = sessionAbort
 
   bindKmtDialogListeners(signal)
+  wireClickEntryEditDialogListeners(signal)
 
   document.getElementById('app')?.addEventListener(
     'click',
@@ -13916,13 +14777,6 @@ function bindSessionListeners() {
       rebuildMarkers()
       void enrichPendingClicks()
       animateSessionPinDrop()
-      if (map && lat != null && lng != null) {
-        followUserOnMap = false
-        map.flyTo([lat, lng], Math.max(map.getZoom(), 15), {
-          duration: 0.5,
-          easeLinearity: 0.45,
-        })
-      }
 
       const typePart =
         categoryId != null ? ` · ${getObjectCategoryLabel(categoryId)}` : ''
@@ -13975,6 +14829,14 @@ function bindSessionListeners() {
     { signal },
   )
 
+  document.getElementById('btn-map-explore')?.addEventListener(
+    'click',
+    () => {
+      followUserOnMap = false
+      syncSessionMapExploreButton()
+    },
+    { signal },
+  )
   document.getElementById('btn-map-locate')?.addEventListener(
     'click',
     () => {
@@ -14087,6 +14949,10 @@ function bindListenersForCurrentView() {
     bindMenuPhotosListeners()
   } else if (view === 'menuContacts') {
     bindMenuContactsListeners()
+  } else if (view === 'menuTrafficGroup') {
+    bindMenuTrafficGroupListeners()
+  } else if (view === 'menuOfflineVegref') {
+    bindMenuOfflineVegrefListeners()
   } else if (view === 'menuSettings' || view === 'menuPrivacy' || view === 'menuSupport') {
     bindMenuInfoListeners()
   } else if (view === 'menuExcelExport') {
@@ -14188,6 +15054,7 @@ async function bootstrap() {
     fetchRoadPositionDirect,
     fetchRoadReferenceNear: fetchRoadReferenceNearForApp,
     fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
+    getSurfacePreference,
     shouldPreferOfflineResolver: () =>
       offlineVegrefReady &&
       typeof navigator !== 'undefined' &&
@@ -14211,6 +15078,7 @@ async function bootstrap() {
   })
   window.addEventListener('online', () => {
     void enrichPendingClicks()
+    void ensureOfflineVegrefPackage().catch(() => null)
     if (
       lastLiveCoords &&
       Date.now() - lastLiveCoords.ts < 90000 &&
@@ -14352,6 +15220,7 @@ function centerMapWhenEmptyPins() {
     followUserOnMap = false
     map.setView([59.9139, 10.7522], 13)
   }
+  syncSessionMapExploreButton()
 }
 
 function destroyReceivedPhotosMap() {
@@ -14414,6 +15283,425 @@ async function initMenuBrowseMap() {
       /* ignore */
     }
   }, 120)
+}
+
+function destroyOfflineVegMap() {
+  if (offlineVegMap) {
+    try {
+      offlineVegMap.remove()
+    } catch {
+      /* ignore */
+    }
+    offlineVegMap = null
+    offlineVegRect = null
+  }
+}
+
+async function initOfflineVegMap() {
+  const el = document.getElementById('offline-veg-map')
+  if (!el || offlineVegMap) return
+  await ensureLeaflet()
+  offlineVegMap = Leaflet.map('offline-veg-map', {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: true,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    keyboard: false,
+  }).setView([65.0, 13.0], 5)
+  createAppMapTileLayer(Leaflet).addTo(offlineVegMap)
+  window.setTimeout(() => {
+    try {
+      offlineVegMap?.invalidateSize()
+    } catch {
+      /* ignore */
+    }
+    redrawOfflineVegRect()
+  }, 120)
+}
+
+function redrawOfflineVegRect() {
+  if (!offlineVegMap || !Leaflet) return
+  const bbox = offlineVegEffectiveBbox()
+  if (offlineVegRect) {
+    try {
+      offlineVegRect.remove()
+    } catch {
+      /* ignore */
+    }
+    offlineVegRect = null
+  }
+  if (!bbox) return
+  const bounds = Leaflet.latLngBounds(
+    [bbox.minLat, bbox.minLng],
+    [bbox.maxLat, bbox.maxLng],
+  )
+  offlineVegRect = Leaflet.rectangle(bounds, {
+    color: '#34d399',
+    weight: 2,
+    fillColor: '#34d399',
+    fillOpacity: 0.16,
+    interactive: false,
+  }).addTo(offlineVegMap)
+  try {
+    offlineVegMap.fitBounds(bounds, {
+      padding: [24, 24],
+      maxZoom: 13,
+      animate: false,
+    })
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Bygg en stabil id for et Nominatim-treff. */
+function nominatimSuggestionId(item) {
+  const t = item?.osm_type ? String(item.osm_type) : 't'
+  const i = item?.osm_id != null ? String(item.osm_id) : ''
+  if (i) return `${t[0]}${i}`
+  if (item?.place_id != null) return `p${item.place_id}`
+  return `q${Math.random().toString(36).slice(2, 8)}`
+}
+
+function nominatimItemToSuggestion(item) {
+  if (!item || typeof item !== 'object') return null
+  const bb = Array.isArray(item.boundingbox) ? item.boundingbox : null
+  if (!bb || bb.length !== 4) return null
+  const minLat = Number(bb[0])
+  const maxLat = Number(bb[1])
+  const minLng = Number(bb[2])
+  const maxLng = Number(bb[3])
+  if (
+    !Number.isFinite(minLat) ||
+    !Number.isFinite(maxLat) ||
+    !Number.isFinite(minLng) ||
+    !Number.isFinite(maxLng) ||
+    minLat >= maxLat ||
+    minLng >= maxLng
+  ) {
+    return null
+  }
+  const label =
+    typeof item.display_name === 'string'
+      ? item.display_name
+      : `${minLat.toFixed(3)},${minLng.toFixed(3)}`
+  return {
+    id: nominatimSuggestionId(item),
+    label,
+    bbox: { minLng, minLat, maxLng, maxLat },
+  }
+}
+
+async function performOfflineVegSearch(query) {
+  if (offlineVegSearchAbort) offlineVegSearchAbort.abort()
+  offlineVegSearchAbort = new AbortController()
+  const { signal } = offlineVegSearchAbort
+  offlineVegSearchBusy = true
+  offlineVegSearchError = ''
+  paintOfflineVegSuggestions()
+  try {
+    const url = new URL('https://nominatim.openstreetmap.org/search')
+    url.searchParams.set('format', 'json')
+    url.searchParams.set('countrycodes', 'no')
+    url.searchParams.set('limit', '8')
+    url.searchParams.set('addressdetails', '0')
+    url.searchParams.set('q', query)
+    const res = await fetch(url.toString(), {
+      signal,
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    const list = Array.isArray(json) ? json : []
+    const mapped = list
+      .map(nominatimItemToSuggestion)
+      .filter(/** @returns {s is OfflineVegSuggestion} */ (s) => Boolean(s))
+    offlineVegSuggestions = mapped
+  } catch (err) {
+    if (/** @type {{ name?: string }} */ (err)?.name === 'AbortError') return
+    offlineVegSuggestions = []
+    offlineVegSearchError = 'Kunne ikke hente forslag. Prøv igjen.'
+  } finally {
+    if (offlineVegSearchAbort?.signal === signal) {
+      offlineVegSearchAbort = null
+    }
+    offlineVegSearchBusy = false
+    paintOfflineVegSuggestions()
+  }
+}
+
+/**
+ * Direkte DOM-oppdatering for søkelisten: ingen full renderApp(), så input
+ * mister ikke fokus eller cursor-posisjon mens brukeren skriver.
+ */
+function paintOfflineVegSuggestions() {
+  if (view !== 'menuOfflineVegref') return
+  const list = document.querySelector('.offline-veg-suggest')
+  const errorHost = document.querySelector('.offline-veg-search-error-slot')
+  if (!list) return
+  while (list.firstChild) list.removeChild(list.firstChild)
+  if (offlineVegSearchBusy) {
+    const li = document.createElement('li')
+    li.className = 'offline-veg-suggest__loading'
+    li.setAttribute('role', 'status')
+    li.textContent = 'Søker …'
+    list.appendChild(li)
+  } else if (offlineVegSuggestions.length > 0) {
+    offlineVegSuggestions.forEach((s, idx) => {
+      const li = document.createElement('li')
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'offline-veg-suggest__item'
+      if (offlineVegSelected && offlineVegSelected.id === s.id) {
+        btn.classList.add('offline-veg-suggest__item--active')
+      }
+      btn.dataset.offlineVegPick = String(idx)
+      btn.textContent = s.label
+      btn.addEventListener('click', () => pickOfflineVegSuggestion(idx))
+      li.appendChild(btn)
+      list.appendChild(li)
+    })
+  } else if (
+    offlineVegSearchQuery.trim().length >= 2 &&
+    !offlineVegSearchError
+  ) {
+    const li = document.createElement('li')
+    li.className = 'offline-veg-suggest__empty'
+    li.textContent = 'Ingen forslag'
+    list.appendChild(li)
+  }
+  if (errorHost) {
+    errorHost.innerHTML = offlineVegSearchError
+      ? `<p class="offline-veg-error" role="alert">${escapeHtml(offlineVegSearchError)}</p>`
+      : ''
+  }
+}
+
+function pickOfflineVegSuggestion(idx) {
+  const s = offlineVegSuggestions[idx]
+  if (!s) return
+  offlineVegSelected = s
+  offlineVegDownloadStatus = ''
+  offlineVegDownloadError = ''
+  document.querySelectorAll('.offline-veg-suggest__item').forEach((el, i) => {
+    el.classList.toggle('offline-veg-suggest__item--active', i === idx)
+  })
+  redrawOfflineVegRect()
+  paintOfflineVegStatusAndButton()
+  paintOfflineVegTooLongNotice()
+}
+
+function paintOfflineVegStatusAndButton() {
+  if (view !== 'menuOfflineVegref') return
+  const statusHost = document.querySelector('.offline-veg-download-status-slot')
+  const errorHost = document.querySelector('.offline-veg-download-error-slot')
+  const dlBtn = /** @type {HTMLButtonElement | null} */ (
+    document.getElementById('btn-offline-veg-download')
+  )
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+  if (dlBtn) {
+    dlBtn.disabled =
+      offline || offlineVegDownloadBusy || !offlineVegSelected
+    dlBtn.textContent = offlineVegDownloadBusy
+      ? 'Laster ned …'
+      : 'Last ned til telefon'
+  }
+  if (statusHost) {
+    statusHost.innerHTML = offlineVegDownloadStatus
+      ? `<p class="offline-veg-status" role="status">${escapeHtml(offlineVegDownloadStatus)}</p>`
+      : ''
+  }
+  if (errorHost) {
+    errorHost.innerHTML = offlineVegDownloadError
+      ? `<p class="offline-veg-error" role="alert">${escapeHtml(offlineVegDownloadError)}</p>`
+      : ''
+  }
+}
+
+async function downloadOfflineVegSelection() {
+  if (offlineVegDownloadBusy) return
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    offlineVegDownloadError = 'Du er uten nett. Koble til og prøv igjen.'
+    paintOfflineVegStatusAndButton()
+    return
+  }
+  const bbox = offlineVegEffectiveBbox()
+  if (!bbox) {
+    offlineVegDownloadError = 'Velg et område først.'
+    paintOfflineVegStatusAndButton()
+    return
+  }
+  offlineVegDownloadBusy = true
+  offlineVegDownloadError = ''
+  offlineVegDownloadStatus = 'Henter vegdata fra NVDB …'
+  if (offlineVegDownloadAbort) offlineVegDownloadAbort.abort()
+  offlineVegDownloadAbort = new AbortController()
+  const { signal } = offlineVegDownloadAbort
+  paintOfflineVegStatusAndButton()
+  try {
+    const segments = await fetchNvdbSegmentsForBbox(bbox, {
+      signal,
+      onProgress: ({ page, total }) => {
+        offlineVegDownloadStatus = `Henter side ${page} (${total.toLocaleString('nb-NO')} segmenter) …`
+        paintOfflineVegStatusAndButton()
+      },
+    })
+    if (signal.aborted) return
+    if (!segments.length) {
+      offlineVegDownloadStatus = 'Fant ingen vegsegmenter i området.'
+    } else {
+      offlineVegDownloadStatus = `Lagrer ${segments.length.toLocaleString('nb-NO')} segmenter …`
+      paintOfflineVegStatusAndButton()
+      await mergeNvdbSegmentsIntoOfflineDb(segments)
+      await refreshOfflineVegrefState()
+      const labelPart = offlineVegSelected?.label
+        ? ` for «${offlineVegSelected.label.split(',')[0]}»`
+        : ''
+      offlineVegDownloadStatus = `Lagret ${segments.length.toLocaleString('nb-NO')} segmenter${labelPart}.`
+    }
+  } catch (err) {
+    if (/** @type {{ name?: string }} */ (err)?.name === 'AbortError') return
+    offlineVegDownloadError = 'Nedlasting feilet. Sjekk nett og prøv igjen.'
+    offlineVegDownloadStatus = ''
+  } finally {
+    if (offlineVegDownloadAbort?.signal === signal) {
+      offlineVegDownloadAbort = null
+    }
+    offlineVegDownloadBusy = false
+    paintOfflineVegStatusAndButton()
+    paintOfflineVegFineprint()
+  }
+}
+
+/**
+ * Vis konkret «for langt»-beskjed i Område-kortet, kun når den valgte
+ * strekningen faktisk er lengre enn vi kan dekke i én nedlasting.
+ */
+function paintOfflineVegTooLongNotice() {
+  if (view !== 'menuOfflineVegref') return
+  const slot = document.querySelector('.offline-veg-toolong-slot')
+  if (!slot) return
+  const info = offlineVegSelectionTooLong()
+  if (!info) {
+    slot.innerHTML = ''
+    return
+  }
+  const lengthStr = `${info.lengthKm.toFixed(0)} km`
+  const coveredStr = `${info.coveredKm.toFixed(0)} km`
+  const labelPart = offlineVegSelected?.label
+    ? `«${offlineVegSelected.label.split(',')[0]}» er ca. ${lengthStr}`
+    : `Strekningen er ca. ${lengthStr}`
+  slot.innerHTML = `<p class="offline-veg-warn" role="alert"><strong>Strekningen er for lang for én nedlasting.</strong><br/>${escapeHtml(labelPart)}, men vi kan dekke maks ${escapeHtml(coveredStr)} per gang. Du får nå området rundt midten av treffet. <br/><br/>For å dekke hele strekningen: søk på et sted lenger ute (f.eks. en tettstad eller et kryss) og last ned det området i tillegg. Tidligere nedlastinger beholdes.</p>`
+}
+
+/** Oppdater telleren i fineprint etter merge uten full rerender. */
+function paintOfflineVegFineprint() {
+  if (view !== 'menuOfflineVegref') return
+  const meta = offlineVegrefMeta
+  const segCount =
+    meta && typeof meta.count === 'number' ? meta.count : 0
+  const segCountStr = segCount.toLocaleString('nb-NO')
+  const el = document.querySelector('.offline-veg-fineprint-count')
+  if (el) el.textContent = segCountStr
+}
+
+/** @type {AbortController | null} */
+let menuOfflineVegrefAbort = null
+
+function bindMenuOfflineVegrefListeners() {
+  if (menuOfflineVegrefAbort) menuOfflineVegrefAbort.abort()
+  menuOfflineVegrefAbort = new AbortController()
+  const { signal } = menuOfflineVegrefAbort
+
+  document
+    .getElementById('btn-back-from-menu-offline-vegref')
+    ?.addEventListener('click', () => goHome(), { signal })
+
+  const input = /** @type {HTMLInputElement | null} */ (
+    document.getElementById('offline-veg-search-input')
+  )
+  if (input) {
+    input.addEventListener(
+      'input',
+      () => {
+        offlineVegSearchQuery = input.value
+        if (offlineVegSearchDebounce != null) {
+          clearTimeout(offlineVegSearchDebounce)
+          offlineVegSearchDebounce = null
+        }
+        const q = input.value.trim()
+        if (q.length < 2) {
+          if (offlineVegSearchAbort) offlineVegSearchAbort.abort()
+          offlineVegSuggestions = []
+          offlineVegSearchBusy = false
+          offlineVegSearchError = ''
+          paintOfflineVegSuggestions()
+          return
+        }
+        offlineVegSearchDebounce = setTimeout(() => {
+          offlineVegSearchDebounce = null
+          void performOfflineVegSearch(q)
+        }, 350)
+      },
+      { signal },
+    )
+  }
+
+  const buffer = /** @type {HTMLInputElement | null} */ (
+    document.getElementById('offline-veg-buffer')
+  )
+  if (buffer) {
+    buffer.addEventListener(
+      'input',
+      () => {
+        const next = Number(buffer.value)
+        if (!Number.isFinite(next)) return
+        offlineVegBufferKm = Math.min(
+          OFFLINE_VEG_BUFFER_MAX_KM,
+          Math.max(OFFLINE_VEG_BUFFER_MIN_KM, next),
+        )
+        const labelEl = document.querySelector('.offline-veg-slider__value')
+        if (labelEl) {
+          labelEl.textContent = `${offlineVegBufferKm.toFixed(1).replace('.', ',')} km`
+        }
+        const bbox = offlineVegEffectiveBbox()
+        const areaEl = document.querySelector(
+          '.offline-veg-card__head .offline-veg-card__meta',
+        )
+        if (areaEl) {
+          areaEl.textContent = bbox
+            ? `${estimateAreaKm2(bbox).toFixed(1)} km²`
+            : '–'
+        }
+        const dlBtn = /** @type {HTMLButtonElement | null} */ (
+          document.getElementById('btn-offline-veg-download')
+        )
+        if (dlBtn) {
+          const offline =
+            typeof navigator !== 'undefined' && navigator.onLine === false
+          dlBtn.disabled =
+            offline || offlineVegDownloadBusy || !offlineVegSelected
+        }
+        redrawOfflineVegRect()
+      },
+      { signal },
+    )
+  }
+
+  document.getElementById('btn-offline-veg-download')?.addEventListener(
+    'click',
+    () => {
+      void downloadOfflineVegSelection()
+    },
+    { signal },
+  )
+
+  paintOfflineVegSuggestions()
+  paintOfflineVegStatusAndButton()
+  paintOfflineVegTooLongNotice()
+  redrawOfflineVegRect()
 }
 
 /**
@@ -15644,11 +16932,20 @@ function buildExportStaticPointsBlock(clickHistory) {
         typeof p.category === 'string' && p.category
           ? ` · ${escapeHtmlForExport(getObjectCategoryLabel(p.category))}`
           : ''
+      const pinTitle =
+        typeof p.label === 'string' && p.label.trim()
+          ? escapeHtmlForExport(p.label.trim())
+          : String(i + 1)
+      const com =
+        typeof p.comment === 'string' && p.comment.trim()
+          ? `<br><span class="scanix-static-click-comment">${escapeHtmlForExport(p.comment.trim())}</span>`
+          : ''
       return (
-        `<li><strong>Trykk #${i + 1}</strong>${cat}` +
+        `<li><strong>${pinTitle}</strong>${cat}` +
         (t
           ? ` · <time datetime="${tsAttr}">${t}</time>`
           : '') +
+        com +
         `<br><span>${lat.toFixed(6)}, ${lng.toFixed(6)}</span> · ` +
         `<a href="${escapeHtmlForExport(pinUrl)}" target="_blank" rel="noopener noreferrer">Google Maps med rød nål</a></li>`
       )
@@ -15657,7 +16954,7 @@ function buildExportStaticPointsBlock(clickHistory) {
 
   const routeExpl =
     valid.length > 1
-      ? ` I rutevisning bruker Google bokstaver <strong>A, B, C …</strong> på stoppene: <strong>A = Trykk #1</strong>, <strong>B = Trykk #2</strong>, og så videre i samme rekkefølge som her (fortsetter på neste lenke om det er flere). Da er det <em>ikke</em> røde nåler, men bokstavmerker.`
+      ? ` I rutevisning bruker Google bokstaver <strong>A, B, C …</strong> på stoppene: <strong>A = punkt 1</strong>, <strong>B = punkt 2</strong>, og så videre i samme rekkefølge som her (fortsetter på neste lenke om det er flere). Da er det <em>ikke</em> røde nåler, men bokstavmerker.`
       : ''
 
   let googleRouteBlock = ''
@@ -15815,6 +17112,7 @@ ${embeddedLeafletCss}
     .scanix-static-points li { padding: 0.45rem 0; border-bottom: 1px solid #2a3142; }
     .scanix-static-points li:first-child { padding-top: 0; }
     .scanix-static-points a { color: #93c5fd; }
+    .scanix-static-click-comment { display: block; margin: 0.25rem 0 0; font-size: 0.82rem; color: #a8b0c4; white-space: pre-wrap; }
     h2 { font-size: 0.98rem; margin: 0 0 0.35rem; color: #93c5fd; font-weight: 600; }
     .log-list { list-style: none; margin: 0; padding: 0; font-size: 0.86rem; }
     .log-list li { padding: 0.55rem 0; border-bottom: 1px solid #2a3142; }
@@ -15986,7 +17284,7 @@ ${leafletJsRaw}
       }
       ${'L'}.marker(latlng, { icon: pinIcon })
         .addTo(map)
-        .bindPopup('<strong>Trykk #' + (i + 1) + '</strong><br>' + catLine + escPopup(t))
+        .bindPopup('<strong>' + (i + 1) + '</strong><br>' + catLine + escPopup(t))
     })
 
     if (bounds.length === 0) {

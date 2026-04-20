@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Scanix</string>
+        <string>Inspekt</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -48,19 +48,19 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Scanix bruker posisjon for å vise vegreferanse og værdata.</string>
+	<string>Inspekt bruker posisjon for å vise vegreferanse og værdata.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Scanix bruker posisjon i bakgrunnen for å holde vegreferansen oppdatert under kjøring.</string>
+	<string>Inspekt bruker posisjon i bakgrunnen for å holde vegreferansen oppdatert under kjøring.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Scanix bruker kamera for å dokumentere kontroller.</string>
+	<string>Inspekt bruker kamera for å dokumentere kontroller.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Scanix kan spille inn lyd knyttet til kameradokumentasjon.</string>
+	<string>Inspekt kan spille inn lyd knyttet til kameradokumentasjon.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Scanix leser bilder for å dokumentere kontroller.</string>
+	<string>Inspekt leser bilder for å dokumentere kontroller.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Scanix lagrer dokumentasjonsbilder i albumet.</string>
+	<string>Inspekt lagrer dokumentasjonsbilder i albumet.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Scanix bruker bevegelsessensorer til å beregne vegreferanse uten GPS.</string>
+	<string>Inspekt bruker bevegelsessensorer til å beregne vegreferanse uten GPS.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
