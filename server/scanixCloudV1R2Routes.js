@@ -11,6 +11,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 /** @type {S3Client | null} */
 let r2Client = null
@@ -128,6 +129,24 @@ async function userIdFromBearer(req) {
  */
 function appStateObjectKey(userId) {
   return `users/${userId}/app-state.json`
+}
+
+const PRESIGN_PUT_EXPIRES_SEC = 3600
+const SIGNED_GET_EXPIRES_MIN = 60
+const SIGNED_GET_EXPIRES_MAX = 86_400
+
+/**
+ * @param {string} userId
+ * @param {string} raw klient-sti (f.eks. userId/photos/…/full.jpg)
+ * @returns {string | null} trygg object key eller null
+ */
+function assertPhotoPathOwnedByUser(userId, raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return null
+  const p = raw.trim()
+  if (p.includes('..') || p.includes('\\') || p.startsWith('/')) return null
+  const prefix = `${userId}/`
+  if (!p.startsWith(prefix)) return null
+  return p
 }
 
 /**
@@ -276,6 +295,123 @@ export function registerScanixCloudV1R2Routes(app) {
     } catch (e) {
       console.error('R2 PutObject app-state:', e)
       res.status(500).json({ error: 'Kunne ikke lagre app-state til R2.' })
+    }
+  })
+
+  app.post('/v1/photos/presign-put', async (req, res) => {
+    if (!r2Configured() || !r2EndpointUrl()) {
+      res.status(503).json({
+        error:
+          'R2 er ikke konfigurert eller R2_ACCOUNT_ID er ugyldig — se server/.env og terminal-logg.',
+      })
+      return
+    }
+    const uid = await userIdFromBearer(req)
+    if (!uid) {
+      res.status(401).json({ error: 'Uautorisert' })
+      return
+    }
+    const body = req.body
+    const fullPath =
+      body && typeof body.fullPath === 'string' ? body.fullPath : ''
+    const thumbPath =
+      body && typeof body.thumbPath === 'string' ? body.thumbPath : ''
+    const keyFull = assertPhotoPathOwnedByUser(uid, fullPath)
+    const keyThumb = assertPhotoPathOwnedByUser(uid, thumbPath)
+    if (!keyFull || !keyThumb) {
+      res.status(400).json({ error: 'Ugyldig sti' })
+      return
+    }
+    const fullCt =
+      body &&
+      typeof body.fullContentType === 'string' &&
+      body.fullContentType.trim()
+        ? body.fullContentType.trim()
+        : 'image/jpeg'
+    const thumbCt =
+      body &&
+      typeof body.thumbContentType === 'string' &&
+      body.thumbContentType.trim()
+        ? body.thumbContentType.trim()
+        : 'image/jpeg'
+    const s3 = getR2Client()
+    if (!s3) {
+      res.status(503).json({ error: 'R2-klient kunne ikke opprettes (sjekk nøkler og konto-ID).' })
+      return
+    }
+    const Bucket = envStr('R2_BUCKET_NAME')
+    try {
+      const fullPutUrl = await getSignedUrl(
+        s3,
+        new PutObjectCommand({
+          Bucket,
+          Key: keyFull,
+          ContentType: fullCt,
+        }),
+        { expiresIn: PRESIGN_PUT_EXPIRES_SEC },
+      )
+      const thumbPutUrl = await getSignedUrl(
+        s3,
+        new PutObjectCommand({
+          Bucket,
+          Key: keyThumb,
+          ContentType: thumbCt,
+        }),
+        { expiresIn: PRESIGN_PUT_EXPIRES_SEC },
+      )
+      res.json({ fullPutUrl, thumbPutUrl })
+    } catch (e) {
+      console.error('R2 presign PutObject photos:', e)
+      res.status(500).json({ error: 'Kunne ikke presigne opplasting.' })
+    }
+  })
+
+  app.get('/v1/photos/signed-url', async (req, res) => {
+    if (!r2Configured() || !r2EndpointUrl()) {
+      res.status(503).json({
+        error:
+          'R2 er ikke konfigurert eller R2_ACCOUNT_ID er ugyldig — se server/.env og terminal-logg.',
+      })
+      return
+    }
+    const uid = await userIdFromBearer(req)
+    if (!uid) {
+      res.status(401).json({ error: 'Uautorisert' })
+      return
+    }
+    const pathParam =
+      typeof req.query.path === 'string' ? req.query.path : ''
+    const key = assertPhotoPathOwnedByUser(uid, pathParam)
+    if (!key) {
+      res.status(400).json({ error: 'Ugyldig sti' })
+      return
+    }
+    let expiresSec = 3600
+    if (typeof req.query.expires === 'string') {
+      const n = Number.parseInt(req.query.expires, 10)
+      if (!Number.isNaN(n)) {
+        expiresSec = Math.min(
+          SIGNED_GET_EXPIRES_MAX,
+          Math.max(SIGNED_GET_EXPIRES_MIN, n),
+        )
+      }
+    }
+    const s3 = getR2Client()
+    if (!s3) {
+      res.status(503).json({ error: 'R2-klient kunne ikke opprettes (sjekk nøkler og konto-ID).' })
+      return
+    }
+    const Bucket = envStr('R2_BUCKET_NAME')
+    try {
+      const url = await getSignedUrl(
+        s3,
+        new GetObjectCommand({ Bucket, Key: key }),
+        { expiresIn: expiresSec },
+      )
+      res.json({ url })
+    } catch (e) {
+      console.error('R2 presign GetObject photo:', e)
+      res.status(500).json({ error: 'Kunne ikke lage signert URL.' })
     }
   })
 }
