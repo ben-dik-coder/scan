@@ -251,6 +251,52 @@ export async function downloadExcelSheetGrid(headers, rows, filenameBase) {
   XLSX.writeFile(wb, fname)
 }
 
+/** 96 dpi: punkter → skjempiksler (samme som Excel bruker for kolonnebredder i px). */
+const EXCEL_PT_TO_PX = 96 / 72
+
+/**
+ * @param {import('xlsx').WorkSheet} ws
+ * @param {typeof import('xlsx')} XLSX
+ * @param {{ rowHeightPt?: number, colWidthPt?: number }} opts
+ */
+function applyWorksheetPtDimensions(ws, XLSX, opts) {
+  const ref = ws['!ref']
+  if (!ref || typeof ref !== 'string') return
+  const range = XLSX.utils.decode_range(ref)
+  const nRow = range.e.r - range.s.r + 1
+  const nCol = range.e.c - range.s.c + 1
+  const rowH = opts.rowHeightPt
+  if (typeof rowH === 'number' && Number.isFinite(rowH) && rowH > 0) {
+    ws['!rows'] = Array.from({ length: nRow }, () => ({ hpt: rowH }))
+  }
+  const colW = opts.colWidthPt
+  if (typeof colW === 'number' && Number.isFinite(colW) && colW > 0) {
+    const wpx = Math.round(colW * EXCEL_PT_TO_PX)
+    ws['!cols'] = Array.from({ length: nCol }, () => ({ wpx }))
+  }
+}
+
+/**
+ * Bygger .xlsx som Blob (for deling/nedlasting på mobil der writeFile er upålitelig).
+ * @param {string[][]} aoa Første rad = overskrifter
+ * @param {string} [sheetName]
+ * @param {{ rowHeightPt?: number, colWidthPt?: number }} [dimOpts] Radhøyde/kolonnebredde i punkter (pt)
+ * @returns {Promise<Blob>}
+ */
+export async function excelAoaToXlsxBlob(aoa, sheetName = 'Data', dimOpts = {}) {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  if (dimOpts.rowHeightPt != null || dimOpts.colWidthPt != null) {
+    applyWorksheetPtDimensions(ws, XLSX, dimOpts)
+  }
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  return new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+}
+
 /**
  * Friksjonsmåling: én rad per strekning — vegnavn/vegnr/S/D fra start, meterteller ved Start- og Stopp-trykk.
  * @param {Array<{

@@ -1,18 +1,34 @@
 import { registerSW } from 'virtual:pwa-register'
 import {
+  bearingDeg,
   clearSegmentNearCache,
   fetchRoadReferenceNearOnline,
   fetchRoadPositionDirect,
   normalizeSurfacePreference,
 } from './nvdbVegref.js'
 import {
-  clearOfflineVegrefPackage,
+  appendOfflineBundledSegments,
   getOfflineVegrefMeta,
   hasOfflineVegrefPackage,
   importOfflineVegrefPackage,
   mergeNvdbSegmentsIntoOfflineDb,
   resolveOfflineRoadReferenceNear,
+  recomputeOfflinePackageCoverageBboxIfMissing,
+  syncOfflinePackageCoverageFromMeta,
+  isLatLngInsideOfflinePackageCoverage,
 } from './vegrefLocal.js'
+import {
+  abortPrefetchInFlight,
+  initPrefetch,
+  resetPrefetch,
+  prefetchNotifyGps,
+  isLatLngInsidePrefetchCoverage,
+} from './vegrefPrefetch.js'
+import {
+  initDelegator,
+  resolveVegref,
+  setDelegatorAllowOnlineFallback,
+} from './vegrefDelegator.js'
 import {
   bboxIsValid,
   expandBboxKm,
@@ -29,19 +45,40 @@ import {
   vegrefResetThrottle,
   vegrefClearSegmentLock,
   vegrefGetLastSpeed,
-  vegrefGetSegmentConfidence,
   vegrefHydrateFromPersisted,
 } from './vegrefLive.js'
 import {
+  APP_MAP_MAX_ZOOM,
   APP_MAP_TILE_IMG_FILTER,
-  ensureLeaflet,
-  Leaflet,
-  createAppMapTileLayer,
+  APP_MAP_TILE_LAYER_DATA_SAVER,
   applyAppMapTileContrastToDom,
+  createAppBasemapLayer,
+  ensureLeaflet,
+  nudgeMaptilerBasemapResize,
+  ensureLeafletMarkerCluster,
+  getRasterBasemapTileSpec,
+  Leaflet,
 } from './leafletLazy.js'
+import { getSessionMapDarkPreference } from './sessionMapBasemapPref.js'
+import {
+  SESSION_MAP_THEME_DOT_POS_KEY,
+  syncMapThemeDockDom,
+  wireMapThemeDock,
+} from './mapThemeDock.js'
+import { attachRasterBasemapViewportSwWarm } from './mapBasemapSwWarm.js'
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js'
+import {
+  postScanixDebugIngest,
+  postScanixDebugPayload,
+  isScanixDebugIngestAllowed,
+} from './scanixDebugIngest.js'
 import { syncLaunchSplash } from './launchTransition.js'
 import { initScreenWakeLock } from './screenWakeLock.js'
+import {
+  initNativeNetworkStatusListener,
+  isCapacitorNativePlatform,
+  onNativeWifiOrEthernet,
+} from './nativeNetworkMetered.js'
 import {
   initHomeWeather,
   refreshHomeWeatherOnHomeEnter,
@@ -56,21 +93,97 @@ import {
   vegrefDebugTrace,
   clearVegrefDebugTrace,
 } from './vegrefDebugTrace.js'
+import {
+  traceHomeVegrefAnomalies,
+  resetVegrefAnomalyState,
+} from './vegrefDebugAnomalies.js'
+import {
+  isRegisterTraceDebugEnabled,
+  isRegisterTraceDebugPersisted,
+  regtraceLocalStorageWrite,
+  regtraceRebuildMarkers,
+  regtraceSessionAfterPersistFlush,
+  setRegtracePersistReason,
+  setRegisterTraceDebugPersisted,
+} from './registerTraceDebug.js'
+import {
+  compressAppStateJsonForLocalStorage,
+  decompressAppStateJsonFromLocalStorage,
+} from './appStateStorageCodec.js'
+import {
+  isRegisterNetworkDebugPersisted,
+  registerNetLogRegisterTap,
+  registerNetLogSupabasePushSkipped,
+  registerNetLogVegrefEnrich,
+  registerNetSetActiveVegrefClickId,
+  setRegisterNetworkDebugPersisted,
+} from './registerNetworkDebug.js'
+import {
+  HAPTIC_PROFILES,
+  previewHapticFeedback,
+  readHapticEnabled,
+  readHapticProfileId,
+  triggerHapticMark,
+  triggerHapticPhoto,
+  writeHapticEnabled,
+  writeHapticProfileId,
+} from './hapticFeedback.js'
+import {
+  attachClickPopupVoiceLongPress,
+  splitTranscriptToLabelComment,
+} from './voiceClickPopup.js'
 import appPackage from '../package.json'
 import {
   buildCurrentUserFromSession,
   deleteSessionShareRow,
   fetchIncomingSessionShares,
-  fetchUserAppState,
+  fetchStandalonePhotosForFolder,
   sendSessionShare,
-  upsertUserAppState,
 } from './supabaseSync.js'
+import {
+  fetchRemoteUserAppState,
+  isRemoteAppStateDataEnabled,
+  isScanixCloudApiConfigured,
+  upsertRemoteUserAppState,
+} from './remoteAppStateBackend.js'
+import {
+  cloudGetSessionSharePayload,
+  cloudGetSignedReadUrlForPhotoPath,
+  cloudProbeAppStateExists,
+} from './scanixCloudApi.js'
 import {
   getPhotoDataUrl,
   isPhotoBlobStoreAvailable,
   prunePhotoBlobsExcept,
   putPhotoDataUrl,
 } from './photoBlobStore.js'
+import {
+  enqueuePhotoStorageUpload,
+  ensureStorageFullPathParallelToThumb,
+  ensureStorageThumbPathParallelToFull,
+  getHeavyCloudTrafficDeferralReason,
+  getPhotoUploadQueueCount,
+  getPhotoUploadQueueDeferralUi,
+  makeThumbDataUrlFromDataUrl,
+  PHOTO_STORAGE_BUCKET,
+  preparePhotosArrayForShareRpc,
+  readPhotoUploadAllowOnCellular,
+  sanitizeUserAppStateForSupabasePayload,
+  setPhotoStorageUploadCallbacks,
+  shouldDeferPhotoUploadOnNetwork,
+  tryDrainPhotoUploadQueue,
+  writePhotoUploadAllowOnCellular,
+} from './photoStorageUpload.js'
+import {
+  estimateDelskyOverlayDurationMs,
+  runDelskySyncWithOverlay,
+} from './delskyUploadOverlay.js'
+import {
+  isMinDownloadBuild,
+  isMinDownloadMode,
+  setPilotMinDownloadUserPref,
+} from './buildFlags.js'
+import { refreshNativeNetworkStatus } from './nativeNetworkMetered.js'
 import { apiUrl } from './apiBase.js'
 import {
   configureAdvancedRegister,
@@ -83,12 +196,33 @@ import {
 import {
   downloadExcelSheetGrid,
   downloadFrictionMeasurementsXlsx,
+  excelAoaToXlsxBlob,
   loadExcelSheetState,
   resetExcelSheetState,
   saveExcelSheetState,
 } from './excelSheetExport.js'
+import {
+  renderFinnObjekterHtml,
+  initFinnObjekterMap,
+  destroyFinnObjekterMap,
+  bindFinnObjekterListeners,
+} from './finnObjekter.js'
+import {
+  createEmptyFollowUpRoute,
+  getRoadSuggestionsForDatalist,
+  loadFollowUpRoutes,
+  mergeFollowUpRoutesByUpdatedAt,
+  normalizeFollowUpRoutesList,
+  normalizeRoadToken,
+  parseFollowUpRoutesImport,
+  recordRoadSuggestion,
+  resolveFollowUpPoint,
+  saveFollowUpRoutes,
+  serializeFollowUpRoutesExport,
+} from './followUpRoute.js'
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
+const STORAGE_KEY_DEVICE_FALLBACK = 'scanix-sessions-v2-device-fallback'
 const LEGACY_STORAGE_KEY = 'count-clicker-v1'
 const AUTH_USERS_KEY = 'scanix-users-v1'
 const AUTH_SESSION_KEY = 'scanix-auth-session'
@@ -106,6 +240,69 @@ const AUTH_PASSWORD_MIN_LEN = 8
 const AUTH_NAME_MAX_LEN = 120
 const AUTH_SHORT_ID_LEN = 5
 const OFFLINE_VEGREF_MANIFEST_URL = '/offline/vegref-manifest.json'
+
+/** Når `true`: vegref-pakke følger med web-/app-bygget (public/offline), ikke hentes fra ekstern URL. */
+function isBundledOfflineVegref() {
+  try {
+    return import.meta.env.VITE_OFFLINE_VEGREF_BUNDLED === '1'
+  } catch {
+    return false
+  }
+}
+
+// #region agent log (debug ff8b7b — fjern etter verifisert fiks)
+/** @param {string} hypothesisId @param {string} location @param {string} message @param {Record<string, unknown>} [data] */
+function scanixDebugFreezeLog(hypothesisId, location, message, data = {}) {
+  if (!isScanixDebugIngestAllowed()) return
+  try {
+    let body = ''
+    try {
+      body = JSON.stringify({
+        sessionId: 'ff8b7b',
+        hypothesisId,
+        location,
+        message,
+        data,
+        timestamp: Date.now(),
+      })
+    } catch {
+      body = JSON.stringify({
+        sessionId: 'ff8b7b',
+        hypothesisId,
+        location,
+        message: String(message).slice(0, 120),
+        data: {},
+        timestamp: Date.now(),
+      })
+    }
+    postScanixDebugIngest(body)
+  } catch {
+    /* aldri kast fra feillogg — unngå sekundærkrasj i error-handlere */
+  }
+}
+// #endregion
+
+/**
+ * I innebygd-modus: tillat kun relative stier eller same-origin (ingen CDN-URL i manifest).
+ * @param {string} url
+ */
+function assertBundledSafeDataUrl(url) {
+  if (!isBundledOfflineVegref()) return
+  const s = String(url).trim()
+  if (!s) throw new Error('Tom data-URL')
+  if (s.startsWith('/')) return
+  if (typeof window === 'undefined' || !window.location?.origin) return
+  try {
+    const u = new URL(s, window.location.origin)
+    if (u.origin === window.location.origin) return
+  } catch {
+    /* fallthrough */
+  }
+  throw new Error(
+    'Innebygd vegref-modus: manifest må bruke relative dataUrl-er (f.eks. /offline/...), ikke ekstern vert.',
+  )
+}
+
 let offlineVegrefReady = false
 let offlineVegrefMeta = null
 let offlineVegrefSyncBusy = false
@@ -186,6 +383,13 @@ function sessionsKeyForUser(userId) {
   return `${STORAGE_KEY_V2}-user-${userId}`
 }
 
+/** Lokal nøkkel når brukerprofil/sesjon midlertidig mangler. */
+function sessionsKeyForCurrentContext() {
+  return currentUser?.id
+    ? sessionsKeyForUser(currentUser.id)
+    : STORAGE_KEY_DEVICE_FALLBACK
+}
+
 function contactsStorageKeyForUser(userId) {
   return `scanix-contacts-v1-user-${userId}`
 }
@@ -262,7 +466,15 @@ function uint8ToB64(u8) {
 
 async function refreshOfflineVegrefState() {
   offlineVegrefMeta = await getOfflineVegrefMeta().catch(() => null)
+  if (offlineVegrefMeta && !offlineVegrefMeta.coverageBbox) {
+    await recomputeOfflinePackageCoverageBboxIfMissing().catch(() => null)
+    offlineVegrefMeta = await getOfflineVegrefMeta().catch(() => null)
+  }
+  syncOfflinePackageCoverageFromMeta(offlineVegrefMeta)
   offlineVegrefReady = Boolean(offlineVegrefMeta)
+  if (offlineVegrefReady) {
+    abortPrefetchInFlight()
+  }
   if (offlineVegrefMeta) {
     const version =
       typeof offlineVegrefMeta.version === 'string'
@@ -311,7 +523,9 @@ async function ensureOfflineVegrefPackageImpl(options = {}) {
 
   offlineVegrefSyncBusy = true
   offlineVegrefSyncError = ''
-  offlineVegrefSyncStatus = 'Laster ned offline vegreferanse ...'
+  offlineVegrefSyncStatus = isBundledOfflineVegref()
+    ? 'Installerer innebygd vegreferanse-pakke …'
+    : 'Laster ned offline vegreferanse ...'
   rerenderIfViewingSettings()
   try {
     /** @type {object | null} */
@@ -342,46 +556,72 @@ async function ensureOfflineVegrefPackageImpl(options = {}) {
       return null
     }
     try {
-      /** @type {object[]} */
-      const allSegments = []
+      const versionStr =
+        typeof manifest.version === 'string' && manifest.version.trim()
+          ? manifest.version.trim()
+          : 'unknown'
+      const generatedAtStr =
+        typeof manifest.generatedAt === 'string' ? manifest.generatedAt : null
+
+      if (tileUrls.length > 0) {
+        for (let ti = 0; ti < tileUrls.length; ti += 1) {
+          const url = tileUrls[ti]
+          assertBundledSafeDataUrl(url)
+          offlineVegrefSyncStatus = isBundledOfflineVegref()
+            ? `Installerer flis ${ti + 1} av ${tileUrls.length} …`
+            : `Laster flis ${ti + 1} av ${tileUrls.length} …`
+          rerenderIfViewingSettings()
+          const dataRes = await fetch(url, { cache: 'no-store' })
+          if (!dataRes.ok) {
+            offlineVegrefSyncStatus = 'Kunne ikke laste offline-flis'
+            return null
+          }
+          const pkg = await dataRes.json()
+          const segs = Array.isArray(pkg?.segments) ? pkg.segments : []
+          if (ti === 0) {
+            await importOfflineVegrefPackage({
+              version: versionStr,
+              generatedAt: generatedAtStr,
+              segments: segs,
+            })
+          } else {
+            await appendOfflineBundledSegments(segs)
+          }
+        }
+        await refreshOfflineVegrefState()
+        return offlineVegrefMeta
+      }
+
       if (dataUrl) {
+        assertBundledSafeDataUrl(dataUrl)
         const dataRes = await fetch(dataUrl, { cache: 'no-store' })
         if (!dataRes.ok) {
           offlineVegrefSyncStatus = 'Kunne ikke laste offline-data'
           return null
         }
         const pkg = await dataRes.json()
-        if (Array.isArray(pkg?.segments)) allSegments.push(...pkg.segments)
-      }
-      for (const url of tileUrls) {
-        const dataRes = await fetch(url, { cache: 'no-store' })
-        if (!dataRes.ok) {
-          offlineVegrefSyncStatus = 'Kunne ikke laste offline-flis'
+        const segs = Array.isArray(pkg?.segments) ? pkg.segments : []
+        if (!segs.length) {
+          offlineVegrefSyncStatus = 'Offline-data er tom'
           return null
         }
-        const pkg = await dataRes.json()
-        if (Array.isArray(pkg?.segments)) allSegments.push(...pkg.segments)
+        await importOfflineVegrefPackage({
+          version: versionStr,
+          generatedAt: generatedAtStr,
+          segments: segs,
+        })
+        await refreshOfflineVegrefState()
+        return offlineVegrefMeta
       }
-      if (!allSegments.length) {
-        offlineVegrefSyncStatus = 'Offline-data er tom'
-        return null
+    } catch (e) {
+      if (isBundledOfflineVegref() && e instanceof Error && e.message.includes('Innebygd')) {
+        offlineVegrefSyncError = e.message
+      } else {
+        offlineVegrefSyncError =
+          isBundledOfflineVegref()
+            ? 'Installasjon av innebygd offline-data feilet.'
+            : 'Nedlasting eller import av offline-data feilet.'
       }
-      await clearOfflineVegrefPackage()
-      await importOfflineVegrefPackage({
-        version:
-          typeof manifest.version === 'string' && manifest.version.trim()
-            ? manifest.version.trim()
-            : 'unknown',
-        generatedAt:
-          typeof manifest.generatedAt === 'string'
-            ? manifest.generatedAt
-            : null,
-        segments: allSegments,
-      })
-      await refreshOfflineVegrefState()
-      return offlineVegrefMeta
-    } catch {
-      offlineVegrefSyncError = 'Nedlasting eller import av offline-data feilet.'
       offlineVegrefSyncStatus = 'Offline-import feilet'
       return null
     }
@@ -900,14 +1140,133 @@ function normalizePhoto(p) {
     typeof rawNote === 'string' && rawNote.trim()
       ? rawNote.trim().slice(0, 800)
       : undefined
+  const thumbDataUrl =
+    typeof /** @type {{ thumbDataUrl?: unknown }} */ (p).thumbDataUrl ===
+      'string' &&
+    /** @type {{ thumbDataUrl?: string }} */ (p).thumbDataUrl.startsWith(
+      'data:image/',
+    )
+      ? /** @type {{ thumbDataUrl: string }} */ (p).thumbDataUrl
+      : null
+  const storageFullPath =
+    typeof /** @type {{ storageFullPath?: unknown }} */ (p)
+      .storageFullPath === 'string' &&
+    /** @type {{ storageFullPath?: string }} */ (p).storageFullPath.trim()
+      ? /** @type {{ storageFullPath: string }} */ (p).storageFullPath.trim()
+      : null
+  const storageThumbPath =
+    typeof /** @type {{ storageThumbPath?: unknown }} */ (p)
+      .storageThumbPath === 'string' &&
+    /** @type {{ storageThumbPath?: string }} */ (p).storageThumbPath.trim()
+      ? /** @type {{ storageThumbPath: string }} */ (p).storageThumbPath.trim()
+      : null
+  return /** @type {NonNullable<ReturnType<typeof normalizePhoto>>} */ (
+    ensureStorageFullPathParallelToThumb(
+      ensureStorageThumbPathParallelToFull({
+        id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
+        timestamp: typeof p.timestamp === 'string' ? p.timestamp : nowIso(),
+        lat:
+          rawLat != null && !Number.isNaN(Number(rawLat)) ? Number(rawLat) : null,
+        lng:
+          rawLng != null && !Number.isNaN(Number(rawLng)) ? Number(rawLng) : null,
+        dataUrl,
+        ...(vegref ? { vegref } : {}),
+        ...(note ? { note } : {}),
+        ...(imageFolder != null && imagePath != null
+          ? { imageFolder, imagePath }
+          : {}),
+        ...(thumbDataUrl ? { thumbDataUrl } : {}),
+        ...(storageFullPath ? { storageFullPath } : {}),
+        ...(storageThumbPath ? { storageThumbPath } : {}),
+      }),
+    )
+  )
+}
+
+/**
+ * Som normalizePhoto, men beholder metadata uten piksel (etter lett sky-synk).
+ * `pixelPending` settes når dataUrl mangler — hentes ved åpning av bilde-mappe / økt.
+ * @param {unknown} p
+ */
+function normalizePhotoOrSkeleton(p) {
+  const full = normalizePhoto(p)
+  if (full) return full
+  if (!p || typeof p !== 'object') return null
+  const o = /** @type {Record<string, unknown>} */ (p)
+  const id = typeof o.id === 'string' ? o.id : null
+  if (!id) return null
+  const rawLat = o.lat != null ? o.lat : o.latitude
+  const rawLng = o.lng != null ? o.lng : o.longitude
+  const vegref = normalizePhotoVegref(o.vegref)
+  const hasFolderKey = 'imageFolder' in o
+  const rawFolder = o.imageFolder
+  const imageFolder =
+    hasFolderKey && typeof rawFolder === 'string'
+      ? normalizeRoadFolderName(rawFolder)
+      : null
+  const imagePath =
+    imageFolder != null ? `images/${imageFolder}/` : null
+  const rawNote = o.note
+  const note =
+    typeof rawNote === 'string' && rawNote.trim()
+      ? rawNote.trim().slice(0, 800)
+      : undefined
+  const thumbDataUrl =
+    typeof o.thumbDataUrl === 'string' && o.thumbDataUrl.startsWith('data:image/')
+      ? o.thumbDataUrl
+      : null
+  const storageFullPath =
+    typeof o.storageFullPath === 'string' && o.storageFullPath.trim()
+      ? o.storageFullPath.trim()
+      : null
+  const storageThumbPath =
+    typeof o.storageThumbPath === 'string' && o.storageThumbPath.trim()
+      ? o.storageThumbPath.trim()
+      : null
+  if (thumbDataUrl || storageFullPath || storageThumbPath) {
+    const pathPair = /** @type {{ storageFullPath?: string, storageThumbPath?: string }} */ (
+      ensureStorageFullPathParallelToThumb(
+        ensureStorageThumbPathParallelToFull({
+          ...(storageFullPath ? { storageFullPath } : {}),
+          ...(storageThumbPath ? { storageThumbPath } : {}),
+        }),
+      )
+    )
+    const augFull =
+      typeof pathPair.storageFullPath === 'string'
+        ? pathPair.storageFullPath.trim()
+        : null
+    const augThumb =
+      typeof pathPair.storageThumbPath === 'string'
+        ? pathPair.storageThumbPath.trim()
+        : null
+    const pixelPending = !thumbDataUrl && Boolean(augFull)
+    return /** @type {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>} */ ({
+      id,
+      timestamp: typeof o.timestamp === 'string' ? o.timestamp : nowIso(),
+      lat:
+        rawLat != null && !Number.isNaN(Number(rawLat)) ? Number(rawLat) : null,
+      lng:
+        rawLng != null && !Number.isNaN(Number(rawLng)) ? Number(rawLng) : null,
+      ...(thumbDataUrl ? { thumbDataUrl } : {}),
+      ...(augFull ? { storageFullPath: augFull } : {}),
+      ...(augThumb ? { storageThumbPath: augThumb } : {}),
+      ...(pixelPending ? { pixelPending: true } : {}),
+      ...(vegref ? { vegref } : {}),
+      ...(note ? { note } : {}),
+      ...(imageFolder != null && imagePath != null
+        ? { imageFolder, imagePath }
+        : {}),
+    })
+  }
   return {
-    id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
-    timestamp: typeof p.timestamp === 'string' ? p.timestamp : nowIso(),
+    id,
+    timestamp: typeof o.timestamp === 'string' ? o.timestamp : nowIso(),
     lat:
       rawLat != null && !Number.isNaN(Number(rawLat)) ? Number(rawLat) : null,
     lng:
       rawLng != null && !Number.isNaN(Number(rawLng)) ? Number(rawLng) : null,
-    dataUrl,
+    pixelPending: true,
     ...(vegref ? { vegref } : {}),
     ...(note ? { note } : {}),
     ...(imageFolder != null && imagePath != null
@@ -918,7 +1277,7 @@ function normalizePhoto(p) {
 
 function normalizeStandalonePhotosList(arr) {
   if (!Array.isArray(arr)) return []
-  return arr.map(normalizePhoto).filter(Boolean)
+  return arr.map(normalizePhotoOrSkeleton).filter(Boolean)
 }
 
 /**
@@ -936,7 +1295,7 @@ async function hydratePhotoRecordsArray(raw) {
         ? p.dataUrl
         : null
     const id = typeof p.id === 'string' ? p.id : null
-    if (!dataUrl && id && (p.idbImage === true || !p.dataUrl)) {
+    if (!dataUrl && id) {
       try {
         const fromIdb = await getPhotoDataUrl(id)
         if (
@@ -949,8 +1308,12 @@ async function hydratePhotoRecordsArray(raw) {
         /* ignore */
       }
     }
-    if (!dataUrl) continue
-    out.push({ ...p, dataUrl })
+    if (dataUrl) {
+      out.push({ ...p, dataUrl })
+      continue
+    }
+    const skel = normalizePhotoOrSkeleton(p)
+    if (skel) out.push(skel)
   }
   return out
 }
@@ -1004,24 +1367,295 @@ function parseDiskSessionsLite(disk) {
   return { clickById, rawById }
 }
 
+function photoRecordHasPixelData(p) {
+  return (
+    typeof p?.dataUrl === 'string' && p.dataUrl.startsWith('data:image/')
+  )
+}
+
+/** Miniatyr (full eller lavoppløst) for liste, kart-popup og album-rader. */
+function photoListThumbDataUrl(ph) {
+  if (!ph || typeof ph !== 'object') return ''
+  if (
+    typeof /** @type {{ dataUrl?: string }} */ (ph).dataUrl === 'string' &&
+    /** @type {{ dataUrl?: string }} */ (ph).dataUrl.startsWith('data:image/')
+  ) {
+    return /** @type {{ dataUrl: string }} */ (ph).dataUrl
+  }
+  if (
+    typeof /** @type {{ thumbDataUrl?: string }} */ (ph).thumbDataUrl ===
+      'string' &&
+    /** @type {{ thumbDataUrl?: string }} */ (ph).thumbDataUrl.startsWith(
+      'data:image/',
+    )
+  ) {
+    return /** @type {{ thumbDataUrl: string }} */ (ph).thumbDataUrl
+  }
+  return ''
+}
+
+/**
+ * Data-URL for fullskjerm: bruk lokal full piksel når den finnes, men ikke
+ * «lås» til miniatyr når full finnes i sky (samme streng som thumbDataUrl,
+ * eller kun thumb i minnet mens storageFullPath er satt).
+ * @param {{ dataUrl?: string, thumbDataUrl?: string, storageFullPath?: string } | null | undefined} ph
+ */
+function photoFullscreenLocalPixelUrl(ph) {
+  if (!ph || typeof ph !== 'object') return ''
+  const data =
+    typeof ph.dataUrl === 'string' && ph.dataUrl.startsWith('data:image/')
+      ? ph.dataUrl
+      : ''
+  const thumb =
+    typeof ph.thumbDataUrl === 'string' &&
+    ph.thumbDataUrl.startsWith('data:image/')
+      ? ph.thumbDataUrl
+      : ''
+  const hasStorage =
+    typeof ph.storageFullPath === 'string' && ph.storageFullPath.trim() !== ''
+  if (data && thumb && data === thumb) return ''
+  if (data) return data
+  if (thumb && hasStorage) return ''
+  if (thumb) return thumb
+  return ''
+}
+
+/**
+ * Kun eksplisitt miniatyr for kart-pin og kart-popup (aldri full `dataUrl`).
+ * @param {unknown} ph
+ */
+function photoMapThumbDataUrl(ph) {
+  if (!ph || typeof ph !== 'object') return ''
+  if (
+    typeof /** @type {{ thumbDataUrl?: string }} */ (ph).thumbDataUrl ===
+      'string' &&
+    /** @type {{ thumbDataUrl: string }} */ (ph).thumbDataUrl.startsWith(
+      'data:image/',
+    )
+  ) {
+    return /** @type {{ thumbDataUrl: string }} */ (ph).thumbDataUrl
+  }
+  return ''
+}
+
+/**
+ * Kart-pin og kart-popup: WebKit dekoder hele bildet til minne per `<img>`.
+ * «Miniatyr» som er hundrevis av KB base64 (eller full JPEG feillagret som thumb)
+ * gir titalls MB i Xcode — bruk kun kompakte data-URL-er her.
+ */
+const SESSION_MAP_THUMB_DATA_URL_MAX_CHARS = 132_000
+
+/**
+ * @param {unknown} ph
+ */
+function sessionMapDisplayThumbDataUrl(ph) {
+  const u = photoMapThumbDataUrl(ph)
+  if (!u || u.length > SESSION_MAP_THUMB_DATA_URL_MAX_CHARS) return ''
+  return u
+}
+
+function photoRecordHasListThumb(ph) {
+  return Boolean(photoListThumbDataUrl(ph))
+}
+
+/**
+ * Lagrer piksel-dataUrl i IndexedDB når den finnes i minnet (én gang per id).
+ * @param {unknown} ph
+ */
+async function persistPhotoPixelsToIdbIfNeeded(ph) {
+  if (!ph || typeof ph !== 'object') return
+  const id = /** @type {{ id?: unknown }} */ (ph).id
+  if (typeof id !== 'string' || !id) return
+  if (!photoRecordHasPixelData(/** @type {{ dataUrl?: string }} */ (ph)))
+    return
+  if (!(await isPhotoBlobStoreAvailable())) return
+  try {
+    await putPhotoDataUrl(
+      id,
+      /** @type {{ dataUrl: string }} */ (ph).dataUrl,
+    )
+  } catch (e) {
+    console.warn('persistPhotoPixelsToIdbIfNeeded', id, e)
+  }
+}
+
+/** @param {{ photos?: unknown[] } | null | undefined} sess */
+async function persistSessionPhotoPixelsToIdb(sess) {
+  if (!sess?.photos?.length) return
+  for (const ph of sess.photos) {
+    await persistPhotoPixelsToIdbIfNeeded(ph)
+  }
+}
+
+async function persistAllAppPhotoPixelsToIdb() {
+  for (const p of standalonePhotos) await persistPhotoPixelsToIdbIfNeeded(p)
+  for (const s of sessions) {
+    for (const p of s.photos || []) await persistPhotoPixelsToIdbIfNeeded(p)
+  }
+}
+
+/**
+ * Fyller inn dataUrl fra IndexedDB for alle økt- og standalone-bilder som mangler piksel.
+ * @returns {boolean} true hvis noe ble oppdatert
+ */
+async function hydrateAllAppPhotoPixelsFromIdb() {
+  if (!(await isPhotoBlobStoreAvailable())) return false
+  let changed = false
+  /** @param {unknown} ph */
+  const patch = async (ph) => {
+    if (!ph || typeof ph !== 'object') return
+    if (photoRecordHasPixelData(/** @type {{ dataUrl?: string }} */ (ph)))
+      return
+    const id = /** @type {{ id?: unknown }} */ (ph).id
+    if (typeof id !== 'string' || !id) return
+    try {
+      const blob = await getPhotoDataUrl(id)
+      if (typeof blob === 'string' && blob.startsWith('data:image/')) {
+        /** @type {{ dataUrl: string, pixelPending?: boolean }} */ (ph).dataUrl =
+          blob
+        if ('pixelPending' in ph)
+          delete /** @type {{ pixelPending?: boolean }} */ (ph).pixelPending
+        changed = true
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const p of standalonePhotos) await patch(p)
+  for (const s of sessions) {
+    for (const p of s.photos || []) await patch(p)
+  }
+  return changed
+}
+
+/**
+ * @param {{ dataUrl?: string, thumbDataUrl?: string, pixelPending?: boolean }} ph
+ * @param {string} imgClass
+ * @param {{ mapView?: boolean }} [opts] mapView: bare thumbDataUrl (aldri full bilde i kart-popup)
+ */
+function photoPreviewImgHtml(ph, imgClass, opts = {}) {
+  const cls =
+    typeof imgClass === 'string' && imgClass.trim() ? imgClass.trim() : 'home-dash-card__preview'
+  const src = opts.mapView
+    ? sessionMapDisplayThumbDataUrl(ph)
+    : photoListThumbDataUrl(ph)
+  if (src) {
+    return `<img src="${src}" alt="" class="${escapeHtml(cls)}" loading="lazy" decoding="async" />`
+  }
+  return `<span class="${escapeHtml(cls)} photo-preview--pending" role="status" aria-label="Laster"></span>`
+}
+
 function mergeStandalonePhotoLists(a, b) {
   const m = new Map()
+  /** @param {unknown} x */
+  const prefer = (x, y) => {
+    const px = photoRecordHasPixelData(
+      /** @type {{ dataUrl?: string }} */ (x),
+    )
+    const py = photoRecordHasPixelData(
+      /** @type {{ dataUrl?: string }} */ (y),
+    )
+    if (px && !py) return x
+    if (!px && py) return y
+    const tx = photoRecordHasListThumb(/** @type {{ dataUrl?: string, thumbDataUrl?: string }} */ (x))
+    const ty = photoRecordHasListThumb(/** @type {{ dataUrl?: string, thumbDataUrl?: string }} */ (y))
+    if (tx && !ty) return x
+    if (!tx && ty) return y
+    const ta =
+      typeof /** @type {{ timestamp?: string }} */ (x).timestamp === 'string'
+        ? /** @type {{ timestamp?: string }} */ (x).timestamp
+        : ''
+    const tb =
+      typeof /** @type {{ timestamp?: string }} */ (y).timestamp === 'string'
+        ? /** @type {{ timestamp?: string }} */ (y).timestamp
+        : ''
+    return tb >= ta ? y : x
+  }
   for (const p of [...a, ...b]) {
     if (!p?.id) continue
     const ex = m.get(p.id)
-    if (!ex) {
-      m.set(p.id, p)
-      continue
-    }
-    const ta = typeof ex.timestamp === 'string' ? ex.timestamp : ''
-    const tb = typeof p.timestamp === 'string' ? p.timestamp : ''
-    m.set(p.id, tb >= ta ? p : ex)
+    m.set(p.id, ex ? prefer(ex, p) : p)
   }
   return [...m.values()].sort((x, y) => {
     const ta = typeof x.timestamp === 'string' ? x.timestamp : ''
     const tb = typeof y.timestamp === 'string' ? y.timestamp : ''
     return ta.localeCompare(tb)
   })
+}
+
+/**
+ * Samme id kan finnes både som sky-skall (storage-stier) og lokalt miniatyr.
+ * `mergeStandalonePhotoLists` velger én post helhetlig — da mistes ofte `storageFullPath`
+ * og fullskjerm faller tilbake til thumb. Fletter piksel/stier fra begge.
+ * @param {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>} a
+ * @param {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>} b
+ */
+function mergeNormalizedPhotoPairForIndex(a, b) {
+  const primary =
+    mergeStandalonePhotoLists(
+      /** @type {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>[]} */ ([
+        a,
+      ]),
+      /** @type {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>[]} */ ([
+        b,
+      ]),
+    )[0] || b
+  const secondary = primary === a ? b : a
+  const pa = /** @type {Record<string, unknown>} */ (primary)
+  const sb = /** @type {Record<string, unknown>} */ (secondary)
+  const out = { ...pa }
+
+  const pickTrimmed = (key) => {
+    const v = pa[key]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    const v2 = sb[key]
+    return typeof v2 === 'string' && v2.trim() ? v2.trim() : ''
+  }
+  const sf = pickTrimmed('storageFullPath')
+  const st = pickTrimmed('storageThumbPath')
+  if (sf) out.storageFullPath = sf
+  else delete out.storageFullPath
+  if (st) out.storageThumbPath = st
+  else delete out.storageThumbPath
+
+  const duP =
+    typeof pa.dataUrl === 'string' && pa.dataUrl.startsWith('data:image/')
+  const duS =
+    typeof sb.dataUrl === 'string' && sb.dataUrl.startsWith('data:image/')
+  if (duP) out.dataUrl = pa.dataUrl
+  else if (duS) out.dataUrl = sb.dataUrl
+  else delete out.dataUrl
+
+  const ttP =
+    typeof pa.thumbDataUrl === 'string' &&
+    pa.thumbDataUrl.startsWith('data:image/')
+  const ttS =
+    typeof sb.thumbDataUrl === 'string' &&
+    sb.thumbDataUrl.startsWith('data:image/')
+  if (ttP) out.thumbDataUrl = pa.thumbDataUrl
+  else if (ttS) out.thumbDataUrl = sb.thumbDataUrl
+  else delete out.thumbDataUrl
+
+  const paired = ensureStorageFullPathParallelToThumb(
+    ensureStorageThumbPathParallelToFull(out),
+  )
+  const pr = /** @type {Record<string, unknown>} */ (paired)
+  const augFull =
+    typeof pr.storageFullPath === 'string' && pr.storageFullPath.trim()
+      ? pr.storageFullPath.trim()
+      : null
+  const hasThumbData =
+    typeof pr.thumbDataUrl === 'string' &&
+    pr.thumbDataUrl.startsWith('data:image/')
+  const hasFullPixel =
+    typeof pr.dataUrl === 'string' && pr.dataUrl.startsWith('data:image/')
+  if (hasFullPixel) delete pr.pixelPending
+  else if (augFull && !hasThumbData) pr.pixelPending = true
+  else delete pr.pixelPending
+
+  return /** @type {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>} */ (
+    pr
+  )
 }
 
 const MAX_FRICTION_MEASUREMENTS = 200
@@ -1259,6 +1893,32 @@ function mergeClickHistoryArrays(a, b) {
 }
 
 /**
+ * Øktlogg (nyeste først i UI). Slår sammen sky + lokal uten å miste linjer.
+ * @param {unknown[]} a
+ * @param {unknown[]} b
+ */
+function mergeSessionLogArrays(a, b) {
+  const byId = new Map()
+  for (const e of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) {
+    if (!e || typeof e !== 'object') continue
+    const id = /** @type {{ id?: string }} */ (e).id
+    if (typeof id === 'string' && id) {
+      byId.set(id, e)
+      continue
+    }
+    const ts = String(/** @type {{ timestamp?: string }} */ (e).timestamp ?? '')
+    byId.set(`legacy:${ts}:${byId.size}`, e)
+  }
+  return [...byId.values()].sort(
+    (x, y) =>
+      new Date(
+        /** @type {{ timestamp?: string }} */ (y).timestamp || 0,
+      ).getTime() -
+      new Date(/** @type {{ timestamp?: string }} */ (x).timestamp || 0).getTime(),
+  )
+}
+
+/**
  * Slår sammen to økt-objekter fra localStorage (typisk to faner).
  * @param {ReturnType<typeof normalizeSession>} local
  * @param {ReturnType<typeof normalizeSession>} remote
@@ -1272,12 +1932,14 @@ function mergeStoredSessionsPair(local, remote) {
     normalizeStandalonePhotosList(local.photos),
     normalizeStandalonePhotosList(remote.photos),
   )
+  const mergedLog = mergeSessionLogArrays(local.log, remote.log)
   const tLocal = new Date(local.updatedAt || 0).getTime()
   const tRemote = new Date(remote.updatedAt || 0).getTime()
   const base = tRemote >= tLocal ? { ...remote } : { ...local }
   return normalizeSession({
     ...base,
     clickHistory: mergedClicks,
+    log: mergedLog,
     count: mergedClicks.length,
     photos: mergedPhotos,
   })
@@ -1344,7 +2006,7 @@ function normalizeSession(p) {
     log: Array.isArray(p.log) ? p.log : [],
     roadSide,
     photos: Array.isArray(p.photos)
-      ? p.photos.map(normalizePhoto).filter(Boolean)
+      ? p.photos.map(normalizePhotoOrSkeleton).filter(Boolean)
       : [],
     objectCategories,
     activeCategoryId,
@@ -1357,8 +2019,28 @@ function normalizeSession(p) {
  * @param {string} userId
  */
 async function loadAppStateFromStorageForUser(userId) {
-  const key = sessionsKeyForUser(userId)
+  needsAppStateDiskMerge = false
+  const isDeviceFallbackLoad = userId === STORAGE_KEY_DEVICE_FALLBACK
+  const key =
+    isDeviceFallbackLoad
+      ? STORAGE_KEY_DEVICE_FALLBACK
+      : sessionsKeyForUser(userId)
   let rawV2 = localStorage.getItem(key)
+  // Bruker-kontekst: hvis per-bruker nøkkel mangler, prøv enhets-fallback (f.eks. før auth ble klar).
+  if (!rawV2 && !isDeviceFallbackLoad) {
+    const fallbackRaw = localStorage.getItem(STORAGE_KEY_DEVICE_FALLBACK)
+    if (fallbackRaw) {
+      rawV2 = fallbackRaw
+      try {
+        localStorage.setItem(key, fallbackRaw)
+      } catch {
+        /* quota */
+      }
+    }
+  }
+  // #region agent log
+  fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H4',location:'main.js:loadAppStateFromStorageForUser:start',message:'load_app_state_begin',data:{userIdPresent:Boolean(userId),key,hasRawV2:Boolean(rawV2)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!rawV2) {
     const legacy = localStorage.getItem(STORAGE_KEY_V2)
     if (legacy) {
@@ -1372,12 +2054,38 @@ async function loadAppStateFromStorageForUser(userId) {
   }
   if (rawV2) {
     try {
-      const p = JSON.parse(rawV2)
-      const sess = await hydrateSessionsFromDiskJson(p)
+      const jsonStr = await decompressAppStateJsonFromLocalStorage(rawV2)
+      const p = JSON.parse(jsonStr)
+      let sess = await hydrateSessionsFromDiskJson(p)
       const rawStandalone = Array.isArray(p.standalonePhotos)
         ? p.standalonePhotos
         : []
-      const hydratedStandalone = await hydratePhotoRecordsArray(rawStandalone)
+      let hydratedStandalone = await hydratePhotoRecordsArray(rawStandalone)
+      // Bruker-kontekst: slå sammen med enhets-fallback for å unngå at økter
+      // "forsvinner" når auth/session har vekslet mellom nøkler.
+      if (!isDeviceFallbackLoad) {
+        const fallbackRaw = localStorage.getItem(STORAGE_KEY_DEVICE_FALLBACK)
+        if (fallbackRaw && fallbackRaw !== rawV2) {
+          try {
+            const fallbackJson =
+              await decompressAppStateJsonFromLocalStorage(fallbackRaw)
+            const fp = JSON.parse(fallbackJson)
+            const fallbackSess = await hydrateSessionsFromDiskJson(fp)
+            sess = mergeRemoteAndDiskSessions(sess, fallbackSess)
+            const fallbackStandalone = Array.isArray(fp.standalonePhotos)
+              ? fp.standalonePhotos
+              : []
+            const hydratedFallbackStandalone =
+              await hydratePhotoRecordsArray(fallbackStandalone)
+            hydratedStandalone = mergeStandalonePhotoLists(
+              normalizeStandalonePhotosList(hydratedStandalone),
+              normalizeStandalonePhotosList(hydratedFallbackStandalone),
+            )
+          } catch {
+            /* ignore corrupt fallback */
+          }
+        }
+      }
       return {
         sessions: sess,
         currentSessionId:
@@ -1394,8 +2102,15 @@ async function loadAppStateFromStorageForUser(userId) {
           typeof p.frictionPreviousSessionId === 'string'
             ? p.frictionPreviousSessionId
             : null,
+        lastResumeSessionId:
+          typeof p.lastResumeSessionId === 'string'
+            ? p.lastResumeSessionId
+            : null,
       }
-    } catch {
+    } catch (e) {
+      // #region agent log
+      fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H5',location:'main.js:loadAppStateFromStorageForUser:rawV2Catch',message:'load_app_state_parse_failed',data:{key,errorName:e?.name||null,errorMessage:e instanceof Error ? e.message : String(e)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       /* fall through */
     }
   }
@@ -1426,6 +2141,7 @@ async function loadAppStateFromStorageForUser(userId) {
         frictionMeasurements: [],
         frictionActiveSessionId: null,
         frictionPreviousSessionId: null,
+        lastResumeSessionId: null,
       }
     } catch {
       /* fall through */
@@ -1438,6 +2154,7 @@ async function loadAppStateFromStorageForUser(userId) {
     frictionMeasurements: [],
     frictionActiveSessionId: null,
     frictionPreviousSessionId: null,
+    lastResumeSessionId: null,
   }
 }
 
@@ -1445,24 +2162,135 @@ async function loadAppStateFromStorageForUser(userId) {
 let appStatePersistDebounce = null
 /** @type {Promise<void>} */
 let appStateSaveChain = Promise.resolve()
+/**
+ * Annen fane/vindu skrev app-state (`storage`); da må vi lese disk og slå sammen clickHistory
+ * før flush. Én fane: spar stor getItem+parse mellom hver debouncet lagring.
+ */
+let needsAppStateDiskMerge = false
+
+/** Nyeste logg først (`unshift`); for økter som ikke er åpne, spar plass på disk. */
+const LOCAL_DISK_INACTIVE_SESSION_LOG_MAX = 120
+
+/**
+ * @param {typeof sessions[number]} s
+ */
+function trimSessionForLocalDiskPersist(s) {
+  if (!s || typeof s !== 'object') return s
+  if (currentSessionId && s.id === currentSessionId) return s
+  const log = Array.isArray(s.log) ? s.log : []
+  if (log.length <= LOCAL_DISK_INACTIVE_SESSION_LOG_MAX) return s
+  return {
+    ...s,
+    log: log.slice(0, LOCAL_DISK_INACTIVE_SESSION_LOG_MAX),
+  }
+}
 
 /**
  * Skriver økter + metadata til localStorage; store bilder i IndexedDB for å unngå localStorage-kvote.
  */
 async function flushLocalStorageAppState(key) {
+  // #region agent log
+  const __flushT0 = performance.now()
+  // #endregion
   let useIdb = await isPhotoBlobStoreAvailable()
 
   /**
-   * @param {NonNullable<ReturnType<typeof normalizePhoto>>} p
+   * @param {NonNullable<ReturnType<typeof normalizePhotoOrSkeleton>>} p
    */
   const serializePhoto = async (p) => {
+    if (!photoRecordHasPixelData(p)) {
+      const id = typeof p.id === 'string' ? p.id : null
+      if (id && useIdb) {
+        try {
+          const fromIdb = await getPhotoDataUrl(id)
+          if (
+            typeof fromIdb === 'string' &&
+            fromIdb.startsWith('data:image/')
+          ) {
+            return await serializePhoto(
+              /** @type {NonNullable<ReturnType<typeof normalizePhoto>>} */ ({
+                ...p,
+                dataUrl: fromIdb,
+              }),
+            )
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      const thumbRaw =
+        typeof /** @type {{ thumbDataUrl?: string }} */ (p).thumbDataUrl ===
+          'string' &&
+        /** @type {{ thumbDataUrl?: string }} */ (p).thumbDataUrl.startsWith(
+          'data:image/',
+        )
+          ? /** @type {{ thumbDataUrl: string }} */ (p).thumbDataUrl
+          : ''
+      const thumbOk =
+        Boolean(thumbRaw) &&
+        thumbRaw.length <= SESSION_MAP_THUMB_DATA_URL_MAX_CHARS
+      const pathOk =
+        typeof /** @type {{ storageFullPath?: string }} */ (p)
+          .storageFullPath === 'string' &&
+        Boolean(
+          /** @type {{ storageFullPath?: string }} */ (p).storageFullPath?.trim(),
+        )
+      if (thumbOk || pathOk) {
+        return {
+          id: p.id,
+          timestamp: p.timestamp,
+          lat: p.lat,
+          lng: p.lng,
+          ...(thumbOk
+            ? {
+                thumbDataUrl: thumbRaw,
+              }
+            : {}),
+          ...(pathOk
+            ? {
+                storageFullPath:
+                  /** @type {{ storageFullPath: string }} */ (p)
+                    .storageFullPath.trim(),
+                ...(typeof /** @type {{ storageThumbPath?: string }} */ (p)
+                  .storageThumbPath === 'string' &&
+                /** @type {{ storageThumbPath?: string }} */ (
+                  p
+                ).storageThumbPath.trim()
+                  ? {
+                      storageThumbPath:
+                        /** @type {{ storageThumbPath: string }} */ (p)
+                          .storageThumbPath.trim(),
+                    }
+                  : {}),
+              }
+            : {}),
+          ...(p.vegref ? { vegref: p.vegref } : {}),
+          ...(p.note ? { note: p.note } : {}),
+          ...(p.imageFolder != null
+            ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
+            : {}),
+        }
+      }
+      return {
+        id: p.id,
+        timestamp: p.timestamp,
+        lat: p.lat,
+        lng: p.lng,
+        ...(p.vegref ? { vegref: p.vegref } : {}),
+        ...(p.note ? { note: p.note } : {}),
+        ...(p.imageFolder != null
+          ? { imageFolder: p.imageFolder, imagePath: p.imagePath }
+          : {}),
+        pixelPending: true,
+      }
+    }
     if (!useIdb) {
       return {
         id: p.id,
         timestamp: p.timestamp,
         lat: p.lat,
         lng: p.lng,
-        dataUrl: p.dataUrl,
+        dataUrl: /** @type {{ dataUrl: string }} */ (p).dataUrl,
         ...(p.vegref ? { vegref: p.vegref } : {}),
         ...(p.note ? { note: p.note } : {}),
         ...(p.imageFolder != null
@@ -1471,7 +2299,7 @@ async function flushLocalStorageAppState(key) {
       }
     }
     try {
-      await putPhotoDataUrl(p.id, p.dataUrl)
+      await putPhotoDataUrl(p.id, /** @type {{ dataUrl: string }} */ (p).dataUrl)
       return {
         id: p.id,
         timestamp: p.timestamp,
@@ -1491,7 +2319,7 @@ async function flushLocalStorageAppState(key) {
         timestamp: p.timestamp,
         lat: p.lat,
         lng: p.lng,
-        dataUrl: p.dataUrl,
+        dataUrl: /** @type {{ dataUrl: string }} */ (p).dataUrl,
         ...(p.vegref ? { vegref: p.vegref } : {}),
         ...(p.note ? { note: p.note } : {}),
         ...(p.imageFolder != null
@@ -1501,18 +2329,17 @@ async function flushLocalStorageAppState(key) {
     }
   }
 
-  const sessionsOut = []
-  for (const s of sessions) {
-    const photos = []
-    for (const ph of s.photos || []) {
-      photos.push(await serializePhoto(ph))
-    }
-    sessionsOut.push({ ...s, photos })
-  }
-  const standaloneOut = []
-  for (const ph of standalonePhotos) {
-    standaloneOut.push(await serializePhoto(ph))
-  }
+  const sessionsOut = await Promise.all(
+    sessions.map(async (s) => {
+      const row = trimSessionForLocalDiskPersist(s)
+      const photoInputs = row.photos || []
+      const photos = await Promise.all(photoInputs.map((ph) => serializePhoto(ph)))
+      return { ...row, photos }
+    }),
+  )
+  const standaloneOut = await Promise.all(
+    standalonePhotos.map((ph) => serializePhoto(ph)),
+  )
 
   const payload = {
     version: 2,
@@ -1522,10 +2349,46 @@ async function flushLocalStorageAppState(key) {
     frictionMeasurements,
     frictionActiveSessionId,
     frictionPreviousSessionId,
+    lastResumeSessionId:
+      typeof lastResumeSessionId === 'string' ? lastResumeSessionId : null,
   }
   try {
-    localStorage.setItem(key, JSON.stringify(payload))
+    // #region agent log
+    const __j0 = performance.now()
+    const __json = JSON.stringify(payload)
+    regtraceLocalStorageWrite(__json, payload)
+    const __jsonMs = performance.now() - __j0
+    const __c0 = performance.now()
+    const toStore = await compressAppStateJsonForLocalStorage(__json)
+    const __compressMs = performance.now() - __c0
+    const __s0 = performance.now()
+    // #endregion
+    // #region agent log
+    fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H2',location:'main.js:flushLocalStorageAppState:beforeSetItem',message:'localstorage_set_attempt',data:{key,sessionsCount:sessionsOut.length,standaloneCount:standaloneOut.length,storedLen:toStore.length,useIdb},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    localStorage.setItem(key, toStore)
+    // #region agent log
+    const __setMs = performance.now() - __s0
+    const __total = performance.now() - __flushT0
+    if (__jsonMs > 70 || __setMs > 70 || __total > 120) {
+      scanixDebugFreezeLog('H3', 'main.js:flushLocalStorageAppState', 'slow_persist', {
+        jsonMs: Math.round(__jsonMs * 10) / 10,
+        compressMs: Math.round(__compressMs * 10) / 10,
+        setMs: Math.round(__setMs * 10) / 10,
+        totalMs: Math.round(__total * 10) / 10,
+        jsonLen: __json.length,
+        storedLen: toStore.length,
+        sessionCount: sessionsOut.length,
+        photoSlots:
+          sessionsOut.reduce((n, s) => n + (s.photos?.length || 0), 0) +
+          standaloneOut.length,
+      })
+    }
+    // #endregion
   } catch (e) {
+    // #region agent log
+    fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H2',location:'main.js:flushLocalStorageAppState:catch',message:'localstorage_set_failed',data:{key,errorName:e?.name||null,errorMessage:e instanceof Error ? e.message : String(e)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     showSessionToast(
       'Kunne ikke lagre data lokalt (lagringsplass full?). Noe kan mangle etter oppdatering.',
       5200,
@@ -1548,56 +2411,63 @@ async function flushLocalStorageAppState(key) {
 }
 
 async function saveAppStateWorker() {
-  if (!currentUser?.id) return
-  const key = sessionsKeyForUser(currentUser.id)
+  const key = sessionsKeyForCurrentContext()
+  // #region agent log
+  fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H3',location:'main.js:saveAppStateWorker:start',message:'save_worker_start',data:{userId:currentUser?.id||null,key,sessionsCount:sessions.length,currentSessionId},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   /** @type {typeof sessions} */
   let mergedSessions = sessions
   let mergedChanged = false
-  try {
-    const raw = localStorage.getItem(key)
-    if (raw) {
-      const disk = JSON.parse(raw)
-      const { clickById, rawById } = parseDiskSessionsLite(disk)
-      const memIds = new Set(sessions.map((s) => s.id))
-      const merged = sessions.map((local) => {
-        const diskClicks = clickById.get(local.id)
-        if (!diskClicks) return local
-        const mergedClicks = mergeClickHistoryArrays(
-          local.clickHistory,
-          diskClicks,
-        )
-        const localLen = local.clickHistory?.length ?? 0
-        const diskLen = diskClicks.length
-        if (mergedClicks.length === localLen && localLen === diskLen) return local
-        mergedChanged = true
-        return {
-          ...local,
-          clickHistory: mergedClicks,
-          count: mergedClicks.length,
-          updatedAt: nowIso(),
+  if (needsAppStateDiskMerge) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw) {
+        const jsonStr = await decompressAppStateJsonFromLocalStorage(raw)
+        const disk = JSON.parse(jsonStr)
+        const { clickById, rawById } = parseDiskSessionsLite(disk)
+        const memIds = new Set(sessions.map((s) => s.id))
+        const merged = sessions.map((local) => {
+          const diskClicks = clickById.get(local.id)
+          if (!diskClicks) return local
+          const mergedClicks = mergeClickHistoryArrays(
+            local.clickHistory,
+            diskClicks,
+          )
+          const localLen = local.clickHistory?.length ?? 0
+          const diskLen = diskClicks.length
+          if (mergedClicks.length === localLen && localLen === diskLen) return local
+          mergedChanged = true
+          return {
+            ...local,
+            clickHistory: mergedClicks,
+            count: mergedClicks.length,
+            updatedAt: nowIso(),
+          }
+        })
+        /** @type {typeof sessions} */
+        const extra = []
+        for (const [id, row] of rawById) {
+          if (memIds.has(id)) continue
+          const photos = Array.isArray(row.photos)
+            ? await hydratePhotoRecordsArray(row.photos)
+            : []
+          const n = normalizeSession({ ...row, photos })
+          if (n) extra.push(n)
         }
-      })
-      /** @type {typeof sessions} */
-      const extra = []
-      for (const [id, row] of rawById) {
-        if (memIds.has(id)) continue
-        const photos = Array.isArray(row.photos)
-          ? await hydratePhotoRecordsArray(row.photos)
-          : []
-        const n = normalizeSession({ ...row, photos })
-        if (n) extra.push(n)
+        mergedSessions = extra.length ? [...merged, ...extra] : merged
       }
-      mergedSessions = extra.length ? [...merged, ...extra] : merged
+    } catch {
+      /* ignore corrupt disk */
+    } finally {
+      needsAppStateDiskMerge = false
     }
-  } catch {
-    /* ignore corrupt disk */
   }
   sessions = mergedSessions
   if (currentSessionId && mergedChanged) {
     const prevChLen = state.clickHistory.length
     state = loadCurrentSessionState()
     if (view === 'session' && map && state.clickHistory.length !== prevChLen) {
-      rebuildMarkers()
+      rebuildMarkers('storage_merge_remote_clicks')
       renderCount()
       renderLog()
       renderPhotosGallery()
@@ -1609,11 +2479,13 @@ async function saveAppStateWorker() {
   } catch {
     /* toast allerede vist */
   }
-  if (isSupabaseConfigured()) scheduleSupabaseAppStatePush()
+  if (isRemoteAppStateDataEnabled()) scheduleSupabaseAppStatePush()
 }
 
 function saveAppState() {
-  if (!currentUser?.id) return
+  // #region agent log
+  fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H3',location:'main.js:saveAppState:schedule',message:'save_debounce_scheduled',data:{userId:currentUser?.id||null,currentSessionId,sessionsCount:sessions.length,debounceMs:220,key:sessionsKeyForCurrentContext()},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   clearTimeout(appStatePersistDebounce)
   appStatePersistDebounce = setTimeout(() => {
     appStatePersistDebounce = null
@@ -1621,6 +2493,16 @@ function saveAppState() {
       .then(() => saveAppStateWorker())
       .catch((e) => console.warn('saveAppState:', e))
   }, 220)
+}
+
+function forceSaveAppStateNow(reason = 'force') {
+  if (appStatePersistDebounce) {
+    clearTimeout(appStatePersistDebounce)
+    appStatePersistDebounce = null
+  }
+  appStateSaveChain = appStateSaveChain
+    .then(() => saveAppStateWorker())
+    .catch((e) => console.warn(`forceSaveAppStateNow(${reason})`, e))
 }
 
 function loadCurrentSessionState() {
@@ -1645,7 +2527,7 @@ function loadCurrentSessionState() {
     log: [...s.log],
     roadSide: s.roadSide ?? null,
     photos: Array.isArray(s.photos)
-      ? s.photos.map(normalizePhoto).filter(Boolean)
+      ? s.photos.map(normalizePhotoOrSkeleton).filter(Boolean)
       : [],
     objectCategories,
     activeCategoryId,
@@ -1685,16 +2567,64 @@ function sortSessionsByUpdated() {
 
 let sessions = []
 let currentSessionId = null
+/** Siste økt brukeren var i (for «Fortsett» på forsiden); persisteres i localStorage. */
+let lastResumeSessionId = null
+
+function stashActiveSessionForResumeBeforeLeave() {
+  if (
+    currentSessionId &&
+    sessions.some((s) => s.id === currentSessionId)
+  ) {
+    lastResumeSessionId = currentSessionId
+  }
+}
+
+/**
+ * Økt-id for «Fortsett siste økt»: lagret verdi hvis den finnes, ellers nyeste `updatedAt`.
+ * @returns {string | null}
+ */
+function resolveResumeSessionId() {
+  const fromMem =
+    typeof lastResumeSessionId === 'string' ? lastResumeSessionId.trim() : ''
+  if (fromMem && sessions.some((s) => s.id === fromMem)) return fromMem
+  if (!sessions.length) return null
+  const sorted = [...sessions].sort(
+    (a, b) =>
+      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+      new Date(a.updatedAt || a.createdAt || 0).getTime(),
+  )
+  return sorted[0]?.id ?? null
+}
 /** Bilder fra «Ta bilde» på forsiden (uten aktiv økt). */
 let standalonePhotos = []
 /** Lagrede friksjonsmålinger (start–stopp + verdi), per bruker i app-lagring. */
 let frictionMeasurements = []
-/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuTrafficGroup' | 'menuSettings' | 'menuOfflineVegref' | 'menuPrivacy' | 'menuSupport' | 'menuExcelExport' | 'session' | 'auth' | 'inbox' | 'photoAlbum' | 'receivedPhotos'} */
+/** @type {'home' | 'menuSession' | 'menuUser' | 'menuMap' | 'menuFriction' | 'menuPhotos' | 'menuContacts' | 'menuTrafficGroup' | 'menuSettings' | 'menuHaptics' | 'menuOfflineVegref' | 'menuPrivacy' | 'menuSupport' | 'menuExcelExport' | 'menuFollowUpRoute' | 'followUpRouteEdit' | 'session' | 'auth' | 'inbox' | 'sharedSessionReview' | 'photoAlbum' | 'receivedPhotos'} */
 let view = 'home'
+/** Innboks: hele DelSky-hub vs. kun innkommende meldinger (fra varslingsikon). */
+/** @type {'delsky' | 'messages'} */
+let inboxUiMode = 'delsky'
+/** @type {'oversikt' | 'kart'} */
+let sharedSessionReviewTab = 'oversikt'
 /** Faner under «Økten»: oversikt, gjenoppta, last ned, importer. */
 let menuSessionTab = 'sessions'
 /** Kart på meny-siden «Kart» (uten aktiv økt). */
 let menuBrowseMap = null
+/** Oppfølgingsrute (redigering / fullskjerm). */
+let followUpEditMap = null
+let followUpFsMap = null
+/** @type {import('leaflet').Layer | null} */
+let followUpEditCluster = null
+/** @type {import('leaflet').Layer | null} */
+let followUpFsCluster = null
+/** @type {import('leaflet').Marker[]} */
+let followUpLeafletMarkers = []
+/** @type {{ id: string, title: string, createdAt: string, updatedAt: string, markers: object[] } | null} */
+let followUpDraft = null
+/** @type {ReturnType<typeof setInterval> | null} */
+let followUpPulseTimer = null
+/** @type {AbortController | null} */
+let followUpRouteAbort = null
 /** Fullskjerm kart for friksjonsmåling (hamburger-meny). */
 let frictionMap = null
 /** @type {number | null} */
@@ -1786,6 +2716,129 @@ function mergeFrictionSessionStateFromRemote(diskApp, remote) {
   }
 }
 
+function emptyRemoteUserAppState() {
+  return {
+    sessions: [],
+    currentSessionId: null,
+    standalonePhotos: [],
+    frictionMeasurements: [],
+    frictionActiveSessionId: null,
+    frictionPreviousSessionId: null,
+    followUpRoutes: [],
+  }
+}
+
+/**
+ * Bygg `user_app_state`-payload der kun gitte lokale økter skrives inn i fjern-tilstanden;
+ * alle andre økter som allerede ligger i sky beholdes uendret.
+ * @param {ReturnType<typeof emptyRemoteUserAppState> & { sessions?: unknown[] }} remoteRow
+ * @param {Set<string>} sessionIds
+ * @param {boolean} includeStandalone merge inn lokale «Ta bilde»-bilder (etter opplasting)
+ */
+function buildPartialUserAppStatePayloadFromRemote(
+  remoteRow,
+  sessionIds,
+  includeStandalone,
+) {
+  const r = remoteRow && typeof remoteRow === 'object' ? remoteRow : null
+  const remoteSessRaw = Array.isArray(r?.sessions) ? r.sessions : []
+  const remoteSessArr = remoteSessRaw.map(normalizeSession).filter(Boolean)
+  const remoteById = new Map(remoteSessArr.map((s) => [s.id, s]))
+  for (const sid of sessionIds) {
+    const loc = sessions.find((s) => s.id === sid)
+    if (!loc) continue
+    const prev = remoteById.get(sid)
+    const merged = prev ? mergeStoredSessionsPair(loc, prev) : loc
+    remoteById.set(sid, normalizeSession(merged))
+  }
+  const nextSessions = [...remoteById.values()].sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  )
+  const remoteStandalone = normalizeStandalonePhotosList(
+    Array.isArray(r?.standalonePhotos) ? r.standalonePhotos : [],
+  )
+  const nextStandalone = includeStandalone
+    ? mergeStandalonePhotoLists(remoteStandalone, standalonePhotos)
+    : remoteStandalone
+  const nextFriction = mergeFrictionMeasurementLists(
+    normalizeFrictionMeasurementsList(
+      Array.isArray(r?.frictionMeasurements) ? r.frictionMeasurements : [],
+    ),
+    frictionMeasurements,
+  )
+  const mergedFrictionIds = mergeFrictionSessionStateFromRemote(
+    {
+      frictionActiveSessionId,
+      frictionPreviousSessionId,
+    },
+    r,
+  )
+  let nextCur =
+    typeof r?.currentSessionId === 'string' ? r.currentSessionId : null
+  if (nextCur && !nextSessions.some((s) => s.id === nextCur)) nextCur = null
+  const remoteFollowUp = Array.isArray(r?.followUpRoutes)
+    ? r.followUpRoutes
+    : []
+  return sanitizeUserAppStateForSupabasePayload({
+    version: 2,
+    sessions: nextSessions,
+    currentSessionId: nextCur,
+    standalonePhotos: nextStandalone,
+    frictionMeasurements: nextFriction,
+    frictionActiveSessionId: mergedFrictionIds.frictionActiveSessionId,
+    frictionPreviousSessionId: mergedFrictionIds.frictionPreviousSessionId,
+    followUpRoutes: remoteFollowUp,
+  })
+}
+
+/**
+ * Bygg full delsky-payload fra eksisterende fjern-rad og erstatt kun `followUpRoutes`
+ * (brukes ved eksplisitt «send oppfølgingsruter» — øvrig innhold tas uendret fra sky).
+ * @param {ReturnType<typeof emptyRemoteUserAppState> & { sessions?: unknown[] }} remoteRow
+ * @param {unknown[]} followUpRoutes
+ */
+function buildFullDelskyPayloadFromRemoteWithFollowUpRoutes(
+  remoteRow,
+  followUpRoutes,
+) {
+  const r =
+    remoteRow && typeof remoteRow === 'object' ? remoteRow : emptyRemoteUserAppState()
+  const remoteSessRaw = Array.isArray(r.sessions) ? r.sessions : []
+  const remoteSessArr = remoteSessRaw.map(normalizeSession).filter(Boolean)
+  const nextSessions = [...remoteSessArr].sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  )
+  let nextCur =
+    typeof r.currentSessionId === 'string' ? r.currentSessionId : null
+  if (nextCur && !nextSessions.some((s) => s.id === nextCur)) nextCur = null
+  const nextStandalone = normalizeStandalonePhotosList(
+    Array.isArray(r.standalonePhotos) ? r.standalonePhotos : [],
+  )
+  const nextFriction = normalizeFrictionMeasurementsList(
+    Array.isArray(r.frictionMeasurements) ? r.frictionMeasurements : [],
+  )
+  const fa =
+    typeof r.frictionActiveSessionId === 'string'
+      ? r.frictionActiveSessionId
+      : null
+  const fp =
+    typeof r.frictionPreviousSessionId === 'string'
+      ? r.frictionPreviousSessionId
+      : null
+  return sanitizeUserAppStateForSupabasePayload({
+    version: 2,
+    sessions: nextSessions,
+    currentSessionId: nextCur,
+    standalonePhotos: nextStandalone,
+    frictionMeasurements: nextFriction,
+    frictionActiveSessionId: fa,
+    frictionPreviousSessionId: fp,
+    followUpRoutes: Array.isArray(followUpRoutes) ? followUpRoutes : [],
+  })
+}
+
 /** Rad i session_shares mens brukeren forhåndsviser en delt økt (før lagre / forkast). */
 let previewIncomingShareId = null
 /** @type {'login' | 'register'} */
@@ -1796,6 +2849,24 @@ let state
 
 /** @type {ReturnType<typeof setTimeout> | null} */
 let supabaseSaveTimer = null
+/** Begrenser «Lagret i delsky»-toast ved stille metadata-synk. */
+let lastDelskyStateSyncToastAt = 0
+/** Økter som skal flettes inn i delsky ved neste push (typisk etter bildeopplasting). */
+let sessionIdsPendingPartialCloudPush = /** @type {Set<string>} */ (new Set())
+/** Frittstående bilder: flett lokale inn i sky-vedlegg ved neste push. */
+let standalonePhotosPendingPartialCloudPush = false
+
+/**
+ * Én gangs kø når sky er tom men enheten har økter (f.eks. første innlogging etter bare lokalt arbeid).
+ */
+function queueDelskyBaselineFromLocalSessions() {
+  if (!isRemoteAppStateDataEnabled() || !currentUser?.id) return
+  if (!sessions.length) return
+  for (const s of sessions) {
+    if (s?.id) sessionIdsPendingPartialCloudPush.add(s.id)
+  }
+  if (standalonePhotos.length) standalonePhotosPendingPartialCloudPush = true
+}
 
 /** Unngå dobbel nullstilling når `logoutUser` allerede håndterer UI etter `signOut`. */
 let ignoreNextSupabaseSignedOut = false
@@ -1807,25 +2878,600 @@ function cancelSupabaseAppStatePush() {
   }
 }
 
+/**
+ * Bilder som er «skall» i minnet (ingen dataUrl ennå) men allerede har `storageFullPath`
+ * kan trygt være med i `user_app_state`-payload — filene ligger i bucket.
+ * Blokker kun når piksel ikke er i sky OG ikke lokalt ferdig representert (da kan upsert viske ut bilder).
+ * @param {unknown} p
+ */
+function photoBlocksUserAppStateCloudUpsert(p) {
+  if (!p || typeof p !== 'object') return false
+  if (!/** @type {{ pixelPending?: boolean }} */ (p).pixelPending) return false
+  const path = /** @type {{ storageFullPath?: string }} */ (p).storageFullPath
+  if (typeof path === 'string' && path.trim()) return false
+  return true
+}
+
+function appStateHasRemotePhotoSkeletons() {
+  for (const p of standalonePhotos) {
+    if (photoBlocksUserAppStateCloudUpsert(p)) return true
+  }
+  for (const s of sessions) {
+    for (const p of s.photos || []) {
+      if (photoBlocksUserAppStateCloudUpsert(p)) return true
+    }
+  }
+  return false
+}
+
+/** Skjelett-sjekk begrenset til økter som faktisk skal i payload (+ ev. standalone). */
+function appStateHasRemotePhotoSkeletonsPartial(sessionIds, includeStandalone) {
+  if (includeStandalone) {
+    for (const p of standalonePhotos) {
+      if (photoBlocksUserAppStateCloudUpsert(p)) return true
+    }
+  }
+  const idSet = new Set(sessionIds)
+  for (const s of sessions) {
+    if (!idSet.has(s.id)) continue
+    for (const p of s.photos || []) {
+      if (photoBlocksUserAppStateCloudUpsert(p)) return true
+    }
+  }
+  return false
+}
+
+/** Antall bilder som blokkerer full `user_app_state`-upsert (skall uten sky-sti). */
+function countRemotePhotoSkeletons() {
+  let n = 0
+  for (const p of standalonePhotos) {
+    if (photoBlocksUserAppStateCloudUpsert(p)) n += 1
+  }
+  for (const s of sessions) {
+    for (const p of s.photos || []) {
+      if (photoBlocksUserAppStateCloudUpsert(p)) n += 1
+    }
+  }
+  return n
+}
+
+function countRemotePhotoSkeletonsPartial(sessionIds, includeStandalone) {
+  let n = 0
+  if (includeStandalone) {
+    for (const p of standalonePhotos) {
+      if (photoBlocksUserAppStateCloudUpsert(p)) n += 1
+    }
+  }
+  const idSet = new Set(sessionIds)
+  for (const s of sessions) {
+    if (!idSet.has(s.id)) continue
+    for (const p of s.photos || []) {
+      if (photoBlocksUserAppStateCloudUpsert(p)) n += 1
+    }
+  }
+  return n
+}
+
+/**
+ * Økter med minst ett bilde-skall uten storage blokkerte tidligere *hele* køen — da kom ingenting til Mac.
+ * @param {Set<string>} sessionScope
+ * @returns {{ ready: Set<string>, blocked: Set<string> }}
+ */
+function partitionSessionsForCloudPush(sessionScope) {
+  const ready = new Set()
+  const blocked = new Set()
+  for (const sid of sessionScope) {
+    if (appStateHasRemotePhotoSkeletonsPartial(new Set([sid]), false)) {
+      blocked.add(sid)
+    } else {
+      ready.add(sid)
+    }
+  }
+  return { ready, blocked }
+}
+
 function scheduleSupabaseAppStatePush() {
-  if (!isSupabaseConfigured() || !currentUser?.id) return
-  const sb = getSupabase()
-  if (!sb) return
+  if (isMinDownloadMode()) return
+  if (!isRemoteAppStateDataEnabled()) {
+    registerNetLogSupabasePushSkipped('remote_app_state_not_configured')
+    return
+  }
+  if (!currentUser?.id) {
+    registerNetLogSupabasePushSkipped('no_logged_in_user')
+    return
+  }
+  if (!isScanixCloudApiConfigured()) {
+    const sb = getSupabase()
+    if (!sb) {
+      registerNetLogSupabasePushSkipped('no_supabase_client')
+      return
+    }
+  }
   cancelSupabaseAppStatePush()
   supabaseSaveTimer = setTimeout(() => {
     supabaseSaveTimer = null
     const uid = currentUser?.id
-    if (!uid) return
-    void upsertUserAppState(sb, uid, {
-      version: 2,
-      sessions,
-      currentSessionId,
-      standalonePhotos,
-      frictionMeasurements,
-      frictionActiveSessionId,
-      frictionPreviousSessionId,
-    })
-  }, 1600)
+    if (!uid) {
+      registerNetLogSupabasePushSkipped('no_user_id_after_timer')
+      return
+    }
+    void (async () => {
+      await refreshNativeNetworkStatus()
+      const heavyDefer = getHeavyCloudTrafficDeferralReason()
+      if (heavyDefer === 'offline') {
+        registerNetLogSupabasePushSkipped('offline')
+        return
+      }
+      if (heavyDefer === 'metered') {
+        registerNetLogSupabasePushSkipped('metered_heavy_cloud')
+        syncPhotoUploadDeferralBanner()
+        try {
+          if (
+            typeof sessionStorage !== 'undefined' &&
+            sessionStorage.getItem('scanix-delsky-metered-hint') !== '1'
+          ) {
+            sessionStorage.setItem('scanix-delsky-metered-hint', '1')
+            showSessionToast(
+              'Du er på mobilnett. Økter og bilder til delsky venter til Wi‑Fi — eller slå på «Tillat opplasting på mobilnett» under Innstillinger → Offline (kan bruke mye mobildata).',
+              8500,
+            )
+          }
+        } catch {
+          /* ignore */
+        }
+        return
+      }
+      const runDebouncedSupabasePush = async () => {
+        try {
+          await tryDrainPhotoUploadQueue({ userId: uid })
+        } catch (e) {
+          console.warn('tryDrainPhotoUploadQueue', e)
+        }
+        syncPhotoUploadDeferralBanner()
+        const sessionScope = new Set(sessionIdsPendingPartialCloudPush)
+        const includeStandalone = standalonePhotosPendingPartialCloudPush
+        if (sessionScope.size === 0 && !includeStandalone) {
+          return
+        }
+        const { ready: readySessions, blocked: blockedSessions } =
+          partitionSessionsForCloudPush(sessionScope)
+        const standalonePhotosBlocked =
+          includeStandalone &&
+          appStateHasRemotePhotoSkeletonsPartial(new Set(), true)
+        const pushStandalone = includeStandalone && !standalonePhotosBlocked
+        if (readySessions.size === 0 && !pushStandalone) {
+          registerNetLogSupabasePushSkipped('photo_skeletons_block_full_upsert', {
+            pixelPendingCount: countRemotePhotoSkeletonsPartial(
+              sessionScope,
+              includeStandalone,
+            ),
+            blockedSessionCount: blockedSessions.size,
+            note: 'DelSky: alle økter i køen (og ev. frittstående bilder) vent på piksel/storage — ingen deler sendt.',
+          })
+          return 'skip'
+        }
+        if (blockedSessions.size > 0) {
+          console.warn(
+            `[Scanix] DelSky: hopper over ${blockedSessions.size} økt(er) med uferdige bilder; sender ${readySessions.size} klare + frittstående=${pushStandalone}.`,
+          )
+        }
+        let remoteRow
+        try {
+          remoteRow = await fetchRemoteUserAppState(uid, { mode: 'full' })
+        } catch (e) {
+          console.warn('fetchUserAppState (partial push)', e)
+          return 'skip'
+        }
+        const payload = buildPartialUserAppStatePayloadFromRemote(
+          remoteRow ?? emptyRemoteUserAppState(),
+          readySessions,
+          pushStandalone,
+        )
+        await upsertRemoteUserAppState(uid, payload)
+        for (const id of readySessions) {
+          sessionIdsPendingPartialCloudPush.delete(id)
+        }
+        if (pushStandalone) standalonePhotosPendingPartialCloudPush = false
+        return 'ok'
+      }
+      try {
+        const pushOutcome = await runDebouncedSupabasePush()
+        /* Ingen fullskjerm-sky her — kun stille auto-synk. Sky-animasjon brukes ved «Del oppdrag» / send til mottaker. */
+        if (pushOutcome === 'ok') {
+          const now = Date.now()
+          if (now - lastDelskyStateSyncToastAt > 35_000) {
+            lastDelskyStateSyncToastAt = now
+            showSessionToast('Økter lagret i delsky.', 2200)
+          }
+        }
+      } catch (e) {
+        console.warn('supabase auto push', e)
+      }
+    })()
+  }, 4500)
+}
+
+function syncPhotoUploadDeferralBanner() {
+  const el = document.getElementById('home-photo-upload-deferral')
+  if (!el) return
+  const d =
+    isRemoteAppStateDataEnabled() && currentUser?.id
+      ? getPhotoUploadQueueDeferralUi()
+      : null
+  el.classList.remove(
+    'home-photo-upload-deferral--offline',
+    'home-photo-upload-deferral--cellular',
+  )
+  if (!d) {
+    el.innerHTML = ''
+    el.hidden = true
+    el.setAttribute('aria-hidden', 'true')
+    return
+  }
+  el.classList.add(
+    d.reason === 'offline'
+      ? 'home-photo-upload-deferral--offline'
+      : 'home-photo-upload-deferral--cellular',
+  )
+  el.hidden = false
+  el.setAttribute('aria-hidden', 'false')
+  const msg =
+    d.reason === 'offline'
+      ? `Bilder venter på nett (${d.count})`
+      : `Bilder venter på Wi‑Fi (${d.count})`
+  el.innerHTML = `<span class="home-photo-upload-deferral__inner">${escapeHtml(msg)}</span>`
+}
+
+/**
+ * @param {string | null | undefined} sid
+ */
+function notePartialCloudPushForSessionId(sid) {
+  if (typeof sid !== 'string' || !sid) return
+  if (!isRemoteAppStateDataEnabled() || !currentUser?.id) return
+  sessionIdsPendingPartialCloudPush.add(sid)
+}
+
+/**
+ * Marker hvilken økt (eller frittstående bilder) som trenger delsky-fletting etter opplasting.
+ * @param {string} photoId
+ */
+function notePartialCloudPushForPhotoId(photoId) {
+  if (typeof photoId !== 'string' || !photoId) return
+  let inSession = false
+  for (const s of sessions) {
+    for (const ph of s.photos || []) {
+      if (ph && /** @type {{ id?: string }} */ (ph).id === photoId) {
+        sessionIdsPendingPartialCloudPush.add(s.id)
+        inSession = true
+        break
+      }
+    }
+    if (inSession) break
+  }
+  if (!inSession) {
+    for (const ph of standalonePhotos) {
+      if (ph && /** @type {{ id?: string }} */ (ph).id === photoId) {
+        standalonePhotosPendingPartialCloudPush = true
+        break
+      }
+    }
+  }
+}
+
+setPhotoStorageUploadCallbacks((photoId, paths) => {
+  for (const s of sessions) {
+    for (const ph of s.photos || []) {
+      if (ph && /** @type {{ id?: string }} */ (ph).id === photoId) {
+        Object.assign(ph, paths)
+      }
+    }
+  }
+  for (const ph of standalonePhotos) {
+    if (ph && /** @type {{ id?: string }} */ (ph).id === photoId) {
+      Object.assign(ph, paths)
+    }
+  }
+  notePartialCloudPushForPhotoId(photoId)
+  saveAppState()
+  scheduleSupabaseAppStatePush()
+  syncPhotoUploadDeferralBanner()
+})
+
+/**
+ * Sørg for at alle bilder i økta står i opplastingskøen (når de mangler storage-sti).
+ * @param {string} sessionId
+ */
+function enqueuePhotosInSessionForStorageUpload(sessionId) {
+  const sess = sessions.find((s) => s.id === sessionId)
+  if (!sess?.photos?.length) return
+  for (const ph of sess.photos) {
+    if (!ph || typeof ph !== 'object') continue
+    const id = /** @type {{ id?: string }} */ (ph).id
+    if (typeof id !== 'string' || !id) continue
+    const path = /** @type {{ storageFullPath?: string }} */ (ph).storageFullPath
+    if (typeof path === 'string' && path.trim()) continue
+    enqueuePhotoStorageUpload(id)
+  }
+}
+
+/**
+ * Brukertrykk: lagre gjeldende oppdrag til innlogget brukers DelSky (user_app_state + bilder).
+ * Ikke det samme som «Del oppdrag» til annen mottaker.
+ */
+async function pushCurrentSessionToMyDelsky() {
+  if (isMinDownloadMode()) {
+    showSessionToast('DelSky er av i prøvedrift uten sky.', 2800)
+    return
+  }
+  if (!currentUser?.id) {
+    showSessionToast('Logg inn for å bruke DelSky.', 2800)
+    return
+  }
+  if (!isRemoteAppStateDataEnabled()) {
+    showSessionToast(
+      'DelSky krever sky-backend: sett VITE_SCANIX_CLOUD_API_BASE_URL (egen API + R2) eller VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY i .env, bygg på nytt.',
+      6200,
+    )
+    return
+  }
+  if (previewIncomingShareId) {
+    showSessionToast('Lagre delt oppdrag på enheten først (Avslutt oppdrag).', 3200)
+    return
+  }
+  if (!currentSessionId) return
+
+  flushCurrentSession()
+  const sid = currentSessionId
+  const uid = currentUser.id
+  if (!isScanixCloudApiConfigured()) {
+    const sb = getSupabase()
+    if (!sb) {
+      showSessionToast('Ingen forbindelse til DelSky.', 2400)
+      return
+    }
+  }
+
+  try {
+    await hydrateAllAppPhotoPixelsFromIdb()
+  } catch (e) {
+    console.warn('hydrateAllAppPhotoPixelsFromIdb (delsky push)', e)
+  }
+
+  enqueuePhotosInSessionForStorageUpload(sid)
+
+  await refreshNativeNetworkStatus()
+  const heavyDefer = getHeavyCloudTrafficDeferralReason()
+  if (heavyDefer === 'offline') {
+    showSessionToast('Offline – kan ikke sende til DelSky.', 2800)
+    return
+  }
+  if (heavyDefer === 'metered') {
+    showSessionToast(
+      'På mobilnett: slå på «Tillat synk på mobilnett» under Innstillinger → Offline, eller bruk Wi‑Fi.',
+      5200,
+    )
+    return
+  }
+
+  cancelSupabaseAppStatePush()
+
+  const q0 = getPhotoUploadQueueCount()
+  /** @type {'skip' | 'ok' | void} */
+  let outcome
+  const runPush = async () => {
+    try {
+      await tryDrainPhotoUploadQueue({ userId: uid })
+    } catch (e) {
+      console.warn('tryDrainPhotoUploadQueue (delsky push)', e)
+    }
+    syncPhotoUploadDeferralBanner()
+    const scope = new Set([sid])
+    if (appStateHasRemotePhotoSkeletonsPartial(scope, false)) {
+      registerNetLogSupabasePushSkipped('photo_skeletons_block_full_upsert', {
+        pixelPendingCount: countRemotePhotoSkeletonsPartial(scope, false),
+        note: 'DelSky-manuell push: vent til bildene i denne økta har piksel eller er lastet opp.',
+      })
+      showSessionToast(
+        'Noen bilder mangler miniatyr/piksel – vent litt og prøv igjen.',
+        4200,
+      )
+      return 'skip'
+    }
+    let remoteRow
+    try {
+      remoteRow = await fetchRemoteUserAppState(uid, { mode: 'full' })
+    } catch (e) {
+      console.warn('fetchUserAppState (delsky push)', e)
+      showSessionToast('Kunne ikke hente gjeldende delsky-data. Prøv igjen.', 3200)
+      return 'skip'
+    }
+    const payload = buildPartialUserAppStatePayloadFromRemote(
+      remoteRow ?? emptyRemoteUserAppState(),
+      scope,
+      false,
+    )
+    await upsertRemoteUserAppState(uid, payload)
+    sessionIdsPendingPartialCloudPush.delete(sid)
+    return 'ok'
+  }
+
+  const sessForEstimate = sessions.find((x) => x.id === sid)
+  const payloadForEstimate = sanitizeUserAppStateForSupabasePayload({
+    version: 2,
+    sessions: sessForEstimate ? [sessForEstimate] : [],
+    currentSessionId: null,
+    standalonePhotos: [],
+    frictionMeasurements: [],
+    frictionActiveSessionId: null,
+    frictionPreviousSessionId: null,
+  })
+  const overlayMs = estimateDelskyOverlayDurationMs(
+    payloadForEstimate,
+    Math.max(1, q0),
+  )
+  try {
+    await runDelskySyncWithOverlay(async () => {
+      outcome = await runPush()
+    }, overlayMs)
+  } catch (e) {
+    console.warn('pushCurrentSessionToMyDelsky', e)
+    showSessionToast('Kunne ikke sende til DelSky.', 2800)
+    scheduleSupabaseAppStatePush()
+    return
+  }
+  scheduleSupabaseAppStatePush()
+  if (outcome === 'ok') {
+    showSessionToast(
+      'Oppdraget er i DelSky. Åpne DelSky på Mac/nett – økten oppdateres der.',
+      4200,
+    )
+  }
+}
+
+async function pushFollowUpRoutesToDelsky() {
+  if (isMinDownloadMode()) return
+  const uid = currentUser?.id
+  if (!uid) {
+    showSessionToast('Logg inn for å bruke DelSky.', 2800)
+    return
+  }
+  const sb = getSupabase()
+  if (!isRemoteAppStateDataEnabled() || (!isScanixCloudApiConfigured() && !sb)) {
+    showSessionToast(
+      'DelSky krever sky-backend (VITE_SCANIX_CLOUD_API_BASE_URL eller Supabase URL+nøkkel). Bygg på nytt etter env er satt.',
+      5200,
+    )
+    return
+  }
+  await refreshNativeNetworkStatus()
+  const heavyDefer = getHeavyCloudTrafficDeferralReason()
+  if (heavyDefer === 'offline') {
+    showSessionToast('Offline – kan ikke sende til delsky.', 2800)
+    return
+  }
+  if (heavyDefer === 'metered') {
+    showSessionToast(
+      'På mobilnett: slå på «Tillat synk på mobilnett» under Innstillinger → Offline, eller bruk Wi‑Fi.',
+      5200,
+    )
+    return
+  }
+  cancelSupabaseAppStatePush()
+  const routes = loadFollowUpRoutes(uid)
+  const payloadForEstimate = { version: 2, followUpRoutes: routes }
+  const overlayMs = estimateDelskyOverlayDurationMs(payloadForEstimate, 0)
+  /** @type {'ok' | 'skip' | void} */
+  let outcome
+  try {
+    await runDelskySyncWithOverlay(async () => {
+      let remoteRow
+      try {
+        remoteRow = await fetchRemoteUserAppState(uid, { mode: 'full' })
+      } catch (e) {
+        console.warn('fetchUserAppState (followUp push)', e)
+        showSessionToast(
+          'Kunne ikke hente gjeldende delsky-data. Prøv igjen.',
+          3200,
+        )
+        outcome = 'skip'
+        return
+      }
+      if (!remoteRow) {
+        showSessionToast(
+          'Fant ingen delsky-tilstand å oppdatere (nettfeil eller ingen data i sky ennå). Synk økter til delsky først, eller prøv igjen.',
+          5200,
+        )
+        outcome = 'skip'
+        return
+      }
+      const payload = buildFullDelskyPayloadFromRemoteWithFollowUpRoutes(
+        remoteRow,
+        routes,
+      )
+      await upsertRemoteUserAppState(uid, payload)
+      outcome = 'ok'
+    }, overlayMs)
+  } catch (e) {
+    console.warn('pushFollowUpRoutesToDelsky', e)
+    showSessionToast('Kunne ikke sende oppfølgingsruter til delsky.', 3200)
+    scheduleSupabaseAppStatePush()
+    return
+  }
+  scheduleSupabaseAppStatePush()
+  if (outcome === 'ok') {
+    showSessionToast('Oppfølgingsruter er lagret i delsky.', 3800)
+  }
+}
+
+async function pullFollowUpRoutesFromDelsky() {
+  if (isMinDownloadMode()) return
+  const uid = currentUser?.id
+  if (!uid) {
+    showSessionToast('Logg inn for å bruke DelSky.', 2800)
+    return
+  }
+  const sb = getSupabase()
+  if (!isRemoteAppStateDataEnabled() || (!isScanixCloudApiConfigured() && !sb)) {
+    showSessionToast(
+      'DelSky krever sky-backend (VITE_SCANIX_CLOUD_API_BASE_URL eller Supabase URL+nøkkel). Bygg på nytt etter env er satt.',
+      5200,
+    )
+    return
+  }
+  await refreshNativeNetworkStatus()
+  const heavyDefer = getHeavyCloudTrafficDeferralReason()
+  if (heavyDefer === 'offline') {
+    showSessionToast('Offline – kan ikke hente fra delsky.', 2800)
+    return
+  }
+  if (heavyDefer === 'metered') {
+    showSessionToast(
+      'På mobilnett: slå på «Tillat synk på mobilnett» under Innstillinger → Offline, eller bruk Wi‑Fi.',
+      5200,
+    )
+    return
+  }
+  const overlayMs = estimateDelskyOverlayDurationMs({ version: 2 }, 0)
+  /** @type {'ok' | 'skip' | void} */
+  let outcome
+  try {
+    await runDelskySyncWithOverlay(async () => {
+      let remoteRow
+      try {
+        remoteRow = await fetchRemoteUserAppState(uid, { mode: 'full' })
+      } catch (e) {
+        console.warn('fetchUserAppState (followUp pull)', e)
+        showSessionToast('Kunne ikke hente fra delsky. Prøv igjen.', 3200)
+        outcome = 'skip'
+        return
+      }
+      if (!remoteRow) {
+        showSessionToast('Ingen delsky-tilstand å hente.', 2800)
+        outcome = 'skip'
+        return
+      }
+      const remoteRoutes = normalizeFollowUpRoutesList(remoteRow.followUpRoutes)
+      if (!remoteRoutes.length) {
+        showSessionToast('Ingen oppfølgingsruter ligger i delsky ennå.', 3600)
+        outcome = 'skip'
+        return
+      }
+      const merged = mergeFollowUpRoutesByUpdatedAt(
+        loadFollowUpRoutes(uid),
+        remoteRoutes,
+      )
+      saveFollowUpRoutes(uid, merged)
+      outcome = 'ok'
+    }, overlayMs)
+  } catch (e) {
+    console.warn('pullFollowUpRoutesFromDelsky', e)
+    showSessionToast('Kunne ikke hente oppfølgingsruter fra delsky.', 3200)
+    return
+  }
+  if (outcome === 'ok') {
+    showSessionToast('Oppfølgingsruter er oppdatert fra delsky.', 3800)
+    refreshFollowUpSavedListDom()
+  }
 }
 
 /**
@@ -1914,6 +3560,13 @@ async function awaitWithTimeout(p, ms, label) {
   ])
 }
 
+/** Må være i tråd med `fetchTimeoutMs` i supabaseClient (auth bruker samme fetch). */
+const AUTH_SIGN_IN_TIMEOUT_MS = 90_000
+/**
+ * Etter JWT: profil (inntil ~42s) + `user_app_state` (inntil ~92s) kan kjøre etter hverandre.
+ */
+const AUTH_APPLY_SESSION_TIMEOUT_MS = 185_000
+
 async function initAppStateFromStorage() {
   await restoreAuthFromIdbIfLocalEmpty()
   loadUsersFromStorage()
@@ -1934,6 +3587,7 @@ async function initAppStateFromStorage() {
         )
         tryWriteAuthSession(currentUser)
         void backupAuthToIdb(loadUsersFromStorage(), currentUser)
+        void requestPersistedStorageIfSupported()
         /* Disk først → rask forsida; sky-data hentes i bakgrunnen (hydrateUserAppStateFromRemote). */
         const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
         sessions = diskApp.sessions
@@ -1941,17 +3595,26 @@ async function initAppStateFromStorage() {
         standalonePhotos = diskApp.standalonePhotos
         frictionMeasurements = diskApp.frictionMeasurements
         applyFrictionSessionIdsFromDisk(diskApp)
+        lastResumeSessionId =
+          typeof diskApp.lastResumeSessionId === 'string'
+            ? diskApp.lastResumeSessionId
+            : null
       } catch (e) {
         console.warn('Supabase init:', e)
         const fb = loadAuthSession()
         if (fb) {
           currentUser = fb
+          void requestPersistedStorageIfSupported()
           const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
           sessions = diskApp.sessions
           currentSessionId = diskApp.currentSessionId
           standalonePhotos = diskApp.standalonePhotos
           frictionMeasurements = diskApp.frictionMeasurements
           applyFrictionSessionIdsFromDisk(diskApp)
+          lastResumeSessionId =
+            typeof diskApp.lastResumeSessionId === 'string'
+              ? diskApp.lastResumeSessionId
+              : null
         } else {
           currentUser = null
           clearAuthSession()
@@ -1960,6 +3623,7 @@ async function initAppStateFromStorage() {
           standalonePhotos = []
           frictionMeasurements = []
           applyFrictionSessionIdsFromDisk(null)
+          lastResumeSessionId = null
         }
       }
     } else {
@@ -1967,12 +3631,17 @@ async function initAppStateFromStorage() {
       const fb = loadAuthSession()
       if (fb) {
         currentUser = fb
+        void requestPersistedStorageIfSupported()
         const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
         sessions = diskApp.sessions
         currentSessionId = diskApp.currentSessionId
         standalonePhotos = diskApp.standalonePhotos
         frictionMeasurements = diskApp.frictionMeasurements
         applyFrictionSessionIdsFromDisk(diskApp)
+        lastResumeSessionId =
+          typeof diskApp.lastResumeSessionId === 'string'
+            ? diskApp.lastResumeSessionId
+            : null
       } else {
         currentUser = null
         clearAuthSession()
@@ -1981,30 +3650,35 @@ async function initAppStateFromStorage() {
         standalonePhotos = []
         frictionMeasurements = []
         applyFrictionSessionIdsFromDisk(null)
+        lastResumeSessionId = null
       }
     }
   } else {
     currentUser = loadAuthSession()
+    if (currentUser) void requestPersistedStorageIfSupported()
     syncShortIdFromUsersToSession()
     const initialApp = currentUser
       ? await loadAppStateFromStorageForUser(currentUser.id)
-      : {
-          sessions: [],
-          currentSessionId: null,
-          standalonePhotos: [],
-          frictionMeasurements: [],
-          frictionActiveSessionId: null,
-          frictionPreviousSessionId: null,
-        }
+      : await loadAppStateFromStorageForUser(STORAGE_KEY_DEVICE_FALLBACK)
     sessions = initialApp.sessions
     currentSessionId = initialApp.currentSessionId
     standalonePhotos = initialApp.standalonePhotos
     frictionMeasurements = initialApp.frictionMeasurements
     applyFrictionSessionIdsFromDisk(initialApp)
+    lastResumeSessionId =
+      typeof initialApp.lastResumeSessionId === 'string'
+        ? initialApp.lastResumeSessionId
+        : null
   }
 
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     currentSessionId = null
+  }
+  if (
+    lastResumeSessionId &&
+    !sessions.some((s) => s.id === lastResumeSessionId)
+  ) {
+    lastResumeSessionId = null
   }
   state = loadCurrentSessionState()
   if (!currentUser) {
@@ -2014,6 +3688,16 @@ async function initAppStateFromStorage() {
   } else {
     view = 'home'
   }
+
+  try {
+    if (await isPhotoBlobStoreAvailable()) {
+      if (await hydrateAllAppPhotoPixelsFromIdb()) {
+        state = loadCurrentSessionState()
+      }
+    }
+  } catch (e) {
+    console.warn('hydrateAllAppPhotoPixelsFromIdb (init)', e)
+  }
 }
 
 /** Visninger der vi ikke overstyrer `view` ved sky-synk (bruker kan være i meny e.l.). */
@@ -2022,24 +3706,164 @@ function isViewLockedDuringRemoteHydrate() {
 }
 
 /**
+ * Fingerprint så hydrate oppdager endringer *inne* i økter (ikke bare liste av id-er).
+ * Uten dette ble ikke renderApp/saveAppState kjørt når telefon oppdaterte samme økt-id på Mac.
+ * @param {typeof sessions} sessArr
+ * @param {string | null} curSid
+ */
+function hydrateMergeFingerprint(
+  sessArr,
+  curSid,
+  standaloneLen,
+  frictionLen,
+  frictionAct,
+  frictionPrev,
+) {
+  const sessPart = [...sessArr]
+    .map((s) => {
+      const ph = (s.photos || []).length
+      const lg = (s.log || []).length
+      const ch = (s.clickHistory || []).length
+      return `${s.id}:${String(s.updatedAt || '')}:${s.count}:${ch}:${ph}:${lg}`
+    })
+    .sort()
+    .join(';')
+  return `${curSid ?? ''}|${sessPart}|${standaloneLen}|${frictionLen}|${frictionAct ?? ''}|${frictionPrev ?? ''}`
+}
+
+/**
+ * Hent user_app_state til flette-hydrate.
+ * Nettleser: ikke stopp med confirm på «mobilnett» — da kommer aldri økter fra telefon inn på Mac/web uten at bruker forstår hvorfor.
+ * Native: behold Wi‑Fi/mobil-gate som ved annen tung delsky-trafikk.
+ * @param {string} userId
+ */
+async function fetchUserAppStateForHydrate(userId) {
+  await refreshNativeNetworkStatus()
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return null
+  }
+  if (isCapacitorNativePlatform()) {
+    return fetchUserAppStateWithNetworkGate(userId)
+  }
+  return fetchUserAppStateWithTimeBudget(userId)
+}
+
+/** @type {ReturnType<typeof setTimeout> | null} */
+let hydrateAfterAuthDebounceTimer = null
+
+/** @type {Promise<void> | null} */
+let hydrateUserAppStateFromRemoteInFlight = null
+
+/** Unngå gjentatte gule hydrate-advarsler i konsollen (bootstrap + auto-hydrate). */
+let hydrateAuthSessionWarned = false
+
+function scheduleHydrateUserAppStateFromRemote() {
+  if (isMinDownloadMode() || !isRemoteAppStateDataEnabled() || !currentUser?.id)
+    return
+  if (hydrateAfterAuthDebounceTimer) clearTimeout(hydrateAfterAuthDebounceTimer)
+  hydrateAfterAuthDebounceTimer = setTimeout(() => {
+    hydrateAfterAuthDebounceTimer = null
+    void hydrateUserAppStateFromRemote()
+  }, 450)
+}
+
+/**
+ * Mac/nett: tom øktliste + innlogging → ett stille forsøk på å hente delsky (samme som «Hent fra sky»).
+ * Unngås på native; telefon har eget lokalt lager.
+ */
+function scheduleBrowserHomeAutoHydrateIfEmpty() {
+  if (isCapacitorNativePlatform()) return
+  if (!isRemoteAppStateDataEnabled() || !currentUser?.id || isMinDownloadMode())
+    return
+  if (sessions.length > 0) return
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const k = `scanix-home-autohyd:${currentUser.id}`
+      if (sessionStorage.getItem(k) === '1') return
+      sessionStorage.setItem(k, '1')
+    }
+  } catch {
+    /* ignore */
+  }
+  window.setTimeout(() => {
+    void hydrateUserAppStateFromRemote()
+  }, 700)
+}
+
+/**
+ * På Mac/nett kan første `getSession()` time ut eller være null mens JWT fortsatt kan gjenopprettes —
+ * da ble `user_app_state` aldri hentet og øktlista forble tom.
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb
+ */
+async function resolveSupabaseSessionForHydrate(sb) {
+  const uid = currentUser?.id
+  if (!uid) return null
+  const tryGet = async () => {
+    const {
+      data: { session: s },
+    } = await getSupabaseSessionWithTimeout(sb, 14_000)
+    return s?.user?.id === uid ? s : null
+  }
+  let session = await tryGet()
+  if (session) {
+    hydrateAuthSessionWarned = false
+    return session
+  }
+  try {
+    const { data, error } = await sb.auth.refreshSession()
+    if (error && !String(error.message || '').includes('Auth session missing')) {
+      console.warn('Scanix: hydrate refreshSession:', error.message)
+    }
+    if (data.session?.user?.id === uid) {
+      hydrateAuthSessionWarned = false
+      return data.session
+    }
+  } catch (e) {
+    console.warn('Scanix: hydrate refreshSession', e)
+  }
+  session = await tryGet()
+  if (session) {
+    hydrateAuthSessionWarned = false
+    return session
+  }
+  if (!hydrateAuthSessionWarned) {
+    hydrateAuthSessionWarned = true
+    console.warn(
+      '[Scanix] hydrate: ingen Supabase-sesjon (getSession/refresh). Appen tror du er innlogget, men nettleseren har ikke JWT — økter fra delsky hentes ikke. Åpne menyen og logg inn på nytt (samme bruker som på telefon).',
+    )
+  }
+  return null
+}
+
+/**
  * Etter første tegning: hent app-tilstand fra Supabase og flett inn (tidligere blokkerte dette oppstart).
  */
 async function hydrateUserAppStateFromRemote() {
-  const sb = getSupabase()
-  if (!sb || !currentUser?.id) return
-  const {
-    data: { session },
-  } = await sb.auth.getSession()
+  if (hydrateUserAppStateFromRemoteInFlight) {
+    return hydrateUserAppStateFromRemoteInFlight
+  }
+  hydrateUserAppStateFromRemoteInFlight = (async () => {
+    if (isMinDownloadMode()) return
+    const sb = getSupabase()
+    if (!sb || !currentUser?.id) return
+    const session = await resolveSupabaseSessionForHydrate(sb)
   if (!session?.user || session.user.id !== currentUser.id) return
+  const localSessionCountBeforeHydrate = sessions.length
 
   let remote
   try {
-    remote = await fetchUserAppState(sb, session.user.id)
+    remote = await fetchUserAppStateForHydrate(session.user.id)
   } catch (e) {
     console.warn('hydrate app state:', e)
     return
   }
-  if (!remote) return
+  if (!remote) {
+    console.warn(
+      '[Scanix] hydrate: ingen tilstand fra delsky (henting ga null). Lokale data på enheten brukes. Vanlige årsaker: mobilnett uten godkjenning, offline, timeout (typisk etter ~90 s ved treg linje eller svært store økter), manglende data i sky, eller API-feil — se logger rett over. Hvis opplasting er blokkert av ventende bilder, sendes ikke ny payload til sky før det er løst (sjekk [Scanix regnet] supabase_push_skipped).',
+    )
+    return
+  }
 
   const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
   const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
@@ -2063,9 +3887,52 @@ async function hydrateUserAppStateFromRemote() {
         : null
   }
 
-  const prevSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}|${frictionActiveSessionId}|${frictionPreviousSessionId}`
+  const localSessionIdBefore = currentSessionId
+  const previewShareOpen =
+    typeof previewIncomingShareId === 'string' && previewIncomingShareId.length > 0
+  if (
+    typeof localSessionIdBefore === 'string' &&
+    nextSessions.some((s) => s.id === localSessionIdBefore)
+  ) {
+    nextSessionId = localSessionIdBefore
+  } else if (localSessionIdBefore == null) {
+    /* Ikke ta i bruk fjernens «currentSessionId» når lokalt ingen økt er valgt — unngår hopp inn i annen økt / glitch på forsida. */
+    nextSessionId = null
+  } else if (
+    previewShareOpen &&
+    typeof localSessionIdBefore === 'string' &&
+    sessions.some((s) => s.id === localSessionIdBefore) &&
+    !nextSessions.some((s) => s.id === localSessionIdBefore)
+  ) {
+    /* «Del oppdrag»-forhåndsvisning: økta finnes bare lokalt (ny uuid) til den er lagret på disk —
+     * mergeRemoteAndDiskSessions inneholder den ikke. Uten dette nullstilles currentSessionId og
+     * renderApp() riv ned kartet (oppleves som «tilbake til forsiden»). */
+    nextSessionId = localSessionIdBefore
+  }
+
+  const prevSig = hydrateMergeFingerprint(
+    sessions,
+    currentSessionId,
+    standalonePhotos.length,
+    frictionMeasurements.length,
+    frictionActiveSessionId,
+    frictionPreviousSessionId,
+  )
   const viewBefore = view
+  const sessionsBeforeRemoteAssign = sessions
   sessions = nextSessions
+  if (
+    previewShareOpen &&
+    typeof localSessionIdBefore === 'string' &&
+    !sessions.some((s) => s.id === localSessionIdBefore)
+  ) {
+    const ghost = sessionsBeforeRemoteAssign.find(
+      (s) => s.id === localSessionIdBefore,
+    )
+    if (ghost) {
+      sessions = [ghost, ...sessions]
+    }
+  }
   currentSessionId = nextSessionId
   standalonePhotos = nextStandalone
   frictionMeasurements = nextFriction
@@ -2078,10 +3945,57 @@ async function hydrateUserAppStateFromRemote() {
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     currentSessionId = null
   }
+  {
+    const lr =
+      typeof diskApp.lastResumeSessionId === 'string'
+        ? diskApp.lastResumeSessionId.trim()
+        : ''
+    if (lr && sessions.some((s) => s.id === lr)) {
+      lastResumeSessionId = lr
+    }
+  }
   state = loadCurrentSessionState()
 
-  const nextSig = `${currentSessionId}|${sessions.map((s) => s.id).join(',')}|${standalonePhotos.length}|${frictionMeasurements.length}|${frictionActiveSessionId}|${frictionPreviousSessionId}`
-  const dataChanged = prevSig !== nextSig
+  let idbPixelsHydrated = false
+  try {
+    idbPixelsHydrated = await hydrateAllAppPhotoPixelsFromIdb()
+  } catch (e) {
+    console.warn('hydrateAllAppPhotoPixelsFromIdb', e)
+  }
+  if (idbPixelsHydrated) {
+    state = loadCurrentSessionState()
+  }
+
+  const nextSig = hydrateMergeFingerprint(
+    sessions,
+    currentSessionId,
+    standalonePhotos.length,
+    frictionMeasurements.length,
+    frictionActiveSessionId,
+    frictionPreviousSessionId,
+  )
+  const dataChanged = prevSig !== nextSig || idbPixelsHydrated
+
+  if (nextSessions.length > localSessionCountBeforeHydrate) {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(
+          `scanix-home-autohyd:${currentUser.id}`,
+        )
+      }
+    } catch {
+      /* ignore */
+    }
+    if (localSessionCountBeforeHydrate === 0 && nextSessions.length > 0) {
+      console.info(
+        `[Scanix] hydrate: hentet ${nextSessions.length} økt(er) fra delsky (Mac/nett hadde tom liste).`,
+      )
+      showSessionToast(
+        `Hentet ${nextSessions.length} økter fra delsky. Åpne «Økten» i menyen for lista.`,
+        4500,
+      )
+    }
+  }
 
   if (isViewLockedDuringRemoteHydrate()) {
     if (view === 'session' && !currentSessionId) {
@@ -2090,6 +4004,8 @@ async function hydrateUserAppStateFromRemote() {
   } else {
     if (!currentUser) {
       view = 'auth'
+    } else if (viewBefore === 'home') {
+      view = 'home'
     } else if (currentSessionId) {
       view = 'session'
     } else {
@@ -2101,9 +4017,14 @@ async function hydrateUserAppStateFromRemote() {
     renderApp()
     bindListenersForCurrentView()
   }
-  if (dataChanged) {
+  /* Alltid lagre når vi faktisk fikk sky-data — unngår at fingerprint-tilfeldigheter utelater save. */
+  if (dataChanged || remoteSessions.length > 0) {
     saveAppState()
   }
+  })().finally(() => {
+    hydrateUserAppStateFromRemoteInFlight = null
+  })
+  return hydrateUserAppStateFromRemoteInFlight
 }
 
 function formatNb(date) {
@@ -2175,16 +4096,16 @@ function ensureSessionPinIcons() {
   pinIcon = Leaflet.divIcon({
     className: 'map-pin-wrap',
     html: '<div class="map-pin" aria-hidden="true"></div>',
-    iconSize: [32, 40],
-    iconAnchor: [16, 40],
-    popupAnchor: [0, -36],
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -32],
   })
   pendingPinIcon = Leaflet.divIcon({
     className: 'map-pin-wrap',
     html: '<div class="map-pin map-pin--pending" aria-hidden="true"></div>',
-    iconSize: [32, 40],
-    iconAnchor: [16, 40],
-    popupAnchor: [0, -36],
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -32],
   })
   userLocationIcon = Leaflet.divIcon({
     className: 'map-user-pin-wrap',
@@ -2192,7 +4113,7 @@ function ensureSessionPinIcons() {
       '<div class="map-user-pin" aria-hidden="true">' +
       '<div class="map-user-arrow" aria-hidden="true">' +
       '<svg class="map-user-arrow-svg" viewBox="-32 -32 64 64" width="64" height="64" focusable="false">' +
-      '<path class="map-user-arrow-wedge" d="M0 0 L20 -28 A36 36 0 0 1 -20 -28 Z" fill="rgba(66,133,244,0.4)"/>' +
+      '<path class="map-user-arrow-wedge" d="M0 0 L20 -28 A36 36 0 0 1 -20 -28 Z" fill="rgba(10,132,255,0.42)"/>' +
       '</svg></div>' +
       '<div class="map-user-dot"></div></div>',
     iconSize: [64, 64],
@@ -2270,11 +4191,36 @@ async function getPosition() {
 }
 
 const markers = []
+/** Klikk- og fotomarkører (ikke brukerposisjon). */
+let sessionMarkerClusterGroup = /** @type {import('leaflet').Layer | null} */ (null)
 let map = null
+/** Bakgrunnslag på øktkartet (byttes ved mørkt/lys underlag). */
+let sessionBasemapLayer = /** @type {import('leaflet').Layer | null} */ (null)
+/** Avregistrer raster-flis-varming (Service Worker-cache) for øktkart. */
+let sessionBasemapSwWarmDetach = /** @type {null | (() => void)} */ (null)
+
+function detachSessionBasemapSwWarm() {
+  sessionBasemapSwWarmDetach?.()
+  sessionBasemapSwWarmDetach = null
+}
+
+function attachSessionBasemapSwWarmIfRaster(tileLayer) {
+  detachSessionBasemapSwWarm()
+  if (!map || !tileLayer || typeof tileLayer.getTileUrl !== 'function') return
+  sessionBasemapSwWarmDetach = attachRasterBasemapViewportSwWarm(
+    Leaflet,
+    map,
+    /** @type {import('leaflet').TileLayer} */ (tileLayer),
+  )
+}
+/** Siste `dark` satt på `sessionBasemapLayer` (for gjenbruk av container). */
+let sessionBasemapDarkApplied = false
 /** Serialiserer kart-init (unngår dobbel Leaflet.map på #map ved parallelle kall). */
 let sessionMapInitPromise = null
 /** Leaflet for mottatte bilder (ikke økt-kartet). */
 let receivedPhotosMap = null
+/** Leaflet for forhåndsvisning av delt økt (dashboard, kart-fane). */
+let sharedReviewMap = null
 let userLocationMarker = null
 let userAccuracyCircle = null
 let locationWatchId = null
@@ -2346,11 +4292,20 @@ let homeVegrefSegKey = ''
 /** Behold sekundær gatelinje (type) på samme segment når NVDB veksler mellom beriket og kort svar. */
 let homeVegrefStickyStreetLine = ''
 let homeVegrefStickySegKey = ''
-/** Siste wall-clock fra rå watchPosition (også ved avvist nøyaktighet). */
+/** Siste wall-clock når GPS hadde brukbar nøyaktighet (for coast/stale). */
 let homeVegrefLastRawGpsWallMs = 0
+/** Siste wall-clock for **alle** fiks med gyldige koord (også >220 m) — inst/ekstrap når pipelinen ikke kjører. */
+let homeVegrefAnyGpsWallMs = 0
 /** Siste kjente kjørefart for coast når GPS mangler. */
 let homeVegrefCoastSpeedMps = 0
 let homeVegrefCoastStartedAt = 0
+/** Hastighet ut fra to siste GPS-fiks (uavhengig av NVDB-pipeline) — jevn meter-ekstrap. */
+let homeVegrefGpsInstSpeedMps = 0
+let homeVegrefGpsSpeedLat = /** @type {number | null} */ (null)
+let homeVegrefGpsSpeedLng = /** @type {number | null} */ (null)
+let homeVegrefGpsSpeedTs = /** @type {number | null} */ (null)
+/** Pipelinen gir m=– men vi holder siste meter + live-extrap (da trengs coast når OS-rapportert fart ≈0). */
+let homeVegrefHoldNullDashExtrap = false
 let homeVegrefMeterAnim = null
 let homeVegrefMeterFrom = 0
 let homeVegrefMeterTo = 0
@@ -2368,8 +4323,10 @@ const HOME_VEGREF_DIST_SKIP_TIMEOUT_MS = 12000
 /** Siste gang vi startet meter-tween eller snap (begrenser unødvendige oppdateringer på samme strekning). */
 let homeVegrefLastMeterUiCommitAt = 0
 /** Min tid mellom tween-steg; senkes dynamisk ved god nøyaktighet + fart (se shouldSkip…). */
-const HOME_VEGREF_METER_MIN_TWEEN_GAP_MS = 400
-/** Første tidspunkt vi så null-meter med hold (for debounce av «Oppdaterer meter …»). */
+const HOME_VEGREF_METER_MIN_TWEEN_GAP_MS = 255
+/** Etter app resume / tilbake til forsiden: ikke stopp live-ekstrap som «parkert» før GPS/pipeline har kjørt igjen. */
+let homeVegrefMeterResumeUntil = 0
+/** Første tidspunkt null-meter med hold (timeout mot hold_null — ikke lenger banner-tekst). */
 let homeVegrefMeterNullSinceMs = 0
 let homeVegrefStartupToken = 0
 let homeVegrefStartupStartedAt = 0
@@ -2379,18 +4336,37 @@ let homeVegrefStartupFirstRenderAt = 0
 let homeVegrefStartupFirstRenderSource = ''
 let homeVegrefLastStableRes = null
 let homeVegrefLastStableAt = 0
+/** Siste treff med gyldig meter — brukes til null-hold (ikke overskrives av m=–). */
+let homeVegrefLastMeterStableRes = null
+/** Siste gyldige distToRoadM (fra NVDB-match med m). Brukes til å forkorte
+ *  hold_null-varigheten når bilen allerede driver fra linjen — da er
+ *  segmentbytte sannsynligvis nært forestående og videre hold gir kun
+ *  visuell «fryse»-effekt. */
+let homeVegrefLastValidDistToRoadM = null
+/** Klasse-hysterese: huske sist aksepterte vegklasse (EV/RV/FV) for å dempe kortvarige PV-flips. */
+let homeVegrefLastHighClassRank = -1
+let homeVegrefLastHighClassAt = 0
+/** Kryss/rundkjøring-flagg: brukes for å sette sekundærchip mens vi holder forrige hovedlinje. */
+let homeVegrefCrossingActive = false
 let homeVegrefUiUncertain = false
+/** Siste viste usikkerhetstekst (unngår repeterende DOM ved hvert GPS-tick). */
+let homeVegrefUncertainLastLabel = ''
 /** @type {Array<{ lat: number, lng: number, accuracy: number, timestamp: number, headingDeg: number | null }>} */
 let homeVegrefGpsBuffer = []
 const HOME_VEGREF_GPS_BUFFER_MAX = 5
 const HOME_VEGREF_STALE_REUSE_MS = 8 * 60 * 1000
 const HOME_VEGREF_UNCERTAIN_HOLD_MS = 15_000
 /** Ingen fersk GPS-callback → vurder coast for meter-ekstrapolasjon (tunnel / tapt fix). */
-const HOME_VEGREF_GPS_STALE_MS = 4500
-/** Min fart for å huske coast-hastighet (typisk kjøring). */
-const HOME_VEGREF_COAST_MIN_SPEED_MPS = 2.2
+const HOME_VEGREF_GPS_STALE_MS = 2000
+/** GPS-accuracy over dette regnes som «effektivt stale» for coast: iOS sender
+ *  ofte dead-reckonede posisjoner i tunnel med acc 80–300 m. Da fortsetter
+ *  `homeVegrefLastRawGpsWallMs`-stempling slik at vanlig stale-timer aldri
+ *  utløses, men treffene er ubrukelige til vegref-oppslag. */
+const HOME_VEGREF_COAST_ACC_FLOOR_M = 80
+/** Min fart for å huske coast-hastighet (typisk kjøring, gange = 1,4 m/s). */
+const HOME_VEGREF_COAST_MIN_SPEED_MPS = 1.2
 /** Maks varighet for estimert telling etter tapt GPS. */
-const HOME_VEGREF_COAST_MAX_MS = 120_000
+const HOME_VEGREF_COAST_MAX_MS = 210_000
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -2432,7 +4408,109 @@ function logHomeVegrefStartupMetric(type, extra = {}) {
 function resetHomeVegrefRuntimeState() {
   homeVegrefGpsBuffer = []
   homeVegrefUiUncertain = false
+  homeVegrefUncertainLastLabel = ''
   homeVegrefMeterNullSinceMs = 0
+  homeVegrefLastMeterStableRes = null
+  homeVegrefLastValidDistToRoadM = null
+  homeVegrefLastHighClassRank = -1
+  homeVegrefLastHighClassAt = 0
+  homeVegrefCrossingActive = false
+  homeVegrefHoldNullDashExtrap = false
+  homeVegrefGpsInstSpeedMps = 0
+  homeVegrefGpsSpeedLat = null
+  homeVegrefGpsSpeedLng = null
+  homeVegrefGpsSpeedTs = null
+  homeVegrefAnyGpsWallMs = 0
+  resetHomeVegrefMeterUiHold()
+}
+
+/**
+ * Oppdaterer momentanfart fra Geolocation (ofte 1 Hz+) uavhengig av vegref-pipelinen.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number | undefined} timestamp
+ */
+/**
+ * Hver Geolocation-fiks med gyldige koord (også når nøyaktighet er for dårlig til NVDB).
+ * Holder inst-fart og coast-hastighet i live slik meter-ekstrap ikke «dør» i dekningssvikt.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number | undefined} timestamp
+ */
+function noteHomeVegrefAnyGpsFix(lat, lng, timestamp) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+  homeVegrefAnyGpsWallMs = Date.now()
+  updateHomeVegrefGpsInstSpeedMps(lat, lng, timestamp)
+  const gInst = homeVegrefGpsInstSpeedMps
+  if (gInst >= HOME_VEGREF_COAST_MIN_SPEED_MPS * 1.05) {
+    homeVegrefCoastSpeedMps = Math.max(homeVegrefCoastSpeedMps, gInst * 0.97)
+  }
+}
+
+function updateHomeVegrefGpsInstSpeedMps(lat, lng, timestamp) {
+  const ts =
+    typeof timestamp === 'number' && Number.isFinite(timestamp)
+      ? timestamp
+      : Date.now()
+  if (
+    homeVegrefGpsSpeedLat != null &&
+    homeVegrefGpsSpeedLng != null &&
+    homeVegrefGpsSpeedTs != null
+  ) {
+    const dt = (ts - homeVegrefGpsSpeedTs) / 1000
+    if (dt > 0.055 && dt < 6) {
+      const d = haversineM(
+        homeVegrefGpsSpeedLat,
+        homeVegrefGpsSpeedLng,
+        lat,
+        lng,
+      )
+      if (d >= 0.12 && d < 900) {
+        const inst = Math.min(d / dt, 78)
+        if (Number.isFinite(inst) && inst >= 0.16) {
+          homeVegrefGpsInstSpeedMps = inst
+        }
+      }
+    }
+  }
+  homeVegrefGpsSpeedLat = lat
+  homeVegrefGpsSpeedLng = lng
+  homeVegrefGpsSpeedTs = ts
+}
+
+/**
+ * Rangerer vegklasse for hysterese. Høyere = viktigere.
+ * EV=4, RV=3, FV=2, KV=1, PV=0, ukjent=-1.
+ * @param {unknown} res
+ * @returns {number}
+ */
+function homeVegrefRoadClassRank(res) {
+  const r = /** @type {{ roadLineShort?: unknown, roadLine?: unknown, road?: unknown, roadLineDisplayShort?: unknown }} */ (
+    res || {}
+  )
+  const s = String(
+    r.roadLineShort || r.roadLineDisplayShort || r.roadLine || r.road || '',
+  )
+    .trim()
+    .toUpperCase()
+  if (!s) return -1
+  if (/^E\s*V?\d/.test(s) || s.startsWith('EV')) return 4
+  if (s.startsWith('RV')) return 3
+  if (s.startsWith('FV') || /^F\s*\d/.test(s)) return 2
+  if (s.startsWith('KV')) return 1
+  if (s.startsWith('PV')) return 0
+  return -1
+}
+
+/**
+ * Detekterer om nvdbId refererer til kryss-del (KD...). Brukes for å
+ * beholde forrige hovedtraseé-visning mens vi passerer kryss/rundkjøring.
+ * @param {unknown} nid
+ * @returns {boolean}
+ */
+function homeVegrefIsCrossingNvdbId(nid) {
+  if (nid == null) return false
+  return /(^|[^A-Z])KD\d+/i.test(String(nid))
 }
 
 /**
@@ -2469,6 +4547,41 @@ function pushHomeVegrefGpsSample(lat, lng, accuracy, timestamp, headingDeg) {
       0,
       homeVegrefGpsBuffer.length - HOME_VEGREF_GPS_BUFFER_MAX,
     )
+  }
+}
+
+/**
+ * Rå GPS ved forsiktig gange (god nøyaktighet) — lavere lag enn median-buffer.
+ * Stillestående (lav / null fart) beholder buffer for stabilitet.
+ * @param {number} latitude
+ * @param {number} longitude
+ * @param {number} accuracy
+ * @param {number | null | undefined} heading
+ * @param {ReturnType<typeof getBufferedHomeVegrefFix>} buffered
+ */
+function pickHomeVegrefInputCoords(latitude, longitude, accuracy, heading, buffered) {
+  const spd = vegrefGetLastSpeed()
+  const acc =
+    typeof accuracy === 'number' && !Number.isNaN(accuracy) ? accuracy : 28
+  if (spd > 0.55 && spd < 3.4 && acc <= 24) {
+    return {
+      refLat: latitude,
+      refLng: longitude,
+      refAccuracy: acc,
+      refHeading:
+        typeof heading === 'number' && Number.isFinite(heading) ? heading : null,
+    }
+  }
+  return {
+    refLat: buffered?.lat ?? latitude,
+    refLng: buffered?.lng ?? longitude,
+    refAccuracy: buffered?.accuracy ?? acc,
+    refHeading:
+      buffered?.headingDeg != null && Number.isFinite(buffered.headingDeg)
+        ? buffered.headingDeg
+        : typeof heading === 'number' && Number.isFinite(heading)
+          ? heading
+          : null,
   }
 }
 
@@ -2551,23 +4664,152 @@ function homeVegrefStableMatchesForNameLatch(stab, res) {
   return homeVegrefVlsKfSegmentUpgradeSameSd(stab, res)
 }
 
-/** Kortere gap mellom tween-commits ved god GPS + fart → mer responsiv meter. */
+/** @param {string} key */
+function homeVegrefParseSegKey(key) {
+  if (!key || typeof key !== 'string') return null
+  const i1 = key.indexOf('|')
+  const i2 = key.indexOf('|', i1 + 1)
+  if (i1 < 0 || i2 < 0) return null
+  return {
+    s: key.slice(0, i1),
+    d: key.slice(i1 + 1, i2),
+    n: key.slice(i2 + 1),
+  }
+}
+
+/**
+ * Siste m-start–m-slutt i kf:-id (siste treff i strengen — unngår å lese kryss-del feil).
+ * @param {string | number | null | undefined} id
+ * @returns {[number, number] | null}
+ */
+function homeVegrefExtractLastMeterRange(id) {
+  const s = String(id ?? '')
+  if (!s || /\bKD\d*\b/i.test(s)) return null
+  let best = /** @type {[number, number] | null} */ (null)
+  const re = /m(\d+)-(\d+)/g
+  let m
+  while ((m = re.exec(s)) !== null) {
+    best = [+m[1], +m[2]]
+  }
+  return best && best[0] <= best[1] ? best : null
+}
+
+/**
+ * Overlapp eller «nesten»-grense mellom to kf-fragmenter (NVDB kan ha hull i meternummerering).
+ */
+function homeVegrefMeterRangesTouch(idA, idB) {
+  const ra = homeVegrefExtractLastMeterRange(idA)
+  const rb = homeVegrefExtractLastMeterRange(idB)
+  if (!ra || !rb) return false
+  const [a0, a1] = ra
+  const [b0, b1] = rb
+  const SLACK_M = 42
+  return a0 <= b1 + SLACK_M && b0 <= a1 + SLACK_M
+}
+
+/**
+ * @param {string} prevKey
+ * @param {string} newKey
+ */
+function homeVegrefKfNeighborSegKeys(prevKey, newKey) {
+  const a = homeVegrefParseSegKey(prevKey)
+  const b = homeVegrefParseSegKey(newKey)
+  if (!a || !b) return false
+  if (a.s !== b.s || a.d !== b.d) return false
+  return homeVegrefMeterRangesTouch(a.n, b.n)
+}
+
+/**
+ * Samme veilinje for null-hold (unngå PV/FV-flipp med utvidet lås).
+ * @param {object} res
+ * @param {object} ref
+ */
+function homeVegrefLooseSameVegLine(res, ref) {
+  if (!res || !ref) return false
+  if (String(res.s ?? '').trim() !== String(ref.s ?? '').trim()) return false
+  if (String(res.d ?? '').trim() !== String(ref.d ?? '').trim()) return false
+  const ra = String(res.road ?? '').trim().replace(/\s+/g, '').toLowerCase()
+  const rb = String(ref.road ?? '').trim().replace(/\s+/g, '').toLowerCase()
+  if (ra && rb && ra !== rb) return false
+  return true
+}
+
+/**
+ * @param {object} res
+ * @param {unknown} nid
+ */
+function homeVegrefNullHoldNvdbAligned(res, nid) {
+  if (nid == null) return true
+  if (homeVegrefMeterNvdbId == null) return true
+  if (String(nid) === String(homeVegrefMeterNvdbId)) return true
+  const ref = homeVegrefLastMeterStableRes || homeVegrefLastStableRes
+  if (
+    ref &&
+    homeVegrefLooseSameVegLine(res, ref) &&
+    homeVegrefMeterRangesTouch(nid, homeVegrefMeterNvdbId)
+  ) {
+    return true
+  }
+  return false
+}
+
+/** Kontekst: høy fart + god GPS → tål større avstand før vi slipper null-hold (projeksjon ved segmentgrense). */
+function homeVegrefHoldNullMaxDistM() {
+  const spd = vegrefGetLastSpeed()
+  const acc = lastVegrefGpsAccuracyM
+  if (spd >= 14 && acc <= 10) return 58
+  if (spd >= 10 && acc <= 12) return 52
+  if (spd >= 6) return 44
+  return 30
+}
+
+function homeVegrefHoldNullMaxDurationMs() {
+  const spd = vegrefGetLastSpeed()
+  /* Forkort hold_null når forrige gyldige treff allerede hadde elevert
+     distToRoadM (bilen drev fra fragmentlinjen). I praksis betyr det at
+     segmentbyttet er like rundt hjørnet — videre hold forlenger bare den
+     visuelle «fryse»-fasen før snap. */
+  const prevDist = homeVegrefLastValidDistToRoadM
+  const drifting = typeof prevDist === 'number' && prevDist >= 15
+  if (drifting) {
+    if (spd >= 14) return 1400
+    if (spd >= 8) return 1100
+    return 900
+  }
+  if (spd >= 14) return 5200
+  if (spd >= 8) return 4200
+  return 3000
+}
+
+/** Min tid mellom tween-commits — høyere = roligere tall (færre kjedede tweens). */
 function homeVegrefMeterMinTweenGapMs() {
   const acc = lastVegrefGpsAccuracyM
   const spd = vegrefGetLastSpeed()
-  if (spd >= 14 && acc <= 10) return 260
-  if (spd >= 8 && acc <= 12) return 300
-  if (spd >= 5 && acc <= 15) return 280
+  /* Kjøring: kortere gap — offline/NVDB tikker typisk ~10–20 m per sek; for lang
+     pause ga opplevd «80–100 m mellom hvert tall» når post-commit også demper. */
+  if (spd >= 16 && acc <= 12) return 72
+  if (spd >= 12 && acc <= 12) return 88
+  if (spd >= 10 && acc <= 14) return 102
+  if (spd >= 8 && acc <= 12) return 175
+  /* 22–36 km/t: tidligere falt vi i 220 ms-grenen → opplevd treg meter. */
+  if (spd >= 6 && spd < 10 && acc <= 16) return 108
+  if (spd >= 5 && acc <= 15) return 220
+  /* Gange (~1–1,6 m/s): la NVDB slippe til oftere — telleren føltes treg. */
+  if (spd >= 0.85 && spd < 3.2 && acc <= 18) return 112
+  if (spd > 0.5 && spd < 3 && acc <= 16) return 135
   return HOME_VEGREF_METER_MIN_TWEEN_GAP_MS
 }
 
-/** Dynamisk tween-varighet: kort ved høy fart slik at telleren flyter jevnt uten at en ny oppdatering kansellerer den forrige for tidlig. */
+/** Dynamisk tween-varighet: litt lengre tween = jevnere opplevd meter. */
 function homeVegrefMeterTweenMs() {
   const spd = vegrefGetLastSpeed()
-  if (spd > 25) return 140
-  if (spd > 15) return 180
-  if (spd > 6) return 220
-  return 260
+  if (spd > 25) return 72
+  if (spd > 18) return 80
+  if (spd > 15) return 95
+  if (spd > 6) return 125
+  if (spd >= 0.85 && spd < 3.2) return 88
+  if (spd > 0.5 && spd < 3) return 98
+  return 138
 }
 /**
  * Snap-terskel: over dette hoppes direkte (veiskifte/teleport).
@@ -2575,8 +4817,8 @@ function homeVegrefMeterTweenMs() {
  */
 function homeVegrefMeterSnapThreshold() {
   const spd = vegrefGetLastSpeed()
-  if (spd > 25) return 600
-  if (spd > 15) return 400
+  if (spd > 25) return 420
+  if (spd > 15) return 260
   return 240
 }
 /**
@@ -2586,19 +4828,22 @@ function homeVegrefMeterSnapThreshold() {
 function homeVegrefMeterDeadbandM() {
   const acc = lastVegrefGpsAccuracyM
   const spd = vegrefGetLastSpeed()
-  let d = 6 + Math.min(14, acc * 0.25)
-  if (spd > 28) d += 8
-  else if (spd > 18) d += 4
+  let d = 3 + Math.min(10, acc * 0.15)
+  if (spd > 28) d += 6
+  else if (spd > 18) d += 3
   /* Fix H1: ved reell bevegelse og god nøyaktighet er Δm reell distanse, ikke støy.
-     Uten denne krympingen havner typiske 6–9 m NVDB-inkrementer under baseline 8 m
-     og UI står stille i flere sekunder. */
+     Uten denne krympingen havner typiske 4–8 m NVDB-inkrementer under deadband
+     og UI står stille i flere sekunder ved normal kjørefart. */
   if (spd >= 3 && acc <= 15) {
-    d = Math.max(2, Math.min(d, 3 + acc * 0.12))
+    d = Math.max(2.05, Math.min(d, 2.65 + acc * 0.09))
   } else if (spd >= 3 && acc <= 20) {
     /* Litt videre nøyaktighet (12–20 m): fortsatt kjøring — hold dødbånd nede, men ikke så stramt som ≤15 m. */
-    d = Math.max(3, Math.min(d, 5 + acc * 0.1))
+    d = Math.max(2.25, Math.min(d, 3.35 + acc * 0.085))
+  } else if (spd > 0.45 && spd < 3 && acc <= 15) {
+    /* Gange med grei GPS: litt strammere dødbånd enn «default» for lav fart. */
+    d = Math.max(1.8, Math.min(d, 2.35 + acc * 0.1))
   }
-  return Math.min(20, d)
+  return Math.min(18, d)
 }
 /**
  * @param {number} mInt
@@ -2614,16 +4859,135 @@ function shouldSkipVegrefMeterDisplayUpdate(
   snapFn,
   lastCommitMs,
 ) {
-  if (segChanged) return false
-  const delta = Math.abs(mInt - displayed)
-  const snap = snapFn()
-  if (delta >= snap) return false
-  if (delta < homeVegrefMeterDeadbandM()) return true
-  if (Date.now() - lastCommitMs < homeVegrefMeterMinTweenGapMs()) {
-    return true
+  let skip = false
+  let skipReason = 'no'
+  if (segChanged) {
+    skip = false
+    skipReason = 'segChanged'
+  } else {
+    const delta = Math.abs(mInt - displayed)
+    const snap = snapFn()
+    if (delta >= snap) {
+      skip = false
+      skipReason = 'delta_ge_snap'
+    } else if (mInt < displayed) {
+      /* NVDB vil lavere m enn det vi viser (rygging / korreksjon ned): ikke throttlé. */
+      skip = false
+      skipReason = 'mInt_lt_displayed'
+    } else if (delta < homeVegrefMeterDeadbandM()) {
+      skip = true
+      skipReason = 'deadband'
+    } else if (Date.now() - lastCommitMs < homeVegrefMeterMinTweenGapMs()) {
+      skip = true
+      skipReason = 'min_tween_gap'
+    } else if (lastCommitMs > 0) {
+      const age = Date.now() - lastCommitMs
+      const spd = vegrefGetLastSpeed()
+      const slack =
+        spd >= 14
+          ? Math.min(48, 11 + spd * 1.05)
+          : spd >= 10
+            ? Math.min(40, 9.5 + spd * 0.95)
+            : Math.min(26, 7.1 + spd * 0.62)
+      const postCommitHoldMs =
+        spd >= 14
+          ? 62
+          : spd >= 10
+            ? 88
+            : spd >= 6
+              ? 118
+              : spd >= 0.85 && spd < 3.4
+                ? 155
+                : 265
+      if (age < postCommitHoldMs && delta < slack) {
+        skip = true
+        skipReason = 'post_commit_slack'
+      } else {
+        skip = false
+        skipReason = 'pass_end'
+      }
+    } else {
+      skip = false
+      skipReason = 'pass_no_last_commit'
+    }
   }
-  return false
+  // #region agent log
+  if (
+    view === 'home' &&
+    typeof mInt === 'number' &&
+    typeof displayed === 'number' &&
+    (mInt < displayed || mInt > displayed + 8)
+  ) {
+    postScanixDebugPayload({
+      sessionId: 'ff8b7b',
+      hypothesisId: 'H1',
+      location: 'main.js:shouldSkipVegrefMeterDisplayUpdate',
+      message: 'meter_skip_decision',
+      data: {
+        mInt,
+        displayed,
+        segChanged,
+        skip,
+        skipReason,
+        deadband: Math.round(homeVegrefMeterDeadbandM() * 10) / 10,
+      },
+      timestamp: Date.now(),
+    })
+  }
+  // #endregion
+  return skip
 }
+
+/** Maks nedover-korreksjon på samme segment vi aksepter uten tween (NVDB henger bak extrap). */
+function homeVegrefMeterSameSegDownIgnoreM() {
+  const spd = vegrefGetLastSpeed()
+  return Math.min(62, Math.max(36, 24 + spd * 2.1))
+}
+
+/**
+ * Maks avstand (m) vi tillater at vist meter ligger **over** NVDB med kun
+ * live-ekstrap før vi tween'er. Uten tak ble UI «sittende fast» (f.eks. 8648)
+ * mens m sank i titalls meter → én lang tween = opplevd stort hopp.
+ */
+function homeVegrefMeterSameSegDownMaxExtrapOnlyGapM() {
+  const spd = vegrefGetLastSpeed()
+  return Math.min(26, Math.max(14, 11 + spd * 0.55))
+}
+
+/** Én tween ned mot NVDB: maks steg (m) slik at rygging blir flere korte rull i stedet for ett kjempehopp. */
+function homeVegrefMeterBackwardTweenChunkM() {
+  const spd = vegrefGetLastSpeed()
+  return Math.min(20, Math.max(11, 8 + spd * 0.5))
+}
+
+/**
+ * NVDB m endret seg vs forrige autentiske m: sett ekstrap-retning.
+ * Når **mInt < det vi viser**, aldri +1 — offline kan oscillere (7731↔7737)
+ * mens displayed henger høyt; da må ikke mikroopptick flipp til forover-ekstrap.
+ * @param {number} mInt
+ * @param {number | null | undefined} uiDisplayed nåværende homeVegrefDisplayedMeter før prevAuth oppdateres
+ */
+function homeVegrefSetExtrapDirFromNvdbVsDisplayed(mInt, uiDisplayed) {
+  if (homeVegrefPrevAuthMeter == null || homeVegrefPrevAuthMeter === mInt) return
+  if (
+    typeof uiDisplayed === 'number' &&
+    Number.isFinite(uiDisplayed) &&
+    mInt < uiDisplayed
+  ) {
+    homeVegrefMeterExtrapDir = -1
+    return
+  }
+  if (
+    typeof uiDisplayed === 'number' &&
+    Number.isFinite(uiDisplayed) &&
+    mInt > uiDisplayed
+  ) {
+    homeVegrefMeterExtrapDir = 1
+    return
+  }
+  homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
+}
+
 let kmtCameraMode = false
 /** @type {MediaStream | null} */
 let kmtMediaStream = null
@@ -2649,10 +5013,10 @@ let kmtMeterTo = 0
 let kmtMeterT0 = 0
 function kmtMeterTweenMs() {
   const spd = vegrefGetLastSpeed()
-  if (spd > 25) return 140
-  if (spd > 15) return 180
-  if (spd > 6) return 260
-  return 380
+  if (spd > 25) return 105
+  if (spd > 15) return 145
+  if (spd > 6) return 205
+  return 300
 }
 function kmtMeterSnapThreshold() {
   const spd = vegrefGetLastSpeed()
@@ -2737,6 +5101,9 @@ function haversineM(lat1, lng1, lat2, lng2) {
  */
 function maybeMergeNvdbSegmentsWhileDriving(segments, lat, lng, speedMps) {
   if (!Array.isArray(segments) || segments.length === 0) return
+  if (getVegrefDataMode() === 'minimal') return
+  /* Ferdig offline-pakke: ikke fyll IndexedDB med rå segment-fetches fra nett. */
+  if (offlineVegrefReady) return
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return
   const s =
     typeof speedMps === 'number' && !Number.isNaN(speedMps) ? speedMps : 0
@@ -2770,6 +5137,42 @@ function maybeMergeNvdbSegmentsWhileDriving(segments, lat, lng, speedMps) {
 }
 
 const SCANIX_SURFACE_PREF_KEY = 'scanix-surface-preference'
+/** Legacy: «1» = bruker har eksplisitt valgt hyppig NVDB / «høy data». */
+const SCANIX_VEGREF_DATA_NORMAL_KEY = 'scanix-vegref-data-normal'
+/** Eksplisitt valg av spar-data-modus. Fravær av begge nøkler = minimal (lav databruk). */
+const SCANIX_VEGREF_DATA_MINIMAL_KEY = 'scanix-vegref-data-minimal'
+
+/** @returns {'minimal' | 'normal'} */
+function getVegrefDataMode() {
+  try {
+    if (typeof localStorage === 'undefined') return 'minimal'
+    if (localStorage.getItem(SCANIX_VEGREF_DATA_NORMAL_KEY) === '1') {
+      return 'normal'
+    }
+    if (localStorage.getItem(SCANIX_VEGREF_DATA_MINIMAL_KEY) === '1') {
+      return 'minimal'
+    }
+    return 'minimal'
+  } catch {
+    return 'minimal'
+  }
+}
+
+/** @param {'minimal' | 'normal'} mode */
+function setVegrefDataMode(mode) {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (mode === 'minimal') {
+      localStorage.setItem(SCANIX_VEGREF_DATA_MINIMAL_KEY, '1')
+      localStorage.removeItem(SCANIX_VEGREF_DATA_NORMAL_KEY)
+    } else {
+      localStorage.removeItem(SCANIX_VEGREF_DATA_MINIMAL_KEY)
+      localStorage.setItem(SCANIX_VEGREF_DATA_NORMAL_KEY, '1')
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 function getSurfacePreference() {
   try {
@@ -2796,6 +5199,48 @@ function setSurfacePreference(pref) {
     /* ignore */
   }
   return p
+}
+
+function syncSessionMapRootDarkClass(on) {
+  document
+    .getElementById('session-map-root')
+    ?.classList.toggle('session-map-basemap-dark', on)
+}
+
+function syncSessionMapDarkButton() {
+  syncMapThemeDockDom(getSessionMapDarkPreference())
+}
+
+async function replaceSessionMapBasemapIfNeeded() {
+  if (!map || !Leaflet) return
+  const want = getSessionMapDarkPreference()
+  if (sessionBasemapLayer && want === sessionBasemapDarkApplied) {
+    syncSessionMapRootDarkClass(want)
+    syncSessionMapDarkButton()
+    return
+  }
+  detachSessionBasemapSwWarm()
+  try {
+    if (sessionBasemapLayer) {
+      map.removeLayer(sessionBasemapLayer)
+    }
+  } catch {
+    /* ignore */
+  }
+  sessionBasemapLayer = await createAppBasemapLayer(
+    Leaflet,
+    APP_MAP_TILE_LAYER_DATA_SAVER,
+    { dark: want },
+  )
+  sessionBasemapLayer.addTo(map)
+  attachSessionBasemapSwWarmIfRaster(sessionBasemapLayer)
+  sessionBasemapDarkApplied = want
+  syncSessionMapRootDarkClass(want)
+  syncSessionMapDarkButton()
+  setTimeout(() => {
+    map?.invalidateSize()
+    nudgeMaptilerBasemapResize(map)
+  }, 60)
 }
 
 /**
@@ -2830,10 +5275,11 @@ function resetDrivingFilters() {
 }
 
 function zoomForDriving(accuracy) {
-  if (accuracy < 22) return 18
-  if (accuracy < 45) return 17
-  if (accuracy < 75) return 16
-  return 15
+  let z = 15
+  if (accuracy < 22) z = 18
+  else if (accuracy < 45) z = 17
+  else if (accuracy < 75) z = 16
+  return Math.min(z, APP_MAP_MAX_ZOOM)
 }
 
 /**
@@ -3114,9 +5560,9 @@ function photoThumbnailIcon(dataUrl) {
   icon = Leaflet.divIcon({
     className: 'map-photo-marker-wrap',
     html: `<div class="map-photo-marker"><img src="${dataUrl}" alt="" /></div>`,
-    iconSize: [48, 48],
-    iconAnchor: [24, 48],
-    popupAnchor: [0, -44],
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
+    popupAnchor: [0, -34],
   })
   if (photoThumbnailIconCache.size >= PHOTO_MARKER_ICON_CACHE_MAX) {
     const first = photoThumbnailIconCache.keys().next().value
@@ -3293,32 +5739,50 @@ function buildSessionClickPopupHtml(c, index) {
     ? `<section class="session-map-popup__comment" aria-label="Kommentar"><p class="session-map-popup__comment-text">${escapeHtml(commentRaw)}</p></section>`
     : ''
 
-  return `<article class="session-map-popup session-map-popup--click" data-scanix-click-id="${idAttr}" data-scanix-click-idx="${index}" tabindex="0">
-    <header class="session-map-popup__head">
-      <span class="session-map-popup__eyebrow">Registrering</span>
-      <h2 class="session-map-popup__title">${escapeHtml(displayTitle)}</h2>
-    </header>
-    ${
-      catLabel
-        ? `<p class="session-map-popup__chip-wrap"><span class="session-map-popup__chip">${escapeHtml(catLabel)}</span></p>`
-        : ''
-    }
-    ${vegHtml}
-    ${commentBlock}
-    ${
-      timeStr
-        ? `<footer class="session-map-popup__foot"><time class="session-map-popup__time" datetime="${isoAttr}">${escapeHtml(timeStr)}</time></footer>`
-        : ''
-    }
-    <p class="session-map-popup__edit-hint">Dobbelttrykk for å redigere. <button type="button" class="session-map-popup__edit-fallback">Rediger</button></p>
+  const micSvg = `<svg class="session-map-popup__voice-mic-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+
+  return `<article class="session-map-popup session-map-popup--click" data-scanix-click-id="${idAttr}" data-scanix-click-idx="${index}" tabindex="0" aria-expanded="false" aria-label="Registrering på kart">
+    <div class="session-map-popup__main">
+      <header class="session-map-popup__head">
+        <span class="session-map-popup__eyebrow">Registrering</span>
+        <h2 class="session-map-popup__title">${escapeHtml(displayTitle)}</h2>
+      </header>
+      ${
+        catLabel
+          ? `<p class="session-map-popup__chip-wrap"><span class="session-map-popup__chip">${escapeHtml(catLabel)}</span></p>`
+          : ''
+      }
+      ${vegHtml}
+      ${commentBlock}
+      ${
+        timeStr
+          ? `<footer class="session-map-popup__foot"><time class="session-map-popup__time" datetime="${isoAttr}">${escapeHtml(timeStr)}</time></footer>`
+          : ''
+      }
+      <p class="session-map-popup__edit-hint">Dobbelttrykk for å redigere. Langt trykk for diktering. <button type="button" class="session-map-popup__edit-fallback">Rediger</button></p>
+    </div>
+    <div class="session-map-popup__voice-ui" hidden>
+      <div class="session-map-popup__voice-toolbar">
+        <button type="button" class="session-map-popup__voice-stop btn btn-text" aria-label="Stopp diktering uten å lagre">Stopp</button>
+        <div class="session-map-popup__voice-wave" aria-hidden="true"></div>
+        <span class="session-map-popup__voice-mic" aria-hidden="true">${micSvg}</span>
+      </div>
+      <p class="session-map-popup__voice-status" role="status" aria-live="polite">
+        <span class="session-map-popup__voice-status-msg"></span><span class="session-map-popup__voice-status-dots-wrap" aria-hidden="true"><span class="session-map-popup__voice-status-dot">.</span><span class="session-map-popup__voice-status-dot">.</span><span class="session-map-popup__voice-status-dot">.</span></span>
+      </p>
+    </div>
   </article>`
 }
 
 /**
  * @param {object} ph photo entry
  * @param {number} index 0-basert
+ * @param {{ mapView?: boolean }} [opts] Kart: bare miniatyr i popup (tung JPEG først ved behov).
  */
-function buildSessionPhotoPopupHtml(ph, index) {
+function buildSessionPhotoPopupHtml(ph, index, opts = {}) {
+  const mapView = Boolean(opts.mapView)
+  const idAttr =
+    typeof ph.id === 'string' && ph.id ? escapeHtml(ph.id) : ''
   const n = index + 1
   const timeStr =
     ph.timestamp && !Number.isNaN(Date.parse(ph.timestamp))
@@ -3344,14 +5808,14 @@ function buildSessionPhotoPopupHtml(ph, index) {
     vegSection = `<section class="session-map-popup__veg" aria-label="Vegreferanse"><dl class="session-map-popup__dl">${rows}</dl></section>`
   }
 
-  return `<article class="session-map-popup session-map-popup--photo">
+  return `<article class="session-map-popup session-map-popup--photo" data-scanix-photo-id="${idAttr}">
     <header class="session-map-popup__head">
       <span class="session-map-popup__eyebrow">Bilde</span>
       <h2 class="session-map-popup__title">Bilde #${n}</h2>
     </header>
     ${vegSection}
     <div class="session-map-popup__media">
-      <img src="${ph.dataUrl}" alt="" class="session-map-popup__img" loading="lazy" decoding="async" />
+      ${photoPreviewImgHtml(ph, 'session-map-popup__img', mapView ? { mapView: true } : {})}
     </div>
     ${
       timeStr
@@ -3419,8 +5883,35 @@ function applyClickEntryEditFromDialog() {
   state.clickHistory[idx] = next
   clickEntryEditTargetIndex = -1
   document.getElementById('click-entry-edit-dialog')?.close()
-  persist()
-  if (view === 'session' && map) rebuildMarkers()
+  persist('session:click_entry_edit_save')
+  if (view === 'session' && map) {
+    rebuildMarkers('click_entry_edit_save')
+  }
+  showSessionToast('Lagret')
+}
+
+function applyClickEntryVoiceTranscript(idx, raw) {
+  if (idx < 0 || !state.clickHistory[idx]) return
+  const prev = state.clickHistory[idx]
+  const existingComment =
+    typeof prev.comment === 'string' ? prev.comment.trim() : ''
+  const { label, comment } = splitTranscriptToLabelComment(
+    raw,
+    existingComment,
+    CLICK_ENTRY_LABEL_MAX_LEN,
+    CLICK_ENTRY_COMMENT_MAX_LEN,
+  )
+  const next = { ...prev }
+  if (label) next.label = label
+  if (comment !== null) {
+    if (comment) next.comment = comment
+    else delete next.comment
+  }
+  state.clickHistory[idx] = next
+  persist('session:click_entry_voice')
+  if (view === 'session' && map) {
+    rebuildMarkers('click_entry_voice')
+  }
   showSessionToast('Lagret')
 }
 
@@ -3477,8 +5968,98 @@ function attachSessionClickPopupEditGestures(card) {
   card
     .querySelector('.session-map-popup__edit-fallback')
     ?.addEventListener('click', open, { signal })
+  attachClickPopupVoiceLongPress(card, {
+    signal,
+    getClickIndex: () => resolveClickHistoryIndexFromPopupDataset(card),
+    onApplyTranscript: (ix, text) => applyClickEntryVoiceTranscript(ix, text),
+    onCancel: () => {},
+    triggerHaptic: () => triggerHapticMark(),
+    toast: (msg) => showSessionToast(msg),
+    onSpeechUnsupported: () => {
+      showSessionToast(
+        'Stemmegjenkjenning støttes ikke her. Bruk Rediger og tastaturets mikrofon.',
+      )
+      openClickEntryEditDialogFromCard(card)
+    },
+  })
   const onClose = () => ac.abort()
   map.once('popupclose', onClose)
+}
+
+async function hydrateSessionPhotoMapThumbInPopup(photoCard) {
+  const pid = photoCard.dataset.scanixPhotoId
+  if (!pid) return
+  const ph = state.photos.find((p) => p && typeof p === 'object' && p.id === pid)
+  if (!ph || typeof ph !== 'object') return
+  if (sessionMapDisplayThumbDataUrl(ph)) return
+
+  const rawThumb = photoMapThumbDataUrl(ph)
+  if (rawThumb.length > SESSION_MAP_THUMB_DATA_URL_MAX_CHARS) {
+    try {
+      const compact = await makeThumbDataUrlFromDataUrl(rawThumb, {
+        maxEdge: 200,
+        quality: 0.78,
+      })
+      Object.assign(/** @type {Record<string, unknown>} */ (ph), {
+        thumbDataUrl: compact,
+      })
+      await persistPhotoPixelsToIdbIfNeeded(ph)
+      persist('session:photo_map_thumb_legacy_shrink')
+      const media = photoCard.querySelector('.session-map-popup__media')
+      if (media) {
+        media.innerHTML = photoPreviewImgHtml(ph, 'session-map-popup__img', {
+          mapView: true,
+        })
+      }
+      if (view === 'session' && map) {
+        rebuildMarkers('photo_map_thumb_legacy_shrink')
+      }
+    } catch (err) {
+      console.warn('hydrateSessionPhotoMapThumbInPopup legacy thumb shrink', err)
+    }
+    return
+  }
+
+  const wrap = photoCard.querySelector('.session-map-popup__media')
+  if (!wrap?.querySelector('.photo-preview--pending')) return
+
+  let full =
+    photoRecordHasPixelData(/** @type {{ dataUrl?: string }} */ (ph))
+      ? /** @type {{ dataUrl: string }} */ (ph).dataUrl
+      : ''
+  if (!full && (await isPhotoBlobStoreAvailable())) {
+    try {
+      const fromIdb = await getPhotoDataUrl(pid)
+      if (typeof fromIdb === 'string' && fromIdb.startsWith('data:image/')) {
+        full = fromIdb
+        Object.assign(/** @type {Record<string, unknown>} */ (ph), {
+          dataUrl: fromIdb,
+        })
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!full) return
+  try {
+    const thumb = await makeThumbDataUrlFromDataUrl(full, {
+      maxEdge: 200,
+      quality: 0.78,
+    })
+    Object.assign(/** @type {Record<string, unknown>} */ (ph), {
+      thumbDataUrl: thumb,
+    })
+    await persistPhotoPixelsToIdbIfNeeded(ph)
+    persist('session:photo_map_thumb_hydrate')
+    wrap.innerHTML = photoPreviewImgHtml(ph, 'session-map-popup__img', {
+      mapView: true,
+    })
+    if (view === 'session' && map) {
+      rebuildMarkers('photo_map_thumb_hydrate')
+    }
+  } catch (err) {
+    console.warn('hydrateSessionPhotoMapThumbInPopup', err)
+  }
 }
 
 function onSessionMapPopupOpen(e) {
@@ -3488,29 +6069,63 @@ function onSessionMapPopupOpen(e) {
   )
   const el = popup.getElement?.()
   if (!el) return
-  const card = el.querySelector(
+  const clickCard = el.querySelector(
     '.session-map-popup--click[data-scanix-click-idx]',
   )
-  if (!(card instanceof HTMLElement)) return
-  attachSessionClickPopupEditGestures(card)
+  if (clickCard instanceof HTMLElement) {
+    attachSessionClickPopupEditGestures(clickCard)
+  }
+  const photoCard = el.querySelector(
+    '.session-map-popup--photo[data-scanix-photo-id]',
+  )
+  if (photoCard instanceof HTMLElement) {
+    void hydrateSessionPhotoMapThumbInPopup(photoCard)
+  }
 }
 
 /**
- * Henter NVDB-posisjon for trykket og lagrer kompakt vegref på oppføringen (popup oppdateres).
+ * Legger inn kompakt vegref på trykket — **kun lokalt** (`resolveVegref` uten nett).
+ * Kartmarkør skal ikke vente på NVDB /posisjon; ved bom slås pending av (vanlig pin).
  * @param {string} clickId
  * @param {number} lat
  * @param {number} lng
  */
 async function enrichClickEntryWithVegrefFromPosisjon(clickId, lat, lng) {
+  registerNetSetActiveVegrefClickId(clickId)
   try {
-    const r = await fetchRoadPositionDirect(lat, lng)
-    const snap = vegrefPosisjonToFrictionSnap(r)
-    if (!snap) return
+    const { result: localRes } = await resolveVegref(lat, lng, { accuracyM: 28, allowNet: false })
+    const snap = vegrefPosisjonToFrictionSnap(localRes)
+
+    if (snap) {
+      registerNetLogVegrefEnrich(clickId, {
+        path: 'local_resolveVegref',
+        note: 'Ingen NVDB HTTP — treff fra offline/lokal pipeline (da vises ikke nvdb_posisjon).',
+      })
+    }
+    if (!snap) {
+      registerNetLogVegrefEnrich(clickId, {
+        path: 'no_vegref_snap_local_only',
+        note: 'Ingen lokalt treff — pendingVegref av for kart (ingen nettvent på markør).',
+      })
+      const missIdx = state.clickHistory.findIndex((x) => x.id === clickId)
+      if (missIdx >= 0) {
+        state.clickHistory[missIdx] = {
+          ...state.clickHistory[missIdx],
+          pendingVegref: false,
+        }
+        persist('session:click_vegref_pending_cleared_local_miss')
+        if (view === 'session' && map) {
+          rebuildMarkers('click_vegref_local_miss')
+        }
+      }
+      return
+    }
     const idx = state.clickHistory.findIndex((x) => x.id === clickId)
     if (idx < 0) return
     state.clickHistory[idx] = {
       ...state.clickHistory[idx],
       vegrefAtClick: {
+        vegnavn: snap.vegnavn,
         vegnr: snap.vegnr,
         meter: snap.meter,
         s: snap.s,
@@ -3518,10 +6133,25 @@ async function enrichClickEntryWithVegrefFromPosisjon(clickId, lat, lng) {
       },
       pendingVegref: false,
     }
-    persist()
-    if (view === 'session' && map) rebuildMarkers()
-  } catch {
-    /* nettverk / API — pendingVegref forblir true */
+    persist('session:click_vegref_enriched')
+    if (view === 'session' && map) {
+      rebuildMarkers('click_vegref_enriched')
+    }
+  } catch (e) {
+    console.warn('enrichClickEntryWithVegrefFromPosisjon', e)
+    const errIdx = state.clickHistory.findIndex((x) => x.id === clickId)
+    if (errIdx >= 0) {
+      state.clickHistory[errIdx] = {
+        ...state.clickHistory[errIdx],
+        pendingVegref: false,
+      }
+      persist('session:click_vegref_pending_cleared_error')
+      if (view === 'session' && map) {
+        rebuildMarkers('click_vegref_enrich_error')
+      }
+    }
+  } finally {
+    registerNetSetActiveVegrefClickId(null)
   }
 }
 
@@ -3529,12 +6159,9 @@ async function enrichClickEntryWithVegrefFromPosisjon(clickId, lat, lng) {
 let enrichPendingClicksPromise = null
 
 /**
- * Beriker alle registreringer som mangler vegreferanse (online), med throttling.
+ * Beriker registreringer som mangler vegreferanse — **lokalt først** (samme som resolveVegref uten nett i enrich-funksjonen).
  */
 function enrichPendingClicks() {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return Promise.resolve()
-  }
   if (enrichPendingClicksPromise) return enrichPendingClicksPromise
   enrichPendingClicksPromise = (async () => {
     const ids = state.clickHistory
@@ -3556,7 +6183,6 @@ function enrichPendingClicks() {
         Number(c.lat),
         Number(c.lng),
       )
-      await new Promise((r) => setTimeout(r, 300))
     }
   })().finally(() => {
     enrichPendingClicksPromise = null
@@ -3596,8 +6222,10 @@ function maybeFixPendingGps(lat, lng, accuracy) {
     changed = true
   }
   if (changed) {
-    persist()
-    if (view === 'session' && map) rebuildMarkers()
+    persist('session:pending_gps_watch_upgrade')
+    if (view === 'session' && map) {
+      rebuildMarkers('pending_gps_watch_upgrade')
+    }
     void enrichPendingClicks()
   }
 }
@@ -3607,12 +6235,45 @@ const sessionMarkerInteractionDefaults = Object.freeze({
   riseOnHover: false,
 })
 
-function rebuildMarkers() {
+/**
+ * @param {string} [regtraceNote] — når `scanix-register-trace` / `?regtrace=1`: logg årsak til kart-oppbygging.
+ */
+function rebuildMarkers(regtraceNote) {
   if (!map || !Leaflet) return
+  if (regtraceNote) {
+    regtraceRebuildMarkers(regtraceNote, {
+      clicks: state.clickHistory?.length ?? 0,
+      photos: state.photos?.length ?? 0,
+    })
+  }
   ensureSessionPinIcons()
   const { clickLatLng, photoLatLng } = computeAllMarkerDisplayPositions()
-  markers.forEach((m) => map.removeLayer(m))
+  if (sessionMarkerClusterGroup) {
+    try {
+      /** @type {{ clearLayers?: () => void }} */ (sessionMarkerClusterGroup).clearLayers?.()
+    } catch {
+      /* ignore */
+    }
+  } else {
+    markers.forEach((m) => {
+      try {
+        map.removeLayer(m)
+      } catch {
+        /* ignore */
+      }
+    })
+  }
   markers.length = 0
+  const addMarker = (/** @type {import('leaflet').Marker} */ m) => {
+    if (sessionMarkerClusterGroup) {
+      /** @type {{ addLayer: (x: import('leaflet').Marker) => void }} */ (
+        sessionMarkerClusterGroup
+      ).addLayer(m)
+    } else {
+      m.addTo(map)
+    }
+    markers.push(m)
+  }
   state.clickHistory.forEach((c, i) => {
     if (c.lat == null || c.lng == null) return
     const ll = clickLatLng.get(i) || [c.lat, c.lng]
@@ -3623,20 +6284,41 @@ function rebuildMarkers() {
       icon: usePending ? pendingPinIcon : pinIcon,
       ...sessionMarkerInteractionDefaults,
     })
-    m.bindPopup(buildSessionClickPopupHtml(c, i), SESSION_MAP_POPUP_OPTIONS)
-    m.addTo(map)
-    markers.push(m)
+    m.bindPopup(() => {
+      let ix = -1
+      if (typeof c.id === 'string' && c.id) {
+        ix = state.clickHistory.findIndex((x) => x && x.id === c.id)
+      }
+      if (ix < 0) ix = state.clickHistory.indexOf(c)
+      if (ix < 0) {
+        return '<article class="session-map-popup"><p>Registrering finnes ikke lenger.</p></article>'
+      }
+      return buildSessionClickPopupHtml(state.clickHistory[ix], ix)
+    }, SESSION_MAP_POPUP_OPTIONS)
+    addMarker(m)
   })
   state.photos.forEach((ph, i) => {
     if (ph.lat == null || ph.lng == null) return
     const ll = photoLatLng.get(i) || [ph.lat, ph.lng]
+    const mapThumb = sessionMapDisplayThumbDataUrl(ph)
     const m = Leaflet.marker(ll, {
-      icon: photoThumbnailIcon(ph.dataUrl),
+      icon: mapThumb ? photoThumbnailIcon(mapThumb) : pinIcon,
       ...sessionMarkerInteractionDefaults,
     })
-    m.bindPopup(buildSessionPhotoPopupHtml(ph, i), SESSION_MAP_POPUP_OPTIONS)
-    m.addTo(map)
-    markers.push(m)
+    m.bindPopup(() => {
+      let ix = -1
+      if (typeof ph.id === 'string' && ph.id) {
+        ix = state.photos.findIndex((x) => x && x.id === ph.id)
+      }
+      if (ix < 0) ix = state.photos.indexOf(ph)
+      if (ix < 0) {
+        return '<article class="session-map-popup session-map-popup--photo"><p>Bilde finnes ikke lenger.</p></article>'
+      }
+      return buildSessionPhotoPopupHtml(state.photos[ix], ix, {
+        mapView: true,
+      })
+    }, SESSION_MAP_POPUP_OPTIONS)
+    addMarker(m)
   })
 }
 
@@ -3658,11 +6340,11 @@ function fitAllPins() {
   })
   if (pts.length === 0) return
   if (pts.length === 1) {
-    map.setView([pts[0].lat, pts[0].lng], 16)
+    map.setView([pts[0].lat, pts[0].lng], APP_MAP_MAX_ZOOM)
     return
   }
   const b = Leaflet.latLngBounds(pts.map((p) => [p.lat, p.lng]))
-  map.fitBounds(b, { padding: [40, 40], maxZoom: 17 })
+  map.fitBounds(b, { padding: [40, 40], maxZoom: APP_MAP_MAX_ZOOM })
 }
 
 function syncSessionMapExploreButton() {
@@ -3770,7 +6452,6 @@ function applyNavFrameVisuals() {
     const movedFromMapCenter = haversineM(lat, lng, c.lat, c.lng)
     const panOpts = { animate: true, duration: 0.22, easeLinearity: 0.38 }
     if (curZ !== z) {
-      __dbgSetViewBurst += 1
       map.flyTo([lat, lng], z, { duration: 0.3, easeLinearity: 0.38 })
     } else if (movedFromMapCenter >= 0.26) {
       map.panTo([lat, lng], panOpts)
@@ -3822,9 +6503,9 @@ function updateUserLocationOnMap(
     const popupLines = buildNavPopupLines(roadSnapped, r, spdKmh)
     userAccuracyCircle = Leaflet.circle([lat, lng], {
       radius: Math.min(r, 95),
-      color: 'rgba(66, 133, 244, 0.45)',
-      fillColor: '#4285f4',
-      fillOpacity: 0.14,
+      color: 'rgba(10, 132, 255, 0.4)',
+      fillColor: '#0a84ff',
+      fillOpacity: 0.11,
       weight: 1,
     }).addTo(map)
     userLocationMarker = Leaflet.marker([lat, lng], {
@@ -4004,7 +6685,8 @@ function syncKmtCompactLine() {
   const s = document.getElementById('kmt-s')?.textContent?.trim() ?? '–'
   const d = document.getElementById('kmt-d')?.textContent?.trim() ?? '–'
   const m = document.getElementById('kmt-m')?.textContent?.trim() ?? '–'
-  compact.textContent = `S ${s} · D ${d} · m ${m}`
+  const mSeg = /^m/i.test(m) ? m : m === '–' || m === '-' ? m : `m${m}`
+  compact.textContent = `S ${s} · D ${d} · ${mSeg}`
 }
 
 function startKmtMeterTweenTo(targetInt) {
@@ -4638,11 +7320,12 @@ async function captureKmtCameraPhoto() {
   }
   let dataUrl
   try {
-    dataUrl = await compressDataUrlToDataUrl(
-      raw,
-      KMT_CAPTURE_MAX_DIM,
-      PHOTO_JPEG_QUALITY,
-    )
+    dataUrl = await compressDataUrlToJpegUnderBytes(raw, {
+      maxBytes: PHOTO_STORAGE_TARGET_MAX_BYTES,
+      maxEdge: PHOTO_MAX_DIM,
+      minQuality: PHOTO_STORAGE_MIN_JPEG_QUALITY,
+      minEdge: PHOTO_STORAGE_MIN_EDGE,
+    })
   } catch {
     const st = document.getElementById('kmt-status')
     if (st) st.textContent = 'Kunne ikke komprimere bilde.'
@@ -4889,7 +7572,48 @@ function formatHomeVegrefMeterText(meterPart) {
     mStr = t || '–'
   }
   const noMeter = mStr === '–' || mStr === '-'
-  return noMeter ? mStr : `${mStr}M`
+  return noMeter ? mStr : `m${mStr}`
+}
+
+/**
+ * Forside: færre tekstbytt under fart, men **ekte** heltall (m543), ikke fast 10 m-grid.
+ * Intern `homeVegrefDisplayedMeter` endres ikke her.
+ */
+function formatHomeVegrefMeterTextForHomeUi(internalInt) {
+  if (typeof internalInt !== 'number' || !Number.isFinite(internalInt)) {
+    resetHomeVegrefMeterUiHold()
+    return formatHomeVegrefMeterText(internalInt)
+  }
+  const now = Date.now()
+  const instUi =
+    typeof homeVegrefGpsInstSpeedMps === 'number' &&
+    Number.isFinite(homeVegrefGpsInstSpeedMps) &&
+    homeVegrefGpsInstSpeedMps > 0
+      ? homeVegrefGpsInstSpeedMps
+      : 0
+  const spd = Math.max(vegrefGetLastSpeed(), instUi)
+  const ri = Math.round(internalInt)
+  if (spd < 2.05) {
+    homeVegrefMeterUiHoldInt = ri
+    homeVegrefMeterUiHoldWallMs = now
+    return formatHomeVegrefMeterText(ri)
+  }
+  const prev = homeVegrefMeterUiHoldInt
+  const age = prev != null ? now - homeVegrefMeterUiHoldWallMs : 99999
+  const delta = prev != null ? Math.abs(ri - prev) : 999
+  if (prev != null && ri < prev && spd >= 0.75) {
+    homeVegrefMeterUiHoldInt = ri
+    homeVegrefMeterUiHoldWallMs = now
+    return formatHomeVegrefMeterText(ri)
+  }
+  const minStep = spd >= 24 ? 3 : spd >= 14 ? 2 : spd >= 6 ? 2 : 1
+  const maxHoldMs = spd >= 24 ? 95 : spd >= 14 ? 130 : spd >= 6 ? 200 : 320
+  if (prev == null || delta >= minStep || age >= maxHoldMs) {
+    homeVegrefMeterUiHoldInt = ri
+    homeVegrefMeterUiHoldWallMs = now
+    return formatHomeVegrefMeterText(ri)
+  }
+  return formatHomeVegrefMeterText(prev)
 }
 
 function setHomeVegrefCompactDom(s, d, meterPart) {
@@ -4900,7 +7624,14 @@ function setHomeVegrefCompactDom(s, d, meterPart) {
   const dd = d != null ? String(d) : '–'
   if (sEl) sEl.textContent = `S${ss}`
   if (dEl) dEl.textContent = `D${dd}`
-  if (mEl) mEl.textContent = formatHomeVegrefMeterText(meterPart)
+  if (mEl) {
+    if (typeof meterPart === 'number' && Number.isFinite(meterPart)) {
+      mEl.textContent = formatHomeVegrefMeterTextForHomeUi(meterPart)
+    } else {
+      resetHomeVegrefMeterUiHold()
+      mEl.textContent = formatHomeVegrefMeterText(meterPart)
+    }
+  }
 }
 
 function cancelHomeVegrefMeterTween() {
@@ -4908,6 +7639,20 @@ function cancelHomeVegrefMeterTween() {
     cancelAnimationFrame(homeVegrefMeterAnim)
     homeVegrefMeterAnim = null
   }
+}
+
+/** Siste heltall skrevet til meter-DOM under live-extrap (unngå 60 Hz tekstflimmer). */
+let homeVegrefMeterLiveLastDomInt = /** @type {number | null} */ (null)
+let homeVegrefMeterLiveLastDomWallMs = 0
+/** Debug: throttle tick-logg for bakover-ekstrap (session ff8b7b). */
+let __dbgMeterTickLogMs = 0
+/** Siste viste metertall på forsiden (myk «hold» — ikke samme som intern state). */
+let homeVegrefMeterUiHoldInt = /** @type {number | null} */ (null)
+let homeVegrefMeterUiHoldWallMs = 0
+
+function resetHomeVegrefMeterUiHold() {
+  homeVegrefMeterUiHoldInt = null
+  homeVegrefMeterUiHoldWallMs = 0
 }
 
 function cancelHomeVegrefMeterLiveExtrap() {
@@ -4920,6 +7665,9 @@ function cancelHomeVegrefMeterLiveExtrap() {
     homeVegrefMeterLiveSlowTimer = null
   }
   homeVegrefMeterLiveLastTs = 0
+  homeVegrefMeterLiveLastDomInt = null
+  homeVegrefMeterLiveLastDomWallMs = 0
+  resetHomeVegrefMeterUiHold()
 }
 
 function scheduleHomeVegrefMeterLiveRecheck() {
@@ -4929,11 +7677,28 @@ function scheduleHomeVegrefMeterLiveRecheck() {
     if (view !== 'home' || homeVegrefDisplayedMeter == null) return
     if (homeVegrefMeterAnim != null) return
     startHomeVegrefMeterLiveExtrap()
-  }, 320)
+  }, 200)
+}
+
+/** Unngå at pipelinens «stillestående» stopper ekstrap rett etter resume (GPS er ofte 0–800 ms etter). */
+function markHomeVegrefMeterResumeBoost(ms = 2600) {
+  homeVegrefMeterResumeUntil = Date.now() + ms
+}
+
+/** Synk klokke + start ekstrap på nytt når appen kommer tilbake fra bakgrunn (iOS throttler rAF). */
+function bumpHomeVegrefMeterAfterForeground() {
+  if (view !== 'home') return
+  markHomeVegrefMeterResumeBoost()
+  if (homeVegrefDisplayedMeter == null || homeVegrefMeterAnim != null) return
+  startHomeVegrefMeterLiveExtrap()
 }
 
 function tickHomeVegrefMeterLive() {
   if (homeVegrefMeterLiveRaf == null) return
+  // #region agent log
+  const __tickT0 = performance.now()
+  let __tickDtRaw = 0
+  // #endregion
   if (view !== 'home') {
     cancelHomeVegrefMeterLiveExtrap()
     return
@@ -4950,7 +7715,17 @@ function tickHomeVegrefMeterLive() {
   const nowWall = Date.now()
   const staleMs =
     homeVegrefLastRawGpsWallMs > 0 ? nowWall - homeVegrefLastRawGpsWallMs : 0
-  const gpsStale = staleMs > HOME_VEGREF_GPS_STALE_MS
+  const staleAnyMs =
+    homeVegrefAnyGpsWallMs > 0 ? nowWall - homeVegrefAnyGpsWallMs : 999999
+  /* Effektivt stale: enten ingen fersk callback på X ms, ELLER siste GPS har
+     så dårlig accuracy at den ikke gir brukbar vegref-lookup (tunnel:
+     iOS dead-reckon med 80–300 m acc). I begge tilfeller skal coasten ta
+     over slik at meteren fortsetter å telle jevnt. */
+  const accStale =
+    typeof lastVegrefGpsAccuracyM === 'number' &&
+    Number.isFinite(lastVegrefGpsAccuracyM) &&
+    lastVegrefGpsAccuracyM > HOME_VEGREF_COAST_ACC_FLOOR_M
+  const gpsStale = staleMs > HOME_VEGREF_GPS_STALE_MS || accStale
   if (
     gpsStale &&
     homeVegrefLastStableRes &&
@@ -4970,28 +7745,157 @@ function tickHomeVegrefMeterLive() {
     homeVegrefCoastSpeedMps >= HOME_VEGREF_COAST_MIN_SPEED_MPS
 
   let spd = vegrefGetLastSpeed()
+  /* GPS-øyeblikksfart oppdateres hver watch-callback; pipelinens lastSpeed
+     kan ligge flere hundre ms bak — bruk max for jevn «telle telle» i UI. */
+  const gpsInst =
+    homeVegrefGpsInstSpeedMps > 0.12 &&
+    homeVegrefAnyGpsWallMs > 0 &&
+    staleAnyMs < 3500
+      ? homeVegrefGpsInstSpeedMps
+      : 0
+  if (gpsInst > 0) {
+    spd = Math.max(spd, gpsInst * 0.96)
+  }
   if (coastOk && spd < 0.8) {
     spd = homeVegrefCoastSpeedMps
   }
   if (!coastOk && lastVegrefGpsAccuracyM > 55 && spd > 22) {
     spd = 22
   }
-  if (spd < 0.8) {
+  if (
+    homeVegrefHoldNullDashExtrap &&
+    spd < 0.85 &&
+    homeVegrefCoastSpeedMps >= HOME_VEGREF_COAST_MIN_SPEED_MPS * 0.92
+  ) {
+    spd = Math.max(spd, homeVegrefCoastSpeedMps * 0.94)
+  }
+  /* iOS/Geolocation gir ofte én eller flere «0 m/s»-ticks mellom fiks under
+     kjøring; da stoppet vi RAF her og meteren frøs på siste heltall til neste
+     NVDB. Bruk nylig coast-hastighet når GPS fortsatt er fersk. */
+  if (
+    spd < 0.85 &&
+    homeVegrefCoastSpeedMps >= 2.5 &&
+    homeVegrefAnyGpsWallMs > 0 &&
+    staleAnyMs < 5200
+  ) {
+    spd = Math.max(spd, homeVegrefCoastSpeedMps * 0.87)
+  }
+  const spdRun = Math.max(spd, gpsInst * 0.88)
+  /* Ikke stopp ekstrap kun fordi pipelinen rapporterer <0,55 m/s — da fryser
+     telleren ved saktefart og rygging. Stopp når posisjonen er stillestående,
+     eller når både pipeline og GPS-inst er ekstremt lave (parkert / ingen bevegelse). */
+  const instQuiet = homeVegrefGpsInstSpeedMps < 0.14
+  const resumeBoost = Date.now() < homeVegrefMeterResumeUntil
+  /* Viktig: ikke OR-inn vegrefIsStationary() her. Den bruker lastSpeed fra
+   * pipelinen (ofte 0 på iOS mellom fiks) + segmentConfidence — uavhengig av
+   * spdRun som allerede er hevet av coast/gpsInst over. Da stoppet RAF selv
+   * ved tydelig kjøring → meter «henger» til neste treff. Stopp bare når
+   * både effektiv fart og GPS-inst er ekstremt lave. */
+  const authM = homeVegrefPrevAuthMeter
+  const needDownCatch =
+    homeVegrefMeterExtrapDir < 0 &&
+    typeof authM === 'number' &&
+    Number.isFinite(authM) &&
+    homeVegrefDisplayedMeter != null &&
+    homeVegrefDisplayedMeter > authM + 1
+  if (
+    !resumeBoost &&
+    spdRun < 0.11 &&
+    instQuiet &&
+    homeVegrefGpsInstSpeedMps < 0.2 &&
+    !needDownCatch
+  ) {
     homeVegrefMeterLiveRaf = null
     scheduleHomeVegrefMeterLiveRecheck()
     return
   }
+  spd = spdRun
   const now = performance.now()
-  const dt = homeVegrefMeterLiveLastTs
+  const dtRaw = homeVegrefMeterLiveLastTs
     ? (now - homeVegrefMeterLiveLastTs) / 1000
     : 0
+  // #region agent log
+  __tickDtRaw = dtRaw
+  // #endregion
   homeVegrefMeterLiveLastTs = now
-  if (dt > 0 && dt < 2.5) {
-    const delta = spd * dt * homeVegrefMeterExtrapDir
-    const v = Math.round(homeVegrefDisplayedMeter + delta)
-    homeVegrefDisplayedMeter = v
-    mEl.textContent = formatHomeVegrefMeterText(v)
+  /* Lang rAF-pause: ikke bruk hele dt (hopper for langt), men ~0,36 s per
+   * frame slik at telleren starter igjen uten flere «døde» frames. */
+  const dt =
+    dtRaw <= 0 ? 0 : dtRaw > 2.5 ? Math.min(dtRaw, 0.36) : dtRaw
+  if (dtRaw > 2.5) {
+    // #region agent log
+    scanixDebugFreezeLog('H2', 'main.js:tickHomeVegrefMeterLive', 'large_dt_capped', {
+      dtRaw: Math.round(dtRaw * 1000) / 1000,
+      dtUsed: Math.round(dt * 1000) / 1000,
+      frameMs: Math.round((performance.now() - __tickT0) * 10) / 10,
+    })
+    // #endregion
   }
+  if (dt > 0) {
+    /* Signert ekstrap langs strekningen: +1 ved økende NVDB-meter, −1 ved
+       synkende (typisk kjøring «tilbake» langs samme fragment). Alltid +1
+       etter hard segmentbytte og etter soft grense med mInt < vist (fragment
+       med motsatt nummerering — da snapper vi og fortsetter forover). */
+    const extrapDirEff = homeVegrefMeterExtrapDir < 0 ? -1 : 1
+    const delta = spd * dt
+    const v = Math.round(homeVegrefDisplayedMeter + extrapDirEff * delta)
+    homeVegrefDisplayedMeter = v
+    // #region agent log
+    if (
+      extrapDirEff < 0 &&
+      view === 'home' &&
+      Date.now() - __dbgMeterTickLogMs > 400
+    ) {
+      __dbgMeterTickLogMs = Date.now()
+      postScanixDebugPayload({
+        sessionId: 'ff8b7b',
+        hypothesisId: 'H3',
+        location: 'main.js:tickHomeVegrefMeterLive',
+        message: 'meter_extrap_minus_one_tick',
+        data: {
+          v,
+          spd: Math.round(spd * 100) / 100,
+          extrapDir: homeVegrefMeterExtrapDir,
+        },
+        timestamp: Date.now(),
+      })
+    }
+    // #endregion
+    const wall = Date.now()
+    const domMs =
+      spd > 22
+        ? 26
+        : spd > 15
+          ? 34
+          : spd > 10
+            ? 52
+            : spd > 2.8
+              ? 62
+              : spd >= 0.85
+                ? 72
+                : 118
+    if (
+      homeVegrefMeterLiveLastDomInt === null ||
+      wall - homeVegrefMeterLiveLastDomWallMs >= domMs
+    ) {
+      mEl.textContent = formatHomeVegrefMeterTextForHomeUi(v)
+      homeVegrefMeterLiveLastDomWallMs = wall
+      homeVegrefMeterLiveLastDomInt = v
+    }
+  }
+  // #region agent log
+  {
+    const __z = performance.now() - __tickT0
+    if (__z > 34 || __tickDtRaw > 1.65) {
+      scanixDebugFreezeLog('H2', 'main.js:tickHomeVegrefMeterLive', 'slow_or_gap_tick', {
+        frameMs: Math.round(__z * 10) / 10,
+        dtRaw: Math.round(__tickDtRaw * 1000) / 1000,
+        spd: Math.round(spd * 100) / 100,
+        stationaryBypass: Date.now() < homeVegrefMeterResumeUntil,
+      })
+    }
+  }
+  // #endregion
   homeVegrefMeterLiveRaf = requestAnimationFrame(tickHomeVegrefMeterLive)
 }
 
@@ -5026,10 +7930,17 @@ function tickHomeVegrefMeterTween(now) {
   }
 }
 
-function startHomeVegrefMeterTweenTo(targetInt) {
+/**
+ * @param {number} targetInt
+ * @param {number} [overrideDurMs] Valgfri fast tween-varighet (ms). Brukes ved
+ * segmentovergang med stor meter-delta slik at vi får en rask synlig animasjon
+ * i stedet for øyeblikkelig hopp.
+ */
+function startHomeVegrefMeterTweenTo(targetInt, overrideDurMs) {
   const mEl = document.getElementById('home-vegref-meter')
   if (!mEl) return
   cancelHomeVegrefMeterLiveExtrap()
+  resetHomeVegrefMeterUiHold()
   const from =
     homeVegrefDisplayedMeter != null ? homeVegrefDisplayedMeter : targetInt
   if (from === targetInt) {
@@ -5049,7 +7960,12 @@ function startHomeVegrefMeterTweenTo(targetInt) {
   homeVegrefMeterFrom = from
   homeVegrefMeterTo = targetInt
   homeVegrefMeterT0 = performance.now()
-  homeVegrefMeterTweenDur = homeVegrefMeterTweenMs()
+  homeVegrefMeterTweenDur =
+    typeof overrideDurMs === 'number' &&
+    Number.isFinite(overrideDurMs) &&
+    overrideDurMs > 0
+      ? overrideDurMs
+      : homeVegrefMeterTweenMs()
   homeVegrefMeterAnim = requestAnimationFrame(tickHomeVegrefMeterTween)
 }
 
@@ -5060,6 +7976,7 @@ function stopHomeVegrefTracking() {
   }
   resetHomeWeather()
   cancelHomeVegrefMeterTween()
+  cancelHomeVegrefMeterLiveExtrap()
   /* Don't reset vegref pipeline or UI state — preserve last known position so
      returning to home doesn't trigger a cold-start freeze. */
 }
@@ -5082,6 +7999,7 @@ function feedVegrefFromGps(
   userHeadingDeg,
 ) {
   if (lat == null || lng == null) return
+  noteHomeVegrefAnyGpsFix(lat, lng, timestamp)
   const acc = Math.max(
     typeof accuracy === 'number' && !Number.isNaN(accuracy) ? accuracy : 20,
     8,
@@ -5097,11 +8015,21 @@ function feedVegrefFromGps(
         ? userHeadingDeg
         : null,
   })
+  const headingForPrefetch =
+    typeof userHeadingDeg === 'number' && !Number.isNaN(userHeadingDeg)
+      ? userHeadingDeg
+      : null
+  prefetchNotifyGps(lat, lng, headingForPrefetch, vegrefGetLastSpeed())
   const s = vegrefGetLastSpeed()
+  const gInst = homeVegrefGpsInstSpeedMps
   if (s >= HOME_VEGREF_COAST_MIN_SPEED_MPS) {
     homeVegrefCoastSpeedMps = s
-  } else if (s < 1.1) {
-    homeVegrefCoastSpeedMps = 0
+  } else if (gInst >= HOME_VEGREF_COAST_MIN_SPEED_MPS * 1.05) {
+    homeVegrefCoastSpeedMps = Math.max(homeVegrefCoastSpeedMps, gInst * 0.97)
+  } else if (s < 0.42) {
+    /* Ikke nullstill coast på én «0 m/s»-tick fra iOS under kjøring — da
+       stopper hold_null-ekstrap for tidlig. */
+    homeVegrefCoastSpeedMps = Math.max(0, homeVegrefCoastSpeedMps * 0.86 - 0.08)
   }
 }
 
@@ -5114,7 +8042,10 @@ function scheduleHomeVegrefLookup(
   userHeadingDeg,
 ) {
   if (
-    (view !== 'home' && view !== 'menuExcelExport') ||
+    (view !== 'home' &&
+      view !== 'menuExcelExport' &&
+      view !== 'followUpRouteEdit' &&
+      view !== 'menuFollowUpRoute') ||
     lat == null ||
     lng == null
   )
@@ -5223,6 +8154,7 @@ function setHomeVegrefPlaceholder(msg) {
   cancelHomeVegrefMeterTween()
   homeVegrefDisplayedMeter = null
   homeVegrefMeterNvdbId = null
+  homeVegrefLastMeterStableRes = null
   const prim = document.getElementById('home-vegref-primary')
   const typeEl = document.getElementById('home-vegref-type')
   const comp = document.getElementById('home-vegref-compact')
@@ -5245,19 +8177,31 @@ function setHomeVegrefPlaceholder(msg) {
 }
 
 function setHomeVegrefUncertainUi(active, label) {
+  const resolvedActive = !!active
+  const resolvedLabel = resolvedActive ? label || 'Usikker posisjon' : ''
+  if (!resolvedActive && !homeVegrefUiUncertain) return
+  if (
+    resolvedActive &&
+    homeVegrefUiUncertain &&
+    resolvedLabel === homeVegrefUncertainLastLabel
+  ) {
+    return
+  }
+
   const host = document.getElementById('home-vegref')
   const typeEl = document.getElementById('home-vegref-type')
-  if (host) host.classList.toggle('home-vegref--uncertain', active)
+  if (host) host.classList.toggle('home-vegref--uncertain', resolvedActive)
   if (typeEl) {
-    if (active) {
-      typeEl.textContent = label || 'Usikker posisjon'
+    if (resolvedActive) {
+      typeEl.textContent = resolvedLabel
       typeEl.hidden = false
     } else if (homeVegrefUiUncertain) {
       typeEl.textContent = ''
       typeEl.hidden = true
     }
   }
-  homeVegrefUiUncertain = active
+  homeVegrefUiUncertain = resolvedActive
+  homeVegrefUncertainLastLabel = resolvedActive ? resolvedLabel : ''
 }
 
 function showHomeVegrefUncertainFallback(reason, accuracyM) {
@@ -5289,6 +8233,91 @@ function showHomeVegrefUncertainFallback(reason, accuracyM) {
 
 function applyHomeVegrefResult(res) {
   if (!res) return
+  // #region agent log
+  const __applyT0 = performance.now()
+  // #endregion
+
+  /* [Klasse-hysterese] Demp kortvarige demote-flips (f.eks. FV→PV som bare
+     varer 1 tick). Hvis forrige stabile vegklasse var EV/RV/FV og ny er
+     lavere (KV/PV) innenfor ~1,3 s, ignorer tikken — neste NVDB-oppslag bør
+     gjenopprette hovedlinjen. Slik unngås PV-flicker langs EV/RV/FV. */
+  try {
+    const newRank = homeVegrefRoadClassRank(res)
+    const prevSegKeyTmp = homeVegrefSegKey
+    const newSegKeyTmp = homeVegrefSegmentIdentityKey(res)
+    const segChangedTmp = newSegKeyTmp !== prevSegKeyTmp
+    const softTmp =
+      segChangedTmp && homeVegrefKfNeighborSegKeys(prevSegKeyTmp, newSegKeyTmp)
+    const dt = Date.now() - homeVegrefLastHighClassAt
+    if (
+      segChangedTmp &&
+      !softTmp &&
+      newRank >= 0 &&
+      homeVegrefLastHighClassRank >= 2 &&
+      newRank < homeVegrefLastHighClassRank &&
+      dt >= 0 &&
+      dt < 1300
+    ) {
+      vegrefDebugTrace('class_guard', {
+        prevRank: homeVegrefLastHighClassRank,
+        newRank,
+        dtMs: dt,
+        rejectedNid:
+          res && res.nvdbId != null ? String(res.nvdbId) : null,
+        rejectedRoad: String(
+          /** @type {{ roadLineShort?: unknown }} */ (res).roadLineShort ||
+            /** @type {{ roadLine?: unknown }} */ (res).roadLine ||
+            '',
+        ),
+      })
+      return
+    }
+  } catch {}
+
+  /* [KD kryss-hold] Hvis NVDB svarer med et KD-segment (kryss/rundkjøring)
+     og vi har et nylig stabilt hovedspor med samme S/D, bytt res til ref
+     slik at meter og veilinje beholdes mens vi passerer. Nvdb kan returnere
+     m:"–" i KD-fragmenter selv med lav distToRoadM — da fryser meteret
+     permanent uten dette holdet. */
+  const _crossRawNid = res && res.nvdbId != null ? res.nvdbId : null
+  if (homeVegrefIsCrossingNvdbId(_crossRawNid)) {
+    const ref = homeVegrefLastMeterStableRes
+    const distToRoadForCross =
+      typeof /** @type {any} */ (res).distToRoadM === 'number' &&
+      Number.isFinite(/** @type {any} */ (res).distToRoadM)
+        ? /** @type {any} */ (res).distToRoadM
+        : null
+    const sdMatch =
+      ref &&
+      String(/** @type {any} */ (ref).s ?? '') === String(res.s ?? '') &&
+      String(/** @type {any} */ (ref).d ?? '') === String(res.d ?? '')
+    if (ref && sdMatch && (distToRoadForCross == null || distToRoadForCross <= 45)) {
+      vegrefDebugTrace('crossing_hold', {
+        nid: String(_crossRawNid),
+        refNid:
+          /** @type {any} */ (ref).nvdbId != null
+            ? String(/** @type {any} */ (ref).nvdbId)
+            : null,
+        distToRoadM:
+          distToRoadForCross != null
+            ? Math.round(distToRoadForCross * 10) / 10
+            : null,
+      })
+      homeVegrefCrossingActive = true
+      res = /** @type {any} */ ({
+        .../** @type {any} */ (ref),
+        _vegrefMeta: {
+          .../** @type {any} */ (ref)._vegrefMeta || {},
+          crossing: true,
+          crossingNvdbId: String(_crossRawNid),
+        },
+      })
+    } else {
+      homeVegrefCrossingActive = false
+    }
+  } else {
+    homeVegrefCrossingActive = false
+  }
 
   const longDisplay = String(res.roadLineDisplay || '').trim()
   const longOfficial = String(res.roadLine || '').trim()
@@ -5368,15 +8397,26 @@ function applyHomeVegrefResult(res) {
   syncHomeVegrefExcelFromRes(res)
 
   const segKeyId = homeVegrefSegmentIdentityKey(res)
+  const prevHomeSegKey = homeVegrefSegKey
   const segChanged = segKeyId !== homeVegrefSegKey
-  if (segChanged) {
+  const softSegChange =
+    segChanged && homeVegrefKfNeighborSegKeys(prevHomeSegKey, segKeyId)
+  if (segChanged && !softSegChange) {
     vegrefClearSegmentLock()
     cancelHomeVegrefMeterTween()
     cancelHomeVegrefMeterLiveExtrap()
+    resetHomeVegrefMeterUiHold()
+    homeVegrefMeterExtrapDir = 1
     homeVegrefPrevAuthMeter = null
     homeVegrefStickyStreetLine = ''
     homeVegrefStickySegKey = ''
+    homeVegrefLastMeterStableRes = null
+    homeVegrefLastValidDistToRoadM = null
+  } else if (segChanged && softSegChange) {
+    /* Nabokf på samme S/D: ikke nullstill meter/tween — unngår brudd ved fragmentgrense. */
   }
+
+  const segBreakForMeter = segChanged && !softSegChange
 
   const mInt = parseKmtMeterInt(res.m)
   const nid = res.nvdbId != null ? res.nvdbId : null
@@ -5390,19 +8430,53 @@ function applyHomeVegrefResult(res) {
       homeVegrefDisplayedMeter = mInt
       if (nid != null) homeVegrefMeterNvdbId = nid
     }
+    const earlyMeta = String(
+      /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)._vegrefMeta
+        ?.source || '',
+    )
+    if (mInt != null && earlyMeta !== 'coord-fallback') {
+      homeVegrefLastMeterStableRes = res
+    }
     homeVegrefSegKey = segKeyId
     if (view === 'menuExcelExport') refreshExcelSheetLiveVegref()
+    // #region agent log
+    {
+      const __d = performance.now() - __applyT0
+      if (__d > 55) {
+        scanixDebugFreezeLog('H1', 'main.js:applyHomeVegrefResult', 'slow_apply_branch', {
+          ms: Math.round(__d * 10) / 10,
+          branch: 'not_home',
+          view,
+        })
+      }
+    }
+    // #endregion
     return
   }
 
   const prim = document.getElementById('home-vegref-primary')
   const typeEl = document.getElementById('home-vegref-type')
   const comp = document.getElementById('home-vegref-compact')
-  if (!prim) return
+  if (!prim) {
+    // #region agent log
+    {
+      const __d = performance.now() - __applyT0
+      if (__d > 55) {
+        scanixDebugFreezeLog('H1', 'main.js:applyHomeVegrefResult', 'slow_apply_branch', {
+          ms: Math.round(__d * 10) / 10,
+          branch: 'no_prim',
+          view,
+        })
+      }
+    }
+    // #endregion
+    return
+  }
 
   homeVegrefHasDisplayedResult = true
   if (mInt != null) {
     homeVegrefMeterNullSinceMs = 0
+    homeVegrefHoldNullDashExtrap = false
     setHomeVegrefUncertainUi(false, '')
   }
   prim.textContent = displayEff || officialShortEff
@@ -5439,21 +8513,41 @@ function applyHomeVegrefResult(res) {
       /* Fix H3: ikke skru av live-ekstrapolering proaktivt — vi må ticke meter
          videre basert på fart når NVDB kortvarig ikke har meter (drift 25–60 m
          fra vei). Vi kansellerer bare i else-grenen der holdet ikke lykkes. */
-      /* Midlertidig tom meter: hold når vi fortsatt er på samme NVDB-strekning (segKey kan flakse uten reelt veksel). */
-      const nvdbAligned =
-        nid == null ||
-        homeVegrefMeterNvdbId == null ||
-        String(nid) === String(homeVegrefMeterNvdbId)
+      /* Midlertidig tom meter: hold ved samme fragment eller nabokf / samme veilinje. */
+      const nvdbAligned = homeVegrefNullHoldNvdbAligned(res, nid)
+      /* H3: dynamiske grenser — høy fart tåler større kortvarig avvik (projeksjon ved segmentgrense). */
+      const resDist =
+        typeof /** @type {any} */ (res).distToRoadM === 'number' &&
+        Number.isFinite(/** @type {any} */ (res).distToRoadM)
+          ? /** @type {any} */ (res).distToRoadM
+          : null
+      const HOLD_NULL_MAX_DIST_M = homeVegrefHoldNullMaxDistM()
+      const HOLD_NULL_MAX_DURATION_MS = homeVegrefHoldNullMaxDurationMs()
+      const holdTooFar = resDist != null && resDist > HOLD_NULL_MAX_DIST_M
+      const holdTimedOut =
+        homeVegrefMeterNullSinceMs > 0 &&
+        Date.now() - homeVegrefMeterNullSinceMs >= HOLD_NULL_MAX_DURATION_MS
+      /* Tidligere: ren tids-timeout kuttet hold selv ved lav–moderat dist
+         (f.eks. 31 m), og vi nullstilte displayed → «meter borte» midt i
+         kjøring. Timeout skal bare «hardne» når vi også er nær dist-taket. */
+      const holdTimedOutHard =
+        holdTimedOut &&
+        (resDist == null || resDist > HOLD_NULL_MAX_DIST_M * 0.88)
       const holdNullMeter =
         homeVegrefDisplayedMeter != null &&
         nvdbAligned &&
-        (!segChanged || (nid != null && homeVegrefMeterNvdbId != null))
+        !holdTooFar &&
+        !holdTimedOutHard &&
+        (!segBreakForMeter || (nid != null && homeVegrefMeterNvdbId != null))
       // #region agent log H3
       vegrefDebugTrace('hold_null', {
         hyp: 'H3',
         holdNullMeter,
         nvdbAligned,
         segChanged,
+        holdTooFar,
+        holdTimedOut,
+        holdTimedOutHard,
         displayed: homeVegrefDisplayedMeter,
         nid: nid != null ? String(nid) : null,
         prevNid: homeVegrefMeterNvdbId != null ? String(homeVegrefMeterNvdbId) : null,
@@ -5461,13 +8555,14 @@ function applyHomeVegrefResult(res) {
           /** @type {any} */ (res)._vegrefMeta?.source || '',
         ),
         resM: res.m != null ? String(res.m) : null,
-        resDist:
-          typeof /** @type {any} */ (res).distToRoadM === 'number'
-            ? Math.round(/** @type {any} */ (res).distToRoadM * 10) / 10
-            : null,
+        resDist: resDist != null ? Math.round(resDist * 10) / 10 : null,
+        holdMaxDist: HOLD_NULL_MAX_DIST_M,
+        holdMaxMs: HOLD_NULL_MAX_DURATION_MS,
+        softSegChange,
       })
       // #endregion
       if (holdNullMeter) {
+        homeVegrefHoldNullDashExtrap = true
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         /* Fix H3: hold meter + ekstrapoler videre basert på fart, slik at UI
            ikke fryser flere sekunder når bruker driver kortvarig 25–60 m fra
@@ -5476,28 +8571,32 @@ function applyHomeVegrefResult(res) {
         if (homeVegrefMeterNullSinceMs === 0) {
           homeVegrefMeterNullSinceMs = Date.now()
         }
-        if (Date.now() - homeVegrefMeterNullSinceMs >= 500) {
-          setHomeVegrefUncertainUi(true, 'Oppdaterer meter …')
-        }
+        /* Ikke vis «Oppdaterer meter …» her: live-ekstrap oppdaterer tallene,
+         * og to ulike strenger avhengig av fart ga konstant label-bytte + DOM. */
       } else {
+        homeVegrefHoldNullDashExtrap = false
         cancelHomeVegrefMeterLiveExtrap()
         homeVegrefMeterNullSinceMs = 0
         homeVegrefDisplayedMeter = null
         homeVegrefMeterNvdbId = null
+        resetHomeVegrefMeterUiHold()
         setHomeVegrefCompactDom(res.s, res.d, res.m)
         setHomeVegrefUncertainUi(false, '')
       }
     } else if (homeVegrefDisplayedMeter == null) {
       cancelHomeVegrefMeterTween()
+      resetHomeVegrefMeterUiHold()
       homeVegrefDisplayedMeter = mInt
       homeVegrefLastMeterUiCommitAt = Date.now()
       setHomeVegrefCompactDom(res.s, res.d, mInt)
-      if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
-        homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
-      }
+      homeVegrefSetExtrapDirFromNvdbVsDisplayed(
+        mInt,
+        homeVegrefDisplayedMeter,
+      )
       homeVegrefPrevAuthMeter = mInt
       startHomeVegrefMeterLiveExtrap()
     } else {
+      let dbgMeterBranch = 'pending'
       const delta = Math.abs(mInt - homeVegrefDisplayedMeter)
       const snap = homeVegrefMeterSnapThreshold()
       const _deadband = homeVegrefMeterDeadbandM()
@@ -5506,7 +8605,7 @@ function applyHomeVegrefResult(res) {
         shouldSkipVegrefMeterDisplayUpdate(
           mInt,
           homeVegrefDisplayedMeter,
-          segChanged,
+          segBreakForMeter,
           homeVegrefMeterSnapThreshold,
           homeVegrefLastMeterUiCommitAt,
         )
@@ -5519,6 +8618,7 @@ function applyHomeVegrefResult(res) {
         deadband: Math.round(_deadband * 10) / 10,
         snap,
         segChanged,
+        segBreakForMeter,
         skipped: _skipped,
         willSnap: delta >= snap,
         sinceCommitMs: homeVegrefLastMeterUiCommitAt
@@ -5527,31 +8627,155 @@ function applyHomeVegrefResult(res) {
       })
       // #endregion
       if (delta >= snap) {
-        cancelHomeVegrefMeterTween()
-        homeVegrefDisplayedMeter = mInt
-        homeVegrefLastMeterUiCommitAt = Date.now()
-        setHomeVegrefCompactDom(res.s, res.d, mInt)
-        if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
-          homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
+        dbgMeterBranch = 'snap_or_large_delta'
+        /* Snap-grensen er overskredet. Når det er en segmentovergang
+           (spesielt soft/kf-nabo på samme S/D) kan meter-delta være stor
+           fordi NVDB-fragmentnummereringen er ikke-monoton over kjørt
+           strekning. Øyeblikkelig hopp oppleves som «fryser og hopper».
+           Vi animerer i stedet med en kort tween (~145–185 ms) slik at
+           overgangen blir visuelt rulling i stedet for teleport. */
+        if (segChanged) {
+          // #region agent log seg-snap
+          vegrefDebugTrace('seg_snap_tween', {
+            fromDisplayed: homeVegrefDisplayedMeter,
+            toMeter: mInt,
+            delta,
+            softSegChange,
+            prevSegKey: prevHomeSegKey,
+            newSegKey: segKeyId,
+          })
+          // #endregion
+          homeVegrefLastMeterUiCommitAt = Date.now()
+          setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+          homeVegrefSetExtrapDirFromNvdbVsDisplayed(
+            mInt,
+            homeVegrefDisplayedMeter,
+          )
+          homeVegrefPrevAuthMeter = mInt
+          /* Hvis det nye segmentet har lavere meter enn det vi viser
+             (NVDB-fragment-grense med motsatt fra→til-retning), snap
+             stille i stedet for å animere nedover. Brukeren skal aldri
+             se at telleren teller bakover. Live-extrap fortsetter
+             forover fra det nye startpunktet. */
+          if (mInt < homeVegrefDisplayedMeter) {
+            cancelHomeVegrefMeterTween()
+            homeVegrefDisplayedMeter = mInt
+            setHomeVegrefCompactDom(res.s, res.d, mInt)
+            /* Fragment med lavere meter enn vist: fortsett ekstrap forover. */
+            homeVegrefMeterExtrapDir = 1
+            // #region agent log
+            postScanixDebugPayload({
+              sessionId: 'ff8b7b',
+              hypothesisId: 'H4',
+              location: 'main.js:applyHomeVegrefResult:seg_snap_force_fwd',
+              message: 'seg_changed_mInt_lt_displayed_forces_extrapDir_plus_1',
+              data: {
+                mInt,
+                displayed: homeVegrefDisplayedMeter,
+                softSegChange,
+                segKeyId,
+              },
+              timestamp: Date.now(),
+            })
+            // #endregion
+            startHomeVegrefMeterLiveExtrap()
+          } else {
+            /* Kort fast varighet: synlig som animasjon, men kort nok til god respons. */
+            const segTweenMs = softSegChange ? 145 : 185
+            startHomeVegrefMeterTweenTo(mInt, segTweenMs)
+          }
+        } else {
+          /* Stor meter-delta uten segmentbytte: typisk live-extrap som har løpt
+             foran trege/uregelmessige NVDB-treff (ikke «treg GPS» alene).
+             Tidligere: øyeblikkelig `displayed = mInt` → tydelig hopp. Kort
+             tween gir samme endelige verdi uten visuell teleport. */
+          cancelHomeVegrefMeterTween()
+          homeVegrefLastMeterUiCommitAt = Date.now()
+          setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
+          homeVegrefSetExtrapDirFromNvdbVsDisplayed(
+            mInt,
+            homeVegrefDisplayedMeter,
+          )
+          homeVegrefPrevAuthMeter = mInt
+          const largeTweenMs =
+            delta > 900 ? 265 : delta > 550 ? 215 : delta > 380 ? 175 : 130
+          startHomeVegrefMeterTweenTo(mInt, largeTweenMs)
         }
-        homeVegrefPrevAuthMeter = mInt
-        startHomeVegrefMeterLiveExtrap()
       } else if (_skipped) {
+        dbgMeterBranch = 'skipped'
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-        if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
-          homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
-        }
+        homeVegrefSetExtrapDirFromNvdbVsDisplayed(
+          mInt,
+          homeVegrefDisplayedMeter,
+        )
         homeVegrefPrevAuthMeter = mInt
         startHomeVegrefMeterLiveExtrap()
       } else {
+        dbgMeterBranch = 'normal_commit'
         homeVegrefLastMeterUiCommitAt = Date.now()
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
-        if (homeVegrefPrevAuthMeter != null && homeVegrefPrevAuthMeter !== mInt) {
-          homeVegrefMeterExtrapDir = mInt > homeVegrefPrevAuthMeter ? 1 : -1
-        }
+        homeVegrefSetExtrapDirFromNvdbVsDisplayed(
+          mInt,
+          homeVegrefDisplayedMeter,
+        )
         homeVegrefPrevAuthMeter = mInt
-        startHomeVegrefMeterTweenTo(mInt)
+        /* Ignorer nedover-korreksjoner på samme segment innenfor slack: live-
+           extrap ligger ofte 20–50 m foran NVDB ved 10–18 m/s; fast 30 m var
+           for trang og ga unødvendige tweens (flimmer). */
+        const wouldGoDown =
+          homeVegrefDisplayedMeter != null && mInt < homeVegrefDisplayedMeter
+        const downGap =
+          wouldGoDown && homeVegrefDisplayedMeter != null
+            ? homeVegrefDisplayedMeter - mInt
+            : 0
+        const smallDelta =
+          wouldGoDown &&
+          downGap < homeVegrefMeterSameSegDownIgnoreM() &&
+          downGap <= homeVegrefMeterSameSegDownMaxExtrapOnlyGapM()
+        if (smallDelta) {
+          dbgMeterBranch = 'small_delta_extrap'
+          /* extrapDir er allerede satt i blokken over når mInt ≠ forrige prevAuth. */
+          startHomeVegrefMeterLiveExtrap()
+        } else {
+          let tweenTarget = mInt
+          if (wouldGoDown && homeVegrefDisplayedMeter != null && downGap > 0) {
+            const chunk = homeVegrefMeterBackwardTweenChunkM()
+            if (downGap > chunk + 2) {
+              tweenTarget = Math.max(mInt, homeVegrefDisplayedMeter - chunk)
+              dbgMeterBranch = 'tween_chunk_down'
+            } else {
+              dbgMeterBranch = 'tween_to_mInt'
+            }
+          } else {
+            dbgMeterBranch = 'tween_to_mInt'
+          }
+          startHomeVegrefMeterTweenTo(tweenTarget)
+        }
       }
+      // #region agent log
+      if (view === 'home' && typeof mInt === 'number') {
+        postScanixDebugPayload({
+          sessionId: 'ff8b7b',
+          hypothesisId: 'H2',
+          location: 'main.js:applyHomeVegrefResult:meter_block',
+          message: 'meter_apply_tick',
+          data: {
+            branch: dbgMeterBranch,
+            mInt,
+            resM: res.m != null ? String(res.m) : null,
+            displayed: homeVegrefDisplayedMeter,
+            delta: Math.abs(mInt - (homeVegrefDisplayedMeter ?? 0)),
+            skipped: _skipped,
+            extrapDir: homeVegrefMeterExtrapDir,
+            prevAuth: homeVegrefPrevAuthMeter,
+            segChanged,
+            segBreakForMeter,
+            nvdbId: nid != null ? String(nid) : null,
+          },
+          timestamp: Date.now(),
+        })
+      }
+      // #endregion
     }
     if (mInt != null) {
       homeVegrefMeterNvdbId = nid != null ? nid : null
@@ -5565,9 +8789,60 @@ function applyHomeVegrefResult(res) {
   if (metaSource !== 'coord-fallback') {
     homeVegrefLastStableRes = res
     homeVegrefLastStableAt = Date.now()
+    /* [Klasse-hysterese] Oppdater sist aksepterte høy-klasse (EV/RV/FV)
+       som anker for demote-guard i neste tikk. */
+    const acceptedRank = homeVegrefRoadClassRank(res)
+    if (acceptedRank >= 2) {
+      homeVegrefLastHighClassRank = acceptedRank
+      homeVegrefLastHighClassAt = Date.now()
+    }
+  }
+  if (metaSource !== 'coord-fallback' && mInt != null) {
+    homeVegrefLastMeterStableRes = res
+    const dToR =
+      typeof /** @type {any} */ (res).distToRoadM === 'number' &&
+      Number.isFinite(/** @type {any} */ (res).distToRoadM)
+        ? /** @type {any} */ (res).distToRoadM
+        : null
+    homeVegrefLastValidDistToRoadM = dToR
+  }
+  if (view === 'home') {
+    const te = document.getElementById('home-vegref-type')
+    const typeLineVisible =
+      te != null &&
+      !te.hidden &&
+      String(te.textContent || '').trim() !== ''
+    const primaryShown = String(
+      displayEff || officialShortEff || '',
+    ).trim()
+    traceHomeVegrefAnomalies(res, {
+      segKeyId,
+      prevSegKey: prevHomeSegKey,
+      segChanged,
+      primaryShown,
+      longDisplay: String(longDisplayEff || '').trim(),
+      officialShort: String(officialShortEff || '').trim(),
+      typeLineVisible,
+      metaSource,
+    })
   }
   maybeTraceHomeVegrefApply(res)
   maybePersistHomeVegref(res)
+  // #region agent log
+  {
+    const __applyDt = performance.now() - __applyT0
+    if (__applyDt > 55) {
+      scanixDebugFreezeLog('H1', 'main.js:applyHomeVegrefResult', 'slow_apply', {
+        ms: Math.round(__applyDt * 10) / 10,
+        view,
+        meta: String(
+          /** @type {{ _vegrefMeta?: { source?: string } }} */ (res)
+            ._vegrefMeta?.source || '',
+        ).slice(0, 32),
+      })
+    }
+  }
+  // #endregion
 }
 
 function startHomeVegrefTracking() {
@@ -5580,6 +8855,7 @@ function startHomeVegrefTracking() {
   homeVegrefPrevAuthMeter = null
   homeVegrefLastMeterUiCommitAt = 0
   homeVegrefLastRawGpsWallMs = Date.now()
+  homeVegrefAnyGpsWallMs = Date.now()
   homeVegrefCoastStartedAt = 0
   homeVegrefCoastSpeedMps = 0
   homeVegrefStickyStreetLine = ''
@@ -5662,6 +8938,7 @@ function startHomeVegrefTracking() {
   } else {
     setHomeVegrefPlaceholder('Henter posisjon …')
   }
+  markHomeVegrefMeterResumeBoost(2400)
 
   /* Warm start: få første vegref så raskt som mulig, uten å vente på watchPosition callback. */
   void (async () => {
@@ -5673,7 +8950,12 @@ function startHomeVegrefTracking() {
       })
       if (startupToken !== homeVegrefStartupToken || view !== 'home') return
       const { latitude, longitude, accuracy, heading } = pos.coords
-      homeVegrefLastRawGpsWallMs = Date.now()
+      if (
+        !(typeof accuracy === 'number' && Number.isFinite(accuracy)) ||
+        accuracy <= GPS_REJECT_M
+      ) {
+        homeVegrefLastRawGpsWallMs = Date.now()
+      }
       if (!homeVegrefStartupFirstGpsAt) {
         homeVegrefStartupFirstGpsAt = Date.now()
         logHomeVegrefStartupMetric('warm-gps', {
@@ -5692,12 +8974,20 @@ function startHomeVegrefTracking() {
         heading,
       )
       const buffered = getBufferedHomeVegrefFix()
-      const refLat = buffered?.lat ?? latitude
-      const refLng = buffered?.lng ?? longitude
-      const refAccuracy = buffered?.accuracy ?? accuracy
-      const refHeading =
-        buffered?.headingDeg != null ? buffered.headingDeg : heading
+      const {
+        refLat,
+        refLng,
+        refAccuracy,
+        refHeading: warmRefHeading,
+      } = pickHomeVegrefInputCoords(
+        latitude,
+        longitude,
+        accuracy,
+        heading,
+        buffered,
+      )
       if (accuracy > GPS_REJECT_M) {
+        noteHomeVegrefAnyGpsFix(latitude, longitude, pos.timestamp)
         logHomeVegrefStartupMetric('warm-gps-rejected', {
           accuracyM: Math.round(accuracy),
         })
@@ -5713,7 +9003,9 @@ function startHomeVegrefTracking() {
       }
       pushTracePoint(latitude, longitude, pos.timestamp, accuracy)
       const hdg =
-        refHeading != null && Number.isFinite(refHeading) ? refHeading : null
+        warmRefHeading != null && Number.isFinite(warmRefHeading)
+          ? warmRefHeading
+          : null
       scheduleHomeVegrefLookup(
         refLat,
         refLng,
@@ -5739,8 +9031,16 @@ function startHomeVegrefTracking() {
   homeVegrefWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       if (view !== 'home') return
-      homeVegrefLastRawGpsWallMs = Date.now()
       const { latitude, longitude, accuracy, heading } = pos.coords
+      /* Kun akseptable treff bumper «siste fersk GPS»-stempelet. I tunnel
+         leverer iOS ofte dead-reckonede posisjoner med acc > 220 m; hvis vi
+         stempler på dem, aktiveres aldri coast-logikken og meteren fryser. */
+      if (
+        !(typeof accuracy === 'number' && Number.isFinite(accuracy)) ||
+        accuracy <= GPS_REJECT_M
+      ) {
+        homeVegrefLastRawGpsWallMs = Date.now()
+      }
       if (!homeVegrefStartupFirstGpsAt) {
         homeVegrefStartupFirstGpsAt = Date.now()
         logHomeVegrefStartupMetric('watch-gps', {
@@ -5759,18 +9059,28 @@ function startHomeVegrefTracking() {
         heading,
       )
       const buffered = getBufferedHomeVegrefFix()
-      const refLat = buffered?.lat ?? latitude
-      const refLng = buffered?.lng ?? longitude
-      const refAccuracy = buffered?.accuracy ?? accuracy
-      const refHeading =
-        buffered?.headingDeg != null ? buffered.headingDeg : heading
+      const {
+        refLat,
+        refLng,
+        refAccuracy,
+        refHeading: watchRefHeading,
+      } = pickHomeVegrefInputCoords(
+        latitude,
+        longitude,
+        accuracy,
+        heading,
+        buffered,
+      )
       if (accuracy > GPS_REJECT_M) {
+        noteHomeVegrefAnyGpsFix(latitude, longitude, pos.timestamp)
         if (showHomeVegrefUncertainFallback('watch-weak', accuracy)) return
         return
       }
       pushTracePoint(latitude, longitude, pos.timestamp, accuracy)
       const hdg =
-        refHeading != null && Number.isFinite(refHeading) ? refHeading : null
+        watchRefHeading != null && Number.isFinite(watchRefHeading)
+          ? watchRefHeading
+          : null
       /* Uten nett: ikke vent på OSRM — gå rett til NVDB-cache / koordinat-fallback i pipelinen. */
       const offline =
         typeof navigator !== 'undefined' && navigator.onLine === false
@@ -5813,7 +9123,9 @@ function startHomeVegrefTracking() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 400,
+      /* Lavere maks-alder på cache-fix: eldre posisjon + fersk NVDB gir ofte
+         «hopp» i meter (punktet og strekningen matcher ikke samme øyeblikk). */
+      maximumAge: 120,
       timeout: 20000,
     },
   )
@@ -6237,6 +9549,7 @@ function wireSessionBottomSheet(signal) {
       } catch {
         /* ignore */
       }
+      nudgeMaptilerBasemapResize(map)
     })
   }
 
@@ -6438,11 +9751,17 @@ function flushCurrentSession() {
     activeCategoryId: activeCat,
     updatedAt: nowIso(),
   }
+  notePartialCloudPushForSessionId(currentSessionId)
   saveAppState()
 }
 
-function persist() {
+function persist(reason = 'persist') {
+  setRegtracePersistReason(reason)
   flushCurrentSession()
+  if (isRegisterTraceDebugEnabled() && currentSessionId) {
+    const sess = sessions.find((x) => x.id === currentSessionId)
+    if (sess) regtraceSessionAfterPersistFlush(reason, sess)
+  }
   renderCount()
   renderLog()
   renderPhotosGallery()
@@ -6474,8 +9793,14 @@ function formatPhotosFolderSummaryLine(photos) {
 function getAllPhotosFlat() {
   const byId = new Map()
   const add = (raw) => {
-    const n = normalizePhoto(raw)
-    if (n) byId.set(n.id, n)
+    const n = normalizePhotoOrSkeleton(raw)
+    if (n) {
+      const ex = byId.get(n.id)
+      byId.set(
+        n.id,
+        ex ? mergeNormalizedPhotoPairForIndex(ex, n) : n,
+      )
+    }
   }
   for (const p of standalonePhotos) add(p)
   for (const s of sessions) {
@@ -6558,7 +9883,7 @@ function renderPhotosGallery() {
       return `
       <button type="button" class="photo-thumb-card" data-photo-id="${escapeHtml(ph.id)}">
         <span class="photo-thumb-frame">
-          <img src="${ph.dataUrl}" alt="" class="photo-thumb-img" loading="lazy" decoding="async" />
+          ${photoPreviewImgHtml(ph, 'photo-thumb-img')}
           ${ov}
           ${folderBadge}
         </span>
@@ -6601,6 +9926,122 @@ function compressDataUrlToDataUrl(dataUrl, maxDim, quality) {
     img.onerror = () => reject(new Error('image'))
     img.src = dataUrl
   })
+}
+
+/**
+ * Grov est. dekodet JPEG-størrelse fra data-URL (for å unngå unødig re-koding).
+ * @param {string} dataUrl
+ */
+function dataUrlApproxRawBytes(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.includes(',')) return 0
+  const b64 = dataUrl.split(',', 2)[1]
+  if (!b64) return 0
+  return Math.floor((b64.length * 3) / 4)
+}
+
+/**
+ * Skalerer til `maxEdge` og finner høyeste JPEG-kvalitet slik at filstørrelse ≲ `maxBytes`
+ * (mobildata / Supabase). Senker evt. kantlengde hvis nødvendig.
+ * @param {string} dataUrl
+ * @param {{
+ *   maxBytes?: number
+ *   maxEdge?: number
+ *   minQuality?: number
+ *   minEdge?: number
+ * }} [opts]
+ * @returns {Promise<string>}
+ */
+async function compressDataUrlToJpegUnderBytes(dataUrl, opts = {}) {
+  const maxBytes =
+    typeof opts.maxBytes === 'number' && opts.maxBytes > 8000
+      ? opts.maxBytes
+      : 380 * 1024
+  const maxEdgeStart =
+    typeof opts.maxEdge === 'number' && opts.maxEdge > 320
+      ? opts.maxEdge
+      : 1920
+  const minQuality =
+    typeof opts.minQuality === 'number' ? opts.minQuality : 0.62
+  const minEdge = typeof opts.minEdge === 'number' ? opts.minEdge : 1024
+
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image()
+    i.onload = () => resolve(i)
+    i.onerror = () => reject(new Error('image'))
+    i.src = dataUrl
+  })
+
+  let maxEdge = maxEdgeStart
+
+  /**
+   * @param {number} edge
+   * @param {HTMLImageElement} im
+   */
+  function layoutCanvas(edge, im) {
+    let w = im.naturalWidth || im.width
+    let h = im.naturalHeight || im.height
+    if (w < 1 || h < 1) throw new Error('image size')
+    if (w > edge || h > edge) {
+      if (w > h) {
+        h = Math.round((h * edge) / w)
+        w = edge
+      } else {
+        w = Math.round((w * edge) / h)
+        h = edge
+      }
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('canvas')
+    ctx.drawImage(im, 0, 0, w, h)
+    return canvas
+  }
+
+  const canvasToJpegBlob = (canvas, q) =>
+    new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('toBlob'))),
+        'image/jpeg',
+        q,
+      )
+    })
+
+  const blobToDataUrl = (blob) =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result))
+      r.onerror = () => reject(new Error('read'))
+      r.readAsDataURL(blob)
+    })
+
+  while (maxEdge >= minEdge) {
+    const canvas = layoutCanvas(maxEdge, img)
+    let lo = minQuality
+    let hi = 0.92
+    /** @type {Blob | null} */
+    let bestBlob = null
+    for (let iter = 0; iter < 14; iter++) {
+      const mid = (lo + hi) / 2
+      const blob = await canvasToJpegBlob(canvas, mid)
+      if (blob.size <= maxBytes) {
+        bestBlob = blob
+        lo = mid
+      } else {
+        hi = mid
+      }
+      if (hi - lo < 0.01) break
+    }
+    if (bestBlob && bestBlob.size <= maxBytes) {
+      return blobToDataUrl(bestBlob)
+    }
+    maxEdge = Math.floor(maxEdge * 0.88)
+  }
+
+  const canvas = layoutCanvas(minEdge, img)
+  const blob = await canvasToJpegBlob(canvas, minQuality)
+  return blobToDataUrl(blob)
 }
 
 /**
@@ -6715,11 +10156,14 @@ async function savePhotoToDevice(ph) {
   URL.revokeObjectURL(url)
 }
 
-/** Maks kant på lagrede bilder (album / opplasting). */
+/** Maks kant på lagrede økt-/album-bilder (før byte-mål). */
 const PHOTO_MAX_DIM = 1920
+/** Mål for JPEG-størrelse (dekodet) mot sky / mobildata — justeres med kvalitet i `compressDataUrlToJpegUnderBytes`. */
+const PHOTO_STORAGE_TARGET_MAX_BYTES = 380 * 1024
+const PHOTO_STORAGE_MIN_JPEG_QUALITY = 0.62
+const PHOTO_STORAGE_MIN_EDGE = 1024
+/** @deprecated Brukes bare av eldre hjelpefunksjoner; øktbilder styres av `compressDataUrlToJpegUnderBytes`. */
 const PHOTO_JPEG_QUALITY = 0.9
-/** KMT-kamera: ekstra høy tak – nedskaling skjer først ved veldig store sensorer. */
-const KMT_CAPTURE_MAX_DIM = 2560
 
 /**
  * @param {string} dataUrl
@@ -6731,6 +10175,20 @@ const KMT_CAPTURE_MAX_DIM = 2560
  * }} [opts] Eksplisitte koord (f.eks. EXIF) brukes først. `vegref` vises som HTML-overlay (skarp ved zoom), ikke innprintet i pikslene. Mappe (`images/…/`) utledes fra KMT-feltet `kmt-road-folder-src` + evt. vegref.
  */
 async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
+  let packed = dataUrl
+  if (dataUrlApproxRawBytes(packed) > PHOTO_STORAGE_TARGET_MAX_BYTES * 1.06) {
+    try {
+      packed = await compressDataUrlToJpegUnderBytes(packed, {
+        maxBytes: PHOTO_STORAGE_TARGET_MAX_BYTES,
+        maxEdge: PHOTO_MAX_DIM,
+        minQuality: PHOTO_STORAGE_MIN_JPEG_QUALITY,
+        minEdge: PHOTO_STORAGE_MIN_EDGE,
+      })
+    } catch (e) {
+      console.warn('addPhotoFromCompressedDataUrl compress', e)
+    }
+  }
+
   let lat = null
   let lng = null
   const oLat = opts.lat
@@ -6773,17 +10231,43 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
     typeof rawNote === 'string' && rawNote.trim()
       ? rawNote.trim().slice(0, 800)
       : undefined
+  let thumbDataUrl = null
+  try {
+    thumbDataUrl = await makeThumbDataUrlFromDataUrl(packed, {
+      maxEdge: 200,
+      quality: 0.78,
+    })
+  } catch (e) {
+    console.warn('addPhotoFromCompressedDataUrl thumb', e)
+  }
   const entry = normalizePhoto({
     id: crypto.randomUUID(),
     timestamp: nowIso(),
     lat,
     lng,
-    dataUrl,
+    dataUrl: packed,
+    ...(thumbDataUrl ? { thumbDataUrl } : {}),
     ...(opts.vegref ? { vegref: opts.vegref } : {}),
     ...(noteOpt ? { note: noteOpt } : {}),
     imageFolder: folderSeed,
   })
   if (!entry) return
+
+  if (await isPhotoBlobStoreAvailable()) {
+    try {
+      await putPhotoDataUrl(entry.id, packed)
+    } catch (e) {
+      console.warn('putPhotoDataUrl new photo', e)
+    }
+  }
+
+  if (isSupabaseConfigured() && currentUser?.id) {
+    enqueuePhotoStorageUpload(entry.id)
+    void tryDrainPhotoUploadQueue({ userId: currentUser.id }).finally(() => {
+      syncPhotoUploadDeferralBanner()
+    })
+  }
+  syncPhotoUploadDeferralBanner()
 
   if (kmtStandaloneFlow) {
     standalonePhotos.push(entry)
@@ -6792,6 +10276,7 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
       appendStandalonePhotoAlbumCell(entry)
       syncPhotoAlbumChrome()
     }
+    triggerHapticPhoto()
     return
   }
 
@@ -6807,9 +10292,10 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
       message: `Bilde · ${state.photos.length} · uten GPS`,
     })
   }
-  persist()
+  persist('session:photo_added')
   if (map) await ensureLeaflet()
-  rebuildMarkers()
+  rebuildMarkers('photo_added')
+  triggerHapticPhoto()
 }
 
 /** Varsel når brukeren åpner http://172… – Safari blokkerer GPS til de bytter til https:// */
@@ -6886,6 +10372,17 @@ function renderAuthHtml() {
 }
 
 function renderHomeHtml() {
+  const photoDefer =
+    isSupabaseConfigured() && currentUser?.id
+      ? getPhotoUploadQueueDeferralUi()
+      : null
+  const photoDeferHtml = photoDefer
+    ? `<div id="home-photo-upload-deferral" class="home-photo-upload-deferral home-photo-upload-deferral--${photoDefer.reason}" role="status" aria-live="polite"><span class="home-photo-upload-deferral__inner">${escapeHtml(
+        photoDefer.reason === 'offline'
+          ? `Bilder venter på nett (${photoDefer.count})`
+          : `Bilder venter på Wi‑Fi (${photoDefer.count})`,
+      )}</span></div>`
+    : `<div id="home-photo-upload-deferral" class="home-photo-upload-deferral" hidden aria-hidden="true"></div>`
   const shortIdStr =
     currentUser && isValidStoredShortId(currentUser.shortId)
       ? currentUser.shortId
@@ -6947,6 +10444,7 @@ function renderHomeHtml() {
       </div>
     </div>
     ${userBar || ''}
+    ${photoDeferHtml}
     <div class="home-vegref" role="status" aria-live="off">
       <p id="home-vegref-primary" class="home-vegref__primary">Henter posisjon …</p>
       <p id="home-vegref-type" class="home-vegref__type" hidden></p>
@@ -7070,7 +10568,7 @@ function renderHomeHtml() {
         <span class="home-dash-card__row">
           <span class="home-dash-card__content">
             <span class="home-dash-card__title">DelSky</span>
-            <span class="home-dash-card__hint">Del til sky</span>
+            <span class="home-dash-card__hint">Mine økter og meldinger</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
             <svg class="home-dash-card__preview" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
@@ -7142,6 +10640,20 @@ function renderHomeHtml() {
         </span>
       </button>
     </nav>
+    <section class="home-browser-sync" aria-label="Få økt og bilder inn i denne nettleseren">
+      <p class="home-browser-sync__title">Økt og bilder på Mac / i nettleser</p>
+      <p class="home-browser-sync__lead">Telefon og denne nettleseren har <strong>hvert sitt lokale lager</strong>. Logg inn som <strong>samme bruker</strong> her som på telefon, med sky på — forsiden prøver å <strong>hente økter fra delsky</strong> automatisk (eller trykk <strong>Hent fra sky</strong>). Øktene ligger under <strong>Meny → Økten</strong>. Alternativ: eksporter økt som <strong>HTML</strong> på telefon og trykk <strong>Importer</strong> under.</p>
+      <input type="file" id="home-import-session-input" class="photo-input-hidden" accept=".html,text/html" />
+      <div class="home-browser-sync__row">
+        <button type="button" class="btn btn-secondary" id="btn-home-import-pick">Importer HTML-økt …</button>
+        ${
+          isSupabaseConfigured() && currentUser && !isMinDownloadMode()
+            ? '<button type="button" class="btn btn-text home-browser-sync__sync" id="btn-home-sync-pull">Hent fra sky</button>'
+            : ''
+        }
+      </div>
+      <p id="home-import-status" class="home-browser-sync__status" role="status" aria-live="polite"></p>
+    </section>
     <div class="home-main">
     <div class="home-bilde-stack">
       <div id="panel-home-bilde-camera" class="home-bilde-panel" role="region" aria-label="Bilde"></div>
@@ -7217,16 +10729,18 @@ function renderHomeHtml() {
           </svg>
         </span>
       </button>
-      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-camera" aria-label="Ta bilde">
+      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-resume" aria-label="Fortsett siste økt">
         <span class="home-bottom-nav__icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M9 4.5h6l1.5 2.5H20a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5L9 4.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <circle cx="12" cy="14" r="4.2" stroke="currentColor" stroke-width="2"/>
-            <circle cx="12" cy="14" r="1.6" fill="currentColor"/>
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+            <path d="M10.5 8.25v7.5L16.4 12 10.5 8.25z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
           </svg>
         </span>
       </button>
-      <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="Kontraktskontroll">
+      ${
+        isMinDownloadMode()
+          ? ''
+          : `<button type="button" class="home-bottom-nav__btn" id="btn-home-nav-ai" aria-label="Kontraktskontroll">
         <span class="home-bottom-nav__icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M6 3h8l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -7234,7 +10748,8 @@ function renderHomeHtml() {
             <path d="M8 14l3 3 5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </span>
-      </button>
+      </button>`
+      }
       <button type="button" class="home-bottom-nav__btn" id="btn-home-nav-history" aria-label="Økter og historikk">
         <span class="home-bottom-nav__icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -7253,7 +10768,11 @@ function renderHomeHtml() {
       </div>
       <nav class="home-drawer__nav home-drawer__nav--stack">
         <button type="button" class="home-drawer__link" id="home-drawer-session-hub">Økten</button>
-        <button type="button" class="home-drawer__link" id="home-drawer-contract-ai">Kontraktskontroll</button>
+        ${
+          isMinDownloadMode()
+            ? ''
+            : '<button type="button" class="home-drawer__link" id="home-drawer-contract-ai">Kontraktskontroll</button>'
+        }
         <button type="button" class="home-drawer__link" id="home-drawer-user">Bruker</button>
         <button type="button" class="home-drawer__link" id="home-drawer-map">Kart</button>
         <button type="button" class="home-drawer__link" id="home-drawer-photos">Bilder</button>
@@ -7261,9 +10780,20 @@ function renderHomeHtml() {
         <button type="button" class="home-drawer__link" id="home-drawer-contacts">Kontaktliste</button>
         <button type="button" class="home-drawer__link" id="home-drawer-traffic-group">Trafikantgruppe</button>
         <button type="button" class="home-drawer__link" id="home-drawer-offline-vegref">Veg uten nett</button>
-        <button type="button" class="home-drawer__link" id="home-drawer-messages">Meldinger</button>
+        ${
+          isMinDownloadMode()
+            ? ''
+            : '<button type="button" class="home-drawer__link" id="home-drawer-messages">DelSky</button>'
+        }
         <button type="button" class="home-drawer__link" id="home-drawer-settings">Innstillinger</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-haptics">Haptisk tilbakemelding</button>
+        ${
+          isMinDownloadMode()
+            ? ''
+            : '<button type="button" class="home-drawer__link" id="home-drawer-finn-obj">Finn objekter</button>'
+        }
         <button type="button" class="home-drawer__link" id="home-drawer-excel-export">Eksporter til Excel</button>
+        <button type="button" class="home-drawer__link" id="home-drawer-followup-route">Oppfølgingsrute</button>
         <button type="button" class="home-drawer__link" id="home-drawer-privacy">Personvern</button>
         <button type="button" class="home-drawer__link" id="home-drawer-support">Support</button>
       </nav>
@@ -7275,10 +10805,26 @@ function renderHomeHtml() {
 }
 
 function renderInboxHtml() {
-  return `<div class="view-inbox surface view-panel-enter">
+  if (inboxUiMode === 'messages') {
+    return `<div class="view-inbox view-inbox--messages surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-inbox">← Meny</button>
     <h2 class="subview-title">Meldinger</h2>
-    <p class="inbox-lead">Her vises økter og bilder noen har sendt til bruker-ID-en din. Åpne for å se innholdet. Når du er ferdig, velger du om det skal lagres på enheten.</p>
+    <p class="inbox-lead inbox-lead--compact">Økter og bilder <strong>andre brukere</strong> har sendt til bruker-ID-en din. <strong>DelSky</strong> (mine økter og hent fra sky) finner du på forsiden eller i menyen under «DelSky».</p>
+    <p id="incoming-shares-status" class="home-incoming__status" role="status" aria-live="polite"></p>
+    <ul id="incoming-shares-list" class="home-incoming-list"></ul>
+  </div>`
+  }
+  const mySessions = buildSessionRowsResumeHtml()
+  return `<div class="view-inbox surface view-panel-enter">
+    <button type="button" class="btn btn-back" id="btn-back-from-inbox">← Meny</button>
+    <h2 class="subview-title">DelSky</h2>
+    <p class="inbox-lead">Økter du <strong>lagrer</strong> (og sky-knappen i oppdraget) synkes til delsky når nett og innstillinger tillater det. De ligger under <strong>Mine økter</strong> her og på Mac/PC med <strong>samme innlogging</strong>. Trykk <strong>Hent siste fra delsky</strong> på nett hvis lista er tom. «Del oppdrag» til annen bruker er noe annet.</p>
+    <button type="button" class="btn btn-secondary btn-delsky-pull" id="btn-delsky-pull-now">Hent siste fra delsky</button>
+    <p id="delsky-pull-status" class="delsky-pull-status" role="status" aria-live="polite"></p>
+    <h3 class="inbox-section-title">Mine økter</h3>
+    <div id="delsky-my-sessions-wrap" class="delsky-my-sessions-wrap">${mySessions}</div>
+    <h3 class="inbox-section-title">Meldinger</h3>
+    <p class="inbox-lead inbox-lead--compact">Økter og bilder <strong>andre brukere</strong> har sendt til bruker-ID-en din.</p>
     <p id="incoming-shares-status" class="home-incoming__status" role="status" aria-live="polite"></p>
     <ul id="incoming-shares-list" class="home-incoming-list"></ul>
   </div>`
@@ -7416,7 +10962,8 @@ function renderMenuUserHtml() {
           : ''
       }
     </div>
-    <p class="menu-user-hint">Logg ut via knappen øverst på forsiden.</p>
+    <button type="button" class="btn btn-secondary menu-user-logout" id="btn-menu-user-logout">Logg ut</button>
+    <p class="menu-user-hint">Du kan også åpne hovedmenyen (☰) på forsiden og trykke «Logg ut» nederst.</p>
   </div>`
 }
 
@@ -7521,7 +11068,7 @@ function renderMenuPhotosHtml() {
             <span class="home-dash-card__hint">${escapeHtml(h)}</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img src="${ph.dataUrl}" alt="" class="home-dash-card__preview" loading="lazy" decoding="async" />
+            ${photoPreviewImgHtml(ph, 'home-dash-card__preview')}
           </span>
         </span>
       </button>`
@@ -7657,6 +11204,12 @@ let offlineVegRect = null
 
 const OFFLINE_VEG_BUFFER_MIN_KM = 0.5
 const OFFLINE_VEG_BUFFER_MAX_KM = 15
+/** Nedlasting «langs vei»: OSRM-rute foran bil når fart og spor tillater det. */
+const OFFLINE_VEG_ROUTE_AHEAD_KM = 12
+const OFFLINE_VEG_ROUTE_MAX_AIR_KM = 13.5
+const OFFLINE_VEG_ROUTE_MIN_SPEED_MPS = 2.2
+const OFFLINE_VEG_ROUTE_MAX_GPS_ACC_M = 62
+const OFFLINE_VEG_ROUTE_TRACE_FRESH_MS = 14_000
 
 /**
  * Brukerens valg + buffer → bbox.
@@ -7818,6 +11371,7 @@ function renderMenuOfflineVegrefHtml() {
         <div class="offline-veg-download-status-slot"></div>
         <div class="offline-veg-download-error-slot"></div>
         <p class="offline-veg-fineprint">Lagret lokalt: <span class="offline-veg-fineprint-count">${segCountStr}</span> segmenter. Nedlastingen legger til vegdata fra Statens vegvesen (NVDB) for området du har valgt. Søkeforslagene er fra OpenStreetMap-geokoder.</p>
+        <p class="offline-veg-fineprint offline-veg-fineprint--muted">Kjører du nå (god GPS og spor), bygges nedlastingsområdet langs veien ca. 12 km foran deg (OSRM) i stedet for bare luftlinje rundt søket — mindre terreng «ved siden av» veien. Ellers brukes kartutsnittet fra søket + utvidelse.</p>
         <p class="offline-veg-fineprint offline-veg-fineprint--muted">«Oppdater offline-pakke» under Innstillinger erstatter alt — inkludert områder du har lastet ned her.</p>
       </section>
     </div>
@@ -7825,6 +11379,7 @@ function renderMenuOfflineVegrefHtml() {
 }
 
 function renderMenuSettingsHtml() {
+  const bundledVegref = isBundledOfflineVegref()
   const generatedAt =
     offlineVegrefMeta && typeof offlineVegrefMeta.generatedAt === 'string'
       ? escapeHtml(offlineVegrefMeta.generatedAt)
@@ -7833,26 +11388,106 @@ function renderMenuSettingsHtml() {
     ? `<p class="menu-info-prose" role="alert">${escapeHtml(offlineVegrefSyncError)}</p>`
     : ''
   const traceOn = isVegrefDebugTraceEnabled()
+  const registerTraceOn = isRegisterTraceDebugPersisted()
+  const registerNetOn = isRegisterNetworkDebugPersisted()
+  const vegrefHighData = getVegrefDataMode() === 'normal'
+  const photoUploadAllowCellular = readPhotoUploadAllowOnCellular()
+  const pilotMinDownloadOn = isMinDownloadMode()
+  const pilotMinDownloadBuildLock = isMinDownloadBuild
+  const offlineVegrefExplainerBundled = `<p class="menu-info-prose">Har du nett, installerer appen automatisk den <strong>innebygde</strong> vegreferanse-pakken fra app-filene (under <code class="menu-settings-code">/offline/</code>) til lokal lagring ved oppstart — <strong>ikke</strong> som egen nedlasting fra internett. Knappen under tvinger installasjonen på nytt (nyttig etter feil).</p>`
+  const offlineVegrefExplainerRemote = `<p class="menu-info-prose">Har du nett, forsøker appen én gang å synke den innebygde offline-pakken etter oppstart (samme vertsleverandør som appen). Knappen under starter nedlasting med én gang eller tvinger oppdatering.</p>`
+  const offlineVegrefExplainer = bundledVegref
+    ? offlineVegrefExplainerBundled
+    : offlineVegrefExplainerRemote
+  const offlineVegrefBtnLabel = bundledVegref
+    ? offlineVegrefReady
+      ? 'Reinstaller innebygd pakke'
+      : 'Installer innebygd pakke'
+    : offlineVegrefReady
+      ? 'Oppdater offline-pakke'
+      : 'Last ned offline-pakke'
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-settings">← Meny</button>
     <h2 class="subview-title">Innstillinger</h2>
-    <div class="menu-card">
-      <h3 class="menu-card__title">Offline vegreferanse</h3>
-      <p class="menu-info-prose">Uten nett eller når NVDB ikke svarer, brukes nedlastede segmenter automatisk der de dekker posisjonen.</p>
-      <p class="menu-info-prose">Har du nett, forsøker appen å laste ned eller oppdatere pakken i bakgrunnen (etter oppstart og når tilkoblingen kommer tilbake). Knappen under starter nedlasting med én gang eller tvinger oppdatering.</p>
-      <p class="menu-info-prose menu-info-prose--warn">«Oppdater offline-pakke» erstatter alt — inkludert egne strekninger lastet ned i «Veg uten nett».</p>
-      <p class="menu-info-prose">Status: ${escapeHtml(offlineVegrefSyncStatus)}</p>
-      <p class="menu-info-prose">Generert: ${generatedAt}</p>
-      ${offlineError}
-      <button type="button" class="btn btn-primary" id="btn-settings-download-offline-vegref"${offlineVegrefSyncBusy ? ' disabled' : ''}>${offlineVegrefReady ? 'Oppdater offline-pakke' : 'Last ned offline-pakke'}</button>
-      <label class="menu-settings-trace-label">
-        <input type="checkbox" id="chk-vegref-debug-trace"${traceOn ? ' checked' : ''} />
-        Spill inn detaljert vegref-spor (GPS → pipeline → skjerm)
-      </label>
-      <p class="menu-info-prose menu-info-prose--compact">Når på: lagrer siste steg lokalt (ca. 180 hendelser). Slå på før du reproduserer feilen, deretter trykk «Kopier vegref-debug» og lim inn i chat.</p>
-      <div class="menu-settings-trace-actions">
-        <button type="button" class="btn btn-ghost" id="btn-settings-copy-vegref-debug">Kopier vegref-debug</button>
-        <button type="button" class="btn btn-ghost" id="btn-settings-clear-vegref-trace">Tøm spor</button>
+    <div class="menu-settings-tabs" role="tablist" aria-label="Innstillinger-faner">
+      <button type="button" class="menu-settings-tab menu-settings-tab--active" id="tab-settings-offline" role="tab" aria-selected="true" aria-controls="panel-settings-offline">Offline</button>
+      <button type="button" class="menu-settings-tab" id="tab-settings-vegref-debug" role="tab" aria-selected="false" aria-controls="panel-settings-vegref-debug">Vegref-debug</button>
+      <button type="button" class="menu-settings-tab" id="tab-settings-register-trace" role="tab" aria-selected="false" aria-controls="panel-settings-register-trace">Reg.-spor</button>
+    </div>
+    <div class="menu-settings-panel" id="panel-settings-offline" role="tabpanel" aria-labelledby="tab-settings-offline">
+      <div class="menu-card">
+        <h3 class="menu-card__title">Offline vegreferanse</h3>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-vegref-high-data"${vegrefHighData ? ' checked' : ''} />
+          Hyppigere oppdatering (bruker mer mobildata)
+        </label>
+        <p class="menu-info-prose menu-info-prose--compact">Uten avkrysning (standard): lav databruk på forsiden — færre NVDB-kall, ingen automatisk «veg foran deg»-prefetch, og ingen stille lagring av rå segmenter under kjøring. Avkryss når du vil ha raskest mulig vegref på mobilnett (parallelle NVDB-kall der det støttes).</p>
+        <p class="menu-info-prose">Uten nett eller når NVDB ikke svarer, brukes lagrede segmenter automatisk der de dekker posisjonen.</p>
+        ${offlineVegrefExplainer}
+        <p class="menu-info-prose menu-info-prose--warn">${bundledVegref ? '«Reinstaller innebygd pakke» erstatter alt i lokal vegref-lagring — inkludert egne strekninger fra «Veg uten nett».' : '«Oppdater offline-pakke» erstatter alt — inkludert egne strekninger lastet ned i «Veg uten nett».'}</p>
+        <p class="menu-info-prose">Status: ${escapeHtml(offlineVegrefSyncStatus)}</p>
+        <p class="menu-info-prose">Generert: ${generatedAt}</p>
+        ${offlineError}
+        <button type="button" class="btn btn-primary" id="btn-settings-download-offline-vegref"${offlineVegrefSyncBusy ? ' disabled' : ''}>${offlineVegrefBtnLabel}</button>
+      </div>
+      <div class="menu-card">
+        <h3 class="menu-card__title">Delsky (bilder og økter)</h3>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-photo-upload-cellular"${photoUploadAllowCellular ? ' checked' : ''} />
+          Tillat synk på mobilnett
+        </label>
+        <p class="menu-info-prose menu-info-prose--compact">Standard: på mobilnett (ikke Wi‑Fi) venter <strong>bildekøen</strong> og <strong>oppdatering av delsky</strong> (kun økter/bilder som faktisk lastes opp, ikke hele øktarkivet) til Wi‑Fi eller kablet nett — for å spare mobildata. Kryss av for å synke til sky også på 4G/5G når du er innlogget (kan bli mange MB).</p>
+        <p class="menu-info-prose menu-info-prose--compact">Ved innlogging på mobilnett spør appen om du vil <strong>hente</strong> alt fra delsky; avbryt hvis du vil spare data (da brukes bare det som allerede ligger på enheten). På Wi‑Fi skjer henting og sending automatisk for samme bruker — da vises det samme på telefon og nettleser.</p>
+        <p class="menu-info-prose menu-info-prose--compact">Samme avkrysning styrer også <strong>nedlasting av full bildeoppløsning</strong> fra sky i album (meny «Bilder»): på mobilnett uten avkrysning brukes lokalt/miniatur fra sky; unngår store MB per trykk. I installert app (Capacitor) brukes systemets nettverkstype direkte. I vanlig nettleser uten Network Information (ofte iOS Safari) behandles ukjent type som «ikke Wi‑Fi». Metadata og miniatyr synkes fortsatt; full bildefil til sky går på Wi‑Fi eller når du har krysset av over. Full oppløsning lagres lokalt (IndexedDB) til da.</p>
+        <button type="button" class="btn btn-ghost" id="btn-settings-debug-storage">Debug lagring (økter)</button>
+        <p class="menu-info-prose menu-info-prose--compact">Viser lagringsnøkler i konsollen (Safari Web Inspector/Xcode) og kort status i appen.</p>
+      </div>
+      <div class="menu-card">
+        <h3 class="menu-card__title">Prøvedrift (minimal nedlasting)</h3>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-pilot-min-download"${pilotMinDownloadOn ? ' checked' : ''}${pilotMinDownloadBuildLock ? ' disabled' : ''} />
+          Pilot: så lite mobildata som mulig
+        </label>
+        <p class="menu-info-prose menu-info-prose--compact">Slå på for feltprøving: <strong>samme MapTiler-bakgrunn som ellers</strong> når API-nøkkel er bygget inn (vektor overalt — lys og mørkt underlag, uavhengig av Wi‑Fi eller mobilnett). Kartfliser og støttefiler mellomlagres i Service Worker (gjentatte besøk samme sted treffer cache). Uten nøkkel brukes OpenStreetMap-raster (fallback). Ingen NVDB-nett eller vær-API, ingen automatisk sky-synk av økter/bilder, ingen innboks-polling. Kontraktskontroll, Meldinger og Finn objekter skjules. Vegref bruker kun lagret offline-data der det finnes — ellers koordinat-fallback. <strong>Lukk og åpne kart</strong> (eller start appen på nytt) etter endring så bakgrunnskartet sikrer riktig modus.</p>
+        ${
+          pilotMinDownloadBuildLock
+            ? '<p class="menu-info-prose menu-info-prose--compact">Dette installasjonsbygget har pilot <strong>alltid på</strong> (kan ikke slås av her).</p>'
+            : ''
+        }
+      </div>
+    </div>
+    <div class="menu-settings-panel menu-settings-panel--hidden" id="panel-settings-vegref-debug" role="tabpanel" aria-labelledby="tab-settings-vegref-debug" hidden>
+      <div class="menu-card">
+        <h3 class="menu-card__title">Vegref-debug (felt / fine-tuning)</h3>
+        <p class="menu-info-prose">Samme spor som tidligere, pluss automatisk merking av mistenkelige mønstre: raske NVDB-bytter, raske strekningsbytter, mange vekslinger på kort tid, og primærtekst som ser ut som vegnr uten veinavn/typelinje.</p>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-vegref-debug-trace"${traceOn ? ' checked' : ''} />
+          Spill inn detaljert vegref-spor (GPS → pipeline → skjerm + avvik)
+        </label>
+        <p class="menu-info-prose menu-info-prose--compact">Slå på før du kjører eller reproduserer. Lagres lokalt (ca. 240 siste hendelser). «Kopier» inkluderer JSON du kan lime i chat eller lagre.</p>
+        <div class="menu-settings-trace-actions">
+          <button type="button" class="btn btn-ghost" id="btn-settings-copy-vegref-debug">Kopier vegref-debug</button>
+          <button type="button" class="btn btn-ghost" id="btn-settings-clear-vegref-trace">Tøm spor</button>
+        </div>
+        <p class="menu-info-prose menu-info-prose--compact">Avvikstyper i sporet: <code class="menu-settings-code">anomaly_rapid_nvdb_flip</code> og <code class="menu-settings-code">anomaly_rapid_seg_change</code> (kun når kilden ikke er offline-pakke — ellers ville normale segmentgrenser fylle sporet), <code class="menu-settings-code">anomaly_road_hop_burst</code>, <code class="menu-settings-code">anomaly_vegnr_without_street</code>.</p>
+      </div>
+    </div>
+    <div class="menu-settings-panel menu-settings-panel--hidden" id="panel-settings-register-trace" role="tabpanel" aria-labelledby="tab-settings-register-trace" hidden>
+      <div class="menu-card">
+        <h3 class="menu-card__title">Registrering / lagring (debug)</h3>
+        <p class="menu-info-prose">Logger til <strong>konsollen</strong> (Safari Web Inspector / Xcode) når du registrerer tellertrykk, lagrer økt, bygger kartmarkører på nytt osv. Søk etter <code class="menu-settings-code">[Scanix regtrace]</code>.</p>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-register-trace-debug"${registerTraceOn ? ' checked' : ''} />
+          Spor datastørrelse og årsak (<code class="menu-settings-code">persist</code> / <code class="menu-settings-code">rebuildMarkers</code>)
+        </label>
+        <p class="menu-info-prose menu-info-prose--compact">Viser bl.a. UTF-8-størrelse på gjeldende økt-JSON og på hele localStorage-skriving (hele app-tilstand). Nyttig for å se om minne-topper kommer fra bilder i økta, ikke fra den røde prikken alene.</p>
+        <p class="menu-info-prose menu-info-prose--compact">Du kan også åpne appen med <code class="menu-settings-code">?regtrace=1</code> i URL-en (engangs) uten å lagre her.</p>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-register-net-debug"${registerNetOn ? ' checked' : ''} />
+          Logg nett omtrentlig per registrering (<code class="menu-settings-code">[Scanix regnet]</code> — NVDB + Supabase JSON)
+        </label>
+        <p class="menu-info-prose menu-info-prose--compact">Viser <strong>omtrent</strong> ut/inn for HTTP-kropp (ikke iOS sin mobildata-måler). Supabase-linjen kommer typisk ~2 s etter lagring og kan gjelde flere trykk samlet. Hvis du ser <code class="menu-settings-code">supabase_push_skipped</code> med <code class="menu-settings-code">photo_skeletons_block_full_upsert</code>, står bilder fortsatt som «skall» uten <code class="menu-settings-code">storage</code>-sti i sky — da ventes opplasting/piksel. Bilder som allerede ligger i bucket synkes med økta. Kartfliser og andre kall telles ikke her.</p>
+        <p class="menu-info-prose menu-info-prose--compact">URL: <code class="menu-settings-code">?regnet=1</code> (engangs).</p>
       </div>
     </div>
   </div>`
@@ -7874,6 +11509,9 @@ function buildVegrefDebugReportText() {
     byReason[key] = (byReason[key] || 0) + 1
   }
   const trace = getVegrefDebugTraceEntries()
+  const anomalyEvents = trace.filter((row) =>
+    String(row?.ev || '').startsWith('anomaly_'),
+  )
   let ua = ''
   try {
     ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
@@ -7895,6 +11533,8 @@ function buildVegrefDebugReportText() {
       vegrefDetailTraceEnabled: isVegrefDebugTraceEnabled(),
       vegrefDetailTraceCount: trace.length,
       vegrefDetailTrace: trace.slice(-120),
+      vegrefAnomalyCount: anomalyEvents.length,
+      vegrefAnomalyTail: anomalyEvents.slice(-24),
       totalMetrics: rows.length,
       meterMetrics: meterRows.length,
       startupMetrics: startupRows.length,
@@ -7924,6 +11564,39 @@ async function copyVegrefDebugReport() {
   window.prompt('Kopier vegref-debug og lim inn i chatten:', text)
 }
 
+function renderMenuHapticsHtml() {
+  const on = readHapticEnabled()
+  const curId = readHapticProfileId()
+  const radios = HAPTIC_PROFILES.map(
+    (p) => `
+    <label class="haptic-preset-option${p.id === curId ? ' haptic-preset-option--selected' : ''}">
+      <input type="radio" name="haptic-preset" value="${escapeHtml(p.id)}" class="haptic-preset-option__input"${p.id === curId ? ' checked' : ''} />
+      <span class="haptic-preset-option__body">
+        <span class="haptic-preset-option__label">${escapeHtml(p.label)}</span>
+        <span class="haptic-preset-option__hint">${escapeHtml(p.hint)}</span>
+      </span>
+    </label>`,
+  ).join('')
+  return `<div class="view-sub surface view-panel-enter">
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-haptics">← Meny</button>
+    <h2 class="subview-title">Haptisk tilbakemelding</h2>
+    <p class="menu-info-prose menu-info-prose--compact">Kort vibrasjon når du <strong>tar bilde</strong> (kamera / KMT) og når du <strong>registrerer</strong> et punkt i økta. På iPhone/Android-app brukes systemets haptikk; i nettleser brukes vibrasjon der nettleseren tillater det.</p>
+    <div class="menu-card menu-card--haptics">
+      <h3 class="menu-card__title">Slå på</h3>
+      <label class="menu-settings-trace-label">
+        <input type="checkbox" id="chk-haptic-enabled"${on ? ' checked' : ''} />
+        Bruk haptisk tilbakemelding
+      </label>
+    </div>
+    <div class="menu-card menu-card--haptics">
+      <h3 class="menu-card__title">Mønster</h3>
+      <p class="menu-info-prose menu-info-prose--compact">Velg styrke og «følelse» for bilde og registrering.</p>
+      <div class="haptic-preset-grid" role="radiogroup" aria-label="Haptisk mønster">${radios}</div>
+      <button type="button" class="btn btn-ghost haptic-test-btn" id="btn-haptic-test">Prøv valgt mønster</button>
+    </div>
+  </div>`
+}
+
 function renderMenuPrivacyHtml() {
   return `<div class="view-sub surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-menu-privacy">← Meny</button>
@@ -7937,6 +11610,80 @@ function renderMenuSupportHtml() {
     <button type="button" class="btn btn-back" id="btn-back-from-menu-support">← Meny</button>
     <h2 class="subview-title">Support</h2>
     <p class="menu-info-prose">Trenger du hjelp? Beskriv problemet og enhet/nettleser i en e-post til appens leverandør, eller se dokumentasjonen som følger prosjektet.</p>
+  </div>`
+}
+
+function renderMenuFollowUpRouteHtml() {
+  const delskyRow =
+    currentUser?.id && !isMinDownloadMode()
+      ? `<div class="followup-delsky-row">
+      <button type="button" class="btn btn-secondary" id="btn-followup-push-delsky">Send til delsky</button>
+      <button type="button" class="btn btn-secondary" id="btn-followup-pull-delsky">Hent fra delsky</button>
+    </div>`
+      : ''
+  return `<div class="view-sub surface view-panel-enter followup-route-list-view">
+    <button type="button" class="btn btn-back" id="btn-back-from-menu-followup">← Meny</button>
+    <h2 class="subview-title">Oppfølgingsrute</h2>
+    <p class="menu-info-prose followup-lead">Legg inn <strong>veg</strong> (f.eks. FV7552) og <strong>meter</strong> på kartet. Punkter hentes fra NVDB. Rutene ligger som standard <strong>bare lokalt</strong> på enheten. Når du er innlogget, kan du med knappene under <strong>sende dem til eller hente dem fra delsky</strong> — de synkes ikke dit automatisk. <strong>Eksporter</strong>/<strong>Importer</strong> JSON fungerer også uten delsky.</p>
+    ${delskyRow}
+    <div class="followup-toolbar">
+      <button type="button" class="btn btn-home btn-home--primary" id="btn-followup-new">Ny rute</button>
+      <button type="button" class="btn btn-secondary" id="btn-followup-export-json">Eksporter JSON</button>
+      <button type="button" class="btn btn-secondary" id="btn-followup-import-json">Importer JSON</button>
+    </div>
+    <input type="file" id="followup-import-file" class="photo-input-hidden" accept="application/json,.json" />
+    <p id="followup-list-status" class="followup-status" role="status" aria-live="polite"></p>
+    <ul id="followup-saved-list" class="followup-saved-list" aria-label="Lagrede oppfølgingsruter"></ul>
+  </div>`
+}
+
+function renderFollowUpRouteEditHtml() {
+  const title = followUpDraft?.title
+    ? escapeHtml(followUpDraft.title)
+    : ''
+  return `<div class="view-sub followup-route-edit-view">
+    <header class="followup-edit-top surface">
+      <button type="button" class="btn btn-text followup-edit-back" id="btn-followup-edit-back" aria-label="Tilbake">←</button>
+      <input type="text" id="followup-edit-title" class="followup-edit-title-input" maxlength="120" placeholder="Navn på rute" value="${title}" autocomplete="off" />
+    </header>
+    <div class="followup-edit-map-card surface">
+      <div id="followup-edit-map" class="followup-edit-map" role="application" aria-label="Kart med punkter"></div>
+    </div>
+    <section class="followup-edit-panel surface">
+      <h3 class="followup-panel-heading">Nytt punkt</h3>
+      <label class="followup-field">
+        <span class="followup-field__label">Veg</span>
+        <input type="text" id="followup-road-input" class="followup-input" list="followup-road-datalist" placeholder="FV7552" autocomplete="off" autocapitalize="characters" />
+        <datalist id="followup-road-datalist"></datalist>
+      </label>
+      <div class="followup-field-row">
+        <label class="followup-field followup-field--half">
+          <span class="followup-field__label">Strekning (S)</span>
+          <input type="number" id="followup-s-input" class="followup-input" min="1" step="1" value="1" />
+        </label>
+        <label class="followup-field followup-field--half">
+          <span class="followup-field__label">Del (D)</span>
+          <input type="number" id="followup-d-input" class="followup-input" min="1" step="1" value="1" />
+        </label>
+      </div>
+      <label class="followup-field">
+        <span class="followup-field__label">Meter</span>
+        <input type="number" id="followup-meter-input" class="followup-input" min="0" step="1" placeholder="345" />
+      </label>
+      <button type="button" class="btn btn-home btn-home--primary followup-add-btn" id="btn-followup-add-point">Legg til punkt</button>
+      <p id="followup-add-feedback" class="followup-feedback" role="status" aria-live="polite"></p>
+      <div class="followup-edit-actions">
+        <button type="button" class="btn btn-secondary" id="btn-followup-save-draft">Lagre rute</button>
+        <button type="button" class="btn btn-secondary" id="btn-followup-open-fullmap">Ferdig · fullskjerm</button>
+      </div>
+    </section>
+    <div id="followup-fullscreen-shell" class="followup-fullscreen-shell" hidden>
+      <div class="followup-fullscreen-chrome surface">
+        <button type="button" class="btn btn-text" id="btn-followup-fs-close" aria-label="Lukk fullskjerm">Lukk</button>
+        <span id="followup-fs-title" class="followup-fs-title"></span>
+      </div>
+      <div id="followup-fs-map" class="followup-fs-map" role="application" aria-label="Fullskjerm kart"></div>
+    </div>
   </div>`
 }
 
@@ -8606,6 +12353,314 @@ function bindMenuExcelExportListeners() {
   startHomeVegrefTracking()
 }
 
+function refreshFollowUpRoadDatalist() {
+  const dl = document.getElementById('followup-road-datalist')
+  if (!dl || !currentUser?.id) return
+  const sug = getRoadSuggestionsForDatalist(currentUser.id)
+  dl.innerHTML = sug.map((s) => `<option value="${escapeHtml(s)}"></option>`).join('')
+}
+
+function refreshFollowUpSavedListDom() {
+  const ul = document.getElementById('followup-saved-list')
+  if (!ul || !currentUser?.id) return
+  const routes = loadFollowUpRoutes(currentUser.id).sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  )
+  if (!routes.length) {
+    ul.innerHTML =
+      '<li class="followup-saved-empty">Ingen lagrede ruter ennå. Trykk <strong>Ny rute</strong>.</li>'
+    return
+  }
+  ul.innerHTML = routes
+    .map((r) => {
+      const n = Array.isArray(r.markers) ? r.markers.length : 0
+      const dt = new Intl.DateTimeFormat('nb-NO', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }).format(new Date(r.updatedAt))
+      return `<li class="followup-saved-row surface" data-followup-id="${escapeHtml(r.id)}">
+        <div class="followup-saved-row__meta">
+          <span class="followup-saved-row__title">${escapeHtml(r.title || 'Uten navn')}</span>
+          <span class="followup-saved-row__sub">${n} punkt · ${escapeHtml(dt)}</span>
+        </div>
+        <div class="followup-saved-row__actions">
+          <button type="button" class="btn btn-text followup-open-btn" data-followup-id="${escapeHtml(r.id)}">Åpne</button>
+          <button type="button" class="btn btn-text followup-del-btn" data-followup-id="${escapeHtml(r.id)}">Slett</button>
+        </div>
+      </li>`
+    })
+    .join('')
+}
+
+function persistFollowUpDraftFromDom() {
+  if (!followUpDraft) return
+  const t = document.getElementById('followup-edit-title')
+  if (t instanceof HTMLInputElement) {
+    const v = t.value.trim().slice(0, 120)
+    if (v) followUpDraft.title = v
+  }
+}
+
+function persistFollowUpDraftToStorage() {
+  if (!currentUser?.id || !followUpDraft) return
+  persistFollowUpDraftFromDom()
+  const routes = loadFollowUpRoutes(currentUser.id)
+  const ix = routes.findIndex((r) => r.id === followUpDraft.id)
+  followUpDraft.updatedAt = new Date().toISOString()
+  const clone = /** @type {(typeof routes)[number]} */ (
+    JSON.parse(JSON.stringify(followUpDraft))
+  )
+  if (ix >= 0) routes[ix] = clone
+  else routes.unshift(clone)
+  saveFollowUpRoutes(currentUser.id, routes)
+}
+
+function openMenuFollowUpRouteView() {
+  closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuFollowUpRoute'
+  saveAppState()
+  renderApp()
+  bindMenuFollowUpRouteListeners()
+}
+
+function openFollowUpRouteEditNew() {
+  followUpDraft = createEmptyFollowUpRoute('')
+  view = 'followUpRouteEdit'
+  saveAppState()
+  renderApp()
+  bindFollowUpRouteEditListeners()
+}
+
+function openFollowUpRouteEditExisting(route) {
+  followUpDraft = {
+    ...route,
+    markers: Array.isArray(route.markers) ? route.markers.map((m) => ({ ...m })) : [],
+  }
+  view = 'followUpRouteEdit'
+  saveAppState()
+  renderApp()
+  bindFollowUpRouteEditListeners()
+}
+
+function bindMenuFollowUpRouteListeners() {
+  if (followUpRouteAbort) followUpRouteAbort.abort()
+  followUpRouteAbort = new AbortController()
+  const { signal } = followUpRouteAbort
+  refreshFollowUpSavedListDom()
+  document.getElementById('btn-back-from-menu-followup')?.addEventListener(
+    'click',
+    () => goHome(),
+    { signal },
+  )
+  document.getElementById('btn-followup-new')?.addEventListener(
+    'click',
+    () => openFollowUpRouteEditNew(),
+    { signal },
+  )
+  document.getElementById('btn-followup-push-delsky')?.addEventListener(
+    'click',
+    () => {
+      void pushFollowUpRoutesToDelsky()
+    },
+    { signal },
+  )
+  document.getElementById('btn-followup-pull-delsky')?.addEventListener(
+    'click',
+    () => {
+      void pullFollowUpRoutesFromDelsky()
+    },
+    { signal },
+  )
+  const statusEl = document.getElementById('followup-list-status')
+  document.getElementById('btn-followup-export-json')?.addEventListener(
+    'click',
+    () => {
+      if (!currentUser?.id) return
+      const json = serializeFollowUpRoutesExport(loadFollowUpRoutes(currentUser.id))
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `scanix-oppfolgingsruter-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      if (statusEl) statusEl.textContent = 'JSON eksportert.'
+      window.setTimeout(() => {
+        if (statusEl) statusEl.textContent = ''
+      }, 2400)
+    },
+    { signal },
+  )
+  const fileInp = document.getElementById('followup-import-file')
+  document.getElementById('btn-followup-import-json')?.addEventListener(
+    'click',
+    () => fileInp?.click(),
+    { signal },
+  )
+  fileInp?.addEventListener(
+    'change',
+    () => {
+      const f = fileInp.files?.[0]
+      if (!f || !currentUser?.id) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const text = String(reader.result || '')
+        const incoming = parseFollowUpRoutesImport(text)
+        if (!incoming?.length) {
+          if (statusEl) statusEl.textContent = 'Kunne ikke lese filen.'
+          return
+        }
+        const cur = loadFollowUpRoutes(currentUser.id)
+        const byId = new Map(cur.map((r) => [r.id, r]))
+        for (const r of incoming) byId.set(r.id, r)
+        saveFollowUpRoutes(currentUser.id, [...byId.values()])
+        refreshFollowUpSavedListDom()
+        if (statusEl) {
+          statusEl.textContent = `Importerte ${incoming.length} rute(r). Eksisterende med samme ID ble erstattet.`
+        }
+      }
+      reader.readAsText(f)
+      fileInp.value = ''
+    },
+    { signal },
+  )
+  document.getElementById('followup-saved-list')?.addEventListener(
+    'click',
+    (ev) => {
+      const t = ev.target
+      if (!(t instanceof Element)) return
+      const del = t.closest('.followup-del-btn')
+      const op = t.closest('.followup-open-btn')
+      const id =
+        (del || op)?.getAttribute('data-followup-id')?.trim() ?? ''
+      if (!id || !currentUser?.id) return
+      if (del) {
+        if (!confirm('Slette denne oppfølgingsruta?')) return
+        const next = loadFollowUpRoutes(currentUser.id).filter((r) => r.id !== id)
+        saveFollowUpRoutes(currentUser.id, next)
+        refreshFollowUpSavedListDom()
+        return
+      }
+      if (op) {
+        const route = loadFollowUpRoutes(currentUser.id).find((r) => r.id === id)
+        if (route) openFollowUpRouteEditExisting(route)
+      }
+    },
+    { signal },
+  )
+}
+
+function bindFollowUpRouteEditListeners() {
+  if (followUpRouteAbort) followUpRouteAbort.abort()
+  followUpRouteAbort = new AbortController()
+  const { signal } = followUpRouteAbort
+  refreshFollowUpRoadDatalist()
+  const fb = document.getElementById('followup-add-feedback')
+  document.getElementById('btn-followup-edit-back')?.addEventListener(
+    'click',
+    () => {
+      closeFollowUpFullscreen()
+      view = 'menuFollowUpRoute'
+      saveAppState()
+      renderApp()
+      bindMenuFollowUpRouteListeners()
+    },
+    { signal },
+  )
+  document.getElementById('followup-edit-title')?.addEventListener(
+    'input',
+    () => persistFollowUpDraftFromDom(),
+    { signal },
+  )
+  document.getElementById('btn-followup-add-point')?.addEventListener(
+    'click',
+    () => {
+      void (async () => {
+        if (!followUpDraft || !currentUser?.id) return
+        const roadEl = document.getElementById('followup-road-input')
+        const meterEl = document.getElementById('followup-meter-input')
+        const sEl = document.getElementById('followup-s-input')
+        const dEl = document.getElementById('followup-d-input')
+        const road =
+          roadEl instanceof HTMLInputElement ? roadEl.value : ''
+        const meter =
+          meterEl instanceof HTMLInputElement ? meterEl.value : ''
+        const s = sEl instanceof HTMLInputElement ? sEl.value : '1'
+        const d = dEl instanceof HTMLInputElement ? dEl.value : '1'
+        if (!normalizeRoadToken(road)) {
+          if (fb) fb.textContent = 'Skriv gyldig veg (f.eks. FV7552 eller EV6).'
+          return
+        }
+        if (fb) fb.textContent = 'Henter posisjon fra NVDB …'
+        try {
+          const res = await resolveFollowUpPoint(road, Number(meter), Number(s), Number(d))
+          if (!res) {
+            if (fb) fb.textContent = 'Fant ikke strekningen. Sjekk veg, S/D og meter.'
+            return
+          }
+          recordRoadSuggestion(currentUser.id, res.roadDisplay)
+          refreshFollowUpRoadDatalist()
+          followUpDraft.markers.push({
+            id: crypto.randomUUID(),
+            roadDisplay: res.roadDisplay,
+            s: Math.max(1, Math.round(Number(s)) || 1),
+            d: Math.max(1, Math.round(Number(d)) || 1),
+            meter: Math.round(Number(meter)) || 0,
+            lat: res.lat,
+            lng: res.lng,
+            batchRef: res.batchRef,
+            kortform: res.kortform,
+          })
+          if (fb) fb.textContent = `Lagt til: ${res.kortform || res.batchRef}`
+          rebuildFollowUpEditMarkers()
+        } catch (e) {
+          const msg =
+            e && typeof e === 'object' && 'message' in e
+              ? String(/** @type {{ message: string }} */ (e).message)
+              : 'NVDB-feil'
+          if (fb) fb.textContent = msg.slice(0, 200)
+        }
+      })()
+    },
+    { signal },
+  )
+  document.getElementById('btn-followup-save-draft')?.addEventListener(
+    'click',
+    () => {
+      persistFollowUpDraftToStorage()
+      if (fb) fb.textContent = 'Rute lagret lokalt.'
+      window.setTimeout(() => {
+        if (fb) fb.textContent = ''
+      }, 2200)
+    },
+    { signal },
+  )
+  document.getElementById('btn-followup-open-fullmap')?.addEventListener(
+    'click',
+    () => {
+      persistFollowUpDraftFromDom()
+      const tEl = document.getElementById('followup-fs-title')
+      if (tEl) tEl.textContent = followUpDraft?.title || 'Oppfølgingsrute'
+      closeFollowUpFullscreen()
+      void initFollowUpFsMapInternal()
+    },
+    { signal },
+  )
+  document.getElementById('btn-followup-fs-close')?.addEventListener(
+    'click',
+    () => closeFollowUpFullscreen(),
+    { signal },
+  )
+  queueMicrotask(() => void initFollowUpEditMapInternal())
+  startHomeVegrefTracking()
+}
+
 function syncPhotoAlbumChrome() {
   const share = document.getElementById('btn-photo-album-share')
   const marker = document.getElementById('btn-photo-album-marker')
@@ -8667,7 +12722,7 @@ function renderStandalonePhotoAlbumGallery() {
             <span class="home-dash-card__hint">${escapeHtml(hint)}</span>
           </span>
           <span class="home-dash-card__visual" aria-hidden="true">
-            <img src="${ph.dataUrl}" alt="" class="home-dash-card__preview" loading="lazy" decoding="async" />
+            ${photoPreviewImgHtml(ph, 'home-dash-card__preview')}
           </span>
         </span>
       </button>`
@@ -8709,13 +12764,22 @@ function appendStandalonePhotoAlbumCell(photo) {
   const vis = document.createElement('span')
   vis.className = 'home-dash-card__visual'
   vis.setAttribute('aria-hidden', 'true')
-  const img = document.createElement('img')
-  img.src = photo.dataUrl
-  img.alt = ''
-  img.className = 'home-dash-card__preview'
-  img.loading = 'lazy'
-  img.decoding = 'async'
-  vis.appendChild(img)
+  const thumbSrc = photoListThumbDataUrl(/** @type {object} */ (photo))
+  if (thumbSrc) {
+    const img = document.createElement('img')
+    img.src = thumbSrc
+    img.alt = ''
+    img.className = 'home-dash-card__preview'
+    img.loading = 'lazy'
+    img.decoding = 'async'
+    vis.appendChild(img)
+  } else {
+    const pend = document.createElement('span')
+    pend.className = 'home-dash-card__preview photo-preview--pending'
+    pend.setAttribute('role', 'status')
+    pend.setAttribute('aria-label', 'Laster')
+    vis.appendChild(pend)
+  }
   row.appendChild(content)
   row.appendChild(vis)
   btn.appendChild(row)
@@ -8726,15 +12790,18 @@ function appendStandalonePhotoAlbumCell(photo) {
  * Bygger JSON som mottakers app kan importere som økt (kun bilder, ingen tellinger).
  * @param {NonNullable<ReturnType<typeof normalizePhoto>>[]} photos
  */
-function standalonePhotosToShareSessionPayload(photos) {
+/**
+ * Bygger delbar økt-json for «Send bilder» — kun metadata + storage-stier (ingen base64).
+ * @param {object[]} preppedPhotos output fra `preparePhotosArrayForShareRpc`
+ */
+function standalonePhotosToShareSessionPayload(preppedPhotos) {
   const ts = nowIso()
-  const clean = photos.map((p) => {
+  const clean = preppedPhotos.map((p) => {
     const o = {
       id: p.id,
       timestamp: p.timestamp,
       lat: p.lat,
       lng: p.lng,
-      dataUrl: p.dataUrl,
     }
     const vr = p.vegref && normalizePhotoVegref(p.vegref)
     if (vr) o.vegref = vr
@@ -8743,6 +12810,12 @@ function standalonePhotosToShareSessionPayload(photos) {
     }
     if (p.imageFolder) o.imageFolder = p.imageFolder
     if (p.imagePath) o.imagePath = p.imagePath
+    if (typeof p.storageFullPath === 'string' && p.storageFullPath.trim()) {
+      o.storageFullPath = p.storageFullPath.trim()
+    }
+    if (typeof p.storageThumbPath === 'string' && p.storageThumbPath.trim()) {
+      o.storageThumbPath = p.storageThumbPath.trim()
+    }
     return o
   })
   return {
@@ -8883,11 +12956,31 @@ async function performShareStandalonePhotosSend() {
   }
 
   const sb = getSupabase()
-  if (sb && isSupabaseConfigured()) {
-    const payload = standalonePhotosToShareSessionPayload(photos)
+  if (
+    isRemoteAppStateDataEnabled() &&
+    currentUser?.id &&
+    (isScanixCloudApiConfigured() || sb)
+  ) {
+    try {
+      await tryDrainPhotoUploadQueue({ userId: currentUser.id })
+    } catch (e) {
+      console.warn('tryDrainPhotoUploadQueue (share standalone)', e)
+    }
+    syncPhotoUploadDeferralBanner()
+    const ids = new Set(photos.map((p) => p.id))
+    const fresh = standalonePhotos.filter((p) => ids.has(p.id))
+    const prep = preparePhotosArrayForShareRpc(fresh)
+    if (!prep.ok) {
+      if (statusEl) statusEl.textContent = prep.message
+      return
+    }
+    const payload = standalonePhotosToShareSessionPayload(prep.photos)
     if (statusEl) statusEl.textContent = 'Sender til mottaker …'
     try {
-      await sendSessionShare(sb, shareStandaloneRecipientShortId, payload)
+      const overlayMs = estimateDelskyOverlayDurationMs(payload, 0)
+      await runDelskySyncWithOverlay(async () => {
+        await sendSessionShare(sb, shareStandaloneRecipientShortId, payload)
+      }, overlayMs)
       closeOk()
       return
     } catch (e) {
@@ -9101,7 +13194,7 @@ function bindPhotoAlbumListeners() {
         return
       }
       const ph = standalonePhotos.find((p) => p.id === id)
-      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref, ph.note)
+      if (ph) void openPhotoFullscreenFromPhotoRecord(ph)
     },
     { signal },
   )
@@ -9228,11 +13321,32 @@ function renderIncomingShareSaveDialogHtml() {
     </dialog>`
 }
 
+/**
+ * `interactive-widget` i viewport-meta støttes i Blink (f.eks. Android Chrome) for tastatur/layout;
+ * WebKit (Safari, alle iOS-nettlesere) gir «Viewport argument key … not recognized» — derfor ikke i index.html.
+ */
+const VIEWPORT_INTERACTIVE_WIDGET_SUFFIX =
+  typeof navigator !== 'undefined' &&
+  /Android/i.test(navigator.userAgent) &&
+  /Chrome\//i.test(navigator.userAgent) &&
+  !/EdgA\//i.test(navigator.userAgent)
+    ? ', interactive-widget=overlays-content'
+    : ''
+
 /** Hoved-UI: begrens nettleser-zoom; bildevisning: ekstra viewport + programmatisk pinch. */
 const VIEWPORT_CONTENT_MAIN =
-  'width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover'
+  'width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover' +
+  VIEWPORT_INTERACTIVE_WIDGET_SUFFIX
 const VIEWPORT_CONTENT_IMAGE_ZOOM =
-  'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, viewport-fit=cover'
+  'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, viewport-fit=cover' +
+  VIEWPORT_INTERACTIVE_WIDGET_SUFFIX
+
+if (VIEWPORT_INTERACTIVE_WIDGET_SUFFIX) {
+  queueMicrotask(() => {
+    const m = document.getElementById('meta-viewport')
+    if (m) m.setAttribute('content', VIEWPORT_CONTENT_MAIN)
+  })
+}
 
 /**
  * @param {boolean} active true når brukeren ser bilde i fullskjerm/lightbox og skal kunne zoome
@@ -9360,6 +13474,8 @@ function attachImagePinchZoom(hostEl, panEl, opts = {}) {
 let photoFullscreenPinchControls = null
 /** @type {{ reset: () => void } | null} */
 let receivedLightboxPinchControls = null
+/** @type {{ reset: () => void } | null} */
+let sharedReviewLightboxPinchControls = null
 
 function renderPhotoFullscreenDialogHtml() {
   return `<dialog id="photo-fullscreen-dialog" class="photo-fullscreen-dialog" aria-label="Bilde i fullskjerm">
@@ -9378,8 +13494,187 @@ function renderPhotoFullscreenDialogHtml() {
 /** @type {AbortController | null} */
 let photoFullscreenWireAbort = null
 
+/** Siste foto-id i fullskjerm (for bakgrunnsoppgradering til `storageFullPath`). */
+let photoFullscreenActivePhotoId = ''
+
 /**
- * @param {string} dataUrl
+ * `shouldDeferPhotoUploadOnNetwork()` er til opplasting; i nettleser mangler ofte
+ * `navigator.connection`, og funksjonen ble da alltid «utsett» — da ble aldri full
+ * fil fra storage hentet ved trykk (svart fullskjerm når miniatyr manglet/féilet).
+ * På Capacitor følger vi samme Wi‑Fi/mobil-preferanse som for opplasting.
+ */
+function shouldDeferFullPhotoFromStorageForViewing() {
+  if (!isCapacitorNativePlatform()) return false
+  return shouldDeferPhotoUploadOnNetwork()
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb
+ * @param {string} path
+ * @returns {Promise<string>}
+ */
+async function storageObjectUrlFromPath(sb, path) {
+  const p = typeof path === 'string' ? path.trim() : ''
+  if (!p) return ''
+  if (isScanixCloudApiConfigured()) {
+    return cloudGetSignedReadUrlForPhotoPath(p, 3600)
+  }
+  if (!sb) return ''
+  const { data, error } = await sb.storage
+    .from(PHOTO_STORAGE_BUCKET)
+    .createSignedUrl(p, 3600)
+  if (!error && data?.signedUrl) return data.signedUrl
+  try {
+    const { data: bin, error: dErr } = await sb.storage
+      .from(PHOTO_STORAGE_BUCKET)
+      .download(p)
+    if (!dErr && bin && bin.size > 0) return URL.createObjectURL(bin)
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+/**
+ * Når fullskjerm ble åpnet med miniatyr men `storageFullPath` finnes, prøv full på nytt
+ * (midlertidig nett/timeout) og bytt bilde uten å lukke dialogen.
+ * @param {string} photoId
+ * @param {string} fullPath
+ */
+async function tryUpgradePhotoFullscreenStorageFull(photoId, fullPath) {
+  const id = typeof photoId === 'string' ? photoId.trim() : ''
+  const path = typeof fullPath === 'string' ? fullPath.trim() : ''
+  if (!id || !path) return
+  const sb = getSupabase()
+  if (!sb && !isScanixCloudApiConfigured()) return
+  const fullUrl = await storageObjectUrlFromPath(sb, path)
+  if (!fullUrl) return
+  const dlg = document.getElementById('photo-fullscreen-dialog')
+  const img = document.getElementById('photo-fullscreen-img')
+  if (!(dlg instanceof HTMLDialogElement) || !dlg.open || !img) return
+  if (photoFullscreenActivePhotoId !== id) return
+  const prev = img.src || ''
+  if (prev.startsWith('blob:') && prev !== fullUrl) {
+    try {
+      URL.revokeObjectURL(prev)
+    } catch {
+      /* ignore */
+    }
+  }
+  img.src = fullUrl
+}
+
+/**
+ * Åpner fullskjerm med **full oppløsning når mulig**: lokalt `dataUrl` / IndexedDB,
+ * deretter **full fil fra Storage** (før miniatyr i minne — ellers ble `thumbDataUrl`
+ * valgt og fullskjerm så ut som miniatyr). Miniatyr og `storageThumbPath` er reserve.
+ * På native med mobilnett-defer prøves ikke full fra storage før miniatyr er forsøkt.
+ * @param {{ id?: string, dataUrl?: string, thumbDataUrl?: string, storageFullPath?: string, storageThumbPath?: string, vegref?: unknown, note?: string } | null | undefined} ph
+ */
+async function openPhotoFullscreenFromPhotoRecord(ph) {
+  if (!ph || typeof ph !== 'object') return
+  try {
+    await refreshNativeNetworkStatus()
+  } catch {
+    /* ignore */
+  }
+  /* Alltid slå opp samme id i getAllPhotosFlat(): én kanonisk rad (økt vs standalone)
+     med flettelogikk som foretrekker piksel/miniatyr lokalt — unngår at vi åpner
+     med en «magrere» kopi og treffer sky for tidlig. */
+  const pidCanon = typeof ph.id === 'string' ? ph.id : ''
+  const pRaw = pidCanon ? getAllPhotosFlat().find((x) => x.id === pidCanon) ?? ph : ph
+  const p = /** @type {typeof ph} */ (
+    ensureStorageFullPathParallelToThumb(
+      ensureStorageThumbPathParallelToFull(/** @type {object} */ (pRaw)),
+    )
+  )
+  let url = photoFullscreenLocalPixelUrl(/** @type {object} */ (p))
+  const hasLocalDataUrlFull = Boolean(
+    url &&
+      typeof p.dataUrl === 'string' &&
+      p.dataUrl.startsWith('data:image/') &&
+      url === p.dataUrl,
+  )
+  let gotUrlFromStorageFull = false
+  const pid = typeof p.id === 'string' ? p.id : ''
+  if (!url && pid && (await isPhotoBlobStoreAvailable())) {
+    try {
+      const fromIdb = await getPhotoDataUrl(pid)
+      if (typeof fromIdb === 'string' && fromIdb.startsWith('data:image/'))
+        url = fromIdb
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const storageThumbPath =
+    typeof /** @type {{ storageThumbPath?: string }} */ (p).storageThumbPath ===
+      'string' &&
+    /** @type {{ storageThumbPath?: string }} */ (p).storageThumbPath.trim()
+      ? /** @type {{ storageThumbPath: string }} */ (p).storageThumbPath.trim()
+      : ''
+  const storageFull =
+    typeof p.storageFullPath === 'string' ? p.storageFullPath.trim() : ''
+
+  if (
+    !url &&
+    storageFull &&
+    isRemoteAppStateDataEnabled() &&
+    !shouldDeferFullPhotoFromStorageForViewing()
+  ) {
+    const sb = getSupabase()
+    if (sb || isScanixCloudApiConfigured()) {
+      url = await storageObjectUrlFromPath(sb, storageFull)
+      if (url) gotUrlFromStorageFull = true
+    }
+  }
+
+  if (!url) {
+    const t = photoListThumbDataUrl(/** @type {object} */ (p))
+    if (t) url = t
+  }
+  if (!url && storageThumbPath && isRemoteAppStateDataEnabled()) {
+    const sb = getSupabase()
+    if (sb || isScanixCloudApiConfigured()) {
+      url = await storageObjectUrlFromPath(sb, storageThumbPath)
+    }
+  }
+
+  if (
+    !url &&
+    storageFull &&
+    isRemoteAppStateDataEnabled() &&
+    shouldDeferFullPhotoFromStorageForViewing()
+  ) {
+    showSessionToast(
+      'Full bilde lastes på Wi‑Fi (samme valg som «Tillat opplasting på mobilnett» under Innstillinger → Offline). Miniatur fra sky brukes når den finnes.',
+      5600,
+    )
+    return
+  }
+
+  if (!url) {
+    showSessionToast(
+      'Fant ikke bildefil (verken lokalt eller fra sky). Sjekk nett og innlogging.',
+      5200,
+    )
+    return
+  }
+  photoFullscreenActivePhotoId = pid
+  openPhotoFullscreen(url, p.vegref, p.note)
+  if (
+    storageFull &&
+    isRemoteAppStateDataEnabled() &&
+    !shouldDeferFullPhotoFromStorageForViewing() &&
+    !gotUrlFromStorageFull &&
+    !hasLocalDataUrlFull
+  ) {
+    void tryUpgradePhotoFullscreenStorageFull(pid, storageFull)
+  }
+}
+
+/**
+ * @param {string} dataUrl data- eller https‑URL til bildet
  * @param {unknown} [vegrefRaw] lagret vegref-objekt; tekst vises som vektor-overlay (skarp ved zoom).
  * @param {unknown} [noteRaw] valgfri kommentar lagret med bildet.
  */
@@ -9388,6 +13683,20 @@ function openPhotoFullscreen(dataUrl, vegrefRaw, noteRaw) {
   const img = document.getElementById('photo-fullscreen-img')
   const vrLayer = document.getElementById('photo-fullscreen-vegref')
   if (!dlg || !img || typeof dataUrl !== 'string' || !dataUrl) return
+  img.onload = null
+  img.onerror = () => {
+    img.onload = null
+    img.onerror = null
+    showSessionToast(
+      'Kunne ikke vise bildet (nett / tilgang / ødelagt fil). Sjekk innlogging og prøv igjen.',
+      5600,
+    )
+    closePhotoFullscreen()
+  }
+  img.onload = () => {
+    img.onload = null
+    img.onerror = null
+  }
   img.src = dataUrl
   const vr = vegrefRaw ? normalizePhotoVegref(vegrefRaw) : null
   const note =
@@ -9414,10 +13723,21 @@ function openPhotoFullscreen(dataUrl, vegrefRaw, noteRaw) {
 }
 
 function closePhotoFullscreen() {
+  photoFullscreenActivePhotoId = ''
   const dlg = document.getElementById('photo-fullscreen-dialog')
   const img = document.getElementById('photo-fullscreen-img')
   const vrLayer = document.getElementById('photo-fullscreen-vegref')
   if (img) {
+    const s = img.src || ''
+    if (s.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(s)
+      } catch {
+        /* ignore */
+      }
+    }
+    img.onload = null
+    img.onerror = null
     img.removeAttribute('src')
   }
   if (vrLayer) {
@@ -9479,6 +13799,20 @@ function renderSessionHtml() {
   const previewBanner = previewIncomingShareId
     ? `<p class="session-preview-banner" role="status">Du ser på et <strong>delt oppdrag</strong>. Bruk <strong>← Meny</strong> eller <strong>Avslutt oppdrag</strong> for å lagre det på enheten eller forkaste.</p>`
     : ''
+  /* DelSky trenger Supabase ved kjøring, men knappen skal synes når bruker er innlogget
+   * så «forsvant» ikke ved iOS-bygg uten bakte VITE_SUPABASE_* (kun MapTiler i .env.local). */
+  const showDelskySaveBtn =
+    Boolean(currentUser?.id) &&
+    !isMinDownloadMode() &&
+    !previewIncomingShareId
+  /* Sky-silhuett samme geometri som delskyUploadOverlay (CLOUD_PATH_D) — kun statisk ikon her. */
+  const delskySaveBtnHtml = showDelskySaveBtn
+    ? `<button type="button" class="session-action-tab session-action-tab--icon" id="btn-save-session-delsky" aria-label="Lagre oppdrag i DelSky">
+            <svg class="session-action-tab__icon session-action-tab__icon--delsky" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M 28 62 L 92 62 C 104 62 112 54 110 44 C 108 34 98 28 88 30 C 84 20 70 16 60 22 C 52 14 36 16 30 26 C 18 28 12 40 18 50 C 16 58 22 62 28 62 Z" fill="none" stroke="currentColor" stroke-width="4.25" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>`
+    : ''
   return `<div class="app-stack app-stack--session">
     <header class="session-top">
       ${previewBanner}
@@ -9500,6 +13834,7 @@ function renderSessionHtml() {
               <path d="M12 2v13" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>
             </svg>
           </button>
+          ${delskySaveBtnHtml}
           <button type="button" class="session-action-tab session-action-tab--icon" id="btn-end-session" aria-label="Avslutt oppdrag">
             <svg class="session-action-tab__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
@@ -9519,7 +13854,7 @@ function renderSessionHtml() {
           <h2 id="share-session-heading" class="share-session-dialog__title">Del oppdrag</h2>
           <button type="button" class="share-session-dialog__close" id="btn-share-session-close" aria-label="Lukk">×</button>
         </div>
-        <p class="share-session-dialog__lead">Hvem skal få oppdraget? Med <strong>innlogget konto</strong> sendes det til mottakers <strong>Mottatte delinger</strong>. Uten sky kan du også dele som HTML-fil (Importer / e-post).</p>
+        <p class="share-session-dialog__lead">Hvem skal få oppdraget? Med <strong>innlogget konto</strong> sendes det til mottakers <strong>Meldinger</strong> (varslingsikon). For å bare synke til <strong>dine egne</strong> enheter (Mac/nett), lukk denne dialogen og bruk <strong>sky-knappen</strong> i verktøylinjen i oppdraget — uten mottaker.</p>
         <label class="share-session-label" for="share-session-select">Oppdrag som skal sendes</label>
         <select id="share-session-select" class="share-session-select">${shareSessionOptions}</select>
         <p class="share-session-subtitle">Kontaktliste</p>
@@ -9551,6 +13886,7 @@ function renderSessionHtml() {
         <div class="session-end-tabs" role="tablist" aria-label="Avslutt oppdrag">
           <button type="button" role="tab" class="session-end-tabs__tab session-end-tabs__tab--active" id="session-end-tab-quit" aria-selected="true" aria-controls="session-end-panel-quit">Lagre og avslutt</button>
           <button type="button" role="tab" class="session-end-tabs__tab" id="session-end-tab-pdf" aria-selected="false" aria-controls="session-end-panel-pdf">Eksporter PDF</button>
+          <button type="button" role="tab" class="session-end-tabs__tab" id="session-end-tab-excel" aria-selected="false" aria-controls="session-end-panel-excel">Excel</button>
         </div>
         <div id="session-end-panel-quit" class="session-end-panel" role="tabpanel" aria-labelledby="session-end-tab-quit">
           <form id="session-end-form" class="session-end-form">
@@ -9573,6 +13909,14 @@ function renderSessionHtml() {
           <div class="session-end-dialog__actions session-end-dialog__actions--pdf">
             <button type="button" class="btn btn-secondary" id="session-end-pdf-cancel">Lukk</button>
             <button type="button" class="btn btn-home btn-home--primary" id="session-end-pdf-export">Eksporter som PDF</button>
+          </div>
+        </div>
+        <div id="session-end-panel-excel" class="session-end-panel" role="tabpanel" aria-labelledby="session-end-tab-excel" hidden>
+          <p class="session-end-dialog__lead">Én rad per registrering (trykk) med vegreferanse slik den var da du registrerte. Filen lages på enheten – på iPhone bruker du ofte delingsarket og «Lagre i Filer».</p>
+          <p id="session-end-excel-status" class="session-end-pdf-status" role="status"></p>
+          <div class="session-end-dialog__actions session-end-dialog__actions--pdf">
+            <button type="button" class="btn btn-secondary" id="session-end-excel-cancel">Lukk</button>
+            <button type="button" class="btn btn-home btn-home--primary" id="session-end-excel-export">Last ned Excel</button>
           </div>
         </div>
       </div>
@@ -9606,6 +13950,50 @@ function renderSessionHtml() {
         >
           Fri kart
         </button>
+        <div
+          id="session-map-theme-dock"
+          class="session-map-theme-dock"
+          aria-hidden="false"
+        >
+          <button
+            type="button"
+            id="session-map-theme-dot"
+            class="session-map-theme-dot"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="Kartunderlag. Trykk for å velge lyst eller mørkt kart."
+            title="Kartunderlag"
+          >
+            <span class="session-map-theme-dot__glow" aria-hidden="true"></span>
+            <span class="session-map-theme-dot__core" aria-hidden="true"></span>
+          </button>
+          <div
+            id="session-map-theme-popover"
+            class="session-map-theme-popover"
+            role="menu"
+            aria-label="Kartunderlag"
+            hidden
+          >
+            <button
+              type="button"
+              class="session-map-theme-popover__opt"
+              role="menuitemradio"
+              id="session-map-theme-opt-light"
+              aria-checked="true"
+            >
+              Lyst kart
+            </button>
+            <button
+              type="button"
+              class="session-map-theme-popover__opt"
+              role="menuitemradio"
+              id="session-map-theme-opt-dark"
+              aria-checked="false"
+            >
+              Mørkt kart
+            </button>
+          </div>
+        </div>
         <button
           type="button"
           id="btn-map-locate"
@@ -9711,50 +14099,13 @@ function renderSessionHtml() {
     </div>
 
     <div id="session-toast" class="session-toast" role="status" aria-live="polite" hidden></div>
-
-    <div id="session-action-wheel-dock" class="session-action-wheel-dock">
-      <button
-        type="button"
-        id="session-action-wheel-launcher"
-        class="session-action-wheel-launcher"
-        aria-label="Hurtig meny"
-        aria-expanded="false"
-        aria-controls="session-action-wheel-dialog"
-      >
-        <svg class="session-action-wheel-launcher__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-          <path d="M4 6h16M4 12h16M4 18h7"/>
-        </svg>
-      </button>
-    </div>
-
-    <dialog id="session-action-wheel-dialog" class="session-action-wheel-dialog" aria-labelledby="session-action-wheel-title">
-      <div class="session-action-wheel-dialog__panel">
-        <h2 id="session-action-wheel-title" class="session-action-wheel-dialog__title">Hurtig meny</h2>
-        <button type="button" class="session-action-wheel-dialog__close" id="session-action-wheel-close" aria-label="Lukk">×</button>
-        <div class="session-action-wheel" role="presentation">
-          <div class="session-action-wheel__viewport">
-            <div
-              id="session-action-wheel-rail"
-              class="session-action-wheel__rail"
-              role="listbox"
-              aria-label="Hurtig meny"
-              tabindex="0"
-            >
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="advancedRegister">Avansert registering</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="lastContact">Send til siste kontakt</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="save">Lagre</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="pdf">PDF</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="ai">Ai</button>
-              <button type="button" class="session-action-wheel__item" role="option" data-wheel-action="end">Avslutt oppdrag</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </dialog>
   </div>`
 }
 
 function renderApp() {
+  // #region agent log
+  const __renderT0 = performance.now()
+  // #endregion
   const mount = document.querySelector('#app')
   if (!mount) {
     console.warn('renderApp: fant ikke #app')
@@ -9770,6 +14121,7 @@ function renderApp() {
     orphanAiPanel.remove()
     syncHomeAiPanelBodyClass()
   }
+  destroySharedReviewMap()
   const banner = insecureContextBannerHtml() + offlineModeBannerHtml()
   let main = ''
   if (!currentUser) {
@@ -9787,10 +14139,16 @@ function renderApp() {
   else if (view === 'menuTrafficGroup') main = renderMenuTrafficGroupHtml()
   else if (view === 'menuOfflineVegref') main = renderMenuOfflineVegrefHtml()
   else if (view === 'menuSettings') main = renderMenuSettingsHtml()
+  else if (view === 'menuHaptics') main = renderMenuHapticsHtml()
   else if (view === 'menuPrivacy') main = renderMenuPrivacyHtml()
   else if (view === 'menuSupport') main = renderMenuSupportHtml()
+  else if (view === 'menuFinnObjekter') main = renderFinnObjekterHtml()
   else if (view === 'menuExcelExport') main = renderMenuExcelExportHtml()
+  else if (view === 'menuFollowUpRoute') main = renderMenuFollowUpRouteHtml()
+  else if (view === 'followUpRouteEdit') main = renderFollowUpRouteEditHtml()
   else if (view === 'inbox') main = renderInboxHtml()
+  else if (view === 'sharedSessionReview')
+    main = renderSharedSessionReviewHtml()
   else if (view === 'photoAlbum') main = renderPhotoAlbumHtml()
   else if (view === 'receivedPhotos') main = renderReceivedPhotosHtml()
   else main = renderHomeHtml()
@@ -9804,7 +14162,27 @@ function renderApp() {
   const photoFullscreenShell = currentUser
     ? renderPhotoFullscreenDialogHtml()
     : ''
+  /** Bevar økt-kartets DOM ved re-render så Leaflet og flis-cache ikke nullstilles. */
+  let preservedSessionMapFrame = null
+  if (view === 'session' && map) {
+    try {
+      const c = map.getContainer()
+      const frame = document.getElementById('session-map-frame')
+      if (frame && c && frame.contains(c)) {
+        frame.remove()
+        preservedSessionMapFrame = frame
+      }
+    } catch {
+      preservedSessionMapFrame = null
+    }
+  }
   mount.innerHTML = `${banner}<div class="app-body">${main}</div>${kmtShell}${incomingShareSaveShell}${photoFullscreenShell}`
+  if (preservedSessionMapFrame) {
+    const placeholder = document.getElementById('session-map-frame')
+    if (placeholder?.parentNode) {
+      placeholder.parentNode.replaceChild(preservedSessionMapFrame, placeholder)
+    }
+  }
   const homeShellView = Boolean(
     currentUser &&
       (view === 'home' ||
@@ -9824,6 +14202,10 @@ function renderApp() {
   } else {
     destroyMenuBrowseMap()
   }
+  if (view !== 'followUpRouteEdit') {
+    destroyFollowUpRouteMaps()
+    followUpPulseStop()
+  }
   if (view === 'menuFriction') {
     queueMicrotask(() => void initFrictionMap())
   } else {
@@ -9834,6 +14216,25 @@ function renderApp() {
   } else {
     destroyOfflineVegMap()
   }
+  if (view === 'menuFinnObjekter') {
+    queueMicrotask(() => void initFinnObjekterMap())
+  } else {
+    destroyFinnObjekterMap()
+  }
+  if (view === 'session') {
+    queueMicrotask(() => void ensureSessionPhotosFullFromRemoteIfPending())
+  }
+  // #region agent log
+  {
+    const __rd = performance.now() - __renderT0
+    if (__rd > 95) {
+      scanixDebugFreezeLog('H5', 'main.js:renderApp', 'slow_render', {
+        ms: Math.round(__rd * 10) / 10,
+        view,
+      })
+    }
+  }
+  // #endregion
 }
 
 let homeAbort = null
@@ -9845,9 +14246,15 @@ let menuFrictionAbort = null
 let menuPhotosAbort = null
 /** Når satt: vis bilder i denne mappen; null = kun mappeoversikt. */
 let menuPhotosOpenFolderKey = /** @type {string | null} */ (null)
+/** Unngå parallelle mappe-hentinger for samme mappe. */
+let menuPhotosFolderPixelFetchKey = /** @type {string | null} */ (null)
+let sessionPhotosFullFetchInFlight = false
 let menuContactsAbort = null
 let menuTrafficGroupAbort = null
 let menuInfoAbort = null
+/** @type {AbortController | null} */
+let menuHapticsAbort = null
+let menuFinnObjekterAbort = null
 let menuExcelExportAbort = null
 /** Under programmatisk oppdatering av veg-celler (unngå at det telles som brukerredigering). */
 let excelSheetVegrefApplying = false
@@ -9860,6 +14267,7 @@ let sessionAbort = null
 let advRegAbort = null
 let photoAlbumAbort = null
 let receivedPhotosAbort = null
+let sharedReviewAbort = null
 
 let photoAlbumMarkerMode = false
 /** @type {Set<string>} */
@@ -9887,18 +14295,161 @@ let shareStandalonePendingPhotos = null
 
 /**
  * `user_app_state` kan henge (nett/PostgREST). Vi faller tilbake til lokalt i stedet for å stoppe innlogging.
- * @param {import('@supabase/supabase-js').SupabaseClient} sb
  * @param {string} userId
  */
-async function fetchUserAppStateWithTimeBudget(sb, userId) {
-  const ms = 22_000
+async function fetchUserAppStateWithTimeBudget(userId) {
+  /* Må være ≥ global fetch-timeout i supabaseClient (én full `select payload`). */
+  const ms = 92_000
   try {
-    return await awaitWithTimeout(fetchUserAppState(sb, userId), ms, 'Synk')
+    return await awaitWithTimeout(
+      fetchRemoteUserAppState(userId, { mode: 'full' }),
+      ms,
+      'Synk',
+    )
   } catch {
     console.warn(
       `Scanix: user_app_state avbrutt etter ${ms}ms — fortsetter med lokale data.`,
     )
     return null
+  }
+}
+
+/**
+ * Hent `user_app_state` fra delsky med samme Wi‑Fi/mobilnett-regel som bildeopplasting.
+ * @param {string} userId
+ */
+async function fetchUserAppStateWithNetworkGate(userId) {
+  await refreshNativeNetworkStatus()
+  const defer = getHeavyCloudTrafficDeferralReason()
+  if (defer === 'offline') return null
+  if (defer === 'metered') {
+    const msg =
+      'Du ser ut til å bruke mobilnett, ikke Wi‑Fi. Å hente alt fra delsky (økter og bilder) kan bruke mye mobildata.\n\nVil du hente nå?\n\nAvbryt = kun data som allerede ligger på enheten. Du kan slå på «Tillat opplasting på mobilnett» under Innstillinger → Offline.'
+    if (typeof confirm !== 'function' || !confirm(msg)) {
+      showSessionToast(
+        'Kun lokale data brukes. Koble til Wi‑Fi, eller aktiver «Tillat opplasting på mobilnett» i Innstillinger for å hente eller sende til delsky.',
+        7000,
+      )
+      return null
+    }
+    writePhotoUploadAllowOnCellular(true)
+  }
+  return fetchUserAppStateWithTimeBudget(userId)
+}
+
+/**
+ * Henter piksler for én vei-mappe fra sky (tungt) — kun når bruker har åpnet mappen i meny.
+ * @param {string} folderKey
+ */
+async function pullStandaloneFolderPixelsFromSupabase(folderKey) {
+  if (isMinDownloadMode()) return
+  const sb = getSupabase()
+  if (!sb || !currentUser?.id || !folderKey) return
+  if (menuPhotosFolderPixelFetchKey === folderKey) return
+  try {
+    await refreshNativeNetworkStatus()
+  } catch {
+    /* ignore */
+  }
+  if (shouldDeferPhotoUploadOnNetwork()) {
+    showSessionToast(
+      'Synk av bilder fra sky for denne mappen utsettes til Wi‑Fi (samme valg som «Tillat opplasting på mobilnett» i Innstillinger → Offline). Lokale bilder vises.',
+      5200,
+    )
+    return
+  }
+  menuPhotosFolderPixelFetchKey = folderKey
+  try {
+    const raw = await fetchStandalonePhotosForFolder(
+      sb,
+      currentUser.id,
+      folderKey,
+    )
+    if (!Array.isArray(raw) || raw.length === 0) return
+    const incoming = normalizeStandalonePhotosList(raw)
+    if (!incoming.length) return
+    standalonePhotos = mergeStandalonePhotoLists(standalonePhotos, incoming)
+    if (await isPhotoBlobStoreAvailable()) {
+      for (const ph of incoming) {
+        if (!photoRecordHasPixelData(ph)) continue
+        try {
+          await putPhotoDataUrl(
+            ph.id,
+            /** @type {{ dataUrl: string }} */ (ph).dataUrl,
+          )
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    saveAppState()
+    if (view === 'menuPhotos' && menuPhotosOpenFolderKey === folderKey) {
+      renderApp()
+      bindListenersForCurrentView()
+    }
+  } catch (e) {
+    console.warn('pullStandaloneFolderPixelsFromSupabase', e)
+  } finally {
+    if (menuPhotosFolderPixelFetchKey === folderKey) {
+      menuPhotosFolderPixelFetchKey = null
+    }
+  }
+}
+
+/**
+ * Lett sky-synk kan strippe økt-bilder; ved aktiv økt: hent full payload én gang når piksel mangler.
+ */
+async function ensureSessionPhotosFullFromRemoteIfPending() {
+  if (isMinDownloadMode()) return
+  const sb = getSupabase()
+  if (!sb || !currentUser?.id || sessionPhotosFullFetchInFlight) return
+  const sid = currentSessionId
+  if (!sid) return
+  const sess0 = sessions.find((s) => s.id === sid)
+  if (!sess0?.photos?.length) return
+
+  let idbFilled = false
+  try {
+    idbFilled = await hydrateAllAppPhotoPixelsFromIdb()
+  } catch (e) {
+    console.warn('hydrateAllAppPhotoPixelsFromIdb (session)', e)
+  }
+  if (idbFilled) {
+    state = loadCurrentSessionState()
+    saveAppState()
+    renderApp()
+    bindListenersForCurrentView()
+  }
+
+  const sess = sessions.find((s) => s.id === sid)
+  if (!sess?.photos?.length) return
+  const needsNetwork = sess.photos.some((p) => {
+    if (photoRecordHasPixelData(p)) return false
+    if (photoRecordHasListThumb(p)) return false
+    const sp = /** @type {{ storageFullPath?: string }} */ (p).storageFullPath
+    if (typeof sp === 'string' && sp.trim()) return false
+    return true
+  })
+  if (!needsNetwork) return
+
+  sessionPhotosFullFetchInFlight = true
+  try {
+    const full = await fetchRemoteUserAppState(currentUser.id, { mode: 'full' })
+    if (!full) return
+    const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
+    sessions = mergeRemoteAndDiskSessions(
+      full.sessions.map(normalizeSession).filter(Boolean),
+      diskApp.sessions.map(normalizeSession).filter(Boolean),
+    )
+    state = loadCurrentSessionState()
+    await persistAllAppPhotoPixelsToIdb()
+    saveAppState()
+    renderApp()
+    bindListenersForCurrentView()
+  } catch (e) {
+    console.warn('ensureSessionPhotosFullFromRemoteIfPending', e)
+  } finally {
+    sessionPhotosFullFetchInFlight = false
   }
 }
 
@@ -9935,7 +14486,7 @@ async function applySupabaseSessionAndNavigate(sb, session) {
   }
   void requestPersistedStorageIfSupported()
   void backupAuthToIdb(loadUsersFromStorage(), currentUser)
-  const remote = await fetchUserAppStateWithTimeBudget(sb, session.user.id)
+  const remote = await fetchUserAppStateForHydrate(session.user.id)
   const diskApp = await loadAppStateFromStorageForUser(currentUser.id)
   if (remote) {
     const remoteSessions = remote.sessions.map(normalizeSession).filter(Boolean)
@@ -9956,12 +14507,40 @@ async function applySupabaseSessionAndNavigate(sb, session) {
     )
     frictionActiveSessionId = mergedFrictionIds.frictionActiveSessionId
     frictionPreviousSessionId = mergedFrictionIds.frictionPreviousSessionId
+    if (remoteSessions.length === 0 && sessions.length > 0) {
+      queueDelskyBaselineFromLocalSessions()
+    }
   } else {
     sessions = diskApp.sessions
     currentSessionId = diskApp.currentSessionId
     standalonePhotos = diskApp.standalonePhotos
     frictionMeasurements = diskApp.frictionMeasurements
     applyFrictionSessionIdsFromDisk(diskApp)
+    /* Hydrate ga null (ingen rad, nett-feil, eller timeout). Kun når vi *vet* at det ikke finnes rad i
+       `user_app_state`, kø første gangs opplasting — unngår å overskrive ekte sky-data ved hengende fetch. */
+    if (
+      sessions.length > 0 &&
+      typeof navigator !== 'undefined' &&
+      navigator.onLine !== false
+    ) {
+      try {
+        if (isScanixCloudApiConfigured()) {
+          const exists = await cloudProbeAppStateExists()
+          if (exists === false) queueDelskyBaselineFromLocalSessions()
+        } else {
+          const { data: rowProbe, error: probeErr } = await sb
+            .from('user_app_state')
+            .select('user_id')
+            .eq('user_id', session.user.id)
+            .maybeSingle()
+          if (!probeErr && !rowProbe) {
+            queueDelskyBaselineFromLocalSessions()
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     currentSessionId =
@@ -9970,7 +14549,24 @@ async function applySupabaseSessionAndNavigate(sb, session) {
         ? diskApp.currentSessionId
         : null
   }
+  lastResumeSessionId =
+    typeof diskApp.lastResumeSessionId === 'string'
+      ? diskApp.lastResumeSessionId
+      : null
+  if (
+    lastResumeSessionId &&
+    !sessions.some((s) => s.id === lastResumeSessionId)
+  ) {
+    lastResumeSessionId = null
+  }
   state = loadCurrentSessionState()
+  try {
+    if (await hydrateAllAppPhotoPixelsFromIdb()) {
+      state = loadCurrentSessionState()
+    }
+  } catch (e) {
+    console.warn('hydrateAllAppPhotoPixelsFromIdb (login)', e)
+  }
   if (currentSessionId) {
     view = 'session'
   } else {
@@ -9984,6 +14580,9 @@ async function applySupabaseSessionAndNavigate(sb, session) {
     bindHomeListeners()
   }
   saveAppState()
+  void tryDrainPhotoUploadQueue({ userId: currentUser.id }).finally(() => {
+    syncPhotoUploadDeferralBanner()
+  })
 }
 
 function bindAuthListeners() {
@@ -10051,7 +14650,7 @@ function bindAuthListeners() {
               email,
               password,
             }),
-            55_000,
+            AUTH_SIGN_IN_TIMEOUT_MS,
             'Innlogging',
           )
           if (error || !data.session) {
@@ -10065,7 +14664,7 @@ function bindAuthListeners() {
           if (errEl) errEl.textContent = 'Laster data…'
           await awaitWithTimeout(
             applySupabaseSessionAndNavigate(sb, data.session),
-            95_000,
+            AUTH_APPLY_SESSION_TIMEOUT_MS,
             'Laster brukerdata',
           )
         } catch (err) {
@@ -10075,13 +14674,13 @@ function bindAuthListeners() {
             if (m.includes('timeout')) {
               if (m.includes('Innlogging')) {
                 errEl.textContent =
-                  'Innlogging tok for lang tid. Sjekk nett og prøv igjen.'
+                  'Innlogging tok for lang tid (tregt nett eller Supabase svarer sent). Prøv igjen — ved store økter i sky kan første innlasting ta et minutt eller mer.'
               } else if (m.includes('Profil')) {
                 errEl.textContent =
                   'Kunne ikke hente profil i tide. Sjekk nett og prøv igjen.'
               } else {
                 errEl.textContent =
-                  'Tidsavbrudd under innlasting. Sjekk nett og prøv igjen.'
+                  'Tidsavbrudd under innlasting av brukerdata (profil/delsky). Prøv igjen — ved mye data i sky kan det ta litt tid.'
               }
             } else {
               const friendly = mapFetchErrorToUserMessage(m)
@@ -10159,8 +14758,18 @@ function bindAuthListeners() {
         currentSessionId = app.currentSessionId
         standalonePhotos = app.standalonePhotos
         frictionMeasurements = app.frictionMeasurements
+        lastResumeSessionId =
+          typeof app.lastResumeSessionId === 'string'
+            ? app.lastResumeSessionId
+            : null
         if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
           currentSessionId = null
+        }
+        if (
+          lastResumeSessionId &&
+          !sessions.some((s) => s.id === lastResumeSessionId)
+        ) {
+          lastResumeSessionId = null
         }
         state = loadCurrentSessionState()
         if (currentSessionId) {
@@ -10230,7 +14839,7 @@ function bindAuthListeners() {
                 data: { full_name: name.slice(0, AUTH_NAME_MAX_LEN) },
               },
             }),
-            55_000,
+            AUTH_SIGN_IN_TIMEOUT_MS,
             'Registrering',
           )
           if (error) {
@@ -10246,7 +14855,7 @@ function bindAuthListeners() {
           }
           await awaitWithTimeout(
             applySupabaseSessionAndNavigate(sbReg, data.session),
-            95_000,
+            AUTH_APPLY_SESSION_TIMEOUT_MS,
             'Laster brukerdata',
           )
           saveAppState()
@@ -10263,7 +14872,7 @@ function bindAuthListeners() {
                   'Kunne ikke hente profil i tide. Sjekk nett og prøv igjen.'
               } else {
                 errEl.textContent =
-                  'Tidsavbrudd under innlasting. Sjekk nett og prøv igjen.'
+                  'Tidsavbrudd under innlasting av brukerdata (profil/delsky). Prøv igjen — ved mye data i sky kan det ta litt tid.'
               }
             } else {
               const friendly = mapFetchErrorToUserMessage(m)
@@ -10340,6 +14949,7 @@ function bindAuthListeners() {
       frictionMeasurements = []
       frictionActiveSessionId = null
       frictionPreviousSessionId = null
+      lastResumeSessionId = null
       state = defaultState()
       view = 'home'
       saveAppState()
@@ -10385,6 +14995,7 @@ function closeHomeDrawer() {
  */
 function openMenuSession(tab) {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   menuSessionTab = tab
   flushCurrentSession()
   destroyMap()
@@ -10398,6 +15009,7 @@ function openMenuSession(tab) {
 
 function openMenuUserView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10410,6 +15022,7 @@ function openMenuUserView() {
 
 function openMenuMapView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10422,6 +15035,7 @@ function openMenuMapView() {
 
 function openMenuFrictionView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10434,6 +15048,7 @@ function openMenuFrictionView() {
 
 function openMenuPhotosView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   menuPhotosOpenFolderKey = null
   flushCurrentSession()
   destroyMap()
@@ -10447,6 +15062,7 @@ function openMenuPhotosView() {
 
 function openMenuContactsView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10459,6 +15075,7 @@ function openMenuContactsView() {
 
 function openMenuTrafficGroupView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10471,6 +15088,7 @@ function openMenuTrafficGroupView() {
 
 function openMenuOfflineVegrefView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10486,6 +15104,7 @@ function openMenuOfflineVegrefView() {
 
 function openMenuSettingsView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10496,8 +15115,22 @@ function openMenuSettingsView() {
   bindMenuInfoListeners()
 }
 
+function openMenuHapticsView() {
+  closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuHaptics'
+  saveAppState()
+  renderApp()
+  bindMenuHapticsListeners()
+}
+
 function openMenuPrivacyView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10510,6 +15143,7 @@ function openMenuPrivacyView() {
 
 function openMenuSupportView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10520,8 +15154,24 @@ function openMenuSupportView() {
   bindMenuInfoListeners()
 }
 
+function openMenuFinnObjekterView() {
+  closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'menuFinnObjekter'
+  saveAppState()
+  renderApp()
+  if (menuFinnObjekterAbort) menuFinnObjekterAbort.abort()
+  menuFinnObjekterAbort = new AbortController()
+  bindFinnObjekterListeners(menuFinnObjekterAbort.signal, { onBack: goHome })
+}
+
 function openMenuExcelExportView() {
   closeHomeDrawer()
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -10762,7 +15412,7 @@ function bindHomeListeners() {
   if (homeAbort) homeAbort.abort()
   homeAbort = new AbortController()
   const { signal } = homeAbort
-  const openInbox = () => openInboxView()
+  const openInbox = () => openInboxMessagesView()
   document
     .getElementById('btn-home-inbox')
     ?.addEventListener('click', openInbox, { signal })
@@ -10773,8 +15423,8 @@ function bindHomeListeners() {
     .getElementById('btn-home-nav-new')
     ?.addEventListener('click', () => startNewSessionFromHome(), { signal })
   document
-    .getElementById('btn-home-nav-camera')
-    ?.addEventListener('click', () => openTaBildeFromHome(), { signal })
+    .getElementById('btn-home-nav-resume')
+    ?.addEventListener('click', () => continueLastSessionFromHome(), { signal })
   document
     .getElementById('btn-home-nav-ai')
     ?.addEventListener('click', () => setHomeBildeSubTab('ai'), { signal })
@@ -10881,11 +15531,29 @@ function bindHomeListeners() {
     () => openMenuSettingsView(),
     { signal },
   )
+  document.getElementById('home-drawer-haptics')?.addEventListener(
+    'click',
+    () => openMenuHapticsView(),
+    { signal },
+  )
+  document.getElementById('home-drawer-finn-obj')?.addEventListener(
+    'click',
+    () => openMenuFinnObjekterView(),
+    { signal },
+  )
   document.getElementById('home-drawer-excel-export')?.addEventListener(
     'click',
     () => {
       closeHomeDrawer()
       openMenuExcelExportView()
+    },
+    { signal },
+  )
+  document.getElementById('home-drawer-followup-route')?.addEventListener(
+    'click',
+    () => {
+      closeHomeDrawer()
+      openMenuFollowUpRouteView()
     },
     { signal },
   )
@@ -10906,6 +15574,45 @@ function bindHomeListeners() {
   setupHomePullToRefresh(signal)
   startHomeVegrefTracking()
   refreshHomeWeatherOnHomeEnter()
+  scheduleBrowserHomeAutoHydrateIfEmpty()
+
+  const homeImportInput = document.getElementById('home-import-session-input')
+  document.getElementById('btn-home-import-pick')?.addEventListener(
+    'click',
+    () => homeImportInput?.click(),
+    { signal },
+  )
+  homeImportInput?.addEventListener(
+    'change',
+    async (ev) => {
+      const input = ev.target
+      const file = input.files?.[0]
+      input.value = ''
+      const st = document.getElementById('home-import-status')
+      if (!file) return
+      await runImportSessionFromHtmlFile(file, st)
+    },
+    { signal },
+  )
+  document.getElementById('btn-home-sync-pull')?.addEventListener(
+    'click',
+    () => {
+      const st = document.getElementById('home-import-status')
+      if (st) st.textContent = 'Henter fra sky …'
+      void (async () => {
+        try {
+          await hydrateUserAppStateFromRemote()
+          if (st) {
+            st.textContent =
+              'Synk ferdig. Sjekk økter under «Økten» i menyen (evt. gjenoppta).'
+          }
+        } catch {
+          if (st) st.textContent = 'Kunne ikke fullføre henting. Prøv igjen.'
+        }
+      })()
+    },
+    { signal },
+  )
 }
 
 function captureHomeAiLayoutHeight() {
@@ -11808,6 +16515,51 @@ function bindInboxListeners() {
   document
     .getElementById('btn-back-from-inbox')
     ?.addEventListener('click', () => goHome(), { signal })
+  document.getElementById('btn-delsky-pull-now')?.addEventListener(
+    'click',
+    () => {
+      void (async () => {
+        if (
+          isMinDownloadMode() ||
+          !isRemoteAppStateDataEnabled() ||
+          !currentUser?.id
+        ) {
+          showSessionToast('Logg inn med sky for å hente fra DelSky.', 2800)
+          return
+        }
+        const st = document.getElementById('delsky-pull-status')
+        try {
+          if (st) st.textContent = 'Henter fra delsky …'
+          await hydrateUserAppStateFromRemote()
+        } catch (e) {
+          console.warn('DelSky manuell hent', e)
+        } finally {
+          if (st) st.textContent = ''
+        }
+        void refreshIncomingSharesPanel()
+      })()
+    },
+    { signal },
+  )
+  document.getElementById('delsky-my-sessions-wrap')?.addEventListener(
+    'click',
+    (ev) => {
+      const t = ev.target
+      if (!(t instanceof Element)) return
+      const resumeBtn = t.closest('[data-resume-id]')
+      const delBtn = t.closest('[data-delete-session-id]')
+      if (resumeBtn) {
+        const id = resumeBtn.getAttribute('data-resume-id')
+        if (id) resumeSession(id)
+        return
+      }
+      if (delBtn) {
+        const id = delBtn.getAttribute('data-delete-session-id')
+        if (id) deleteStoredSession(id)
+      }
+    },
+    { signal },
+  )
   const incomingList = document.getElementById('incoming-shares-list')
   incomingList?.addEventListener(
     'click',
@@ -11816,7 +16568,7 @@ function bindInboxListeners() {
       const dis = ev.target.closest('[data-dismiss-share]')
       const sb = getSupabase()
       const st = document.getElementById('incoming-shares-status')
-      if (!sb || !currentUser) return
+      if ((!sb && !isScanixCloudApiConfigured()) || !currentUser) return
       if (openBtn) {
         const id = openBtn.getAttribute('data-open-share')
         if (!id) return
@@ -11916,19 +16668,7 @@ function bindMenuSessionListeners() {
       input.value = ''
       const st = document.getElementById('menu-import-status')
       if (!file) return
-      if (st) st.textContent = 'Leser fil …'
-      try {
-        const text = await file.text()
-        const res = importSessionFromExportHtml(text)
-        if (!res.ok) {
-          if (st) st.textContent = res.message
-          return
-        }
-        if (st) st.textContent = 'Økt importert. Åpner den …'
-        resumeSession(res.sessionId)
-      } catch {
-        if (st) st.textContent = 'Kunne ikke lese fila. Prøv igjen.'
-      }
+      await runImportSessionFromHtmlFile(file, st)
     },
     { signal },
   )
@@ -11941,6 +16681,13 @@ function bindMenuUserListeners() {
   document
     .getElementById('btn-back-from-menu-user')
     ?.addEventListener('click', () => goHome(), { signal })
+  document.getElementById('btn-menu-user-logout')?.addEventListener(
+    'click',
+    () => {
+      void logoutUser()
+    },
+    { signal },
+  )
 }
 
 function bindMenuMapListeners() {
@@ -12088,6 +16835,7 @@ function bindMenuPhotosListeners() {
           menuPhotosOpenFolderKey = key
           renderApp()
           bindMenuPhotosListeners()
+          void pullStandaloneFolderPixelsFromSupabase(key)
         }
         return
       }
@@ -12096,7 +16844,7 @@ function bindMenuPhotosListeners() {
       const id = btn.getAttribute('data-photo-id')
       if (!id) return
       const ph = getAllPhotosFlat().find((p) => p.id === id)
-      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref, ph.note)
+      if (ph) void openPhotoFullscreenFromPhotoRecord(ph)
     },
     { signal },
   )
@@ -12121,7 +16869,9 @@ function bindMenuTrafficGroupListeners() {
   const applyTrafficGroupPreferenceSideEffects = () => {
     clearSegmentNearCache()
     vegrefResetThrottle()
+    /* Unngå NVDB-pipeline fra meny: kun forsiden mater vegrefNotifyGps her. */
     if (
+      view === 'home' &&
       lastLiveCoords &&
       typeof lastLiveCoords.lat === 'number' &&
       typeof lastLiveCoords.lng === 'number' &&
@@ -12198,6 +16948,67 @@ function bindMenuInfoListeners() {
       },
       { signal },
     )
+  document
+    .getElementById('btn-settings-debug-storage')
+    ?.addEventListener(
+      'click',
+      () => {
+        runSessionStorageDebugSnapshot()
+      },
+      { signal },
+    )
+  document.getElementById('chk-vegref-high-data')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      setVegrefDataMode(el?.checked ? 'normal' : 'minimal')
+    },
+    { signal },
+  )
+  document.getElementById('chk-photo-upload-cellular')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      writePhotoUploadAllowOnCellular(Boolean(el?.checked))
+      if (currentUser?.id) {
+        void tryDrainPhotoUploadQueue({ userId: currentUser.id }).finally(() => {
+          syncPhotoUploadDeferralBanner()
+        })
+        scheduleSupabaseAppStatePush()
+      }
+      syncPhotoUploadDeferralBanner()
+    },
+    { signal },
+  )
+  document.getElementById('chk-pilot-min-download')?.addEventListener(
+    'change',
+    (ev) => {
+      if (isMinDownloadBuild) return
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      setPilotMinDownloadUserPref(Boolean(el?.checked))
+      setDelegatorAllowOnlineFallback(!isMinDownloadMode())
+      if (isMinDownloadMode()) {
+        abortPrefetchInFlight()
+        teardownSessionShareInbox()
+        syncInboxIndicators(0, { forceHide: true })
+      } else if (isRemoteAppStateDataEnabled() && currentUser?.id) {
+        setupSessionShareInbox()
+        void tryDrainPhotoUploadQueue({ userId: currentUser.id }).finally(() => {
+          syncPhotoUploadDeferralBanner()
+        })
+        scheduleSupabaseAppStatePush()
+      }
+      renderApp()
+      bindListenersForCurrentView()
+    },
+    { signal },
+  )
   document.getElementById('chk-vegref-debug-trace')?.addEventListener(
     'change',
     (ev) => {
@@ -12212,60 +17023,248 @@ function bindMenuInfoListeners() {
     'click',
     () => {
       clearVegrefDebugTrace()
+      resetVegrefAnomalyState()
       vegrefDebugLastHomeSig = ''
       vegrefDebugLastHomeAt = 0
       alert('Vegref-spor er tømt.')
     },
     { signal },
   )
+  const tabOffline = document.getElementById('tab-settings-offline')
+  const tabDebug = document.getElementById('tab-settings-vegref-debug')
+  const tabRegTrace = document.getElementById('tab-settings-register-trace')
+  const panelOffline = document.getElementById('panel-settings-offline')
+  const panelDebug = document.getElementById('panel-settings-vegref-debug')
+  const panelRegTrace = document.getElementById('panel-settings-register-trace')
+  const switchSettingsTab = (which) => {
+    const tabs = [
+      { key: 'offline', tab: tabOffline, panel: panelOffline },
+      { key: 'vegref', tab: tabDebug, panel: panelDebug },
+      { key: 'register', tab: tabRegTrace, panel: panelRegTrace },
+    ]
+    for (const { key, tab, panel } of tabs) {
+      const active = key === which
+      if (tab) {
+        tab.classList.toggle('menu-settings-tab--active', active)
+        tab.setAttribute('aria-selected', active ? 'true' : 'false')
+      }
+      if (panel) {
+        panel.classList.toggle('menu-settings-panel--hidden', !active)
+        panel.hidden = !active
+      }
+    }
+  }
+  tabOffline?.addEventListener('click', () => switchSettingsTab('offline'), {
+    signal,
+  })
+  tabDebug?.addEventListener('click', () => switchSettingsTab('vegref'), {
+    signal,
+  })
+  tabRegTrace?.addEventListener('click', () => switchSettingsTab('register'), {
+    signal,
+  })
+  document.getElementById('chk-register-trace-debug')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      setRegisterTraceDebugPersisted(Boolean(el?.checked))
+    },
+    { signal },
+  )
+  document.getElementById('chk-register-net-debug')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      setRegisterNetworkDebugPersisted(Boolean(el?.checked))
+    },
+    { signal },
+  )
 }
 
-async function logoutUser() {
-  vegrefResetSessionCache()
-  teardownSessionShareInbox()
-  previewIncomingShareId = null
-  lastIncomingShareCountForNotify = null
-  syncInboxIndicators(0, { forceHide: true })
-  flushCurrentSession()
-  saveAppState()
-  const sbOut = getSupabase()
-  cancelSupabaseAppStatePush()
-  if (sbOut && currentUser?.id) {
-    await upsertUserAppState(sbOut, currentUser.id, {
-      version: 2,
-      sessions,
+function runSessionStorageDebugSnapshot() {
+  try {
+    const userId = currentUser?.id || null
+    const userKey = userId ? sessionsKeyForUser(userId) : null
+    const fallbackKey = STORAGE_KEY_DEVICE_FALLBACK
+    const legacyKey = STORAGE_KEY_V2
+    const keys = [legacyKey, fallbackKey, ...(userKey ? [userKey] : [])]
+    /** @type {Record<string, { exists: boolean, length: number }>} */
+    const report = {}
+    for (const k of keys) {
+      const raw = localStorage.getItem(k)
+      report[k] = {
+        exists: typeof raw === 'string',
+        length: typeof raw === 'string' ? raw.length : 0,
+      }
+    }
+    console.info('[Scanix storage-debug]', {
+      now: new Date().toISOString(),
+      userId,
       currentSessionId,
-      standalonePhotos,
-      frictionMeasurements,
-      frictionActiveSessionId,
-      frictionPreviousSessionId,
+      sessionsInMemory: sessions.length,
+      report,
     })
+    showSessionToast('Debug lagring skrevet til konsollen.', 2600)
+  } catch (e) {
+    console.warn('[Scanix storage-debug] failed', e)
+    showSessionToast('Debug lagring feilet (se konsoll).', 2800)
   }
-  if (sbOut) {
-    ignoreNextSupabaseSignedOut = true
-    await sbOut.auth.signOut()
-    queueMicrotask(() => {
-      if (ignoreNextSupabaseSignedOut) ignoreNextSupabaseSignedOut = false
-    })
+}
+
+function syncHapticPresetSelectionClasses() {
+  const id = readHapticProfileId()
+  document.querySelectorAll('.haptic-preset-option').forEach((lab) => {
+    if (!(lab instanceof HTMLElement)) return
+    const inp = lab.querySelector('input[name="haptic-preset"]')
+    const v =
+      inp instanceof HTMLInputElement ? inp.value : ''
+    lab.classList.toggle('haptic-preset-option--selected', v === id)
+  })
+}
+
+function bindMenuHapticsListeners() {
+  if (menuHapticsAbort) menuHapticsAbort.abort()
+  menuHapticsAbort = new AbortController()
+  const { signal } = menuHapticsAbort
+  document
+    .getElementById('btn-back-from-menu-haptics')
+    ?.addEventListener('click', () => goHome(), { signal })
+  document.getElementById('chk-haptic-enabled')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      writeHapticEnabled(Boolean(el?.checked))
+      if (el?.checked) void previewHapticFeedback()
+    },
+    { signal },
+  )
+  document.querySelectorAll('input[name="haptic-preset"]').forEach((inp) => {
+    if (!(inp instanceof HTMLInputElement)) return
+    inp.addEventListener(
+      'change',
+      () => {
+        if (!inp.checked) return
+        writeHapticProfileId(inp.value)
+        syncHapticPresetSelectionClasses()
+        void previewHapticFeedback()
+      },
+      { signal },
+    )
+  })
+  document.getElementById('btn-haptic-test')?.addEventListener(
+    'click',
+    () => {
+      void previewHapticFeedback()
+    },
+    { signal },
+  )
+}
+
+/** Unngå overlappende utlogging (dobbelttrykk / treg sky). */
+let logoutUserInFlight = false
+
+async function logoutUser() {
+  if (logoutUserInFlight) return
+  logoutUserInFlight = true
+  try {
+    vegrefResetSessionCache()
+    resetPrefetch()
+    teardownSessionShareInbox()
+    previewIncomingShareId = null
+    lastIncomingShareCountForNotify = null
+    syncInboxIndicators(0, { forceHide: true })
+    sessionIdsPendingPartialCloudPush.clear()
+    standalonePhotosPendingPartialCloudPush = false
+    flushCurrentSession()
+    saveAppState()
+    const sbOut = getSupabase()
+    cancelSupabaseAppStatePush()
+    const uidForCloud = currentUser?.id
+    try {
+      if (
+        uidForCloud &&
+        !appStateHasRemotePhotoSkeletons() &&
+        (isScanixCloudApiConfigured() || sbOut)
+      ) {
+        try {
+          await refreshNativeNetworkStatus()
+        } catch (e) {
+          console.warn('refreshNativeNetworkStatus (logout)', e)
+        }
+        try {
+          await tryDrainPhotoUploadQueue({ userId: uidForCloud })
+        } catch (e) {
+          console.warn('tryDrainPhotoUploadQueue (logout)', e)
+        }
+        const deferOut = getHeavyCloudTrafficDeferralReason()
+        if (deferOut !== 'offline') {
+          let remotePreserve = null
+          try {
+            remotePreserve = await fetchRemoteUserAppState(uidForCloud, {
+              mode: 'full',
+            })
+          } catch (e) {
+            console.warn('fetchUserAppState (logout preserve followUp)', e)
+          }
+          const cloudFollowUp = Array.isArray(remotePreserve?.followUpRoutes)
+            ? remotePreserve.followUpRoutes
+            : []
+          const payload = sanitizeUserAppStateForSupabasePayload({
+            version: 2,
+            sessions,
+            currentSessionId,
+            standalonePhotos,
+            frictionMeasurements,
+            frictionActiveSessionId,
+            frictionPreviousSessionId,
+            followUpRoutes: cloudFollowUp,
+          })
+          await upsertRemoteUserAppState(uidForCloud, payload)
+        }
+      }
+    } catch (e) {
+      console.warn('logoutUser (siste sky-push)', e)
+    }
+    if (sbOut) {
+      ignoreNextSupabaseSignedOut = true
+      try {
+        await sbOut.auth.signOut()
+      } catch (e) {
+        console.warn('logoutUser (signOut)', e)
+      }
+      queueMicrotask(() => {
+        if (ignoreNextSupabaseSignedOut) ignoreNextSupabaseSignedOut = false
+      })
+    }
+    destroyMap()
+    currentSessionId = null
+    state = defaultState()
+    sessions = []
+    standalonePhotos = []
+    frictionMeasurements = []
+    frictionActiveSessionId = null
+    frictionPreviousSessionId = null
+    lastResumeSessionId = null
+    currentUser = null
+    clearAuthSession()
+    void backupAuthToIdb(loadUsersFromStorage(), null)
+    authScreen = 'login'
+    view = 'auth'
+    renderApp()
+    bindAuthListeners()
+  } finally {
+    logoutUserInFlight = false
   }
-  destroyMap()
-  currentSessionId = null
-  state = defaultState()
-  sessions = []
-  standalonePhotos = []
-  frictionMeasurements = []
-  frictionActiveSessionId = null
-  frictionPreviousSessionId = null
-  currentUser = null
-  clearAuthSession()
-  void backupAuthToIdb(loadUsersFromStorage(), null)
-  authScreen = 'login'
-  view = 'auth'
-  renderApp()
-  bindAuthListeners()
 }
 
 function navigateHomeClearSession() {
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -12357,7 +17356,7 @@ async function resolveIncomingSharePreviewLeaving(opts = {}) {
         })
       }
     }
-    if (sb && shareRow) {
+    if ((sb || isScanixCloudApiConfigured()) && shareRow) {
       try {
         await deleteSessionShareRow(sb, shareRow)
       } catch {
@@ -12379,6 +17378,8 @@ async function resolveIncomingSharePreviewLeaving(opts = {}) {
 }
 
 function openInboxView() {
+  inboxUiMode = 'delsky'
+  stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
   currentSessionId = null
@@ -12387,6 +17388,39 @@ function openInboxView() {
   saveAppState()
   renderApp()
   bindInboxListeners()
+  void refreshIncomingSharesPanel()
+  if (
+    !isMinDownloadMode() &&
+    isSupabaseConfigured() &&
+    currentUser?.id
+  ) {
+    void (async () => {
+      const st = document.getElementById('delsky-pull-status')
+      try {
+        if (st) st.textContent = 'Henter fra delsky …'
+        await hydrateUserAppStateFromRemote()
+      } catch (e) {
+        console.warn('DelSky auto-hent', e)
+      } finally {
+        if (st) st.textContent = ''
+      }
+      void refreshIncomingSharesPanel()
+    })()
+  }
+}
+
+function openInboxMessagesView() {
+  inboxUiMode = 'messages'
+  stashActiveSessionForResumeBeforeLeave()
+  flushCurrentSession()
+  destroyMap()
+  currentSessionId = null
+  state = defaultState()
+  view = 'inbox'
+  saveAppState()
+  renderApp()
+  bindInboxListeners()
+  void refreshIncomingSharesPanel()
 }
 
 /**
@@ -12460,14 +17494,15 @@ function renderReceivedPhotosFeed() {
     const frag = document.createDocumentFragment()
     for (let i = idx; i < end; i++) {
       const ph = photos[i]
-      if (!ph?.dataUrl) continue
+      const src = photoListThumbDataUrl(ph)
+      if (!src) continue
       const btn = document.createElement('button')
       btn.type = 'button'
       btn.className = 'received-photos__shot'
       btn.setAttribute('data-received-thumb-index', String(i))
       btn.setAttribute('aria-label', `Vis bilde ${i + 1} i fullskjerm`)
       const img = document.createElement('img')
-      img.src = ph.dataUrl
+      img.src = src
       img.alt = ''
       img.className = 'received-photos__shot-img'
       img.loading = i < 8 ? 'eager' : 'lazy'
@@ -12517,19 +17552,38 @@ async function ensureReceivedPhotosMap() {
   wrap.style.display = ''
   if (!receivedPhotosMap) {
     await ensureLeaflet()
+    await ensureLeafletMarkerCluster()
     receivedPhotosMap = Leaflet.map('received-photos-map', {
       zoomControl: false,
+      maxZoom: APP_MAP_MAX_ZOOM,
     }).setView([Number(withLoc[0].lat), Number(withLoc[0].lng)], 14)
+    try {
+      receivedPhotosMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+    } catch {
+      /* ignore */
+    }
     Leaflet.control.zoom({ position: 'topright' }).addTo(receivedPhotosMap)
-    createAppMapTileLayer(Leaflet).addTo(receivedPhotosMap)
+    ;(await createAppBasemapLayer(Leaflet)).addTo(receivedPhotosMap)
     const bounds = Leaflet.latLngBounds([])
+    const mcgFn = /** @type {unknown} */ (Leaflet).markerClusterGroup
+    const recvCluster =
+      typeof mcgFn === 'function'
+        ? /** @type {import('leaflet').Layer & { addLayer: (m: import('leaflet').Marker) => void }} */ (
+            /** @type {(o?: object) => import('leaflet').Layer} */ (mcgFn)({
+              maxClusterRadius: 52,
+              spiderfyOnMaxZoom: true,
+              showCoverageOnHover: false,
+            })
+          )
+        : null
+    if (recvCluster) recvCluster.addTo(receivedPhotosMap)
     withLoc.forEach((ph, i) => {
       const lat = Number(ph.lat)
       const lng = Number(ph.lng)
       bounds.extend([lat, lng])
       const m = Leaflet.marker([lat, lng], {
         icon: receivedPhotoMapPinIcon(),
-      }).addTo(receivedPhotosMap)
+      })
       const t = ph.timestamp
         ? new Intl.DateTimeFormat('nb-NO', {
             dateStyle: 'short',
@@ -12537,17 +17591,31 @@ async function ensureReceivedPhotosMap() {
           }).format(new Date(ph.timestamp))
         : ''
       const safeT = escapeHtml(t)
+      const popSrc = photoListThumbDataUrl(ph)
       m.bindPopup(
-        `<div class="received-photos-map-popup"><strong>Bilde ${i + 1}</strong>${t ? `<br/>${safeT}` : ''}<br/><img src="${ph.dataUrl}" alt="" class="received-photos-map-popup__img" loading="lazy" decoding="async"/></div>`,
+        popSrc
+          ? `<div class="received-photos-map-popup"><strong>Bilde ${i + 1}</strong>${t ? `<br/>${safeT}` : ''}<br/><img src="${escapeHtml(popSrc)}" alt="" class="received-photos-map-popup__img" loading="lazy" decoding="async"/></div>`
+          : `<div class="received-photos-map-popup"><strong>Bilde ${i + 1}</strong>${t ? `<br/>${safeT}` : ''}</div>`,
         { maxWidth: 280 },
       )
+      if (recvCluster) recvCluster.addLayer(m)
+      else m.addTo(receivedPhotosMap)
     })
     if (bounds.isValid()) {
-      receivedPhotosMap.fitBounds(bounds, { padding: [44, 44], maxZoom: 16 })
+      receivedPhotosMap.fitBounds(bounds, {
+        padding: [44, 44],
+        maxZoom: APP_MAP_MAX_ZOOM,
+      })
     }
   }
-  queueMicrotask(() => receivedPhotosMap?.invalidateSize())
-  setTimeout(() => receivedPhotosMap?.invalidateSize(), 280)
+  queueMicrotask(() => {
+    receivedPhotosMap?.invalidateSize()
+    nudgeMaptilerBasemapResize(receivedPhotosMap)
+  })
+  setTimeout(() => {
+    receivedPhotosMap?.invalidateSize()
+    nudgeMaptilerBasemapResize(receivedPhotosMap)
+  }, 280)
 }
 
 function openReceivedPhotosMapFullscreen() {
@@ -12557,9 +17625,13 @@ function openReceivedPhotosMapFullscreen() {
   queueMicrotask(() => {
     void ensureReceivedPhotosMap().then(() => {
       receivedPhotosMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(receivedPhotosMap)
     })
   })
-  setTimeout(() => receivedPhotosMap?.invalidateSize(), 400)
+  setTimeout(() => {
+    receivedPhotosMap?.invalidateSize()
+    nudgeMaptilerBasemapResize(receivedPhotosMap)
+  }, 400)
 }
 
 function bindReceivedPhotosListeners() {
@@ -12612,9 +17684,10 @@ function bindReceivedPhotosListeners() {
       const idx = parseInt(btn.getAttribute('data-received-thumb-index') ?? '', 10)
       const photos = Array.isArray(state.photos) ? state.photos : []
       const ph = photos[idx]
-      if (!ph?.dataUrl || !lb || !lbImg || !(lb instanceof HTMLDialogElement)) return
+      const lbSrc = ph ? photoListThumbDataUrl(ph) : ''
+      if (!lbSrc || !lb || !lbImg || !(lb instanceof HTMLDialogElement)) return
       receivedLightboxPinchControls?.reset()
-      lbImg.src = ph.dataUrl
+      lbImg.src = lbSrc
       setViewportAllowImageZoom(true)
       lb.showModal()
     },
@@ -12647,29 +17720,498 @@ function bindReceivedPhotosListeners() {
   renderReceivedPhotosFeed()
 }
 
+function sharedReviewNumberPinIcon(n) {
+  return Leaflet.divIcon({
+    className: 'shared-review-map-pin shared-review-map-pin--num',
+    html: `<span class="shared-review-map-pin__n" aria-hidden="true">${Number(n)}</span>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -26],
+  })
+}
+
+/**
+ * @param {object[]} clickHistory
+ */
+function buildSharedReviewNotesListHtml(clickHistory) {
+  if (!clickHistory.length) {
+    return '<p class="shared-review-empty">Ingen registreringer i denne delingen.</p>'
+  }
+  const items = clickHistory.map((c, index) => {
+    const n = index + 1
+    const labelRaw =
+      typeof c.label === 'string'
+        ? c.label.trim().slice(0, CLICK_ENTRY_LABEL_MAX_LEN)
+        : ''
+    const displayTitle = escapeHtml(labelRaw || `Registrering ${n}`)
+    const catLabel =
+      typeof c.category === 'string' && c.category
+        ? escapeHtml(getObjectCategoryLabel(c.category))
+        : ''
+    const timeStr =
+      c.timestamp && !Number.isNaN(Date.parse(c.timestamp))
+        ? escapeHtml(formatNb(new Date(c.timestamp)))
+        : ''
+    const isoAttr =
+      c.timestamp && !Number.isNaN(Date.parse(c.timestamp))
+        ? escapeHtml(c.timestamp)
+        : ''
+    const commentRaw =
+      typeof c.comment === 'string'
+        ? c.comment.trim().slice(0, CLICK_ENTRY_COMMENT_MAX_LEN)
+        : ''
+    const commentBlock = commentRaw
+      ? `<div class="shared-review-note__comment">${escapeHtml(commentRaw)}</div>`
+      : '<div class="shared-review-note__comment shared-review-note__comment--muted">Uten notat på kartet</div>'
+    const vegHtml = buildSessionMapPopupVegrefHtml(c)
+    const vegBlock = vegHtml
+      ? `<div class="shared-review-note__veg">${vegHtml}</div>`
+      : ''
+    const coords =
+      c.lat != null &&
+      c.lng != null &&
+      Number.isFinite(Number(c.lat)) &&
+      Number.isFinite(Number(c.lng))
+        ? `<p class="shared-review-note__coords">≈ ${escapeHtml(Number(c.lat).toFixed(5))}, ${escapeHtml(Number(c.lng).toFixed(5))}</p>`
+        : ''
+    return `<li class="shared-review-note">
+      <div class="shared-review-note__numWrap" aria-hidden="true"><span class="shared-review-note__num">${n}</span></div>
+      <div class="shared-review-note__body">
+        <header class="shared-review-note__head">
+          <h3 class="shared-review-note__title">${displayTitle}</h3>
+          ${
+        catLabel
+          ? `<span class="shared-review-note__chip">${catLabel}</span>`
+          : ''
+      }
+        </header>
+        ${vegBlock}
+        ${commentBlock}
+        ${coords}
+        ${
+        timeStr
+          ? `<footer class="shared-review-note__foot"><time datetime="${isoAttr}">${timeStr}</time></footer>`
+          : ''
+      }
+      </div>
+    </li>`
+  })
+  return `<ol class="shared-review-notes" start="1">${items.join('')}</ol>`
+}
+
+/**
+ * @param {object[]} photos
+ */
+function buildSharedReviewLoosePhotosHtml(photos) {
+  if (!photos.length) {
+    return '<p class="shared-review-empty shared-review-empty--soft">Ingen bilder vedlagt.</p>'
+  }
+  const cells = photos
+    .map((ph, i) => {
+      const src = photoListThumbDataUrl(ph)
+      if (!src) return ''
+      return `<button type="button" class="shared-review-photo-tile" data-shared-review-photo="${i}" aria-label="Vis bilde ${i + 1}">
+        <img src="${escapeHtml(src)}" alt="" class="shared-review-photo-tile__img" loading="lazy" decoding="async" />
+      </button>`
+    })
+    .filter(Boolean)
+    .join('')
+  if (!cells) {
+    return '<p class="shared-review-empty shared-review-empty--soft">Bilder uten forhåndsvisning ennå.</p>'
+  }
+  return `<div class="shared-review-photo-mosaic">${cells}</div>`
+}
+
+function renderSharedSessionReviewHtml() {
+  const s = sessions.find((x) => x.id === currentSessionId)
+  const clicks = Array.isArray(s?.clickHistory) ? s.clickHistory : []
+  const photos = Array.isArray(s?.photos) ? s.photos : []
+  const title = s ? escapeHtml(formatSessionDisplayTitle(s)) : 'Delt oppdrag'
+  const roadPart = s ? formatRoadSideLabel(s.roadSide) : null
+  const roadHtml = roadPart
+    ? `<p class="shared-review__road">${escapeHtml(roadPart)}</p>`
+    : ''
+  const created =
+    s?.createdAt && !Number.isNaN(Date.parse(s.createdAt))
+      ? new Intl.DateTimeFormat('nb-NO', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        }).format(new Date(s.createdAt))
+      : ''
+  const createdHtml = created
+    ? `<p class="shared-review__when"><time datetime="${escapeHtml(String(s?.createdAt ?? ''))}">${escapeHtml(created)}</time></p>`
+    : ''
+  const nRegs = clicks.length
+  const nPhotos = photos.length
+  const tabOversiktActive = sharedSessionReviewTab === 'oversikt'
+  const tabKartActive = sharedSessionReviewTab === 'kart'
+  const notesHtml = buildSharedReviewNotesListHtml(clicks)
+  const photosHtml = buildSharedReviewLoosePhotosHtml(photos)
+  const sessionNote =
+    s && typeof s.registeredNote === 'string' && s.registeredNote.trim()
+      ? `<section class="shared-review-block shared-review-block--sessionnote" aria-label="Øktnotat">
+          <h3 class="shared-review-block__label">Øktnotat</h3>
+          <div class="shared-review-sessionnote">${escapeHtml(s.registeredNote.trim())}</div>
+        </section>`
+      : ''
+  return `<div class="view-shared-review">
+    <header class="shared-review-hero">
+      <div class="shared-review-hero__bar">
+        <button type="button" class="shared-review-hero__back btn btn-text" id="btn-shared-review-back" aria-label="Tilbake">← Tilbake</button>
+        <span class="shared-review-hero__badge">Delt oppdrag</span>
+      </div>
+      <h1 class="shared-review-hero__title">${title}</h1>
+      ${roadHtml}
+      ${createdHtml}
+      <div class="shared-review-hero__stats">
+        <div class="shared-review-stat shared-review-stat--accent">
+          <span class="shared-review-stat__value">${nRegs}</span>
+          <span class="shared-review-stat__label">Registreringer</span>
+        </div>
+        <div class="shared-review-stat">
+          <span class="shared-review-stat__value">${nPhotos}</span>
+          <span class="shared-review-stat__label">Bilder</span>
+        </div>
+      </div>
+      <nav class="shared-review-tabs" aria-label="Visning">
+        <button type="button" class="shared-review-tabs__btn${tabOversiktActive ? ' shared-review-tabs__btn--active' : ''}" data-shared-review-tab="oversikt" aria-selected="${tabOversiktActive ? 'true' : 'false'}" role="tab">Oversikt</button>
+        <button type="button" class="shared-review-tabs__btn${tabKartActive ? ' shared-review-tabs__btn--active' : ''}" data-shared-review-tab="kart" aria-selected="${tabKartActive ? 'true' : 'false'}" role="tab">Kart</button>
+      </nav>
+    </header>
+    <div class="shared-review-panels">
+      <section class="shared-review-panel shared-review-panel--oversikt" id="shared-review-panel-oversikt" role="tabpanel"${tabOversiktActive ? '' : ' hidden'}>
+        <div class="shared-review-scroll">
+          ${sessionNote}
+          <section class="shared-review-block">
+            <h2 class="shared-review-block__label">Alle registreringer</h2>
+            ${notesHtml}
+          </section>
+          <section class="shared-review-block shared-review-block--photos">
+            <h2 class="shared-review-block__label">Bilder</h2>
+            <p class="shared-review-block__hint">Alle bilder i løst visning — trykk for fullskjerm.</p>
+            ${photosHtml}
+          </section>
+        </div>
+      </section>
+      <section class="shared-review-panel shared-review-panel--kart" id="shared-review-panel-kart" role="tabpanel"${tabKartActive ? '' : ' hidden'}>
+        <div id="shared-review-map-shell" class="shared-review-map-shell">
+          <div id="shared-review-map" class="shared-review-map" role="application" aria-label="Kart over registreringer og bilder"></div>
+          <p id="shared-review-map-empty" class="shared-review-map-empty" hidden>Ingen GPS-posisjon på registreringer eller bilder — kart kan ikke tegnes.</p>
+        </div>
+        <p class="shared-review-map-legend">Nummer = registrering · miniatyr = bilde med posisjon.</p>
+      </section>
+    </div>
+    <footer class="shared-review-actions">
+      <button type="button" class="btn btn-secondary" id="btn-shared-review-open-session">Åpne i oppdrag <span class="shared-review-actions__hint">(rediger, del, eksporter)</span></button>
+    </footer>
+    <dialog id="shared-review-lightbox" class="received-photo-lightbox shared-review-lightbox" aria-label="Bilde">
+      <div class="received-photo-lightbox__inner shared-review-lightbox__inner">
+        <button type="button" class="received-photo-lightbox__close" id="btn-shared-review-lightbox-close" aria-label="Lukk">×</button>
+        <div class="received-photo-zoom-host photo-zoom-host" id="shared-review-zoom-host">
+          <div class="photo-zoom-pan" id="shared-review-zoom-pan">
+            <img id="shared-review-lightbox-img" class="received-photo-lightbox__img" alt="" draggable="false" />
+          </div>
+        </div>
+      </div>
+    </dialog>
+  </div>`
+}
+
+async function ensureSharedReviewMap() {
+  const wrap = document.getElementById('shared-review-map')
+  const emptyEl = document.getElementById('shared-review-map-empty')
+  if (!wrap) return
+  const s = sessions.find((x) => x.id === currentSessionId)
+  const clicks = Array.isArray(s?.clickHistory) ? s.clickHistory : []
+  const photos = Array.isArray(s?.photos) ? s.photos : []
+  /** @type {Array<{ lat: number, lng: number, kind: 'click' | 'photo', idx: number }>} */
+  const pts = []
+  clicks.forEach((c, i) => {
+    if (c.lat == null || c.lng == null) return
+    const lat = Number(c.lat)
+    const lng = Number(c.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    pts.push({ lat, lng, kind: 'click', idx: i })
+  })
+  photos.forEach((p, i) => {
+    if (p.lat == null || p.lng == null) return
+    const lat = Number(p.lat)
+    const lng = Number(p.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    pts.push({ lat, lng, kind: 'photo', idx: i })
+  })
+  if (!pts.length) {
+    destroySharedReviewMap()
+    if (emptyEl) emptyEl.hidden = false
+    wrap.style.display = 'none'
+    return
+  }
+  if (emptyEl) emptyEl.hidden = true
+  wrap.style.display = ''
+  if (sharedReviewMap) {
+    try {
+      sharedReviewMap.remove()
+    } catch {
+      /* ignore */
+    }
+    sharedReviewMap = null
+  }
+  await ensureLeaflet()
+  await ensureLeafletMarkerCluster()
+  const first = pts[0]
+  sharedReviewMap = Leaflet.map(wrap, {
+    zoomControl: false,
+    tapTolerance: 12,
+    maxZoom: APP_MAP_MAX_ZOOM,
+  }).setView([first.lat, first.lng], 14)
+  try {
+    sharedReviewMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+  } catch {
+    /* ignore */
+  }
+  Leaflet.control.zoom({ position: 'topright' }).addTo(sharedReviewMap)
+  const basemap = await createAppBasemapLayer(
+    Leaflet,
+    APP_MAP_TILE_LAYER_DATA_SAVER,
+    { dark: false },
+  )
+  basemap.addTo(sharedReviewMap)
+  applyAppMapTileContrastToDom()
+  const bounds = Leaflet.latLngBounds([])
+  const mcgFn = /** @type {unknown} */ (Leaflet).markerClusterGroup
+  const cluster =
+    typeof mcgFn === 'function'
+      ? /** @type {import('leaflet').Layer & { addLayer: (m: import('leaflet').Marker) => void } } */ (
+          /** @type {(o?: object) => import('leaflet').Layer} */ (mcgFn)({
+            chunkedLoading: true,
+            maxClusterRadius: 52,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            removeOutsideVisibleBounds: true,
+          })
+        )
+      : null
+  if (cluster) cluster.addTo(sharedReviewMap)
+  pts.forEach((pt) => {
+    bounds.extend([pt.lat, pt.lng])
+    if (pt.kind === 'click') {
+      const c = clicks[pt.idx]
+      const n = pt.idx + 1
+      const labelRaw =
+        typeof c.label === 'string'
+          ? c.label.trim().slice(0, CLICK_ENTRY_LABEL_MAX_LEN)
+          : ''
+      const displayTitle = escapeHtml(labelRaw || `Registrering ${n}`)
+      const com =
+        typeof c.comment === 'string' && c.comment.trim()
+          ? `<p class="shared-review-map-popup__txt">${escapeHtml(c.comment.trim().slice(0, 320))}</p>`
+          : ''
+      const m = Leaflet.marker([pt.lat, pt.lng], {
+        icon: sharedReviewNumberPinIcon(n),
+      })
+      m.bindPopup(
+        `<div class="shared-review-map-popup"><span class="shared-review-map-popup__eyebrow">Registrering</span><strong>${displayTitle}</strong>${com}</div>`,
+        { maxWidth: 280 },
+      )
+      if (cluster) cluster.addLayer(m)
+      else m.addTo(sharedReviewMap)
+    } else {
+      const ph = photos[pt.idx]
+      const thumb = photoListThumbDataUrl(ph)
+      const m = Leaflet.marker([pt.lat, pt.lng], {
+        icon: thumb
+          ? photoThumbnailIcon(thumb)
+          : receivedPhotoMapPinIcon(),
+      })
+      const t =
+        ph?.timestamp && !Number.isNaN(Date.parse(String(ph.timestamp)))
+          ? escapeHtml(
+              new Intl.DateTimeFormat('nb-NO', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              }).format(new Date(ph.timestamp)),
+            )
+          : ''
+      const pop = thumb
+        ? `<div class="shared-review-map-popup shared-review-map-popup--photo"><span class="shared-review-map-popup__eyebrow">Bilde ${pt.idx + 1}</span>${t ? `<p class="shared-review-map-popup__time">${t}</p>` : ''}<img src="${escapeHtml(thumb)}" alt="" class="shared-review-map-popup__img" loading="lazy" decoding="async"/></div>`
+        : `<div class="shared-review-map-popup"><strong>Bilde ${pt.idx + 1}</strong>${t ? `<p>${t}</p>` : ''}</div>`
+      m.bindPopup(pop, { maxWidth: 300 })
+      if (cluster) cluster.addLayer(m)
+      else m.addTo(sharedReviewMap)
+    }
+  })
+  if (bounds.isValid()) {
+    sharedReviewMap.fitBounds(bounds, {
+      padding: [44, 44],
+      maxZoom: APP_MAP_MAX_ZOOM,
+    })
+  }
+  queueMicrotask(() => {
+    sharedReviewMap?.invalidateSize()
+    nudgeMaptilerBasemapResize(sharedReviewMap)
+  })
+  setTimeout(() => {
+    sharedReviewMap?.invalidateSize()
+    nudgeMaptilerBasemapResize(sharedReviewMap)
+  }, 280)
+}
+
+function bindSharedSessionReviewListeners() {
+  if (sharedReviewAbort) sharedReviewAbort.abort()
+  sharedReviewAbort = new AbortController()
+  const { signal } = sharedReviewAbort
+
+  const syncTabs = (tab) => {
+    sharedSessionReviewTab = tab
+    const oversikt = document.getElementById('shared-review-panel-oversikt')
+    const kart = document.getElementById('shared-review-panel-kart')
+    document.querySelectorAll('[data-shared-review-tab]').forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return
+      const on = btn.getAttribute('data-shared-review-tab') === tab
+      btn.classList.toggle('shared-review-tabs__btn--active', on)
+      btn.setAttribute('aria-selected', on ? 'true' : 'false')
+    })
+    if (oversikt instanceof HTMLElement) oversikt.toggleAttribute('hidden', tab !== 'oversikt')
+    if (kart instanceof HTMLElement) kart.toggleAttribute('hidden', tab !== 'kart')
+    if (tab === 'kart') {
+      void ensureSharedReviewMap()
+    } else {
+      queueMicrotask(() => {
+        sharedReviewMap?.invalidateSize()
+        nudgeMaptilerBasemapResize(sharedReviewMap)
+      })
+    }
+  }
+
+  document.querySelectorAll('[data-shared-review-tab]').forEach((btn) => {
+    btn.addEventListener(
+      'click',
+      () => {
+        const t = btn.getAttribute('data-shared-review-tab')
+        if (t === 'oversikt' || t === 'kart') syncTabs(t)
+      },
+      { signal },
+    )
+  })
+
+  document.getElementById('btn-shared-review-back')?.addEventListener(
+    'click',
+    () => {
+      void (async () => {
+        if (previewIncomingShareId) {
+          const r = await resolveIncomingSharePreviewLeaving({})
+          if (r === 'cancel') return
+        }
+        navigateHomeClearSession()
+      })()
+    },
+    { signal },
+  )
+
+  document.getElementById('btn-shared-review-open-session')?.addEventListener(
+    'click',
+    () => {
+      destroySharedReviewMap()
+      view = 'session'
+      saveAppState()
+      renderApp()
+      void initSessionMapAndWatch()
+      bindSessionListeners()
+    },
+    { signal },
+  )
+
+  const lb = document.getElementById('shared-review-lightbox')
+  const lbImg = document.getElementById('shared-review-lightbox-img')
+  const lbHost = document.getElementById('shared-review-zoom-host')
+  const lbPan = document.getElementById('shared-review-zoom-pan')
+  if (lbHost instanceof HTMLElement && lbPan instanceof HTMLElement) {
+    sharedReviewLightboxPinchControls = attachImagePinchZoom(lbHost, lbPan, {
+      signal,
+    })
+  }
+  document.getElementById('shared-review-panel-oversikt')?.addEventListener(
+    'click',
+    (ev) => {
+      const btn = ev.target.closest('[data-shared-review-photo]')
+      if (!(btn instanceof HTMLElement)) return
+      const idx = parseInt(btn.getAttribute('data-shared-review-photo') ?? '', 10)
+      const photos = Array.isArray(state.photos) ? state.photos : []
+      const ph = photos[idx]
+      const url = ph ? photoListThumbDataUrl(ph) : ''
+      if (!url || !lb || !lbImg || !(lb instanceof HTMLDialogElement)) return
+      sharedReviewLightboxPinchControls?.reset()
+      lbImg.src = url
+      setViewportAllowImageZoom(true)
+      lb.showModal()
+    },
+    { signal },
+  )
+  document.getElementById('btn-shared-review-lightbox-close')?.addEventListener(
+    'click',
+    () => {
+      if (lb instanceof HTMLDialogElement) lb.close()
+    },
+    { signal },
+  )
+  lb?.addEventListener(
+    'click',
+    (ev) => {
+      if (ev.target === lb && lb instanceof HTMLDialogElement) lb.close()
+    },
+    { signal },
+  )
+  lb?.addEventListener(
+    'close',
+    () => {
+      if (lbImg) lbImg.src = ''
+      sharedReviewLightboxPinchControls?.reset()
+      setViewportAllowImageZoom(false)
+    },
+    { signal },
+  )
+
+  if (sharedSessionReviewTab === 'kart') {
+    void ensureSharedReviewMap()
+  }
+}
+
 /**
  * @param {string} shareRowId
  */
 async function openIncomingSharePreview(shareRowId) {
   const sb = getSupabase()
   const st = document.getElementById('incoming-shares-status')
-  if (!sb || !currentUser) {
+  if ((!sb && !isScanixCloudApiConfigured()) || !currentUser) {
     if (st) st.textContent = 'Du må være innlogget.'
     return
   }
   let payload = incomingSharePayloadCache.get(shareRowId)
   if (!payload) {
     if (st) st.textContent = 'Laster økt …'
-    const { data, error } = await sb
-      .from('session_shares')
-      .select('session_payload')
-      .eq('id', shareRowId)
-      .maybeSingle()
-    if (error || !data?.session_payload) {
-      if (st) st.textContent = 'Kunne ikke laste økt.'
-      return
+    if (isScanixCloudApiConfigured()) {
+      try {
+        payload = await cloudGetSessionSharePayload(shareRowId)
+      } catch {
+        if (st) st.textContent = 'Kunne ikke laste økt.'
+        return
+      }
+      if (payload == null || typeof payload !== 'object') {
+        if (st) st.textContent = 'Kunne ikke laste økt.'
+        return
+      }
+    } else {
+      const { data, error } = await sb
+        .from('session_shares')
+        .select('session_payload')
+        .eq('id', shareRowId)
+        .maybeSingle()
+      if (error || !data?.session_payload) {
+        if (st) st.textContent = 'Kunne ikke laste økt.'
+        return
+      }
+      payload = data.session_payload
     }
-    payload = data.session_payload
     incomingSharePayloadCache.set(shareRowId, payload)
     if (st) st.textContent = ''
   }
@@ -12685,7 +18227,9 @@ async function openIncomingSharePreview(shareRowId) {
   sessions.push(session)
   previewIncomingShareId = shareRowId
   currentSessionId = session.id
+  lastResumeSessionId = session.id
   state = loadCurrentSessionState()
+  void persistSessionPhotoPixelsToIdb(session)
   const finishPersistAndBadge = () => {
     saveAppState()
     markIncomingShareSeen(shareRowId)
@@ -12700,10 +18244,10 @@ async function openIncomingSharePreview(shareRowId) {
     })
     return
   }
-  view = 'session'
+  sharedSessionReviewTab = 'oversikt'
+  view = 'sharedSessionReview'
   renderApp()
-  void initSessionMapAndWatch()
-  bindSessionListeners()
+  bindSharedSessionReviewListeners()
   requestAnimationFrame(() => {
     requestAnimationFrame(finishPersistAndBadge)
   })
@@ -12735,6 +18279,7 @@ function commitNewSessionWithCategories(roadSide, categoryIds, opts = {}) {
   })
   sessions.push(s)
   currentSessionId = s.id
+  lastResumeSessionId = s.id
   state = {
     ...defaultState(),
     roadSide,
@@ -12748,6 +18293,9 @@ function commitNewSessionWithCategories(roadSide, categoryIds, opts = {}) {
   else if (roadPart) startMsg = `Start · ${roadPart}`
   else if (catLabels) startMsg = `Start · Objekter: ${catLabels}`
   addLogEntry(state, { message: startMsg })
+  // #region agent log
+  fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H1',location:'main.js:commitNewSessionWithCategories:beforeSave',message:'new_session_created_before_save',data:{newSessionId:s.id,userId:currentUser?.id||null,sessionsCount:sessions.length,roadSide:roadSide||null,categoryCount:objectCategories.length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   saveAppState()
   view = 'session'
   renderApp()
@@ -12763,6 +18311,22 @@ function openTaBildeFromHome() {
   void openKmtDialog()
 }
 
+function continueLastSessionFromHome() {
+  if (previewIncomingShareId) {
+    showSessionToast('Fullfør eller avslutt delt oppdrag først.', 3200)
+    return
+  }
+  const id = resolveResumeSessionId()
+  if (!id) {
+    showSessionToast(
+      'Ingen tidligere økt å fortsette. Start med «Ny registrering» eller åpne økter via ⌂.',
+      4200,
+    )
+    return
+  }
+  resumeSession(id)
+}
+
 function deleteStoredSession(id) {
   const idx = sessions.findIndex((s) => s.id === id)
   if (idx === -1) return
@@ -12776,6 +18340,9 @@ function deleteStoredSession(id) {
     return
   }
   sessions.splice(idx, 1)
+  if (lastResumeSessionId === id) {
+    lastResumeSessionId = null
+  }
   if (currentSessionId === id) {
     currentSessionId = null
     state = defaultState()
@@ -12785,12 +18352,14 @@ function deleteStoredSession(id) {
   renderApp()
   if (view === 'menuSession') bindMenuSessionListeners()
   else if (view === 'inbox') bindInboxListeners()
+  else if (view === 'sharedSessionReview') bindSharedSessionReviewListeners()
   else if (view === 'home') bindHomeListeners()
 }
 
 function resumeSession(id) {
   flushCurrentSession()
   currentSessionId = id
+  lastResumeSessionId = id
   state = loadCurrentSessionState()
   saveAppState()
   view = 'session'
@@ -12953,6 +18522,27 @@ function parseScanixExportDataFromHtml(html) {
 }
 
 /**
+ * @param {File} file
+ * @param {HTMLElement | null} statusEl
+ */
+async function runImportSessionFromHtmlFile(file, statusEl) {
+  if (!file) return
+  if (statusEl) statusEl.textContent = 'Leser fil …'
+  try {
+    const text = await file.text()
+    const res = importSessionFromExportHtml(text)
+    if (!res.ok) {
+      if (statusEl) statusEl.textContent = res.message
+      return
+    }
+    if (statusEl) statusEl.textContent = 'Økt importert. Åpner den …'
+    resumeSession(res.sessionId)
+  } catch {
+    if (statusEl) statusEl.textContent = 'Kunne ikke lese fila. Prøv igjen.'
+  }
+}
+
+/**
  * @param {string} html
  * @returns {{ ok: true, sessionId: string } | { ok: false, message: string }}
  */
@@ -13014,7 +18604,11 @@ function importSessionFromExportHtml(html) {
 /**
  * @param {object} sess
  */
-function sessionToSharePayload(sess) {
+/**
+ * @param {object} sess
+ * @param {object[]} preppedPhotos resultat av `preparePhotosArrayForShareRpc` (uten base64)
+ */
+function sessionToSharePayload(sess, preppedPhotos) {
   if (!sess || typeof sess !== 'object') return null
   return {
     id: sess.id,
@@ -13026,7 +18620,7 @@ function sessionToSharePayload(sess) {
     clickHistory: Array.isArray(sess.clickHistory) ? sess.clickHistory : [],
     log: Array.isArray(sess.log) ? sess.log : [],
     roadSide: sess.roadSide ?? null,
-    photos: Array.isArray(sess.photos) ? sess.photos : [],
+    photos: Array.isArray(preppedPhotos) ? preppedPhotos : [],
     objectCategories: Array.isArray(sess.objectCategories)
       ? sess.objectCategories
       : [],
@@ -13041,7 +18635,7 @@ function sessionToSharePayload(sess) {
 function buildSessionFromSharePayload(payload) {
   if (!payload || typeof payload !== 'object') return null
   const photos = Array.isArray(payload.photos)
-    ? payload.photos.map(normalizePhoto).filter(Boolean)
+    ? payload.photos.map(normalizePhotoOrSkeleton).filter(Boolean)
     : []
   return normalizeSession({
     ...payload,
@@ -13085,7 +18679,7 @@ function mapShareRpcError(err) {
     return 'Du kan ikke sende til deg selv.'
   }
   if (/Payload too large/i.test(m)) {
-    return 'Innholdet er for stort til å sende (for mange bilder eller stor økt). Prøv færre bilder.'
+    return 'Innholdet er for stort til å sende til en annen bruker (typisk mange store bilder). Prøv færre bilder, komprimer bilder først, eller bruk sky-knappen for å synke til din egen konto på andre enheter.'
   }
   if (/Invalid recipient id/i.test(m)) {
     return 'Ugyldig bruker-ID.'
@@ -13120,7 +18714,8 @@ function teardownSessionShareInbox() {
 function syncInboxIndicators(incomingCount, opts = {}) {
   const forceHide = opts.forceHide === true
   const show =
-    !forceHide && Boolean(currentUser && isSupabaseConfigured())
+    !forceHide &&
+    Boolean(currentUser && isRemoteAppStateDataEnabled() && !isMinDownloadMode())
   const n = Math.max(0, Math.floor(incomingCount))
   const label =
     n > 0
@@ -13179,18 +18774,18 @@ function playInboxNotifyAnimation() {
 
 function setupSessionShareInbox() {
   teardownSessionShareInbox()
-  if (!isSupabaseConfigured() || !currentUser?.id) {
-    syncInboxIndicators(0)
+  if (!isRemoteAppStateDataEnabled() || !currentUser?.id || isMinDownloadMode()) {
+    syncInboxIndicators(0, { forceHide: true })
     return
   }
   void refreshIncomingSharesPanel()
   sessionSharePollId = setInterval(() => {
-    if (currentUser && isSupabaseConfigured()) {
+    if (currentUser && isRemoteAppStateDataEnabled()) {
       void refreshIncomingSharesPanel()
     }
   }, 22000)
   const sb = getSupabase()
-  if (sb && currentUser.id) {
+  if (sb && currentUser.id && !isScanixCloudApiConfigured()) {
     sessionShareChannel = sb
       .channel(`session-shares-inbox:${currentUser.id}`)
       .on(
@@ -13214,12 +18809,12 @@ async function refreshIncomingSharesPanel() {
   const statusEl = document.getElementById('incoming-shares-status')
   const listReady = Boolean(listEl)
 
-  if (!isSupabaseConfigured() || !currentUser?.id) {
+  if (!isRemoteAppStateDataEnabled() || !currentUser?.id) {
     syncInboxIndicators(0)
     return
   }
   const sb = getSupabase()
-  if (!sb) {
+  if (!isScanixCloudApiConfigured() && !sb) {
     syncInboxIndicators(0)
     return
   }
@@ -13452,7 +19047,7 @@ async function performShareSessionSend() {
     addLogEntry(state, {
       message: `Del · sendt økt til bruker-ID ${shareRecipientShortId}`,
     })
-    persist()
+    persist('session:share_sent_log')
   }
 
   const rememberRecipient = () => {
@@ -13463,15 +19058,40 @@ async function performShareSessionSend() {
   }
 
   const sb = getSupabase()
-  if (sb && isSupabaseConfigured()) {
-    const payload = sessionToSharePayload(sess)
+  if (
+    isRemoteAppStateDataEnabled() &&
+    currentUser?.id &&
+    (isScanixCloudApiConfigured() || sb)
+  ) {
+    try {
+      await tryDrainPhotoUploadQueue({ userId: currentUser.id })
+    } catch (e) {
+      console.warn('tryDrainPhotoUploadQueue (share session)', e)
+    }
+    syncPhotoUploadDeferralBanner()
+    const sessReady = getSessionForShareExport(sessionId)
+    if (!sessReady) {
+      if (statusEl) statusEl.textContent = 'Fant ikke økten.'
+      return
+    }
+    const prep = preparePhotosArrayForShareRpc(
+      Array.isArray(sessReady.photos) ? sessReady.photos : [],
+    )
+    if (!prep.ok) {
+      if (statusEl) statusEl.textContent = prep.message
+      return
+    }
+    const payload = sessionToSharePayload(sessReady, prep.photos)
     if (!payload) {
       if (statusEl) statusEl.textContent = 'Kunne ikke forberede økt.'
       return
     }
     if (statusEl) statusEl.textContent = 'Sender til mottaker …'
     try {
-      await sendSessionShare(sb, shareRecipientShortId, payload)
+      const overlayMs = estimateDelskyOverlayDurationMs(payload, 0)
+      await runDelskySyncWithOverlay(async () => {
+        await sendSessionShare(sb, shareRecipientShortId, payload)
+      }, overlayMs)
       document.getElementById('share-session-dialog')?.close()
       if (statusEl) statusEl.textContent = ''
       rememberRecipient()
@@ -13550,26 +19170,69 @@ async function initSessionMapAndWatch() {
   if (!sessionMapInitPromise) {
     sessionMapInitPromise = (async () => {
       try {
+        const mapEl = document.getElementById('map')
+        if (!mapEl) return
+        await ensureLeaflet()
+        await ensureLeafletMarkerCluster()
+
+        if (
+          map &&
+          map.getContainer() === mapEl &&
+          document.documentElement.contains(mapEl)
+        ) {
+          try {
+            map.setMaxZoom(APP_MAP_MAX_ZOOM)
+          } catch {
+            /* ignore */
+          }
+          setTimeout(() => {
+            map?.invalidateSize()
+            nudgeMaptilerBasemapResize(map)
+          }, 100)
+          rebuildMarkers('session_map_reuse_container')
+          void enrichPendingClicks()
+          renderCount()
+          renderLog()
+          renderPhotosGallery()
+          updateMapSharePanel()
+          const gpsEl = document.getElementById('gps-status')
+          if (locationWatchId == null) {
+            requestLocationOnLoad(gpsEl)
+          }
+          syncSessionMapExploreButton()
+          syncSessionMapDarkButton()
+          await replaceSessionMapBasemapIfNeeded()
+          applyAppMapTileContrastToDom()
+          return
+        }
+
         if (map) {
+          detachSessionBasemapSwWarm()
           try {
             map.remove()
           } catch {
             /* ignore */
           }
           map = null
+          sessionBasemapLayer = null
+          sessionBasemapDarkApplied = false
+          sessionMarkerClusterGroup = null
           markers.length = 0
           userLocationMarker = null
           userAccuracyCircle = null
         }
-        const mapEl = document.getElementById('map')
-        if (!mapEl) return
-        await ensureLeaflet()
         ensureSessionPinIcons()
         followUserOnMap = true
         map = Leaflet.map(mapEl, {
           zoomControl: false,
           tapTolerance: 12,
+          maxZoom: APP_MAP_MAX_ZOOM,
         }).setView([59.9139, 10.7522], 13)
+        try {
+          map.setMaxZoom(APP_MAP_MAX_ZOOM)
+        } catch {
+          /* ignore */
+        }
         Leaflet.control.zoom({ position: 'topright' }).addTo(map)
         map.on('dragstart', () => {
           followUserOnMap = false
@@ -13582,9 +19245,37 @@ async function initSessionMapAndWatch() {
           }
         })
         map.on('popupopen', onSessionMapPopupOpen)
-        createAppMapTileLayer(Leaflet).addTo(map)
-        setTimeout(() => map?.invalidateSize(), 100)
-        rebuildMarkers()
+        sessionBasemapDarkApplied = getSessionMapDarkPreference()
+        syncSessionMapRootDarkClass(sessionBasemapDarkApplied)
+        sessionBasemapLayer = await createAppBasemapLayer(
+          Leaflet,
+          APP_MAP_TILE_LAYER_DATA_SAVER,
+          { dark: sessionBasemapDarkApplied },
+        )
+        sessionBasemapLayer.addTo(map)
+        attachSessionBasemapSwWarmIfRaster(sessionBasemapLayer)
+        syncSessionMapDarkButton()
+        const mcgFn = /** @type {unknown} */ (Leaflet).markerClusterGroup
+        sessionMarkerClusterGroup =
+          typeof mcgFn === 'function'
+            ? /** @type {import('leaflet').Layer} */ (
+                /** @type {(o?: object) => import('leaflet').Layer} */ (mcgFn)({
+                  chunkedLoading: true,
+                  maxClusterRadius: 56,
+                  spiderfyOnMaxZoom: true,
+                  showCoverageOnHover: false,
+                  removeOutsideVisibleBounds: true,
+                })
+              )
+            : null
+        if (sessionMarkerClusterGroup) {
+          sessionMarkerClusterGroup.addTo(map)
+        }
+        setTimeout(() => {
+          map?.invalidateSize()
+          nudgeMaptilerBasemapResize(map)
+        }, 100)
+        rebuildMarkers('session_map_init_new')
         void enrichPendingClicks()
         renderCount()
         renderLog()
@@ -13593,6 +19284,7 @@ async function initSessionMapAndWatch() {
         const gpsEl = document.getElementById('gps-status')
         requestLocationOnLoad(gpsEl)
         syncSessionMapExploreButton()
+        applyAppMapTileContrastToDom()
       } catch (e) {
         console.error('initSessionMapAndWatch', e)
       }
@@ -13793,23 +19485,32 @@ function bindKmtDialogListeners(signal) {
   )
 }
 
-/** @param {'quit' | 'pdf'} tab */
+/** @param {'quit' | 'pdf' | 'excel'} tab */
 function setSessionEndDialogTab(tab) {
   const tabQuit = document.getElementById('session-end-tab-quit')
   const tabPdf = document.getElementById('session-end-tab-pdf')
+  const tabExcel = document.getElementById('session-end-tab-excel')
   const panelQuit = document.getElementById('session-end-panel-quit')
   const panelPdf = document.getElementById('session-end-panel-pdf')
-  const pdf = tab === 'pdf'
-  tabQuit?.setAttribute('aria-selected', (!pdf).toString())
-  tabPdf?.setAttribute('aria-selected', pdf.toString())
-  tabQuit?.classList.toggle('session-end-tabs__tab--active', !pdf)
-  tabPdf?.classList.toggle('session-end-tabs__tab--active', pdf)
-  if (pdf) {
-    panelQuit?.setAttribute('hidden', '')
-    panelPdf?.removeAttribute('hidden')
-  } else {
+  const panelExcel = document.getElementById('session-end-panel-excel')
+  tabQuit?.setAttribute('aria-selected', (tab === 'quit').toString())
+  tabPdf?.setAttribute('aria-selected', (tab === 'pdf').toString())
+  tabExcel?.setAttribute('aria-selected', (tab === 'excel').toString())
+  tabQuit?.classList.toggle('session-end-tabs__tab--active', tab === 'quit')
+  tabPdf?.classList.toggle('session-end-tabs__tab--active', tab === 'pdf')
+  tabExcel?.classList.toggle('session-end-tabs__tab--active', tab === 'excel')
+  if (tab === 'quit') {
     panelQuit?.removeAttribute('hidden')
     panelPdf?.setAttribute('hidden', '')
+    panelExcel?.setAttribute('hidden', '')
+  } else if (tab === 'pdf') {
+    panelQuit?.setAttribute('hidden', '')
+    panelPdf?.removeAttribute('hidden')
+    panelExcel?.setAttribute('hidden', '')
+  } else {
+    panelQuit?.setAttribute('hidden', '')
+    panelPdf?.setAttribute('hidden', '')
+    panelExcel?.removeAttribute('hidden')
   }
 }
 
@@ -13845,6 +19546,123 @@ async function shareOrDownloadPdfBlob(blob, filename) {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/**
+ * Lagrer .xlsx på enheten (iOS: delingsark → Lagre i Filer). Fallback: nedlasting.
+ * @param {Blob} blob
+ * @param {string} filename
+ */
+async function shareOrDownloadXlsxBlob(blob, filename) {
+  const file = new File([blob], filename, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  let canShareFiles = false
+  try {
+    canShareFiles = Boolean(
+      navigator.canShare && navigator.canShare({ files: [file] }),
+    )
+  } catch {
+    canShareFiles = false
+  }
+  if (canShareFiles) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: filename,
+      })
+      return
+    } catch (e) {
+      if (e && /** @type {{ name?: string }} */ (e).name === 'AbortError') return
+    }
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * @param {{ s?: string, d?: string } | null | undefined} v
+ */
+function sessionClickExcelSdCell(v) {
+  if (!v || typeof v !== 'object') return ''
+  const s = typeof v.s === 'string' ? v.s.trim() : ''
+  const d = typeof v.d === 'string' ? v.d.trim() : ''
+  if (s && d) return `S${s}D${d}`
+  return ''
+}
+
+async function exportSessionClicksXlsx() {
+  const statusEl = document.getElementById('session-end-excel-status')
+  const titleInp = document.getElementById('session-end-title')
+  if (!state.clickHistory.length) {
+    if (statusEl) statusEl.textContent = 'Ingen registreringer å eksportere.'
+    return
+  }
+  if (statusEl) statusEl.textContent = 'Genererer Excel …'
+  try {
+    const headers = [
+      'Vegnavn',
+      'Vegnr',
+      'SD nummer',
+      'Meter',
+      'Objekt',
+      'Kommentar',
+    ]
+    const rows = state.clickHistory.map((p) => {
+      const v =
+        p.vegrefAtClick && typeof p.vegrefAtClick === 'object'
+          ? p.vegrefAtClick
+          : null
+      const vegnavn =
+        v && typeof v.vegnavn === 'string' ? v.vegnavn.trim() : ''
+      const vegnr = v && typeof v.vegnr === 'string' ? v.vegnr.trim() : ''
+      const meter = v && typeof v.meter === 'string' ? v.meter.trim() : ''
+      const sd = sessionClickExcelSdCell(v)
+      const obj =
+        typeof p.category === 'string' && p.category
+          ? getObjectCategoryLabel(p.category)
+          : typeof p.label === 'string' && p.label.trim()
+            ? p.label.trim()
+            : ''
+      const comment =
+        typeof p.comment === 'string' && p.comment.trim()
+          ? p.comment.trim()
+          : ''
+      return [vegnavn, vegnr, sd, meter, obj, comment]
+    })
+    const blob = await excelAoaToXlsxBlob([headers, ...rows], 'Registreringer', {
+      rowHeightPt: 20,
+      colWidthPt: 101,
+    })
+    const rawTitle =
+      typeof titleInp?.value === 'string' && titleInp.value.trim()
+        ? titleInp.value.trim().slice(0, SESSION_TITLE_MAX_LEN)
+        : ''
+    const safe = rawTitle
+      ? rawTitle.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, '-')
+      : ''
+    const stamp = new Date().toISOString().slice(0, 10)
+    const filename = safe
+      ? `inspekt-registreringer-${safe}-${stamp}.xlsx`
+      : `inspekt-registreringer-${stamp}.xlsx`
+    await shareOrDownloadXlsxBlob(blob, filename)
+    if (statusEl) {
+      statusEl.textContent =
+        'Excel er klar. På iPhone: velg «Lagre i Filer» i delingsarket om du blir spurt.'
+    }
+  } catch (e) {
+    const msg =
+      e && typeof e === 'object' && 'message' in e
+        ? String(/** @type {{ message: string }} */ (e).message)
+        : 'Ukjent feil'
+    if (statusEl) {
+      statusEl.textContent = msg
+    }
+  }
 }
 
 function collectHomeAiChatLinesForPdf() {
@@ -14102,16 +19920,16 @@ function sessionCounterMinus(buttonEl) {
   triggerMinusFeedback(buttonEl)
   if (state.count <= 0) {
     addLogEntry(state, { message: 'Angret · ingen registreringer' })
-    persist()
+    persist('session:counter_undo_no_history')
     return
   }
   state.count -= 1
   state.clickHistory.pop()
-  rebuildMarkers()
+  rebuildMarkers('counter_undo_pop')
   addLogEntry(state, {
     message: `Angret · teller ${state.count}`,
   })
-  persist()
+  persist('session:counter_undo_pop')
   if (state.clickHistory.length) fitAllPins()
   else centerMapWhenEmptyPins()
 }
@@ -14121,342 +19939,12 @@ function sessionCounterReset(buttonEl) {
   const prev = state.count
   state.count = 0
   state.clickHistory = []
-  rebuildMarkers()
+  rebuildMarkers('counter_reset_all')
   centerMapWhenEmptyPins()
   addLogEntry(state, {
     message: `Fjernet alle · var ${prev}`,
   })
-  persist()
-}
-
-const SESSION_WHEEL_POS_KEY = 'scanix-session-wheel-launcher-pos'
-
-/** @type {AudioContext | null} */
-let sessionWheelAudioCtx = null
-
-function playSessionWheelTick() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext
-    if (!Ctx) return
-    if (!sessionWheelAudioCtx) sessionWheelAudioCtx = new Ctx()
-    if (sessionWheelAudioCtx.state === 'suspended') {
-      void sessionWheelAudioCtx.resume()
-    }
-    const o = sessionWheelAudioCtx.createOscillator()
-    const g = sessionWheelAudioCtx.createGain()
-    o.type = 'sine'
-    o.frequency.value = 1320
-    o.connect(g)
-    g.connect(sessionWheelAudioCtx.destination)
-    const t0 = sessionWheelAudioCtx.currentTime
-    g.gain.setValueAtTime(0.0001, t0)
-    g.gain.exponentialRampToValueAtTime(0.055, t0 + 0.008)
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.045)
-    o.start(t0)
-    o.stop(t0 + 0.05)
-  } catch {
-    /* ignore */
-  }
-}
-
-function applySessionWheelLauncherPosition() {
-  const dock = document.getElementById('session-action-wheel-dock')
-  if (!dock) return
-  try {
-    const raw = localStorage.getItem(SESSION_WHEEL_POS_KEY)
-    if (!raw) return
-    const p = JSON.parse(raw)
-    if (typeof p.left === 'number' && typeof p.top === 'number') {
-      dock.style.left = `${p.left}px`
-      dock.style.top = `${p.top}px`
-      dock.style.right = 'auto'
-      dock.style.bottom = 'auto'
-    }
-  } catch {
-    /* ignore */
-  }
-}
-
-function saveSessionWheelLauncherPosition(leftPx, topPx) {
-  try {
-    localStorage.setItem(
-      SESSION_WHEEL_POS_KEY,
-      JSON.stringify({ left: leftPx, top: topPx }),
-    )
-  } catch {
-    /* ignore */
-  }
-}
-
-function prepSessionEndDialogForWheel() {
-  const sessionEndDialog = document.getElementById('session-end-dialog')
-  const sessionEndTitleInput = document.getElementById('session-end-title')
-  const sessionEndRegisteredNoteInput = document.getElementById(
-    'session-end-registered-note',
-  )
-  const sess = sessions.find((x) => x.id === currentSessionId)
-  if (sessionEndTitleInput) {
-    sessionEndTitleInput.value =
-      typeof sess?.title === 'string' && sess.title.trim()
-        ? sess.title.trim().slice(0, SESSION_TITLE_MAX_LEN)
-        : ''
-  }
-  if (sessionEndRegisteredNoteInput) {
-    sessionEndRegisteredNoteInput.value =
-      typeof sess?.registeredNote === 'string' && sess.registeredNote.trim()
-        ? sess.registeredNote.trim().slice(0, SESSION_REGISTERED_NOTE_MAX_LEN)
-        : ''
-  }
-  const pdfStatus = document.getElementById('session-end-pdf-status')
-  if (pdfStatus) pdfStatus.textContent = ''
-  return sessionEndDialog
-}
-
-function goHomeOpenVeiAi(opts = {}) {
-  const { summaryHint } = opts
-  flushCurrentSession()
-  destroyMap()
-  view = 'home'
-  saveAppState()
-  renderApp()
-  bindHomeListeners()
-  queueMicrotask(() => {
-    setHomeBildeSubTab('ai')
-    if (summaryHint) {
-      const inp = document.getElementById('home-ai-chat-input')
-      if (inp instanceof HTMLTextAreaElement) {
-        inp.value =
-          'Lag en kort, profesjonell oppsummering av dette oppdraget (registreringer og notater).'
-        inp.focus()
-      }
-    }
-  })
-}
-
-/**
- * @param {AbortSignal} signal
- */
-function wireSessionActionWheel(signal) {
-  const dock = document.getElementById('session-action-wheel-dock')
-  const launcher = document.getElementById('session-action-wheel-launcher')
-  const dlg = document.getElementById('session-action-wheel-dialog')
-  const closeBtn = document.getElementById('session-action-wheel-close')
-  const rail = document.getElementById('session-action-wheel-rail')
-  if (!dock || !launcher || !dlg || !rail) return
-
-  applySessionWheelLauncherPosition()
-
-  let drag = null
-  let wheelDragMoved = false
-
-  launcher.addEventListener(
-    'pointerdown',
-    (ev) => {
-      if (ev.button !== 0) return
-      const rect = dock.getBoundingClientRect()
-      drag = {
-        id: ev.pointerId,
-        startX: ev.clientX,
-        startY: ev.clientY,
-        origLeft: rect.left,
-        origTop: rect.top,
-      }
-      wheelDragMoved = false
-      try {
-        launcher.setPointerCapture(ev.pointerId)
-      } catch {
-        /* ignore */
-      }
-    },
-    { signal },
-  )
-
-  launcher.addEventListener(
-    'pointermove',
-    (ev) => {
-      if (!drag || ev.pointerId !== drag.id) return
-      const dx = ev.clientX - drag.startX
-      const dy = ev.clientY - drag.startY
-      if (Math.abs(dx) + Math.abs(dy) > 6) wheelDragMoved = true
-      let left = drag.origLeft + dx
-      let top = drag.origTop + dy
-      const maxL = window.innerWidth - dock.offsetWidth - 8
-      const maxT = window.innerHeight - dock.offsetHeight - 8
-      left = Math.max(8, Math.min(maxL, left))
-      top = Math.max(8, Math.min(maxT, top))
-      dock.style.left = `${left}px`
-      dock.style.top = `${top}px`
-      dock.style.right = 'auto'
-      dock.style.bottom = 'auto'
-    },
-    { signal },
-  )
-
-  const endDrag = (ev) => {
-    if (!drag || ev.pointerId !== drag.id) return
-    drag = null
-    try {
-      launcher.releasePointerCapture(ev.pointerId)
-    } catch {
-      /* ignore */
-    }
-    const rect = dock.getBoundingClientRect()
-    saveSessionWheelLauncherPosition(rect.left, rect.top)
-  }
-  launcher.addEventListener('pointerup', endDrag, { signal })
-  launcher.addEventListener('pointercancel', endDrag, { signal })
-
-  launcher.addEventListener(
-    'click',
-    (ev) => {
-      if (wheelDragMoved) {
-        ev.preventDefault()
-        ev.stopPropagation()
-      }
-    },
-    true,
-  )
-
-  function openWheelDialog() {
-    if (!(dlg instanceof HTMLDialogElement)) return
-    dlg.showModal()
-    launcher.setAttribute('aria-expanded', 'true')
-    dlg.classList.add('session-action-wheel-dialog--enter')
-    requestAnimationFrame(() => {
-      dlg.classList.add('session-action-wheel-dialog--visible')
-    })
-    queueMicrotask(() => {
-      rail.querySelectorAll('.session-action-wheel__item').forEach((el) => {
-        el.classList.remove('session-action-wheel__item--selected')
-      })
-      rail.scrollTop = 0
-      lastTickIndex = -1
-      rail.focus()
-    })
-  }
-
-  function closeWheelDialog() {
-    if (!(dlg instanceof HTMLDialogElement)) return
-    dlg.classList.remove('session-action-wheel-dialog--visible')
-    launcher.setAttribute('aria-expanded', 'false')
-    window.setTimeout(() => {
-      dlg.close()
-      dlg.classList.remove('session-action-wheel-dialog--enter')
-    }, 220)
-  }
-
-  launcher.addEventListener(
-    'click',
-    (ev) => {
-      if (wheelDragMoved) return
-      ev.preventDefault()
-      openWheelDialog()
-    },
-    { signal },
-  )
-
-  closeBtn?.addEventListener('click', () => closeWheelDialog(), { signal })
-  dlg.addEventListener(
-    'click',
-    (ev) => {
-      if (ev.target === dlg) closeWheelDialog()
-    },
-    { signal },
-  )
-  dlg.addEventListener(
-    'cancel',
-    (ev) => {
-      ev.preventDefault()
-      closeWheelDialog()
-    },
-    { signal },
-  )
-
-  let lastTickIndex = -1
-  rail.addEventListener(
-    'scroll',
-    () => {
-      const first = rail.querySelector('.session-action-wheel__item')
-      if (!(first instanceof HTMLElement)) return
-      const itemH = first.getBoundingClientRect().height || 1
-      const idx = Math.round(rail.scrollTop / itemH)
-      const n = rail.querySelectorAll('.session-action-wheel__item').length
-      const clamped = Math.max(0, Math.min(Math.max(0, n - 1), idx))
-      if (clamped !== lastTickIndex) {
-        lastTickIndex = clamped
-        playSessionWheelTick()
-      }
-    },
-    { passive: true, signal },
-  )
-
-  function selectWheelItem(el) {
-    rail.querySelectorAll('.session-action-wheel__item').forEach((b) => {
-      b.classList.toggle('session-action-wheel__item--selected', b === el)
-    })
-  }
-
-  function runWheelAction(action) {
-    closeWheelDialog()
-    window.setTimeout(() => {
-      if (action === 'advancedRegister') {
-        view = 'advRegIntro'
-        renderApp()
-        bindListenersForCurrentView()
-        return
-      }
-      if (action === 'lastContact') {
-        openShareSessionDialog({ preselectLastContact: true })
-        queueMicrotask(() => {
-          if (!loadLastShareRecipient()) {
-            showSessionToast('Ingen siste kontakt ennå – velg mottaker.')
-          }
-        })
-        return
-      }
-      if (action === 'save') {
-        flushCurrentSession()
-        showSessionToast('Oppdraget er lagret.')
-        return
-      }
-      if (action === 'pdf') {
-        prepSessionEndDialogForWheel()
-        setSessionEndDialogTab('pdf')
-        const d = document.getElementById('session-end-dialog')
-        if (d instanceof HTMLDialogElement) d.showModal()
-        queueMicrotask(() =>
-          document.getElementById('session-end-pdf-comments')?.focus(),
-        )
-        return
-      }
-      if (action === 'ai') {
-        goHomeOpenVeiAi({ summaryHint: false })
-        return
-      }
-      if (action === 'end') {
-        prepSessionEndDialogForWheel()
-        setSessionEndDialogTab('quit')
-        const d = document.getElementById('session-end-dialog')
-        if (d instanceof HTMLDialogElement) d.showModal()
-        queueMicrotask(() =>
-          document.getElementById('session-end-title')?.focus(),
-        )
-        return
-      }
-    }, 180)
-  }
-
-  rail.addEventListener(
-    'click',
-    (ev) => {
-      const btn = ev.target.closest('[data-wheel-action]')
-      if (!(btn instanceof HTMLButtonElement)) return
-      selectWheelItem(btn)
-      const action = btn.getAttribute('data-wheel-action') ?? ''
-      runWheelAction(action)
-    },
-    { signal },
-  )
+  persist('session:counter_reset_all')
 }
 
 function bindSessionListeners() {
@@ -14492,6 +19980,11 @@ function bindSessionListeners() {
   document.getElementById('btn-share-session')?.addEventListener(
     'click',
     () => openShareSessionDialog(),
+    { signal },
+  )
+  document.getElementById('btn-save-session-delsky')?.addEventListener(
+    'click',
+    () => void pushCurrentSessionToMyDelsky(),
     { signal },
   )
   document.getElementById('btn-share-session-close')?.addEventListener(
@@ -14610,6 +20103,8 @@ function bindSessionListeners() {
       setSessionEndDialogTab('quit')
       const pdfStatus = document.getElementById('session-end-pdf-status')
       if (pdfStatus) pdfStatus.textContent = ''
+      const excelStatus = document.getElementById('session-end-excel-status')
+      if (excelStatus) excelStatus.textContent = ''
       sessionEndDialog?.showModal()
       queueMicrotask(() => sessionEndTitleInput?.focus())
     },
@@ -14633,6 +20128,16 @@ function bindSessionListeners() {
     },
     { signal },
   )
+  document.getElementById('session-end-tab-excel')?.addEventListener(
+    'click',
+    () => {
+      setSessionEndDialogTab('excel')
+      queueMicrotask(() =>
+        document.getElementById('session-end-excel-export')?.focus(),
+      )
+    },
+    { signal },
+  )
   document.getElementById('session-end-pdf-export')?.addEventListener(
     'click',
     () => {
@@ -14641,6 +20146,20 @@ function bindSessionListeners() {
     { signal },
   )
   document.getElementById('session-end-pdf-cancel')?.addEventListener(
+    'click',
+    () => {
+      sessionEndDialog?.close()
+    },
+    { signal },
+  )
+  document.getElementById('session-end-excel-export')?.addEventListener(
+    'click',
+    () => {
+      void exportSessionClicksXlsx()
+    },
+    { signal },
+  )
+  document.getElementById('session-end-excel-cancel')?.addEventListener(
     'click',
     () => {
       sessionEndDialog?.close()
@@ -14773,8 +20292,10 @@ function bindSessionListeners() {
       }
       if (categoryId) clickEntry.category = categoryId
       state.clickHistory.push(clickEntry)
+      triggerHapticMark()
 
-      rebuildMarkers()
+      registerNetLogRegisterTap(id, { count: state.count })
+      rebuildMarkers('register_button_tap')
       void enrichPendingClicks()
       animateSessionPinDrop()
 
@@ -14790,7 +20311,7 @@ function bindSessionListeners() {
           message: `Oppført${typePart} · ${state.count} · ${coordStr}`,
         })
       }
-      persist()
+      persist('session:register_button_tap')
       showSessionToast('Registrert ✓')
     },
     { signal },
@@ -14874,7 +20395,7 @@ function bindSessionListeners() {
           addLogEntry(state, {
             message: 'Eksport · delt',
           })
-          persist()
+          persist('session:export_html_shared')
           return
         } catch (err) {
           if (err.name === 'AbortError') return
@@ -14890,7 +20411,7 @@ function bindSessionListeners() {
       addLogEntry(state, {
         message: 'Eksport · nedlastet',
       })
-      persist()
+      persist('session:export_html_downloaded')
     },
     { signal },
   )
@@ -14903,16 +20424,24 @@ function bindSessionListeners() {
       const id = card.getAttribute('data-photo-id')
       if (!id) return
       const ph = state.photos.find((p) => p.id === id)
-      if (ph?.dataUrl) openPhotoFullscreen(ph.dataUrl, ph.vegref, ph.note)
+      if (ph) void openPhotoFullscreenFromPhotoRecord(ph)
     },
     { signal },
   )
 
   wireSessionBottomSheet(signal)
   wireSessionGpsSheetMirror(signal)
-  wireSessionActionWheel(signal)
+  wireMapThemeDock(signal, {
+    frameId: 'session-map-frame',
+    posKey: SESSION_MAP_THEME_DOT_POS_KEY,
+    onAfterThemeChange: async () => {
+      await replaceSessionMapBasemapIfNeeded()
+      applyAppMapTileContrastToDom()
+    },
+  })
 
   setupSessionShareInbox()
+  syncSessionMapDarkButton()
 }
 
 function bindListenersForCurrentView() {
@@ -14925,7 +20454,10 @@ function bindListenersForCurrentView() {
     menuExcelVegLivePollId = null
   }
   if (
-    (view !== 'home' && view !== 'menuExcelExport') ||
+    (view !== 'home' &&
+      view !== 'menuExcelExport' &&
+      view !== 'followUpRouteEdit' &&
+      view !== 'menuFollowUpRoute') ||
     !currentUser
   ) {
     stopHomeVegrefTracking()
@@ -14953,12 +20485,24 @@ function bindListenersForCurrentView() {
     bindMenuTrafficGroupListeners()
   } else if (view === 'menuOfflineVegref') {
     bindMenuOfflineVegrefListeners()
+  } else if (view === 'menuHaptics') {
+    bindMenuHapticsListeners()
   } else if (view === 'menuSettings' || view === 'menuPrivacy' || view === 'menuSupport') {
     bindMenuInfoListeners()
+  } else if (view === 'menuFinnObjekter') {
+    if (menuFinnObjekterAbort) menuFinnObjekterAbort.abort()
+    menuFinnObjekterAbort = new AbortController()
+    bindFinnObjekterListeners(menuFinnObjekterAbort.signal, { onBack: goHome })
   } else if (view === 'menuExcelExport') {
     bindMenuExcelExportListeners()
+  } else if (view === 'menuFollowUpRoute') {
+    bindMenuFollowUpRouteListeners()
+  } else if (view === 'followUpRouteEdit') {
+    bindFollowUpRouteEditListeners()
   } else if (view === 'inbox') {
     bindInboxListeners()
+  } else if (view === 'sharedSessionReview') {
+    bindSharedSessionReviewListeners()
   } else if (view === 'photoAlbum') {
     bindPhotoAlbumListeners()
   } else if (view === 'receivedPhotos') {
@@ -14979,7 +20523,7 @@ function bindListenersForCurrentView() {
 }
 
 /**
- * På iOS/WebKit forsvinner ofte stylesheet-`filter` på CARTO-fliser etter at appen har vært
+ * På iOS/WebKit forsvinner ofte stylesheet-`filter` på rasterfliser etter at appen har vært
  * i bakgrunn (låseskjerm). Inline-filter (se leafletLazy tileload) + dette kallet ved resume
  * gjenoppretter lesbar kontrast. invalidateSize() unngår feil flislayout etter resume.
  */
@@ -14991,11 +20535,14 @@ function refreshLeafletMapsAfterResume() {
     } catch {
       /* ignore */
     }
+    nudgeMaptilerBasemapResize(m)
   }
   inv(map)
   inv(menuBrowseMap)
   inv(frictionMap)
   inv(receivedPhotosMap)
+  inv(sharedReviewMap)
+  inv(offlineVegMap)
   invalidateAdvRegMapSize()
 }
 
@@ -15041,6 +20588,11 @@ async function bootstrap() {
   await initAppStateFromStorage()
   scanixBootstrapLog('initAppStateFromStorage ferdig')
   initScreenWakeLock()
+  initNativeNetworkStatusListener()
+  onNativeWifiOrEthernet(() => {
+    if (isRemoteAppStateDataEnabled() && currentUser?.id)
+      scheduleSupabaseAppStatePush()
+  })
   initHomeWeather({ getIsHome: () => view === 'home' })
   configureAdvancedRegister({
     navigate: (nextView) => {
@@ -15075,10 +20627,59 @@ async function bootstrap() {
         setHomeVegrefPlaceholder('Henter vegreferanse …')
       }
     },
+    /* Minimal mobildata: ikke bruk NVDB-nett når (a) faktisk offline med
+       pakke, eller (b) posisjon er innenfor prefetchet deknings-envelope,
+       eller (c) innenfor installert offline-pakkes coverageBbox — da er
+       lokal data allerede «hentet område»; ved miss brukes koordinat-fallback
+       i stedet for å henge på nett. Utenfor disse områdene beholdes NVDB. */
+    skipNetworkWhenOfflineReady: (lat, lng) => {
+      if (isMinDownloadMode()) return true
+      if (
+        offlineVegrefReady &&
+        typeof navigator !== 'undefined' &&
+        navigator.onLine === false
+      ) {
+        return true
+      }
+      if (
+        typeof lat === 'number' &&
+        typeof lng === 'number' &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng)
+      ) {
+        if (isLatLngInsidePrefetchCoverage(lat, lng)) return true
+        if (offlineVegrefReady && isLatLngInsideOfflinePackageCoverage(lat, lng))
+          return true
+      }
+      return false
+    },
+    getVegrefDataMode,
+  })
+  initPrefetch({
+    persist: (segments) => mergeNvdbSegmentsIntoOfflineDb(segments)
+      .then(() => { void refreshOfflineVegrefState() }),
+    onDone: () => { void refreshOfflineVegrefState() },
+    shouldSkipPrefetch: () =>
+      isMinDownloadMode() ||
+      offlineVegrefReady ||
+      getVegrefDataMode() === 'minimal',
+  })
+  initDelegator({
+    fetchOnline: (lat, lng, opts) => fetchRoadReferenceNearForApp(lat, lng, opts),
+    allowOnlineFallback: !isMinDownloadMode(),
   })
   window.addEventListener('online', () => {
     void enrichPendingClicks()
     void ensureOfflineVegrefPackage().catch(() => null)
+    /* Supabase auto-refresh ble stoppet ved offline for å unngå at en
+       hengende refresh holder auth-låsen og spammer konsollen med
+       «lock acquisition timed out». Start den igjen nå som nett er tilbake. */
+    try {
+      const sbOn = getSupabase()
+      if (sbOn) sbOn.auth.startAutoRefresh()
+    } catch {
+      /* noop */
+    }
     if (
       lastLiveCoords &&
       Date.now() - lastLiveCoords.ts < 90000 &&
@@ -15091,9 +20692,40 @@ async function bootstrap() {
         timestamp: Date.now(),
       })
     }
+    if (currentUser?.id) {
+      void tryDrainPhotoUploadQueue({ userId: currentUser.id }).finally(() => {
+        syncPhotoUploadDeferralBanner()
+      })
+      scheduleSupabaseAppStatePush()
+    }
     if (currentUser && view === 'home') renderApp()
+    else syncPhotoUploadDeferralBanner()
   })
+  try {
+    navigator.connection?.addEventListener?.('change', () => {
+      if (currentUser?.id && !shouldDeferPhotoUploadOnNetwork()) {
+        void tryDrainPhotoUploadQueue({ userId: currentUser.id }).finally(() => {
+          syncPhotoUploadDeferralBanner()
+        })
+        scheduleSupabaseAppStatePush()
+      } else {
+        syncPhotoUploadDeferralBanner()
+      }
+    })
+  } catch {
+    /* ignore */
+  }
   window.addEventListener('offline', () => {
+    /* Stopp Supabase sin bakgrunns-auto-refresh mens nettet er borte: hver
+       tick ville ellers prøve å hente refresh-token, timer ut vår 6 s fetch,
+       og holde auth-låsen lenge nok til at andre kall får «acquisition
+       timed out». Starter igjen på 'online'. */
+    try {
+      const sbOff = getSupabase()
+      if (sbOff) sbOff.auth.stopAutoRefresh()
+    } catch {
+      /* noop */
+    }
     if (
       lastLiveCoords &&
       (view === 'home' || kmtDialogOpen)
@@ -15106,6 +20738,7 @@ async function bootstrap() {
       })
     }
     if (currentUser && view === 'home') renderApp()
+    else syncPhotoUploadDeferralBanner()
   })
   /* Ikke start stor nedlasting samtidig med første render / NVDB. */
   if (typeof requestIdleCallback === 'function') {
@@ -15121,11 +20754,24 @@ async function bootstrap() {
     }, 2500)
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && currentUser?.id) {
-      void backupAuthToIdb(loadUsersFromStorage(), currentUser)
+    if (document.visibilityState === 'hidden') {
+      flushCurrentSession()
+      forceSaveAppStateNow('visibility_hidden')
+      /* Forside: watchPosition med enableHighAccuracy er svært strømkrevende.
+       * Uten pause fortsetter iOS/WKWebView GPS selv når brukeren bytter app
+       * (Energy Impact: Location + CPU). */
+      if (view === 'home') {
+        stopHomeVegrefTracking()
+      }
+      if (currentUser?.id) {
+        void backupAuthToIdb(loadUsersFromStorage(), currentUser)
+      }
     }
     if (document.visibilityState === 'visible') {
       queueRefreshLeafletAfterResume()
+      if (view === 'home' && currentUser) {
+        startHomeVegrefTracking()
+      }
       if (view === 'session') {
         void enrichPendingClicks()
       }
@@ -15142,14 +20788,73 @@ async function bootstrap() {
           timestamp: Date.now(),
         })
       }
+      if (view === 'home') {
+        bumpHomeVegrefMeterAfterForeground()
+      }
     }
   })
+  window.addEventListener('pagehide', () => {
+    flushCurrentSession()
+    forceSaveAppStateNow('pagehide')
+  })
   window.addEventListener('pageshow', (ev) => {
-    if (ev.persisted) queueRefreshLeafletAfterResume()
+    if (ev.persisted) {
+      queueRefreshLeafletAfterResume()
+      if (view === 'home') bumpHomeVegrefMeterAfterForeground()
+    }
+  })
+  window.addEventListener('error', (ev) => {
+    try {
+      scanixDebugFreezeLog('H6', 'window:error', 'uncaught_error', {
+        message: String(ev.message || '').slice(0, 240),
+        filename: String(ev.filename || '').slice(0, 120),
+        lineno: ev.lineno ?? null,
+      })
+    } catch {
+      /* ignore */
+    }
+  })
+  window.addEventListener('unhandledrejection', (ev) => {
+    try {
+      const r = ev.reason
+      const msg =
+        r && typeof r === 'object' && 'message' in r
+          ? String(/** @type {{ message?: unknown }} */ (r).message)
+          : String(r)
+      scanixDebugFreezeLog('H6', 'window:unhandledrejection', 'unhandled_rejection', {
+        message: msg.slice(0, 240),
+      })
+    } catch {
+      /* ignore */
+    }
   })
   const sbBoot = getSupabase()
   if (sbBoot) {
-    sbBoot.auth.onAuthStateChange((event) => {
+    /* Ved kald oppstart offline: ikke start bakgrunns-auto-refresh, ellers
+       spinner den i løkke mens nettet er dødt og spammer lock-advarsler. */
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      try {
+        sbBoot.auth.stopAutoRefresh()
+      } catch {
+        /* noop */
+      }
+    }
+    sbBoot.auth.onAuthStateChange((event, sess) => {
+      if (
+        event === 'TOKEN_REFRESHED' ||
+        event === 'SIGNED_IN' ||
+        event === 'INITIAL_SESSION'
+      ) {
+        if (
+          sess?.user?.id &&
+          currentUser?.id === sess.user.id &&
+          view !== 'auth' &&
+          !isMinDownloadMode()
+        ) {
+          scheduleHydrateUserAppStateFromRemote()
+        }
+        return
+      }
       if (event !== 'SIGNED_OUT') return
       if (ignoreNextSupabaseSignedOut) {
         ignoreNextSupabaseSignedOut = false
@@ -15157,9 +20862,12 @@ async function bootstrap() {
       }
       cancelSupabaseAppStatePush()
       teardownSessionShareInbox()
+      sessionIdsPendingPartialCloudPush.clear()
+      standalonePhotosPendingPartialCloudPush = false
       flushCurrentSession()
       destroyMap()
       vegrefResetSessionCache()
+      resetPrefetch()
       currentSessionId = null
       state = defaultState()
       sessions = []
@@ -15167,6 +20875,9 @@ async function bootstrap() {
       frictionMeasurements = []
       frictionActiveSessionId = null
       frictionPreviousSessionId = null
+      lastResumeSessionId = null
+      destroyFollowUpRouteMaps()
+      followUpDraft = null
       currentUser = null
       lastIncomingShareCountForNotify = null
       clearAuthSession()
@@ -15180,7 +20891,7 @@ async function bootstrap() {
   scanixBootstrapLog('renderApp …')
   renderApp()
   bindListenersForCurrentView()
-  if (isSupabaseConfigured() && currentUser?.id) {
+  if (isRemoteAppStateDataEnabled() && currentUser?.id && !isMinDownloadMode()) {
     void hydrateUserAppStateFromRemote()
   }
   scanixBootstrapLog('bootstrap ferdig')
@@ -15203,6 +20914,7 @@ try {
 
 window.addEventListener('beforeunload', () => {
   flushCurrentSession()
+  forceSaveAppStateNow('beforeunload')
   stopLocationWatch()
 })
 
@@ -15234,8 +20946,20 @@ function destroyReceivedPhotosMap() {
   }
 }
 
+function destroySharedReviewMap() {
+  if (sharedReviewMap) {
+    try {
+      sharedReviewMap.remove()
+    } catch {
+      /* ignore */
+    }
+    sharedReviewMap = null
+  }
+}
+
 function destroyMap() {
   destroyReceivedPhotosMap()
+  destroySharedReviewMap()
   kmtStandaloneFlow = false
   document.getElementById('kmt-dialog')?.close()
   kmtDialogOpen = false
@@ -15248,6 +20972,7 @@ function destroyMap() {
   userLocationMarker = null
   userAccuracyCircle = null
   markers.length = 0
+  sessionMarkerClusterGroup = null
   exitSessionMapFullscreen()
   if (map) {
     map.remove()
@@ -15266,19 +20991,380 @@ function destroyMenuBrowseMap() {
   }
 }
 
+function followUpPulseStop() {
+  if (followUpPulseTimer != null) {
+    clearInterval(followUpPulseTimer)
+    followUpPulseTimer = null
+  }
+}
+
+function destroyFollowUpRouteMaps() {
+  followUpPulseStop()
+  for (const m of followUpLeafletMarkers) {
+    try {
+      m.off()
+      m.remove()
+    } catch {
+      /* ignore */
+    }
+  }
+  followUpLeafletMarkers = []
+  if (followUpEditCluster) {
+    try {
+      followUpEditMap?.removeLayer(followUpEditCluster)
+    } catch {
+      /* ignore */
+    }
+    followUpEditCluster = null
+  }
+  if (followUpFsCluster) {
+    try {
+      followUpFsMap?.removeLayer(followUpFsCluster)
+    } catch {
+      /* ignore */
+    }
+    followUpFsCluster = null
+  }
+  if (followUpEditMap) {
+    try {
+      followUpEditMap.remove()
+    } catch {
+      /* ignore */
+    }
+    followUpEditMap = null
+  }
+  if (followUpFsMap) {
+    try {
+      followUpFsMap.remove()
+    } catch {
+      /* ignore */
+    }
+    followUpFsMap = null
+  }
+}
+
+function followUpEnsurePinIcon() {
+  ensureSessionPinIcons()
+  return pinIcon
+}
+
+async function followUpBuildPopupHtml(lat, lng) {
+  try {
+    const v = await fetchRoadPositionDirect(lat, lng, { accuracyM: 35 })
+    if (!v) {
+      return '<div class="followup-popup"><p class="followup-popup__muted">Ingen vegreferanse fra NVDB her.</p></div>'
+    }
+    const line =
+      typeof v.roadLineDisplay === 'string' && v.roadLineDisplay.trim()
+        ? v.roadLineDisplay.trim()
+        : typeof v.roadLine === 'string'
+          ? v.roadLine
+          : ''
+    const m = v.m != null ? String(v.m) : '–'
+    const s = v.s != null ? String(v.s) : '–'
+    const d = v.d != null ? String(v.d) : '–'
+    return `<div class="followup-popup">
+      <p class="followup-popup__road">${escapeHtml(line)}</p>
+      <dl class="followup-popup__dl">
+        <div><dt>S</dt><dd>${escapeHtml(s)}</dd></div>
+        <div><dt>D</dt><dd>${escapeHtml(d)}</dd></div>
+        <div><dt>Meter</dt><dd>${escapeHtml(m)}</dd></div>
+      </dl>
+    </div>`
+  } catch {
+    return '<div class="followup-popup"><p class="followup-popup__muted">Kunne ikke hente vegref.</p></div>'
+  }
+}
+
+function followUpUpdateNearestPulse(map, clusterGroup) {
+  if (!map || !clusterGroup || !followUpDraft?.markers?.length) return
+  const u = lastLiveCoords
+  if (
+    !u ||
+    typeof u.lat !== 'number' ||
+    typeof u.lng !== 'number' ||
+    map.getZoom() < 14
+  ) {
+    for (const m of followUpLeafletMarkers) {
+      const el = m.getElement?.()
+      el?.classList.remove('followup-marker--pulse')
+    }
+    return
+  }
+  const firstM = followUpLeafletMarkers[0]
+  if (!firstM) return
+  const ll = firstM.getLatLng()
+  const dist = haversineM(u.lat, u.lng, ll.lat, ll.lng)
+  const el = firstM.getElement?.()
+  let unclustered = true
+  try {
+    if (clusterGroup && typeof clusterGroup.getVisibleParent === 'function') {
+      const p = clusterGroup.getVisibleParent(firstM)
+      unclustered = p == null || p === firstM
+    }
+  } catch {
+    unclustered = true
+  }
+  const show = el && dist < 3200 && map.getZoom() >= 15 && unclustered
+  for (const m of followUpLeafletMarkers) {
+    const node = m.getElement?.()
+    node?.classList.toggle('followup-marker--pulse', show && m === firstM)
+  }
+}
+
+async function initFollowUpEditMapInternal() {
+  const el = document.getElementById('followup-edit-map')
+  if (!el || followUpEditMap) return
+  await ensureLeaflet()
+  await ensureLeafletMarkerCluster()
+  followUpEditMap = Leaflet.map(el, {
+    zoomControl: true,
+    maxZoom: APP_MAP_MAX_ZOOM,
+  }).setView([65.0, 15.0], 5)
+  try {
+    followUpEditMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+  } catch {
+    /* ignore */
+  }
+  ;(await createAppBasemapLayer(Leaflet, APP_MAP_TILE_LAYER_DATA_SAVER)).addTo(
+    followUpEditMap,
+  )
+  const mcgFn = /** @type {unknown} */ (Leaflet).markerClusterGroup
+  followUpEditCluster =
+    typeof mcgFn === 'function'
+      ? /** @type {(o?: object) => import('leaflet').Layer} */ (mcgFn)({
+          chunkedLoading: true,
+          maxClusterRadius: 52,
+          spiderfyOnMaxZoom: true,
+          showCoverageOnHover: false,
+          removeOutsideVisibleBounds: true,
+        })
+      : null
+  if (followUpEditCluster) followUpEditCluster.addTo(followUpEditMap)
+  followUpEditMap.on('zoomend moveend', () => {
+    followUpUpdateNearestPulse(
+      followUpEditMap,
+      /** @type {{ getVisibleParent?: (m: import('leaflet').Marker) => unknown }} */ (
+        followUpEditCluster
+      ),
+    )
+  })
+  window.setTimeout(() => {
+    try {
+      followUpEditMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(followUpEditMap)
+    } catch {
+      /* ignore */
+    }
+  }, 140)
+  rebuildFollowUpEditMarkers()
+  if (followUpPulseTimer == null) {
+    followUpPulseTimer = window.setInterval(() => {
+      if (view !== 'followUpRouteEdit' || !followUpEditMap) return
+      followUpUpdateNearestPulse(
+        followUpEditMap,
+        /** @type {{ getVisibleParent?: (m: import('leaflet').Marker) => unknown }} */ (
+          followUpEditCluster
+        ),
+      )
+    }, 2200)
+  }
+}
+
+function rebuildFollowUpEditMarkers() {
+  if (!followUpEditMap || !Leaflet) return
+  const cg = followUpEditCluster
+  if (cg && typeof cg.clearLayers === 'function') {
+    try {
+      cg.clearLayers()
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const m of followUpLeafletMarkers) {
+    try {
+      m.remove()
+    } catch {
+      /* ignore */
+    }
+  }
+  followUpLeafletMarkers = []
+  const icon = followUpEnsurePinIcon()
+  const markers = Array.isArray(followUpDraft?.markers) ? followUpDraft.markers : []
+  let idx = 0
+  for (const raw of markers) {
+    const mk = /** @type {{ id?: string, lat?: number, lng?: number, roadDisplay?: string, meter?: number }} */ (
+      raw
+    )
+    if (typeof mk.lat !== 'number' || typeof mk.lng !== 'number') continue
+    const marker = Leaflet.marker([mk.lat, mk.lng], {
+      icon: icon || undefined,
+      title:
+        typeof mk.roadDisplay === 'string'
+          ? `${mk.roadDisplay} m${mk.meter ?? ''}`
+          : `Punkt ${idx + 1}`,
+    })
+    const label = idx + 1
+    marker.bindPopup(`<div class="followup-popup followup-popup--loading">Henter vegref …</div>`, {
+      maxWidth: 280,
+      className: 'followup-popup-wrap',
+    })
+    marker.on('popupopen', () => {
+      void (async () => {
+        const p = marker.getPopup()
+        if (!p) return
+        const html = await followUpBuildPopupHtml(mk.lat, mk.lng)
+        p.setContent(html)
+      })()
+    })
+    if (cg && typeof cg.addLayer === 'function') cg.addLayer(marker)
+    else marker.addTo(followUpEditMap)
+    followUpLeafletMarkers.push(marker)
+    idx += 1
+  }
+  if (markers.length) {
+    const bounds = Leaflet.latLngBounds(
+      markers.map((r) => {
+        const o = /** @type {{ lat: number, lng: number }} */ (r)
+        return [o.lat, o.lng]
+      }),
+    )
+    try {
+      followUpEditMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 })
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function initFollowUpFsMapInternal() {
+  const shell = document.getElementById('followup-fullscreen-shell')
+  const el = document.getElementById('followup-fs-map')
+  if (!shell || !el || followUpFsMap) return
+  shell.hidden = false
+  await ensureLeaflet()
+  await ensureLeafletMarkerCluster()
+  followUpFsMap = Leaflet.map(el, {
+    zoomControl: true,
+    maxZoom: APP_MAP_MAX_ZOOM,
+  }).setView([65.0, 15.0], 5)
+  try {
+    followUpFsMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+  } catch {
+    /* ignore */
+  }
+  ;(await createAppBasemapLayer(Leaflet, APP_MAP_TILE_LAYER_DATA_SAVER)).addTo(
+    followUpFsMap,
+  )
+  const mcgFn = /** @type {unknown} */ (Leaflet).markerClusterGroup
+  followUpFsCluster =
+    typeof mcgFn === 'function'
+      ? /** @type {(o?: object) => import('leaflet').Layer} */ (mcgFn)({
+          chunkedLoading: true,
+          maxClusterRadius: 56,
+          spiderfyOnMaxZoom: true,
+          showCoverageOnHover: false,
+          removeOutsideVisibleBounds: true,
+        })
+      : null
+  const icon = followUpEnsurePinIcon()
+  const markers = Array.isArray(followUpDraft?.markers) ? followUpDraft.markers : []
+  if (followUpFsCluster) followUpFsCluster.addTo(followUpFsMap)
+  let i = 0
+  for (const raw of markers) {
+    const mk = /** @type {{ lat?: number, lng?: number, roadDisplay?: string, meter?: number }} */ (
+      raw
+    )
+    if (typeof mk.lat !== 'number' || typeof mk.lng !== 'number') continue
+    const marker = Leaflet.marker([mk.lat, mk.lng], { icon: icon || undefined })
+    marker.bindPopup(`<div class="followup-popup followup-popup--loading">Henter vegref …</div>`, {
+      maxWidth: 280,
+      className: 'followup-popup-wrap',
+    })
+    marker.on('popupopen', () => {
+      void (async () => {
+        const p = marker.getPopup()
+        if (!p) return
+        const html = await followUpBuildPopupHtml(mk.lat, mk.lng)
+        p.setContent(html)
+      })()
+    })
+    if (followUpFsCluster && typeof followUpFsCluster.addLayer === 'function')
+      followUpFsCluster.addLayer(marker)
+    else marker.addTo(followUpFsMap)
+    i += 1
+  }
+  if (markers.length) {
+    const bounds = Leaflet.latLngBounds(
+      markers.map((r) => {
+        const o = /** @type {{ lat: number, lng: number }} */ (r)
+        return [o.lat, o.lng]
+      }),
+    )
+    try {
+      followUpFsMap.fitBounds(bounds, { padding: [52, 52], maxZoom: APP_MAP_MAX_ZOOM })
+    } catch {
+      /* ignore */
+    }
+  }
+  window.setTimeout(() => {
+    try {
+      followUpFsMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(followUpFsMap)
+    } catch {
+      /* ignore */
+    }
+  }, 160)
+}
+
+function closeFollowUpFullscreen() {
+  const shell = document.getElementById('followup-fullscreen-shell')
+  if (shell) shell.hidden = true
+  if (followUpFsCluster) {
+    try {
+      followUpFsMap?.removeLayer(followUpFsCluster)
+    } catch {
+      /* ignore */
+    }
+    followUpFsCluster = null
+  }
+  if (followUpFsMap) {
+    try {
+      followUpFsMap.remove()
+    } catch {
+      /* ignore */
+    }
+    followUpFsMap = null
+  }
+  window.setTimeout(() => {
+    try {
+      followUpEditMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(followUpEditMap)
+    } catch {
+      /* ignore */
+    }
+  }, 80)
+}
+
 async function initMenuBrowseMap() {
   const el = document.getElementById('menu-browse-map')
   if (!el || menuBrowseMap) return
   await ensureLeaflet()
-  menuBrowseMap = Leaflet.map('menu-browse-map', { zoomControl: false }).setView(
-    [59.9139, 10.7522],
-    13,
-  )
+  menuBrowseMap = Leaflet.map('menu-browse-map', {
+    zoomControl: false,
+    maxZoom: APP_MAP_MAX_ZOOM,
+  }).setView([59.9139, 10.7522], 13)
+  try {
+    menuBrowseMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+  } catch {
+    /* ignore */
+  }
   Leaflet.control.zoom({ position: 'topright' }).addTo(menuBrowseMap)
-  createAppMapTileLayer(Leaflet).addTo(menuBrowseMap)
+  ;(await createAppBasemapLayer(Leaflet)).addTo(menuBrowseMap)
   window.setTimeout(() => {
     try {
       menuBrowseMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(menuBrowseMap)
     } catch {
       /* ignore */
     }
@@ -15308,11 +21394,18 @@ async function initOfflineVegMap() {
     scrollWheelZoom: false,
     doubleClickZoom: false,
     keyboard: false,
+    maxZoom: APP_MAP_MAX_ZOOM,
   }).setView([65.0, 13.0], 5)
-  createAppMapTileLayer(Leaflet).addTo(offlineVegMap)
+  try {
+    offlineVegMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+  } catch {
+    /* ignore */
+  }
+  ;(await createAppBasemapLayer(Leaflet)).addTo(offlineVegMap)
   window.setTimeout(() => {
     try {
       offlineVegMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(offlineVegMap)
     } catch {
       /* ignore */
     }
@@ -15520,6 +21613,115 @@ function paintOfflineVegStatusAndButton() {
   }
 }
 
+/**
+ * @param {number[][]} latlngs [lat, lng][]
+ * @param {number} maxM
+ */
+function trimLatLngPathToMaxDistanceM(latlngs, maxM) {
+  if (!latlngs || latlngs.length < 2 || maxM <= 0) return latlngs || []
+  const out = [latlngs[0]]
+  let acc = 0
+  for (let i = 1; i < latlngs.length; i++) {
+    const a = out[out.length - 1]
+    const b = latlngs[i]
+    const d = haversineM(a[0], a[1], b[0], b[1])
+    if (acc + d <= maxM) {
+      acc += d
+      out.push(b)
+      continue
+    }
+    const rem = maxM - acc
+    if (rem > 4 && d > 1e-6) {
+      const t = Math.min(1, rem / d)
+      out.push([
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+      ])
+    }
+    break
+  }
+  return out.length >= 2 ? out : latlngs.slice(0, Math.min(2, latlngs.length))
+}
+
+/**
+ * Bbox som omslutter en polylinje + buffer (km), deretter MAX_BBOX-klamp.
+ * @param {number[][]} latlngs
+ * @param {number} padKm
+ */
+function bboxFromLatLngPathForNvdb(latlngs, padKm) {
+  if (!latlngs || latlngs.length < 2) return null
+  let minLat = Infinity
+  let maxLat = -Infinity
+  let minLng = Infinity
+  let maxLng = -Infinity
+  for (const p of latlngs) {
+    if (!p || p.length < 2) continue
+    const lat = p[0]
+    const lng = p[1]
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    minLat = Math.min(minLat, lat)
+    maxLat = Math.max(maxLat, lat)
+    minLng = Math.min(minLng, lng)
+    maxLng = Math.max(maxLng, lng)
+  }
+  if (!Number.isFinite(minLat) || minLat === Infinity) return null
+  const seed = { minLat, maxLat, minLng, maxLng }
+  const expanded = expandBboxKm(seed, padKm)
+  const clamped = clampBboxToMaxDeg(expanded)
+  return bboxIsValid(clamped) ? clamped : null
+}
+
+/**
+ * Bygg nedlastings-bbox langs kjørerute (OSRM), ikke luftlinje-rektangel fra søk.
+ * Returnerer null hvis forholdene ikke er oppfylt eller OSRM feiler — da brukes nominatim-bbox.
+ */
+async function tryOfflineVegRoadCorridorBbox() {
+  const lc = lastLiveCoords
+  if (
+    !lc ||
+    typeof lc.lat !== 'number' ||
+    typeof lc.lng !== 'number' ||
+    Number.isNaN(lc.lat) ||
+    Number.isNaN(lc.lng)
+  ) {
+    return null
+  }
+  const acc =
+    typeof lc.accuracy === 'number' && Number.isFinite(lc.accuracy)
+      ? lc.accuracy
+      : 99
+  if (acc > OFFLINE_VEG_ROUTE_MAX_GPS_ACC_M) return null
+  const spd = vegrefGetLastSpeed()
+  if (spd < OFFLINE_VEG_ROUTE_MIN_SPEED_MPS) return null
+  const tb = traceBuffer
+  if (tb.length < 2) return null
+  const b = tb[tb.length - 1]
+  const a = tb[tb.length - 2]
+  const age = Date.now() - b.timestampMs
+  if (age > OFFLINE_VEG_ROUTE_TRACE_FRESH_MS) return null
+  const brg = bearingDeg(a.lat, a.lng, b.lat, b.lng)
+  if (!Number.isFinite(brg)) return null
+  const cosLat = Math.max(0.05, Math.cos((lc.lat * Math.PI) / 180))
+  const rad = (brg * Math.PI) / 180
+  const airKm = Math.min(
+    OFFLINE_VEG_ROUTE_MAX_AIR_KM,
+    OFFLINE_VEG_ROUTE_AHEAD_KM * 1.12,
+  )
+  const endLat = lc.lat + (airKm * Math.cos(rad)) / 111
+  const endLng = lc.lng + (airKm * Math.sin(rad)) / (111 * cosLat)
+  const route = await fetchOsrmDrivingRoute(lc.lat, lc.lng, endLat, endLng)
+  if (!route?.latlngs?.length || route.latlngs.length < 2) return null
+  const maxAlongM = Math.min(
+    OFFLINE_VEG_ROUTE_AHEAD_KM * 1000,
+    typeof route.distanceM === 'number' && Number.isFinite(route.distanceM)
+      ? route.distanceM
+      : OFFLINE_VEG_ROUTE_AHEAD_KM * 1000,
+  )
+  const trimmed = trimLatLngPathToMaxDistanceM(route.latlngs, maxAlongM)
+  const padKm = Math.max(offlineVegBufferKm, 1.0)
+  return bboxFromLatLngPathForNvdb(trimmed, padKm)
+}
+
 async function downloadOfflineVegSelection() {
   if (offlineVegDownloadBusy) return
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -15527,7 +21729,7 @@ async function downloadOfflineVegSelection() {
     paintOfflineVegStatusAndButton()
     return
   }
-  const bbox = offlineVegEffectiveBbox()
+  let bbox = offlineVegEffectiveBbox()
   if (!bbox) {
     offlineVegDownloadError = 'Velg et område først.'
     paintOfflineVegStatusAndButton()
@@ -15535,7 +21737,16 @@ async function downloadOfflineVegSelection() {
   }
   offlineVegDownloadBusy = true
   offlineVegDownloadError = ''
-  offlineVegDownloadStatus = 'Henter vegdata fra NVDB …'
+  offlineVegDownloadStatus = 'Forbereder nedlastingsområde …'
+  paintOfflineVegStatusAndButton()
+  const roadBbox = await tryOfflineVegRoadCorridorBbox()
+  if (roadBbox) {
+    bbox = roadBbox
+    offlineVegDownloadStatus =
+      'Bruker kjørerute (~12 km) som nedlastingsområde (ikke luftlinje). Henter vegdata fra NVDB …'
+  } else {
+    offlineVegDownloadStatus = 'Henter vegdata fra NVDB …'
+  }
   if (offlineVegDownloadAbort) offlineVegDownloadAbort.abort()
   offlineVegDownloadAbort = new AbortController()
   const { signal } = offlineVegDownloadAbort
@@ -16018,6 +22229,7 @@ function frictionFocusMeasurementOnMap(id) {
   const applyFit = () => {
     try {
       frictionMap?.invalidateSize({ animate: false })
+      nudgeMaptilerBasemapResize(frictionMap)
     } catch {
       /* ignore */
     }
@@ -16025,7 +22237,7 @@ function frictionFocusMeasurementOnMap(id) {
       try {
         frictionMap.fitBounds(poly.getBounds(), {
           padding: [48, 48],
-          maxZoom: 17,
+          maxZoom: APP_MAP_MAX_ZOOM,
         })
       } catch {
         /* ignore */
@@ -16054,6 +22266,7 @@ function frictionFitAllMeasurementsOnMap() {
   const applyFit = () => {
     try {
       frictionMap?.invalidateSize({ animate: false })
+      nudgeMaptilerBasemapResize(frictionMap)
     } catch {
       /* ignore */
     }
@@ -16210,14 +22423,21 @@ async function initFrictionMap() {
   frictionMap = Leaflet.map('friction-map', {
     zoomControl: false,
     tapTolerance: 12,
+    maxZoom: APP_MAP_MAX_ZOOM,
   }).setView([59.9139, 10.7522], 13)
+  try {
+    frictionMap.setMaxZoom(APP_MAP_MAX_ZOOM)
+  } catch {
+    /* ignore */
+  }
   Leaflet.control.zoom({ position: 'topright' }).addTo(frictionMap)
-  createAppMapTileLayer(Leaflet, { detectRetina: false }).addTo(frictionMap)
+  ;(await createAppBasemapLayer(Leaflet)).addTo(frictionMap)
   frictionHistoryLayerGroup = Leaflet.layerGroup().addTo(frictionMap)
   frictionSyncHistoryOverlayToMap()
   window.setTimeout(() => {
     try {
       frictionMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(frictionMap)
     } catch {
       /* ignore */
     }
@@ -16404,7 +22624,7 @@ async function frictionFinishMeasurement() {
     }).addTo(frictionMap)
     frictionMap.fitBounds(frictionRouteLine.getBounds(), {
       padding: [36, 36],
-      maxZoom: 17,
+      maxZoom: APP_MAP_MAX_ZOOM,
     })
   } else if (frictionMap) {
     const fallback = frictionPoints.map((x) => [x.lat, x.lng])
@@ -16417,7 +22637,7 @@ async function frictionFinishMeasurement() {
     }).addTo(frictionMap)
     frictionMap.fitBounds(frictionRouteLine.getBounds(), {
       padding: [36, 36],
-      maxZoom: 17,
+      maxZoom: APP_MAP_MAX_ZOOM,
     })
     frictionSetStatus(
       'Kunne ikke hente veirute – viser rett linje mellom punktene.',
@@ -16913,7 +23133,7 @@ function buildExportStaticPointsBlock(clickHistory) {
   const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox.join(',')}&layer=mapnik`
   const googleRouteUrls = buildGoogleMapsRouteUrlsForAllPoints(valid)
 
-  const intro = `<p class="scanix-static-hint">Koordinater og lenker for hvert trykk under. Røde nåler i <a href="#map">kartet nederst</a> på siden når JavaScript er på (i Filer: åpne i Safari).</p>`
+  const intro = `<p class="scanix-static-hint">Koordinater og lenker for hvert trykk under. I <a href="#map">kartet nederst</a>: røde nåler = registrering, blå B = bilde med GPS (når JavaScript er på — i Filer: åpne i Safari).</p>`
 
   const items = valid
     .map((p, i) => {
@@ -17002,9 +23222,190 @@ function buildExportPhotosStaticBlock(photos) {
               `${Number(ph.lat).toFixed(5)}, ${Number(ph.lng).toFixed(5)}`,
             )
           : 'ingen GPS'
-      return `<figure class="scanix-export-photo"><figcaption>Bilde #${i + 1} · ${t} · ${pos}</figcaption><img src="${ph.dataUrl}" alt="Bilde ${i + 1}" /></figure>`
+      const src =
+        typeof ph.dataUrl === 'string' && ph.dataUrl.startsWith('data:image/')
+          ? ph.dataUrl
+          : typeof ph.thumbDataUrl === 'string' &&
+              ph.thumbDataUrl.startsWith('data:image/')
+            ? ph.thumbDataUrl
+            : ''
+      if (!src) {
+        return `<figure class="scanix-export-photo"><figcaption>Bilde #${i + 1} · ${t} · ${pos}</figcaption><p class="scanix-static-note scanix-static-note--last">Bilde uten innebygd pikseldata i denne fila.</p></figure>`
+      }
+      return `<figure class="scanix-export-photo"><figcaption>Bilde #${i + 1} · ${t} · ${pos}</figcaption><img src="${src}" alt="Bilde ${i + 1}" /></figure>`
     })
     .join('')
+}
+
+/**
+ * Henter piksel som data-URL for HTML-eksport (én fil, offline).
+ * Rekkefølge: `dataUrl` i minne → IndexedDB → `thumbDataUrl` i minne → Supabase Storage (signert URL: tommel, deretter full).
+ * På iPhone er bilder ofte bare `storageFullPath` etter opplasting — da hentes de her ved eksport (krever nett + tilgang til sky: Supabase eller Scanix Cloud API).
+ * @param {Record<string, unknown>} ph
+ */
+async function fetchPhotoDataUrlForHtmlExport(ph) {
+  if (!ph || typeof ph !== 'object') return ''
+  let dataUrl =
+    typeof ph.dataUrl === 'string' && ph.dataUrl.startsWith('data:image/')
+      ? ph.dataUrl
+      : ''
+  if (dataUrl) return dataUrl
+
+  const id = typeof ph.id === 'string' ? ph.id : null
+  if (id && (await isPhotoBlobStoreAvailable())) {
+    try {
+      const fromIdb = await getPhotoDataUrl(id)
+      if (
+        typeof fromIdb === 'string' &&
+        fromIdb.startsWith('data:image/')
+      ) {
+        return fromIdb
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const thumbMem =
+    typeof ph.thumbDataUrl === 'string' &&
+    ph.thumbDataUrl.startsWith('data:image/')
+      ? ph.thumbDataUrl
+      : ''
+  if (thumbMem) return thumbMem
+
+  if (!isSupabaseConfigured() && !isScanixCloudApiConfigured()) return ''
+  const sb = getSupabase()
+
+  /**
+   * @param {string} pth
+   */
+  const tryStoragePath = async (pth) => {
+    const t = typeof pth === 'string' ? pth.trim() : ''
+    if (!t) return ''
+    try {
+      let signedUrl = ''
+      if (isScanixCloudApiConfigured()) {
+        signedUrl = await cloudGetSignedReadUrlForPhotoPath(t, 7200)
+      } else if (sb) {
+        const { data, error } = await sb.storage
+          .from(PHOTO_STORAGE_BUCKET)
+          .createSignedUrl(t, 7200)
+        if (error || !data?.signedUrl) return ''
+        signedUrl = data.signedUrl
+      }
+      if (!signedUrl) return ''
+      const res = await fetch(signedUrl)
+      if (!res.ok) return ''
+      const blob = await res.blob()
+      if (!blob || blob.size < 8) return ''
+      return await new Promise((resolve, reject) => {
+        const r = new FileReader()
+        r.onload = () => resolve(String(r.result || ''))
+        r.onerror = () => reject(new Error('read'))
+        r.readAsDataURL(blob)
+      }).catch(() => '')
+    } catch {
+      return ''
+    }
+  }
+
+  const storageThumbPath =
+    typeof ph.storageThumbPath === 'string' ? ph.storageThumbPath : ''
+  const storageFullPath =
+    typeof ph.storageFullPath === 'string' ? ph.storageFullPath : ''
+
+  let fromStorage = await tryStoragePath(storageThumbPath)
+  if (typeof fromStorage === 'string' && fromStorage.startsWith('data:image/'))
+    return fromStorage
+  fromStorage = await tryStoragePath(storageFullPath)
+  if (typeof fromStorage === 'string' && fromStorage.startsWith('data:image/'))
+    return fromStorage
+  return ''
+}
+
+/**
+ * Klargjør bilder for HTML-eksport: IDB + Supabase Storage → innebygde data-URL-er.
+ */
+async function resolvePhotosForHtmlExport(photosIn) {
+  const hydrated = await hydratePhotoRecordsArray(
+    Array.isArray(photosIn) ? photosIn : [],
+  )
+  const out = []
+  for (const ph of hydrated) {
+    if (!ph || typeof ph !== 'object') continue
+    const pixel = await fetchPhotoDataUrlForHtmlExport(
+      /** @type {Record<string, unknown>} */ (ph),
+    )
+    const merged = pixel ? { ...ph, dataUrl: pixel } : ph
+    const normalized = normalizePhoto(
+      /** @type {Parameters<typeof normalizePhoto>[0]} */ (merged),
+    )
+    if (normalized) {
+      out.push(normalized)
+      continue
+    }
+    const dataUrl =
+      typeof merged.dataUrl === 'string' &&
+      merged.dataUrl.startsWith('data:image/')
+        ? merged.dataUrl
+        : ''
+    const thumb =
+      typeof merged.thumbDataUrl === 'string' &&
+      merged.thumbDataUrl.startsWith('data:image/')
+        ? merged.thumbDataUrl
+        : ''
+    const display = dataUrl || thumb
+    if (!display) continue
+    const rawLat =
+      /** @type {{ lat?: unknown, latitude?: unknown }} */ (merged).lat !=
+      null
+        ? /** @type {{ lat?: unknown }} */ (merged).lat
+        : /** @type {{ latitude?: unknown }} */ (merged).latitude
+    const rawLng =
+      /** @type {{ lng?: unknown, longitude?: unknown }} */ (merged).lng !=
+      null
+        ? /** @type {{ lng?: unknown }} */ (merged).lng
+        : /** @type {{ longitude?: unknown }} */ (merged).longitude
+    const lat =
+      rawLat != null && !Number.isNaN(Number(rawLat)) ? Number(rawLat) : null
+    const lng =
+      rawLng != null && !Number.isNaN(Number(rawLng)) ? Number(rawLng) : null
+    const pid =
+      typeof /** @type {{ id?: unknown }} */ (merged).id === 'string'
+        ? /** @type {{ id: string }} */ (merged).id
+        : crypto.randomUUID()
+    const ts =
+      typeof /** @type {{ timestamp?: unknown }} */ (merged).timestamp ===
+      'string'
+        ? /** @type {{ timestamp: string }} */ (merged).timestamp
+        : nowIso()
+    const noteRaw = /** @type {{ note?: unknown }} */ (merged).note
+    const note =
+      typeof noteRaw === 'string' && noteRaw.trim()
+        ? noteRaw.trim().slice(0, 800)
+        : undefined
+    if (dataUrl) {
+      out.push({
+        id: pid,
+        timestamp: ts,
+        lat,
+        lng,
+        dataUrl,
+        ...(thumb && thumb !== dataUrl ? { thumbDataUrl: thumb } : {}),
+        ...(note ? { note } : {}),
+      })
+    } else {
+      out.push({
+        id: pid,
+        timestamp: ts,
+        lat,
+        lng,
+        dataUrl: display,
+        ...(note ? { note } : {}),
+      })
+    }
+  }
+  return out
 }
 
 /**
@@ -17023,9 +23424,7 @@ async function buildScanixExportHtml(
   const exportObjectCategories = normalizeObjectCategoryList(
     objectCategoriesIn ?? [],
   )
-  const photos = Array.isArray(photosIn)
-    ? photosIn.map(normalizePhoto).filter(Boolean)
-    : []
+  const photos = await resolvePhotosForHtmlExport(photosIn)
   const generatedAt = new Date().toLocaleString('nb-NO', {
     dateStyle: 'long',
     timeStyle: 'short',
@@ -17078,6 +23477,18 @@ async function buildScanixExportHtml(
   const embeddedLeafletCss = leafletCssForEmbeddedExport(leafletCssRaw)
   const staticPointsHtml = buildExportStaticPointsBlock(clickHistory)
   const staticPhotosHtml = buildExportPhotosStaticBlock(photos)
+  const exportBasemap = getRasterBasemapTileSpec()
+  const exportBasemapTileOpts = {
+    attribution: exportBasemap.attribution,
+    maxZoom: APP_MAP_MAX_ZOOM,
+    detectRetina: false,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    ...(exportBasemap.subdomains
+      ? { subdomains: exportBasemap.subdomains }
+      : {}),
+    ...(exportBasemap.crossOrigin ? { crossOrigin: true } : {}),
+  }
   return `<!DOCTYPE html>
 <html lang="nb">
 <head>
@@ -17113,6 +23524,9 @@ ${embeddedLeafletCss}
     .scanix-static-points li:first-child { padding-top: 0; }
     .scanix-static-points a { color: #93c5fd; }
     .scanix-static-click-comment { display: block; margin: 0.25rem 0 0; font-size: 0.82rem; color: #a8b0c4; white-space: pre-wrap; }
+    .panel-photos { border-bottom: 1px solid #2a3142; }
+    .scanix-export-photo { margin: 0.75rem 0; }
+    .scanix-export-photo img { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #2a3142; }
     h2 { font-size: 0.98rem; margin: 0 0 0.35rem; color: #93c5fd; font-weight: 600; }
     .log-list { list-style: none; margin: 0; padding: 0; font-size: 0.86rem; }
     .log-list li { padding: 0.55rem 0; border-bottom: 1px solid #2a3142; }
@@ -17128,7 +23542,8 @@ ${embeddedLeafletCss}
 <body>
   <header>
     <h1>Scanix – eksportert logg</h1>
-    <p class="meta">Generert ${generatedAt} · Røde nåler viser hvert registrert trykk med GPS.${roadMeta}${objMeta}${photoMeta}${titleLine}${registeredNoteLine}</p>
+    <p class="meta">Generert ${generatedAt} · Røde nåler: registrerte trykk med GPS. Blå ruter: bilder med posisjon (når JavaScript er på).${roadMeta}${objMeta}${photoMeta}${titleLine}${registeredNoteLine}</p>
+    <p class="meta" style="font-size:0.78rem;color:#94a3b8;margin-top:0.4rem;line-height:1.45">Bilder er innebygd i fila som data-URL der eksporten fant piksel (telefonminne, IndexedDB eller sky ved eksport). I Safari/Chrome på Mac: <strong>ctrl-klikk / høyreklikk</strong> på et bilde under → «Lagre bilde som …» for å laste det ned enkeltvis.</p>
   </header>
   <div class="panel panel-static">
     <h2>Registrerte punkt</h2>
@@ -17137,6 +23552,10 @@ ${embeddedLeafletCss}
   <div class="panel panel-log">
     <h2>Tekstlogg</h2>
     <ul class="log-list" id="log-lines"></ul>
+  </div>
+  <div class="panel panel-static panel-photos">
+    <h2>Bilder</h2>
+    ${staticPhotosHtml}
   </div>
   <div id="map-wrap">
     <h2 class="map-wrap__title">Kart</h2>
@@ -17152,6 +23571,7 @@ ${leafletJsRaw}
 (function () {
   var data = JSON.parse(document.getElementById('scanix-data').textContent)
   var points = data.points || []
+  var photos = data.photos || []
   var log = data.log || []
   var labels = data.objectCategoryLabels || {}
   var mapErrorEl = document.getElementById('scanix-map-error')
@@ -17203,17 +23623,12 @@ ${leafletJsRaw}
       return
     }
 
-    var map = ${'L'}.map('map', { zoomControl: true })
+    var map = ${'L'}.map('map', { zoomControl: true, maxZoom: ${APP_MAP_MAX_ZOOM} })
 
-    var voyagerLayer = ${'L'}.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20,
-        detectRetina: true,
-      },
+    var __scanixBaseOpts = ${JSON.stringify(exportBasemapTileOpts)}
+    var basePrimaryLayer = ${'L'}.tileLayer(
+      ${JSON.stringify(exportBasemap.url)},
+      __scanixBaseOpts,
     )
 
     var osmFallbackLayer = ${'L'}.tileLayer(
@@ -17221,27 +23636,27 @@ ${leafletJsRaw}
       {
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
+        maxZoom: ${APP_MAP_MAX_ZOOM},
       },
     )
 
     function onFirstTile() {
       hideFileHint()
-      voyagerLayer.off('tileload', onFirstTile)
+      basePrimaryLayer.off('tileload', onFirstTile)
       osmFallbackLayer.off('tileload', onFirstTile)
     }
 
-    voyagerLayer.on('tileload', onFirstTile)
+    basePrimaryLayer.on('tileload', onFirstTile)
     osmFallbackLayer.on('tileload', onFirstTile)
 
-    voyagerLayer.once('tileerror', function () {
-      if (map.hasLayer(voyagerLayer)) {
-        map.removeLayer(voyagerLayer)
+    basePrimaryLayer.once('tileerror', function () {
+      if (map.hasLayer(basePrimaryLayer)) {
+        map.removeLayer(basePrimaryLayer)
         osmFallbackLayer.addTo(map)
       }
     })
 
-    voyagerLayer.addTo(map)
+    basePrimaryLayer.addTo(map)
 
     var valid = points.filter(function (p) {
       return (
@@ -17249,6 +23664,15 @@ ${leafletJsRaw}
         p.lng != null &&
         !Number.isNaN(Number(p.lat)) &&
         !Number.isNaN(Number(p.lng))
+      )
+    })
+
+    var photoPts = photos.filter(function (ph) {
+      return (
+        ph.lat != null &&
+        ph.lng != null &&
+        !Number.isNaN(Number(ph.lat)) &&
+        !Number.isNaN(Number(ph.lng))
       )
     })
 
@@ -17261,13 +23685,13 @@ ${leafletJsRaw}
     }
 
     var pinHtml =
-      '<div style="display:flex;align-items:flex-end;justify-content:center;box-sizing:border-box;width:32px;height:40px">' +
-      '<div style="width:28px;height:28px;flex-shrink:0;margin:0;background:linear-gradient(145deg,#ef4444,#b91c1c);border-radius:50% 50% 50% 0;transform:rotate(-45deg);transform-origin:50% 100%;border:3px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,.45)"></div></div>'
+      '<div style="display:flex;align-items:flex-end;justify-content:center;box-sizing:border-box;width:26px;height:32px">' +
+      '<div style="width:22px;height:22px;flex-shrink:0;margin:0;background:linear-gradient(145deg,#ef4444,#b91c1c);border-radius:50% 50% 50% 0;transform:rotate(-45deg);transform-origin:50% 100%;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)"></div></div>'
     var pinIcon = ${'L'}.divIcon({
       className: 'scanix-pin-wrap',
       html: pinHtml,
-      iconSize: [32, 40],
-      iconAnchor: [16, 40],
+      iconSize: [26, 32],
+      iconAnchor: [13, 32],
     })
 
     var bounds = []
@@ -17287,12 +23711,53 @@ ${leafletJsRaw}
         .bindPopup('<strong>' + (i + 1) + '</strong><br>' + catLine + escPopup(t))
     })
 
+    var photoPinHtml =
+      '<div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;background:linear-gradient(145deg,#2563eb,#1d4ed8);border-radius:7px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)"><span style="font-size:11px;font-weight:700;color:#fff;font-family:system-ui,sans-serif">B</span></div>'
+    var photoPinIcon = ${'L'}.divIcon({
+      className: 'scanix-pin-wrap',
+      html: photoPinHtml,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    })
+
+    photoPts.forEach(function (ph, i) {
+      var latlng = [Number(ph.lat), Number(ph.lng)]
+      bounds.push(latlng)
+      var src =
+        typeof ph.dataUrl === 'string' && ph.dataUrl.indexOf('data:image/') === 0
+          ? ph.dataUrl
+          : typeof ph.thumbDataUrl === 'string' &&
+              ph.thumbDataUrl.indexOf('data:image/') === 0
+            ? ph.thumbDataUrl
+            : ''
+      var t = ph.timestamp
+        ? new Date(ph.timestamp).toLocaleString('nb-NO')
+        : ''
+      var note = ph.note ? escPopup(String(ph.note)) : ''
+      var imgHtml = src
+        ? '<img src="' +
+          src +
+          '" alt="" style="max-width:220px;height:auto;border-radius:6px;display:block;margin-top:0.35rem"/>'
+        : '<p style="margin:0.35rem 0 0;font-size:0.85rem;color:#94a3b8">Ingen bilde i denne eksporten.</p>'
+      ${'L'}.marker(latlng, { icon: photoPinIcon })
+        .addTo(map)
+        .bindPopup(
+          '<strong>Bilde ' +
+            (i + 1) +
+            '</strong><br>' +
+            escPopup(t) +
+            (note ? '<br>' + note : '') +
+            '<br>' +
+            imgHtml,
+        )
+    })
+
     if (bounds.length === 0) {
       map.setView([59.9139, 10.7522], 13)
     } else if (bounds.length === 1) {
       map.setView(bounds[0], 15)
     } else {
-      map.fitBounds(${'L'}.latLngBounds(bounds), { padding: [48, 48], maxZoom: 17 })
+      map.fitBounds(${'L'}.latLngBounds(bounds), { padding: [48, 48], maxZoom: ${APP_MAP_MAX_ZOOM} })
     }
 
     map.whenReady(function () {
@@ -17327,81 +23792,85 @@ window.addEventListener('storage', (ev) => {
   if (!currentUser?.id) return
   const syncKey = sessionsKeyForUser(currentUser.id)
   if (ev.key !== syncKey || !ev.newValue) return
-  try {
-    const p = JSON.parse(ev.newValue)
-    const nextSessions = Array.isArray(p.sessions)
-      ? p.sessions.map(normalizeSession).filter(Boolean)
-      : []
-    const prevById = new Map(sessions.map((s) => [s.id, s]))
-    const nextById = new Map(nextSessions.map((s) => [s.id, s]))
-    const allIds = new Set([...prevById.keys(), ...nextById.keys()])
-    const mergedList = []
-    for (const id of allIds) {
-      const l = prevById.get(id)
-      const r = nextById.get(id)
-      if (!l) {
-        mergedList.push(/** @type {NonNullable<typeof r>} */ (r))
-        continue
-      }
-      if (!r) {
-        mergedList.push(l)
-        continue
-      }
-      const mergedSess = mergeStoredSessionsPair(l, r)
-      mergedList.push(mergedSess)
-    }
-    sessions = mergedList
-    if (Array.isArray(p.standalonePhotos)) {
-      standalonePhotos = mergeStandalonePhotoLists(
-        standalonePhotos,
-        normalizeStandalonePhotosList(p.standalonePhotos),
-      )
-    }
-    if (Array.isArray(p.frictionMeasurements)) {
-      frictionMeasurements = mergeFrictionMeasurementLists(
-        frictionMeasurements,
-        normalizeFrictionMeasurementsList(p.frictionMeasurements),
-      )
-    }
-    if (view === 'menuFriction' && frictionMap) {
-      frictionSyncHistoryOverlayToMap()
-      frictionRefreshMeasurementsListBody()
-    }
-    if (view === 'photoAlbum') {
-      renderStandalonePhotoAlbumGallery()
-    }
-    const remoteCurrent =
-      typeof p.currentSessionId === 'string' ? p.currentSessionId : null
-    if (
-      view === 'session' &&
-      currentSessionId &&
-      currentSessionId === remoteCurrent
-    ) {
-      const s = sessions.find((x) => x.id === currentSessionId)
-      if (s) {
-        state = {
-          count: s.count,
-          clickHistory: [...s.clickHistory],
-          log: [...s.log],
-          roadSide: s.roadSide ?? null,
-          photos: Array.isArray(s.photos)
-            ? s.photos.map(normalizePhoto).filter(Boolean)
-            : [],
-          objectCategories: normalizeObjectCategoryList(s.objectCategories),
-          activeCategoryId:
-            typeof s.activeCategoryId === 'string' &&
-            normalizeObjectCategoryList(s.objectCategories).includes(
-              s.activeCategoryId,
-            )
-              ? s.activeCategoryId
-              : normalizeObjectCategoryList(s.objectCategories)[0] ?? null,
+  needsAppStateDiskMerge = true
+  void (async () => {
+    try {
+      const jsonStr = await decompressAppStateJsonFromLocalStorage(ev.newValue)
+      const p = JSON.parse(jsonStr)
+      const nextSessions = Array.isArray(p.sessions)
+        ? p.sessions.map(normalizeSession).filter(Boolean)
+        : []
+      const prevById = new Map(sessions.map((s) => [s.id, s]))
+      const nextById = new Map(nextSessions.map((s) => [s.id, s]))
+      const allIds = new Set([...prevById.keys(), ...nextById.keys()])
+      const mergedList = []
+      for (const id of allIds) {
+        const l = prevById.get(id)
+        const r = nextById.get(id)
+        if (!l) {
+          mergedList.push(/** @type {NonNullable<typeof r>} */ (r))
+          continue
         }
-        rebuildMarkers()
-        renderCount()
-        renderLog()
+        if (!r) {
+          mergedList.push(l)
+          continue
+        }
+        const mergedSess = mergeStoredSessionsPair(l, r)
+        mergedList.push(mergedSess)
       }
+      sessions = mergedList
+      if (Array.isArray(p.standalonePhotos)) {
+        standalonePhotos = mergeStandalonePhotoLists(
+          standalonePhotos,
+          normalizeStandalonePhotosList(p.standalonePhotos),
+        )
+      }
+      if (Array.isArray(p.frictionMeasurements)) {
+        frictionMeasurements = mergeFrictionMeasurementLists(
+          frictionMeasurements,
+          normalizeFrictionMeasurementsList(p.frictionMeasurements),
+        )
+      }
+      if (view === 'menuFriction' && frictionMap) {
+        frictionSyncHistoryOverlayToMap()
+        frictionRefreshMeasurementsListBody()
+      }
+      if (view === 'photoAlbum') {
+        renderStandalonePhotoAlbumGallery()
+      }
+      const remoteCurrent =
+        typeof p.currentSessionId === 'string' ? p.currentSessionId : null
+      if (
+        view === 'session' &&
+        currentSessionId &&
+        currentSessionId === remoteCurrent
+      ) {
+        const s = sessions.find((x) => x.id === currentSessionId)
+        if (s) {
+          state = {
+            count: s.count,
+            clickHistory: [...s.clickHistory],
+            log: [...s.log],
+            roadSide: s.roadSide ?? null,
+            photos: Array.isArray(s.photos)
+              ? s.photos.map(normalizePhoto).filter(Boolean)
+              : [],
+            objectCategories: normalizeObjectCategoryList(s.objectCategories),
+            activeCategoryId:
+              typeof s.activeCategoryId === 'string' &&
+              normalizeObjectCategoryList(s.objectCategories).includes(
+                s.activeCategoryId,
+              )
+                ? s.activeCategoryId
+                : normalizeObjectCategoryList(s.objectCategories)[0] ?? null,
+          }
+          rebuildMarkers('remote_state_refresh')
+          renderCount()
+          renderLog()
+        }
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
-  }
+  })()
 })

@@ -49,6 +49,60 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
+        /* Besøkte kartfliser / vektor-ressurser: CacheFirst (eller SWR for style) → gjentatte besøk treffer SW-cache. */
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.hostname === 'tile.openstreetmap.org',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'scanix-map-tiles-osm',
+              expiration: {
+                maxEntries: 400,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            /* MapTiler style.json: oppdater i bakgrunnen etter første treff (sparer re-download ved uendret stil). */
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' &&
+              url.hostname.toLowerCase().endsWith('maptiler.com') &&
+              url.pathname.includes('style.json'),
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'scanix-maptiler-style',
+              expiration: {
+                maxEntries: 24,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            /* MapTiler: .pbf, fonter, sprites, PNG-raster, API — alle *.maptiler.com GET (unntatt style håndteres over). */
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' &&
+              url.hostname.toLowerCase().endsWith('maptiler.com') &&
+              !url.pathname.includes('style.json'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'scanix-maptiler-assets',
+              expiration: {
+                maxEntries: 2800,
+                maxAgeSeconds: 14 * 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
       },
     }),
   ],
@@ -64,6 +118,11 @@ export default defineConfig({
     allowedHosts: true,
     watch: pollWatch,
     proxy: {
+      /* Cursor/agent debug-ingest: unngå mixed content når dev kjører på https://localhost */
+      '/ingest': {
+        target: 'http://127.0.0.1:7877',
+        changeOrigin: true,
+      },
       '/api/osrm': {
         target: 'https://router.project-osrm.org',
         changeOrigin: true,
@@ -79,6 +138,10 @@ export default defineConfig({
     https: localHttps || false,
     allowedHosts: true,
     proxy: {
+      '/ingest': {
+        target: 'http://127.0.0.1:7877',
+        changeOrigin: true,
+      },
       '/api/osrm': {
         target: 'https://router.project-osrm.org',
         changeOrigin: true,

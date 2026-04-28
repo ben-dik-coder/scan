@@ -63,16 +63,24 @@ function shouldReportEarlyError() {
 window.addEventListener(
   'error',
   (ev) => {
-    if (!shouldReportEarlyError()) return
-    showBootFailure(ev.error || new Error(ev.message))
+    try {
+      if (!shouldReportEarlyError()) return
+      showBootFailure(ev.error || new Error(ev.message))
+    } catch (e) {
+      console.error('Scanix boot error handler', e)
+    }
   },
   true,
 )
 
 window.addEventListener('unhandledrejection', (ev) => {
-  if (!shouldReportEarlyError()) return
-  const r = ev.reason
-  showBootFailure(r instanceof Error ? r : new Error(String(r)))
+  try {
+    if (!shouldReportEarlyError()) return
+    const r = ev.reason
+    showBootFailure(r instanceof Error ? r : new Error(String(r)))
+  } catch (e) {
+    console.error('Scanix boot rejection handler', e)
+  }
 })
 
 scanixDebugLine('boot: css ok, starter main.js …')
@@ -117,4 +125,10 @@ void Promise.race([
       MAIN_IMPORT_TIMEOUT_MS,
     ),
   ),
-]).catch(showBootFailure)
+]).catch((err) => {
+  try {
+    showBootFailure(err)
+  } catch (e) {
+    console.error('Scanix boot showBootFailure', e, err)
+  }
+})

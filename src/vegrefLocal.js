@@ -333,3 +333,109 @@ export async function mergeNvdbSegmentsIntoOfflineDb(segments) {
   await enforceOfflineSegmentQuota(db)
   await finalizeOfflineMetaCount(db)
 }
+
+/** @type {[number, number, number, number] | null} */
+let offlinePackageCoverageBbox = null
+
+/**
+ * Synkroniserer modul-cache fra meta-objekt (etter getOfflineVegrefMeta).
+ * @param {unknown} meta
+ */
+export function syncOfflinePackageCoverageFromMeta(meta) {
+  if (
+    meta &&
+    typeof meta === 'object' &&
+    Array.isArray(/** @type {{ coverageBbox?: unknown }} */ (meta).coverageBbox) &&
+    /** @type {{ coverageBbox: unknown }} */ (meta).coverageBbox.length === 4
+  ) {
+    offlinePackageCoverageBbox = /** @type {[number, number, number, number]} */ (
+      /** @type {{ coverageBbox: [number, number, number, number] }} */ (meta)
+        .coverageBbox
+    )
+    return
+  }
+  offlinePackageCoverageBbox = null
+}
+
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {boolean}
+ */
+export function isLatLngInsideOfflinePackageCoverage(lat, lng) {
+  if (!offlinePackageCoverageBbox) return false
+  const b = offlinePackageCoverageBbox
+  if (
+    typeof lat !== 'number' ||
+    typeof lng !== 'number' ||
+    Number.isNaN(lat) ||
+    Number.isNaN(lng)
+  ) {
+    return false
+  }
+  return lat >= b[0] && lat <= b[2] && lng >= b[1] && lng <= b[3]
+}
+
+/**
+ * Beregner felles bbox for alle lagrede segmenter og skriver til meta når den manglet.
+ * @returns {Promise<void>}
+ */
+export async function recomputeOfflinePackageCoverageBboxIfMissing() {
+  const meta = await getOfflineVegrefMeta().catch(() => null)
+  if (!meta) return
+  if (
+    Array.isArray(meta.coverageBbox) &&
+    meta.coverageBbox.length === 4 &&
+    meta.coverageBbox.every((n) => typeof n === 'number' && Number.isFinite(n))
+  ) {
+    offlinePackageCoverageBbox = meta.coverageBbox
+    return
+  }
+  const db = await openOfflineDb()
+  const rows = await new Promise((resolve, reject) => {
+    const tx = db.transaction(segmentsStoreName(), 'readonly')
+    const req = tx.objectStore(segmentsStoreName()).getAll()
+    req.onsuccess = () => resolve(req.result || [])
+    req.onerror = () => reject(req.error || new Error('getAll segments'))
+  })
+  let minLat = Infinity
+  let minLng = Infinity
+  let maxLat = -Infinity
+  let maxLng = -Infinity
+  for (const row of rows) {
+    const bb = row && typeof row === 'object' ? row.bbox : null
+    if (!Array.isArray(bb) || bb.length !== 4) continue
+    const [a0, a1, a2, a3] = bb
+    if (
+      ![a0, a1, a2, a3].every(
+        (n) => typeof n === 'number' && Number.isFinite(n),
+      )
+    ) {
+      continue
+    }
+    minLat = Math.min(minLat, a0)
+    minLng = Math.min(minLng, a1)
+    maxLat = Math.max(maxLat, a2)
+    maxLng = Math.max(maxLng, a3)
+  }
+  if (!Number.isFinite(minLat)) return
+  const coverageBbox = /** @type {[number, number, number, number]} */ ([
+    minLat,
+    minLng,
+    maxLat,
+    maxLng,
+  ])
+  const tx = db.transaction([metaStoreName()], 'readwrite')
+  const next = { ...meta, coverageBbox }
+  tx.objectStore(metaStoreName()).put(next, OFFLINE_META_KEY)
+  await txDone(tx)
+  offlinePackageCoverageBbox = coverageBbox
+}
+
+/**
+ * Flis-importerte segmentpakker (samme som merge).
+ * @param {object[]} segments
+ */
+export async function appendOfflineBundledSegments(segments) {
+  await mergeNvdbSegmentsIntoOfflineDb(segments)
+}

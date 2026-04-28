@@ -11,6 +11,7 @@ import {
 } from './nvdbVegref.js'
 import { vegrefDebugTrace } from './vegrefDebugTrace.js'
 import { logVegrefMetric } from './vegrefMetrics.js'
+import { postScanixDebugIngest } from './scanixDebugIngest.js'
 
 /** @typedef {ReturnType<import('./nvdbVegref.js').fetchRoadReferenceNear> extends Promise<infer R> ? R : never} VegrefDescribeResult */
 
@@ -28,6 +29,8 @@ import { logVegrefMetric } from './vegrefMetrics.js'
  *   applyKmt: (res: VegrefDescribeResult | null) => void
  *   beforeNvdbFetch?: () => void
  *   getSurfacePreference?: () => string
+ *   skipNetworkWhenOfflineReady?: (lat: number, lng: number) => boolean
+ *   getVegrefDataMode?: () => 'minimal' | 'normal'
  * }} VegrefHooks
  */
 
@@ -66,8 +69,8 @@ function vegrefResultCategoryTier(res) {
 /* Fix H4: strammet fra 400/2 → 300/1.2 slik at pipeline fyrer oftere ved
    moderat fart (en ny NVDB-respons per ~sekund matcher typisk GPS-cadence,
    og 1.2 m min-move slipper gjennom oppdateringer også ved gåtempo). */
-export const VEGREF_MIN_INTERVAL_MS = 300
-export const VEGREF_MIN_MOVE_M = 1.2
+export const VEGREF_MIN_INTERVAL_MS = 200
+export const VEGREF_MIN_MOVE_M = 0.7
 
 /** LRU-cache for /posisjon-svar (reduserer gjentatte kall ved GPS-jitter). */
 const POSISJON_CACHE_TTL_MS = 32_000
@@ -78,7 +81,8 @@ let posisjonCache = new Map()
  * Pending-segmentbytte aksepteres uansett etter denne tiden, slik at GPS-støy
  * mellom parallelle veier ikke «låser» UI på feil vei.
  */
-const POSISJON_PENDING_ACCEPT_MS = 1500
+/** Kortere enn før: raskere aksept av bekreftet ny nvdb-id (færre «wait»-ticks). */
+const POSISJON_PENDING_ACCEPT_MS = 1000
 
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
@@ -86,8 +90,23 @@ const POSISJON_PENDING_ACCEPT_MS = 1500
  */
 const VEGREF_INFLIGHT_COALESCE_BASE_M = 6
 
-/** Gjenbruk siste NVDB-treff når posisjon er i nærheten (offline / nettfeil). */
+/** Gjenbruk siste treff ved stasjonær / lav fart (parkert, dårlig dekning). */
 const OFFLINE_REUSE_NVDB_M = 50
+
+/**
+ * Horisont for gjenbruk av siste cache-treff: ved kjøring må den være kort,
+ * ellers sitter meteren fast på gammelt m (f.eks. m4555) mens offline
+ * midlertidig returnerer null og nett er skippet.
+ * @returns {number}
+ */
+function offlineReuseMaxM() {
+  const s = lastSpeed
+  if (s >= 22) return 26
+  if (s >= 15) return 32
+  if (s >= 8) return 40
+  if (s >= 3) return 46
+  return OFFLINE_REUSE_NVDB_M
+}
 
 /** Monoton tid fra GPS (unngår out-of-order fixes som gir bakover-meter). */
 let lastGpsTimestamp = 0
@@ -290,8 +309,51 @@ function offlineOrFallbackResult(lat, lng) {
     hooks
   ) {
     const d = hooks.haversineM(cacheLat, cacheLng, lat, lng)
-    if (d < OFFLINE_REUSE_NVDB_M) {
+    if (d < offlineReuseMaxM()) {
       return cacheRes
+    }
+  }
+  /* Mellom to offline-geometrier kan posisjon flytte seg litt mer enn
+   * cache-gjenbruksradius — da ville vi tidligere alltid falt til °N/°Ø.
+   * Kort «sticky» av siste faktisk viste offline-treff (samme som apply bruker)
+   * gir stabil veilinja og mindre UI-støy. */
+  if (
+    hooks &&
+    lastAppliedRes &&
+    typeof lastAppliedRes === 'object' &&
+    lastAppliedLat != null &&
+    lastAppliedLng != null
+  ) {
+    const meta = /** @type {{ _vegrefMeta?: { source?: string } }} */ (
+      lastAppliedRes
+    )._vegrefMeta
+    if (meta?.source === 'offline') {
+      const line = String(
+        /** @type {{ roadLine?: unknown }} */ (lastAppliedRes).roadLine || '',
+      )
+      const nid = /** @type {{ nvdbId?: unknown }} */ (lastAppliedRes).nvdbId
+      if (!/^Posisjon\s+[\d.]+°N/i.test(line) && nid != null) {
+        const dAnchor = hooks.haversineM(lastAppliedLat, lastAppliedLng, lat, lng)
+        const stickyM = Math.max(offlineReuseMaxM() * 3.4, 118)
+        if (dAnchor < stickyM) {
+          const prevDist = /** @type {{ distToRoadM?: unknown }} */ (
+            lastAppliedRes
+          ).distToRoadM
+          return {
+            ...lastAppliedRes,
+            m: '–',
+            distToRoadM:
+              typeof prevDist === 'number' && Number.isFinite(prevDist)
+                ? Math.max(prevDist, dAnchor * 0.28)
+                : dAnchor * 0.35,
+            _vegrefMeta: {
+              ...(typeof meta === 'object' && meta != null ? meta : {}),
+              source: 'offline',
+              staleHold: true,
+            },
+          }
+        }
+      }
     }
   }
   return buildCoordFallback(lat, lng)
@@ -459,7 +521,9 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
           ? 'offline'
           : metaSrc === 'posisjon'
             ? 'posisjon'
-            : 'online',
+            : metaSrc === 'coord-fallback'
+              ? 'coord-fallback'
+              : 'online',
       distToRoadM:
         typeof res.distToRoadM === 'number' && Number.isFinite(res.distToRoadM)
           ? res.distToRoadM
@@ -847,7 +911,19 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     )
     if (lastSpeed > 28) coalesceRadius *= 0.45
     else if (lastSpeed > 18) coalesceRadius *= 0.65
+    else if (lastSpeed < 3 && lastSpeed >= 0.4)
+      /* Gange: kort strekning mens NVDB svarer — ikke krev ~6 m før ny tick tas inn.
+         Ikke bruk ved veldig lav fart (stillestående / støy) — unngå ekstra NVDB-spam. */
+      coalesceRadius *= 0.62
     if (posisjonPendingNewNvdbId != null) coalesceRadius *= 0.55
+    /* Med ferdig offline-pakke er pipelinen rask (IndexedDB): ikke stå og
+       vente på inflight med stor «luft» — da henger meteren sekunder bak. */
+    if (
+      typeof h.skipNetworkWhenOfflineReady === 'function' &&
+      h.skipNetworkWhenOfflineReady(nvdbLat, nvdbLng)
+    ) {
+      coalesceRadius *= 0.52
+    }
     if (!forceImmediate && movedInflight < coalesceRadius) {
       // #region agent log H4
       vegrefDebugTrace('coalesce_skip', {
@@ -877,20 +953,23 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   let minMove =
     accuracyM > 48 ? 5.5 : accuracyM > 36 ? 4 : VEGREF_MIN_MOVE_M
   if (lastSpeed > 32) {
-    minInterval = Math.max(180, minInterval - 180)
-    minMove = Math.max(0.5, minMove - 3)
+    minInterval = Math.max(120, minInterval - 180)
+    minMove = Math.max(0.4, minMove - 3)
   } else if (lastSpeed > 22) {
-    minInterval = Math.max(220, minInterval - 140)
-    minMove = Math.max(0.8, minMove - 2)
+    minInterval = Math.max(150, minInterval - 140)
+    minMove = Math.max(0.5, minMove - 2)
   } else if (lastSpeed < 3 && accuracyM <= 28) {
-    /* Gåing / foto ved veikant: litt raskere meter/vei uten å spamme NVDB. */
-    minInterval = Math.max(320, minInterval - 55)
-    minMove = Math.max(1.2, minMove - 0.8)
+    /* Gåing: kortere intervall og mindre min-move ved god GPS. */
+    const floorMs = accuracyM <= 22 ? 180 : 210
+    minInterval = Math.max(floorMs, minInterval - 42)
+    minMove = Math.max(accuracyM <= 22 ? 0.6 : 0.75, minMove - 0.32)
   }
   if (posisjonPendingNewNvdbId != null) {
     minInterval = Math.max(160, minInterval * 0.58)
     minMove = Math.max(0.4, minMove * 0.55)
   }
+  /* Minimal-modus bruker allerede sekvensiell NVDB (én kjede om gangen) —
+     ekstra ×2 på intervall/move ga trege meter-tikk uten stor databesparelse. */
   const inCoordFallbackUi = isCoordFallbackDisplay(lastAppliedRes)
   /** Når vi viser koordinat-fallback: tillat oftere nytt NVDB-forsøk (samme logikk ellers). */
   const recoverMs = 280
@@ -929,11 +1008,9 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
   inFlightAnchorLng = nvdbLng
 
   const online = typeof navigator === 'undefined' || navigator.onLine !== false
-  const preferOffline =
-    Boolean(h.fetchRoadReferenceNearOffline) &&
-    (typeof h.shouldPreferOfflineResolver === 'function'
-      ? h.shouldPreferOfflineResolver()
-      : !online)
+  // #region agent log (debug ff8b7b)
+  const __vg0 = performance.now()
+  // #endregion
 
   if (!online && !h.fetchRoadReferenceNearOffline) {
     inFlightAnchorLat = null
@@ -943,93 +1020,249 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
     return
   }
 
-  h.beforeNvdbFetch?.()
+  // #region agent log (debug ff8b7b)
+  {
+    const syncMs = performance.now() - __vg0
+    if (syncMs > 48) {
+      const _pl = JSON.stringify({
+        sessionId: 'ff8b7b',
+        hypothesisId: 'H4',
+        location: 'vegrefLive.js:vegrefNotifyGps',
+        message: 'slow_sync_before_async',
+        data: {
+          syncMs: Math.round(syncMs * 10) / 10,
+          forceImmediate: Boolean(opts.forceImmediate),
+        },
+        timestamp: Date.now(),
+      })
+      postScanixDebugIngest(_pl)
+    }
+  }
+  // #endregion
 
   void (async () => {
-    try {
-      const surfacePreference =
-        typeof h.getSurfacePreference === 'function'
-          ? normalizeSurfacePreference(h.getSurfacePreference())
-          : 'motor'
-      const fetchOpts = { signal, accuracyM, surfacePreference }
-      let res = null
-      const currentShownId =
-        lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
-          ? /** @type {{ nvdbId?: string | number | null }} */ (lastAppliedRes).nvdbId
-          : null
-      const stablePrevNvdbId = isSegmentStableNvdbId(currentShownId)
-        ? currentShownId
+    const surfacePreference =
+      typeof h.getSurfacePreference === 'function'
+        ? normalizeSurfacePreference(h.getSurfacePreference())
+        : 'motor'
+    const fetchOpts = { signal, accuracyM, surfacePreference }
+    const currentShownId =
+      lastAppliedRes && typeof lastAppliedRes === 'object' && 'nvdbId' in lastAppliedRes
+        ? /** @type {{ nvdbId?: string | number | null }} */ (lastAppliedRes).nvdbId
         : null
-      const traceSamples = getTraceSamplesForFetch(h)
-      const segmentFetchOpts = {
-        ...fetchOpts,
-        prevNvdbId: stablePrevNvdbId,
-        userHeadingDeg: effHeadingDeg,
-        speed: speedMps,
-        traceSamples,
+    const stablePrevNvdbId = isSegmentStableNvdbId(currentShownId)
+      ? currentShownId
+      : null
+    const traceSamples = getTraceSamplesForFetch(h)
+    const segmentFetchOpts = {
+      ...fetchOpts,
+      prevNvdbId: stablePrevNvdbId,
+      userHeadingDeg: effHeadingDeg,
+      speed: speedMps,
+      traceSamples,
+    }
+    let res = null
+    try {
+      /* ---- LOKAL FØRST: alltid prøv nedlastet/prefetched data ---- */
+      if (h.fetchRoadReferenceNearOffline) {
+        try {
+          res = await h.fetchRoadReferenceNearOffline(nvdbLat, nvdbLng, {
+            ...fetchOpts,
+            prevNvdbId: stablePrevNvdbId,
+            userHeadingDeg: effHeadingDeg,
+            speed: speedMps,
+            traceSamples,
+          })
+        } catch {
+          /* IndexedDB utilgjengelig */
+        }
       }
 
-      if (preferOffline && h.fetchRoadReferenceNearOffline) {
-        res = await h.fetchRoadReferenceNearOffline(nvdbLat, nvdbLng, fetchOpts)
+      if (res) {
+        /* Offline-treff = autoritativt. Ingen nett-promote, ingen
+           safety-net, ingen «kanskje overskriv om nett kommer med noe
+           bedre». Det er nettopp dette som skiller den nye pipelinen
+           fra ekte offline-modus, og det var årsaken til at meteren
+           flakket selv om dataene var forhåndsnedlastet. */
+        if (signal.aborted || seq !== fetchGeneration) return
+        const offDistInitial =
+          typeof res.distToRoadM === 'number' && Number.isFinite(res.distToRoadM)
+            ? res.distToRoadM
+            : null
+        cacheLat = nvdbLat
+        cacheLng = nvdbLng
+        cacheRes = res
+        vegrefDebugTrace('pipeline_res', {
+          hasRes: true,
+          source: 'offline-first',
+          nvdbId: res?.nvdbId != null ? String(res.nvdbId) : null,
+          m: res?.m != null ? String(res.m) : null,
+          distToRoadM:
+            offDistInitial != null ? Math.round(offDistInitial * 10) / 10 : null,
+          road: String(res?.roadLineShort || res?.roadLine || '').slice(0, 140),
+        })
+        const applyCtx = { accuracyM, speedMps, online }
+        applyNvdbNullable(res, nvdbLat, nvdbLng, applyCtx)
+        return
       }
 
       if (
-        !res &&
-        online &&
-        h.fetchRoadPositionDirect &&
-        h.fetchRoadReferenceNear
+        typeof h.skipNetworkWhenOfflineReady === 'function' &&
+        h.skipNetworkWhenOfflineReady(nvdbLat, nvdbLng)
       ) {
-        // #region agent log H5
-        const _t0 = Date.now()
-        let _posMs = -1
-        let _segMs = -1
-        // #endregion
-        const [pos, seg] = await Promise.all([
-          fetchRoadPositionDirectCached(h, nvdbLat, nvdbLng, fetchOpts)
-            .then((r) => {
-              _posMs = Date.now() - _t0
-              return r
-            })
-            .catch(() => {
-              _posMs = Date.now() - _t0
-              return null
-            }),
-          h.fetchRoadReferenceNear(nvdbLat, nvdbLng, segmentFetchOpts)
-            .then((r) => {
-              _segMs = Date.now() - _t0
-              return r
-            })
-            .catch(() => {
-              _segMs = Date.now() - _t0
-              return null
-            }),
-        ])
-        const merged = mergePosisjonAndSegmentParallelResults(pos, seg)
-        res = merged || pos || seg
-        // #region agent log H5
-        vegrefDebugTrace('fetch_split', {
-          hyp: 'H5',
-          totalMs: Date.now() - _t0,
-          posMs: _posMs,
-          segMs: _segMs,
-          posOk: Boolean(pos),
-          segOk: Boolean(seg),
-          mergedOk: Boolean(merged),
-          posSrc: pos && /** @type {any} */ (pos)._vegrefMeta?.source
-            ? String(/** @type {any} */ (pos)._vegrefMeta.source)
-            : null,
-          segHasMeter: Boolean(seg && /** @type {any} */ (seg).m != null && !isDashMeter(/** @type {any} */ (seg).m)),
-          segDist:
-            seg && typeof /** @type {any} */ (seg).distToRoadM === 'number'
-              ? Math.round(/** @type {any} */ (seg).distToRoadM * 10) / 10
+        if (signal.aborted || seq !== fetchGeneration) return
+        const off = offlineOrFallbackResult(nvdbLat, nvdbLng)
+        vegrefDebugTrace('pipeline_res', {
+          hasRes: Boolean(off),
+          source: 'offline-null-skip-net',
+          nvdbId: off?.nvdbId != null ? String(off.nvdbId) : null,
+          m: off?.m != null ? String(off.m) : null,
+          distToRoadM:
+            typeof off?.distToRoadM === 'number' && Number.isFinite(off.distToRoadM)
+              ? Math.round(off.distToRoadM * 10) / 10
               : null,
-          accuracyM: Math.round(accuracyM * 10) / 10,
-          speed: Math.round(speedMps * 100) / 100,
+          road: String(off?.roadLineShort || off?.roadLine || '').slice(0, 140),
         })
-        // #endregion
+        const applyCtx = { accuracyM, speedMps, online }
+        applyNvdbNullable(off, nvdbLat, nvdbLng, applyCtx)
+        return
       }
 
-      if (!res && online && h.fetchRoadPositionDirect) {
+      /* ---- NETT-FALLBACK: lokal data mangler for dette punktet ---- */
+      h.beforeNvdbFetch?.()
+
+      const dataMode =
+        typeof h.getVegrefDataMode === 'function' ? h.getVegrefDataMode() : 'minimal'
+      const dataMinimal = dataMode !== 'normal'
+
+      if (online && h.fetchRoadReferenceNear) {
+        if (
+          dataMinimal &&
+          h.fetchRoadPositionDirect &&
+          h.fetchRoadReferenceNear
+        ) {
+          const _t0 = Date.now()
+          let segMs = -1
+          let posMs = -1
+          try {
+            const tSeg = Date.now()
+            res = await h.fetchRoadReferenceNear(
+              nvdbLat,
+              nvdbLng,
+              segmentFetchOpts,
+            )
+            segMs = Date.now() - tSeg
+          } catch {
+            res = null
+          }
+          if (!res) {
+            try {
+              const tPos = Date.now()
+              res = await fetchRoadPositionDirectCached(
+                h,
+                nvdbLat,
+                nvdbLng,
+                fetchOpts,
+              )
+              posMs = Date.now() - tPos
+            } catch (e) {
+              if (/** @type {{ name?: string }} */ (e).name === 'AbortError')
+                throw e
+            }
+          }
+          vegrefDebugTrace('fetch_split', {
+            hyp: 'H5',
+            mode: 'minimal-sequential',
+            totalMs: Date.now() - _t0,
+            posMs,
+            segMs,
+            posOk: posMs >= 0 && Boolean(res),
+            segOk: posMs < 0 && Boolean(res),
+            mergedOk: false,
+            posSrc:
+              res && /** @type {any} */ (res)._vegrefMeta?.source === 'posisjon'
+                ? 'posisjon'
+                : null,
+            segHasMeter: Boolean(
+              res &&
+                /** @type {any} */ (res).m != null &&
+                !isDashMeter(/** @type {any} */ (res).m),
+            ),
+            segDist:
+              res && typeof /** @type {any} */ (res).distToRoadM === 'number'
+                ? Math.round(/** @type {any} */ (res).distToRoadM * 10) / 10
+                : null,
+            accuracyM: Math.round(accuracyM * 10) / 10,
+            speed: Math.round(speedMps * 100) / 100,
+          })
+        } else if (
+          online &&
+          h.fetchRoadPositionDirect &&
+          h.fetchRoadReferenceNear
+        ) {
+          const _t0 = Date.now()
+          let _posMs = -1
+          let _segMs = -1
+          const [pos, seg] = await Promise.all([
+            fetchRoadPositionDirectCached(h, nvdbLat, nvdbLng, fetchOpts)
+              .then((r) => {
+                _posMs = Date.now() - _t0
+                return r
+              })
+              .catch(() => {
+                _posMs = Date.now() - _t0
+                return null
+              }),
+            h.fetchRoadReferenceNear(nvdbLat, nvdbLng, segmentFetchOpts)
+              .then((r) => {
+                _segMs = Date.now() - _t0
+                return r
+              })
+              .catch(() => {
+                _segMs = Date.now() - _t0
+                return null
+              }),
+          ])
+          const merged = mergePosisjonAndSegmentParallelResults(pos, seg)
+          res = merged || pos || seg
+          vegrefDebugTrace('fetch_split', {
+            hyp: 'H5',
+            mode: 'parallel',
+            totalMs: Date.now() - _t0,
+            posMs: _posMs,
+            segMs: _segMs,
+            posOk: Boolean(pos),
+            segOk: Boolean(seg),
+            mergedOk: Boolean(merged),
+            posSrc: pos && /** @type {any} */ (pos)._vegrefMeta?.source
+              ? String(/** @type {any} */ (pos)._vegrefMeta.source)
+              : null,
+            segHasMeter: Boolean(
+              seg &&
+                /** @type {any} */ (seg).m != null &&
+                !isDashMeter(/** @type {any} */ (seg).m),
+            ),
+            segDist:
+              seg && typeof /** @type {any} */ (seg).distToRoadM === 'number'
+                ? Math.round(/** @type {any} */ (seg).distToRoadM * 10) / 10
+                : null,
+            accuracyM: Math.round(accuracyM * 10) / 10,
+            speed: Math.round(speedMps * 100) / 100,
+          })
+        } else {
+          try {
+            res = await h.fetchRoadReferenceNear(
+              nvdbLat,
+              nvdbLng,
+              segmentFetchOpts,
+            )
+          } catch {
+            res = null
+          }
+        }
+      }
+
+      if (!res && online && h.fetchRoadPositionDirect && !dataMinimal) {
         try {
           res = await fetchRoadPositionDirectCached(
             h,
@@ -1079,16 +1312,8 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         }
       }
 
-      if (!res && online && h.fetchRoadReferenceNear) {
+      if (!res && online && h.fetchRoadReferenceNear && !dataMinimal) {
         res = await h.fetchRoadReferenceNear(nvdbLat, nvdbLng, segmentFetchOpts)
-      }
-
-      if (!res && h.fetchRoadReferenceNearOffline) {
-        try {
-          res = await h.fetchRoadReferenceNearOffline(nvdbLat, nvdbLng, fetchOpts)
-        } catch {
-          /* manglende pakke eller IndexedDB */
-        }
       }
 
       if (signal.aborted) return
@@ -1135,15 +1360,10 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
       let errRes = null
       if (h.fetchRoadReferenceNearOffline) {
         try {
-          const surfacePreference =
-            typeof h.getSurfacePreference === 'function'
-              ? normalizeSurfacePreference(h.getSurfacePreference())
-              : 'motor'
-          const fetchOpts = { signal, accuracyM, surfacePreference }
           errRes = await h.fetchRoadReferenceNearOffline(
             nvdbLat,
             nvdbLng,
-            fetchOpts,
+            segmentFetchOpts,
           )
         } catch {
           /* manglende pakke eller IndexedDB */

@@ -4,11 +4,16 @@
  * Krever header X-Client. CORS tillates fra nettleser.
  */
 
+import { registerNetMaybeLogNvdbPosisjon } from './registerNetworkDebug.js'
+
 const NVDB_SEGMENTERT =
   'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/veglenkesekvenser/segmentert'
 
 const NVDB_POSISJON =
   'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/posisjon'
+
+const NVDB_VEG_BATCH =
+  'https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/veg/batch'
 
 /** Maks tid på ett NVDB-HTTP-kall før avbrudd (mobil / treg tunnel / 4G-hull). */
 const NVDB_FETCH_TIMEOUT_MS = 12_000
@@ -33,7 +38,7 @@ function nvdbCombinedFetchSignal(signal) {
 /** Kort TTL for segmentert-oppslag (samme idé som posisjon-cache i vegrefLive). */
 const SEGMENT_NEAR_CACHE_TTL_MS = 30_000
 const SEGMENT_NEAR_CACHE_MAX = 48
-/** @type {Map<string, { at: number, res: object | null }>} */
+/** @type {Map<string, { at: number, res: object | null, lat?: number, lng?: number }>} */
 let segmentNearCache = new Map()
 
 /**
@@ -153,20 +158,22 @@ export function headingDiffDeg(h1, h2) {
 }
 
 function pointToSegmentClosest(lat, lng, a, b) {
-  let bestD = Infinity
-  let bestT = 0
-  const steps = 50
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps
-    const plat = a.lat + t * (b.lat - a.lat)
-    const plng = a.lng + t * (b.lng - a.lng)
-    const d = haversineM(lat, lng, plat, plng)
-    if (d < bestD) {
-      bestD = d
-      bestT = t
-    }
-  }
-  return { distM: bestD, t: bestT }
+  /* Analytisk projeksjon på equirectangular-plan: O(1) per segmentpar (ingen haversine-loop).
+     For lokale avstander (<500m) i Norge er feilen <0.1% sammenlignet med haversine. */
+  const latRef = (a.lat + b.lat) * 0.5
+  const mLat = 111320
+  const mLng = 111320 * Math.cos((latRef * Math.PI) / 180)
+  const bx = (b.lng - a.lng) * mLng
+  const by = (b.lat - a.lat) * mLat
+  const px = (lng - a.lng) * mLng
+  const py = (lat - a.lat) * mLat
+  const len2 = bx * bx + by * by
+  let t = len2 > 0 ? (px * bx + py * by) / len2 : 0
+  if (t < 0) t = 0
+  else if (t > 1) t = 1
+  const ex = px - t * bx
+  const ey = py - t * by
+  return { distM: Math.sqrt(ex * ex + ey * ey), t }
 }
 
 /**
@@ -433,6 +440,21 @@ function segmentRoadHeadingDeg(seg, lat, lng) {
 }
 
 /**
+ * NVDB kortform-id «kf:EV6 S162D1 m3283-3291» → stamme uten meterdel.
+ * Brukes til å holde samme hovedstrekk når offline-pakken er splittet i mange
+ * korte fragmenter langs samme riksvei (unngår rask flip mellom nabo-fragmenter).
+ * @param {string | number | null | undefined} id
+ * @returns {string}
+ */
+function nvdbKfRoadStem(id) {
+  const s = String(id ?? '').trim()
+  if (!s.startsWith('kf:')) return ''
+  const m = s.match(/\s+m\d/i)
+  if (!m || m.index == null || m.index <= 0) return s
+  return s.slice(0, m.index).trim()
+}
+
+/**
  * Velg segment: nærhet + vegtype, med hysterese mot forrige treff når GPS er ustabil
  * (typisk tettbygd med parallelle kommunalveier / stedsnavn).
  * @param {object[]} objekter
@@ -464,9 +486,22 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
   const lowSpeedUrbanHeading =
     userHeadingDeg != null && speed >= 1.2 && speed < 3.5 && accuracyM <= 24
 
+  /** Gjenbruk describeSegmentForPoint for samme (segment-indeks, punkt, nøyaktighet) i én runde. */
+  const describeCache = new Map()
+  const describeKey = (si, plat, plng, acc) =>
+    `${si}|${Math.round(plat * 1e6)}|${Math.round(plng * 1e6)}|${Math.round(acc)}`
+  const describeCached = (seg, si, plat, plng, acc) => {
+    const k = describeKey(si, plat, plng, acc)
+    if (describeCache.has(k)) return describeCache.get(k)
+    const v = describeSegmentForPoint(seg, plat, plng, acc)
+    describeCache.set(k, v)
+    return v
+  }
+
   const scored = []
-  for (const seg of objekter) {
-    const d = describeSegmentForPoint(seg, lat, lng, accuracyM)
+  for (let si = 0; si < objekter.length; si++) {
+    const seg = objekter[si]
+    const d = describeCached(seg, si, lat, lng, accuracyM)
     if (!d) continue
     const id = segmentStableId(seg)
     const dist = Math.min(d.distToRoadM, 100)
@@ -497,7 +532,7 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
           ) {
             continue
           }
-          const di = describeSegmentForPoint(seg, pt.lat, pt.lng, accuracyM)
+          const di = describeCached(seg, si, pt.lat, pt.lng, accuracyM)
           if (!di) continue
           dsum += di.distToRoadM * w
           wsum += w
@@ -516,6 +551,13 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
         if (speed < 2) score -= 14
         /* Stikkrenne/bilde ved veikant: ofte 2–5 m fra senterlinja — lett ekstra lås til forrige vei. */
         if (speed < 3 && dist <= 12) score -= 8
+        /* Fix: korte segmenter (< 30 m, typisk i kryss/avkjørsler) trenger ekstra
+           hysterese — liten "overflate" gjør at GPS-jitter lett trigger feil veiskift. */
+        const segLen =
+          typeof seg?.geometri?.lengde === 'number' && seg.geometri.lengde > 0
+            ? seg.geometri.lengde
+            : null
+        if (segLen != null && segLen < 30) score -= 8
       } else {
         score += 12 * speedFactor
         if (speed < 2) score += 10
@@ -526,7 +568,9 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
     if (userHeadingDeg != null && roadH != null && (speed >= 3.5 || lowSpeedUrbanHeading)) {
       const hd = headingDiffDeg(userHeadingDeg, roadH)
       const headingWeight = speed >= 3.5 ? 0.5 : 0.22
-      score += hd * headingWeight
+      /* Cap heading-straff så den ikke kan overskygge distanse alene. */
+      const headingMaxPenalty = speed >= 3.5 ? 40 : 18
+      score += Math.min(headingMaxPenalty, hd * headingWeight)
       if (hd < 25 && d.distToRoadM < 20) score -= speed >= 3.5 ? 15 : 9
       if (hd < 10) score += dist * (speed >= 3.5 ? 0.5 : 0.18)
     }
@@ -568,14 +612,15 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
   }
 
   /* Større margin ved ustabil GPS → færre hopp mellom parallelle veier / veinavn. */
-  const baseMargin = Math.min(40, Math.max(9, accuracyM * 0.42))
+  const baseMargin = Math.min(40, Math.max(12, accuracyM * 0.42))
   const accBoost =
     accuracyM >= 24 ? Math.min(18, (accuracyM - 22) * 0.55) : 0
   const denseUrbanStickiness =
     accuracyM <= 32 && speed < 14 ? (speed < 4 ? 12 : 7) : 0
-  /* God GPS + høy fart: uten ekstra hysterese hopper vi ofte mellom parallelle felt/ramper (meter/stedsnavn faller ut). */
+  /* God GPS + moderat til høy fart: uten ekstra hysterese hopper vi ofte mellom
+     parallelle felt/ramper og mellom korte naboveier (meter/stedsnavn faller ut). */
   const highSpeedStickiness =
-    speed >= 12 ? Math.min(34, 8 + (speed - 12) * 0.55) : 0
+    speed >= 8 ? Math.min(34, 12 + (speed - 8) * 0.55) : 0
   const nearInspectionMargin =
     speed < 3 &&
     accuracyM <= 24 &&
@@ -617,6 +662,42 @@ function pickBestSegment(objekter, lat, lng, opts = {}) {
       const hdB = headingDiffDeg(userHeadingDeg, hBest)
       const hdP = headingDiffDeg(userHeadingDeg, hPrev)
       if (hdB + 12 < hdP) margin -= 8
+    }
+  }
+  /* Escape: hvis forrige segment er tydelig langt unna (>35m og >1.1× GPS-usikkerhet),
+     og beste er nær (<18m) med forskjell >20m — reduser stickiness så vi kan bytte. */
+  if (
+    typeof dPrev === 'number' &&
+    typeof dBest === 'number' &&
+    dPrev > Math.max(35, accuracyM * 1.1) &&
+    dBest < 18 &&
+    dPrev - dBest > 20
+  ) {
+    margin -= 20
+  }
+  /* Samme veg i samme strekning (f.eks. flere m-fragmenter på EV6), fortsatt
+     innenfor rimelig avstand: krev mye større forbedring før vi bytter fragment.
+     Ellers hopper pickBest mellom nabo-fragmenter når score svinger 1–3 m. */
+  if (
+    prevNvdbId != null &&
+    best.id != null &&
+    String(prevNvdbId) !== String(best.id) &&
+    speed >= 4
+  ) {
+    const stemPrev = nvdbKfRoadStem(prevNvdbId)
+    const stemBest = nvdbKfRoadStem(best.id)
+    const dPrevStick =
+      prevRow && typeof prevRow.d?.distToRoadM === 'number'
+        ? prevRow.d.distToRoadM
+        : 999
+    if (
+      stemPrev &&
+      stemPrev === stemBest &&
+      dPrevStick < 55 &&
+      typeof best.d?.distToRoadM === 'number' &&
+      best.d.distToRoadM < 55
+    ) {
+      margin += Math.min(120, 44 + speed * 3.6)
     }
   }
   margin = Math.max(0, margin)
@@ -766,7 +847,17 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
       Date.now() - hit.at < SEGMENT_NEAR_CACHE_TTL_MS &&
       !signal?.aborted
     ) {
-      return hit.res ? { ...hit.res } : null
+      /* Celle-størrelse (~11m x 4m ved 68°N) kan dele parallellveier — avvis treff
+         hvis faktisk avstand fra cache-punktet er over 6m. */
+      const hitLat = typeof hit.lat === 'number' ? hit.lat : null
+      const hitLng = typeof hit.lng === 'number' ? hit.lng : null
+      const distOk =
+        hitLat == null || hitLng == null
+          ? true
+          : haversineM(lat, lng, hitLat, hitLng) <= 6
+      if (distOk) {
+        return hit.res ? { ...hit.res } : null
+      }
     }
   }
   const fetchSignal = nvdbCombinedFetchSignal(signal)
@@ -885,6 +976,8 @@ export async function fetchRoadReferenceNearOnlineOnce(lat, lng, opts = {}) {
     segmentNearCache.set(ck, {
       at: Date.now(),
       res: /** @type {object} */ ({ ...described }),
+      lat,
+      lng,
     })
     while (segmentNearCache.size > SEGMENT_NEAR_CACHE_MAX) {
       const first = segmentNearCache.keys().next().value
@@ -989,13 +1082,16 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
   url.searchParams.set('lon', String(lng))
   url.searchParams.set('maks_avstand', String(maksAvstand))
 
-  const r = await fetch(url.toString(), {
+  const urlStr = url.toString()
+  const r = await fetch(urlStr, {
     signal: fetchSignal,
     headers: {
       'X-Client': 'Inspekt',
       Accept: 'application/json',
     },
   })
+
+  await registerNetMaybeLogNvdbPosisjon(urlStr, r)
 
   if (!r.ok) {
     const t = await r.text().catch(() => '')
@@ -1064,6 +1160,78 @@ async function fetchRoadPositionDirectOnce(lat, lng, opts = {}) {
     vegkategori: typeof vk === 'string' ? vk : null,
     _vegrefMeta: { source: 'posisjon' },
   }
+}
+
+/**
+ * Tolker NVDB WKT-punkt i srid 4326 (ofte lat, lon i denne rekkefølgen for Norge).
+ * @param {string} wkt
+ * @returns {{ lat: number, lng: number } | null}
+ */
+function parsePointWktLatLng4326(wkt) {
+  if (typeof wkt !== 'string') return null
+  const m = wkt.match(
+    /POINT\s+Z?\s*\(\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)/i,
+  )
+  if (!m) return null
+  const a = parseFloat(m[1])
+  const b = parseFloat(m[2])
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+  if (a >= 55 && a <= 72 && b >= 4 && b <= 32) return { lat: a, lng: b }
+  if (b >= 55 && b <= 72 && a >= 4 && a <= 32) return { lat: b, lng: a }
+  return { lat: a, lng: b }
+}
+
+/**
+ * Slår opp koordinater fra kompakt vegsystemreferanse (f.eks. FV7552S1D1m345) via veg/batch.
+ * @param {string} vegsystemRef
+ * @param {{ signal?: AbortSignal }} [opts]
+ * @returns {Promise<{ lat: number, lng: number, kortform: string } | null>}
+ */
+export async function fetchLatLngFromVegsystemBatch(vegsystemRef, opts = {}) {
+  const ref = typeof vegsystemRef === 'string' ? vegsystemRef.trim() : ''
+  if (!ref) return null
+  const fetchSignal = nvdbCombinedFetchSignal(opts.signal)
+  const url = new URL(NVDB_VEG_BATCH)
+  url.searchParams.set('vegsystemreferanser', ref)
+  url.searchParams.set('srid', '4326')
+  const r = await fetch(url.toString(), {
+    signal: fetchSignal,
+    headers: {
+      'X-Client': 'Inspekt',
+      Accept: 'application/json',
+    },
+  })
+  if (!r.ok) {
+    const t = await r.text().catch(() => '')
+    throw new Error(
+      `NVDB veg/batch ${r.status}${t ? `: ${t.slice(0, 200)}` : ''}`,
+    )
+  }
+  let data
+  try {
+    data = await r.json()
+  } catch {
+    throw new Error('NVDB veg/batch: ugyldig JSON')
+  }
+  if (!data || typeof data !== 'object') return null
+  const row = /** @type {Record<string, unknown>} */ (data)[ref]
+  const first =
+    row && typeof row === 'object'
+      ? row
+      : Object.values(data).find((v) => v && typeof v === 'object') ?? null
+  if (!first || typeof first !== 'object') return null
+  const geom = /** @type {{ wkt?: unknown }} */ (
+    /** @type {{ geometri?: unknown }} */ (first).geometri
+  )
+  const wkt = typeof geom?.wkt === 'string' ? geom.wkt : ''
+  const ll = parsePointWktLatLng4326(wkt)
+  if (!ll) return null
+  const vsr = /** @type {{ kortform?: unknown } | undefined} */ (
+    /** @type {{ vegsystemreferanse?: unknown }} */ (first).vegsystemreferanse
+  )
+  const kf =
+    vsr && typeof vsr.kortform === 'string' ? vsr.kortform.trim() : ''
+  return { lat: ll.lat, lng: ll.lng, kortform: kf }
 }
 
 /**

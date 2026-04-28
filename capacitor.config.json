@@ -4,6 +4,11 @@
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
-    "iosScheme": "https"
+    "iosScheme": "https",
+    "allowNavigation": [
+      "*.maptiler.com",
+      "*.openstreetmap.org",
+      "tile.openstreetmap.org"
+    ]
   }
 }

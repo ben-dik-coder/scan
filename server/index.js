@@ -6,12 +6,15 @@
  *
  * Tunge moduler lastes asynkront etter at HTTP-port er åpen, så du ser «lytter» raskt
  * (unngår lang stillhet ved treg disk / iCloud / store node_modules).
+ *
+ * DelSky v1 (R2): `registerScanixCloudV1R2Routes` — /v1/health, /v1/app-state (krever R2_* + Supabase i .env).
  */
 
 import dns from 'node:dns'
 import dotenv from 'dotenv'
 import cors from 'cors'
 import express from 'express'
+import { registerScanixCloudV1R2Routes } from './scanixCloudV1R2Routes.js'
 import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -92,11 +95,13 @@ const app = express()
 app.use(
   cors({
     origin: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 )
 app.use(express.json({ limit: '48mb' }))
+
+registerScanixCloudV1R2Routes(app)
 
 /** OSRM match/nearest – proxy til offentlig instans (samme som Vite dev). Klient bruker VITE_API_BASE + /api/osrm. */
 const OSRM_UPSTREAM = (
@@ -159,6 +164,8 @@ app.get('/api/health', (_req, res) => {
       '/api/ai-chat-pdf-summary',
       '/api/analyze',
       '/api/contract-chat',
+      '/v1/health',
+      '/v1/app-state (R2)',
     ],
   })
 })
@@ -167,7 +174,7 @@ const httpServer = app.listen(PORT, LISTEN_HOST, () => {
   console.log(
     `Scanix API lytter på http://${LISTEN_HOST}:${PORT} (moduler lastes i bakgrunnen …)`,
   )
-  console.log(`Test: http://127.0.0.1:${PORT}/api/health`)
+  console.log(`Test: http://127.0.0.1:${PORT}/api/health  |  DelSky-klient: …/v1/health`)
 })
 /* Lange AI-kall (kontrakt-RAG, analyse): Node sin standard requestTimeout (5 min) kan avbryte før svar er klart. */
 httpServer.requestTimeout = 0

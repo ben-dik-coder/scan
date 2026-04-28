@@ -62,10 +62,14 @@ create table if not exists public.session_shares (
   from_short_id text not null,
   from_display_name text,
   session_payload jsonb not null,
+  shared_object_names text[] not null default '{}',
   created_at timestamptz not null default now(),
   constraint session_shares_not_self check (from_user_id <> to_user_id),
   constraint session_shares_from_short_format check (from_short_id ~ '^[0-9]{5}$')
 );
+
+alter table public.session_shares
+  add column if not exists shared_object_names text[] not null default '{}';
 
 create index if not exists session_shares_to_user_created_idx
   on public.session_shares (to_user_id, created_at desc);
@@ -98,6 +102,7 @@ declare
   v_name text;
   v_id uuid;
   v_len int;
+  v_shared_names text[];
 begin
   if v_from is null then
     raise exception 'Not authenticated';
@@ -105,10 +110,32 @@ begin
   if p_recipient_short_id is null or p_recipient_short_id !~ '^[0-9]{5}$' then
     raise exception 'Invalid recipient id';
   end if;
-  v_len := octet_length(p_session_payload::text);
-  if v_len is null or v_len > 4800000 then
+  v_len := pg_column_size(p_session_payload);
+  if v_len is null or v_len > 104857600 then
     raise exception 'Payload too large';
   end if;
+  select coalesce(array_agg(p), '{}'::text[])
+  into v_shared_names
+  from (
+    select distinct trim(elem->>'storageFullPath') as p
+    from jsonb_array_elements(
+      case when jsonb_typeof(p_session_payload->'photos') = 'array'
+        then p_session_payload->'photos'
+        else '[]'::jsonb end
+    ) as elem
+    where elem ? 'storageFullPath'
+      and length(trim(elem->>'storageFullPath')) > 0
+    union
+    select distinct trim(elem->>'storageThumbPath') as p
+    from jsonb_array_elements(
+      case when jsonb_typeof(p_session_payload->'photos') = 'array'
+        then p_session_payload->'photos'
+        else '[]'::jsonb end
+    ) as elem
+    where elem ? 'storageThumbPath'
+      and length(trim(elem->>'storageThumbPath')) > 0
+  ) paths
+  where p is not null;
   select id into v_to from public.profiles
   where short_id = p_recipient_short_id limit 1;
   if v_to is null then
@@ -123,9 +150,9 @@ begin
     raise exception 'Sender profile missing';
   end if;
   insert into public.session_shares (
-    from_user_id, to_user_id, from_short_id, from_display_name, session_payload
+    from_user_id, to_user_id, from_short_id, from_display_name, session_payload, shared_object_names
   ) values (
-    v_from, v_to, v_short, nullif(trim(v_name), ''), p_session_payload
+    v_from, v_to, v_short, nullif(trim(v_name), ''), p_session_payload, coalesce(v_shared_names, '{}')
   )
   returning id into v_id;
   return v_id;

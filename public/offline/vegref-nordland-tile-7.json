@@ -1,0 +1,14 @@
+{
+  "version": "nordland-pack",
+  "generatedAt": "2026-04-28T05:35:17.916Z",
+  "source": {
+    "type": "nvdb-segmentert",
+    "bbox": {
+      "minLng": 16.475,
+      "minLat": 66.1,
+      "maxLng": 18.2,
+      "maxLat": 67.25
+    }
+  },
+  "segments": []
+}

@@ -1,9 +1,21 @@
 /**
  * Avansert registering – egen flyt (intro → kartøkt → rapport).
- * Rører ikke eksisterende økt-/state i main.js utover navigasjon og hurtigmeny-krok.
+ * Rører ikke eksisterende økt-/state i main.js utover navigasjon.
  */
 
-import { ensureLeaflet, createAppMapTileLayer } from './leafletLazy.js'
+import {
+  APP_MAP_TILE_LAYER_DATA_SAVER,
+  applyAppMapTileContrastToDom,
+  createAppBasemapLayer,
+  ensureLeaflet,
+  nudgeMaptilerBasemapResize,
+} from './leafletLazy.js'
+import { getSessionMapDarkPreference } from './sessionMapBasemapPref.js'
+import {
+  ADV_REG_MAP_THEME_DOT_POS_KEY,
+  syncMapThemeDockDom,
+  wireMapThemeDock,
+} from './mapThemeDock.js'
 
 const MAX_ACCURACY_M = 8
 /** @type {{ navigate: (view: string) => void } | null} */
@@ -51,6 +63,8 @@ export function resetAdvancedRegisterState() {
 
 /** @type {import('leaflet').Map | null} */
 let advMap = null
+/** @type {import('leaflet').Layer | null} */
+let advBasemapLayer = null
 /** @type {import('leaflet').LayerGroup | null} */
 let advMarkersLayer = null
 /** @type {import('leaflet').Marker | null} */
@@ -64,8 +78,36 @@ function stopAdvWatch() {
   }
 }
 
+async function replaceAdvRegBasemapIfNeeded() {
+  if (!advMap) return
+  const L = await ensureLeaflet()
+  const want = getSessionMapDarkPreference()
+  try {
+    if (advBasemapLayer) {
+      advMap.removeLayer(advBasemapLayer)
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    advBasemapLayer = await createAppBasemapLayer(
+      L,
+      APP_MAP_TILE_LAYER_DATA_SAVER,
+      { dark: want },
+    )
+    advBasemapLayer.addTo(advMap)
+  } catch {
+    advBasemapLayer = null
+  }
+  queueMicrotask(() => {
+    advMap?.invalidateSize()
+    nudgeMaptilerBasemapResize(advMap)
+  })
+}
+
 function destroyAdvMap() {
   stopAdvWatch()
+  advBasemapLayer = null
   if (advMap) {
     advMap.remove()
     advMap = null
@@ -78,6 +120,7 @@ function destroyAdvMap() {
 export function invalidateAdvRegMapSize() {
   try {
     advMap?.invalidateSize({ animate: false })
+    nudgeMaptilerBasemapResize(advMap)
   } catch {
     /* ignore */
   }
@@ -129,8 +172,54 @@ export function renderAdvancedRegisterIntroHtml() {
 
 export function renderAdvancedRegisterSessionHtml() {
   return `<div class="adv-reg adv-reg--session">
-    <div id="adv-reg-map" class="adv-reg__map" role="application" aria-label="Kart"></div>
-    <p id="adv-reg-gps-chip" class="adv-reg__gps-chip" role="status"></p>
+    <div class="adv-reg__map-stage" id="adv-reg-map-stage">
+      <div id="adv-reg-map" class="adv-reg__map" role="application" aria-label="Kart"></div>
+      <p id="adv-reg-gps-chip" class="adv-reg__gps-chip" role="status"></p>
+      <div
+        id="session-map-theme-dock"
+        class="session-map-theme-dock adv-reg__map-theme-dock"
+        aria-hidden="false"
+      >
+        <button
+          type="button"
+          id="session-map-theme-dot"
+          class="session-map-theme-dot"
+          aria-haspopup="true"
+          aria-expanded="false"
+          aria-label="Kartunderlag. Trykk for å velge lyst eller mørkt kart."
+          title="Kartunderlag"
+        >
+          <span class="session-map-theme-dot__glow" aria-hidden="true"></span>
+          <span class="session-map-theme-dot__core" aria-hidden="true"></span>
+        </button>
+        <div
+          id="session-map-theme-popover"
+          class="session-map-theme-popover"
+          role="menu"
+          aria-label="Kartunderlag"
+          hidden
+        >
+          <button
+            type="button"
+            class="session-map-theme-popover__opt"
+            role="menuitemradio"
+            id="session-map-theme-opt-light"
+            aria-checked="true"
+          >
+            Lyst kart
+          </button>
+          <button
+            type="button"
+            class="session-map-theme-popover__opt"
+            role="menuitemradio"
+            id="session-map-theme-opt-dark"
+            aria-checked="false"
+          >
+            Mørkt kart
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="adv-reg__bottom">
       <div class="adv-reg__bottom-inner">
         <p class="adv-reg__topic-line" id="adv-reg-topic-line"></p>
@@ -509,7 +598,12 @@ export function bindAdvancedRegister(currentView, signal) {
       [65.5, 12.5],
       5,
     )
-    createAppMapTileLayer(L).addTo(advMap)
+    advBasemapLayer = await createAppBasemapLayer(
+      L,
+      APP_MAP_TILE_LAYER_DATA_SAVER,
+      { dark: getSessionMapDarkPreference() },
+    )
+    advBasemapLayer.addTo(advMap)
     advMarkersLayer = L.layerGroup().addTo(advMap)
 
     advWatchId = navigator.geolocation.watchPosition(
@@ -547,8 +641,14 @@ export function bindAdvancedRegister(currentView, signal) {
     }
 
     await refreshAdvMarkersLayerAsync()
-    queueMicrotask(() => advMap?.invalidateSize())
-    window.setTimeout(() => advMap?.invalidateSize(), 400)
+    queueMicrotask(() => {
+      advMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(advMap)
+    })
+    window.setTimeout(() => {
+      advMap?.invalidateSize()
+      nudgeMaptilerBasemapResize(advMap)
+    }, 400)
   })()
 
   const followupDlg = document.getElementById('adv-reg-followup')
@@ -729,6 +829,16 @@ export function bindAdvancedRegister(currentView, signal) {
     },
     { signal },
   )
+
+  wireMapThemeDock(signal, {
+    frameId: 'adv-reg-map-stage',
+    posKey: ADV_REG_MAP_THEME_DOT_POS_KEY,
+    onAfterThemeChange: async () => {
+      await replaceAdvRegBasemapIfNeeded()
+      applyAppMapTileContrastToDom()
+    },
+  })
+  syncMapThemeDockDom(getSessionMapDarkPreference())
 
   signal.addEventListener('abort', () => {
     destroyAdvMap()
