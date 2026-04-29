@@ -2910,6 +2910,7 @@ const DELSKY_USAGE_POLL_MS = 20_000
  * quotaBytes: number,
  * percent: number,
  * bySource: { r2Bytes: number, supabaseBytes: number },
+ * sourceStatus: { r2Available: boolean, supabaseAvailable: boolean },
  * updatedAt: number,
  * status: 'idle' | 'loading' | 'ready' | 'error',
  * isNearLimit: boolean,
@@ -2920,6 +2921,7 @@ let delskyStorageUsage = {
   quotaBytes: DELSKY_QUOTA_BYTES,
   percent: 0,
   bySource: { r2Bytes: 0, supabaseBytes: 0 },
+  sourceStatus: { r2Available: false, supabaseAvailable: false },
   updatedAt: 0,
   status: 'idle',
   isNearLimit: false,
@@ -11352,6 +11354,13 @@ function delskyUsageStatusText() {
     return 'Skyforbruk vises når cloud API er aktiv.'
   }
   if (delskyStorageUsage.status === 'loading') return 'Oppdaterer skyforbruk …'
+  if (
+    delskyStorageUsage.status === 'ready' &&
+    !delskyStorageUsage.sourceStatus.r2Available &&
+    !delskyStorageUsage.sourceStatus.supabaseAvailable
+  ) {
+    return 'Skyforbruk ikke tilgjengelig enda (sjekk backend-konfigurasjon).'
+  }
   if (delskyStorageUsage.status === 'error') return 'Kunne ikke hente skyforbruk nå.'
   if (delskyStorageUsage.isOverLimit) {
     return 'Du er over anbefalt kvote på 50 GB.'
@@ -11364,15 +11373,24 @@ function delskyUsageStatusText() {
 
 function renderDelskyUsagePanelHtml() {
   const hasFreshUsage = delskyStorageUsage.status === 'ready'
+  const hasAnySource =
+    delskyStorageUsage.sourceStatus.r2Available ||
+    delskyStorageUsage.sourceStatus.supabaseAvailable
   const used = hasFreshUsage
-    ? formatDelskyUsageBytes(delskyStorageUsage.usedBytes)
+    ? hasAnySource
+      ? formatDelskyUsageBytes(delskyStorageUsage.usedBytes)
+      : '–'
     : '–'
   const quota = formatDelskyUsageBytes(delskyStorageUsage.quotaBytes || DELSKY_QUOTA_BYTES)
   const r2 = hasFreshUsage
-    ? formatDelskyUsageBytes(delskyStorageUsage.bySource?.r2Bytes || 0)
+    ? delskyStorageUsage.sourceStatus.r2Available
+      ? formatDelskyUsageBytes(delskyStorageUsage.bySource?.r2Bytes || 0)
+      : 'ikke tilgjengelig'
     : '–'
   const supabase = hasFreshUsage
-    ? formatDelskyUsageBytes(delskyStorageUsage.bySource?.supabaseBytes || 0)
+    ? delskyStorageUsage.sourceStatus.supabaseAvailable
+      ? formatDelskyUsageBytes(delskyStorageUsage.bySource?.supabaseBytes || 0)
+      : 'ikke tilgjengelig'
     : '–'
   const pct = hasFreshUsage
     ? Math.max(0, Math.min(100, Math.round(delskyStorageUsage.percent)))
@@ -11421,6 +11439,7 @@ function bumpDelskyUsageOptimistic(deltaBytes) {
   delskyStorageUsage.percent = Math.min(100, (used / quota) * 100)
   delskyStorageUsage.isNearLimit = used >= quota * 0.85
   delskyStorageUsage.isOverLimit = used >= quota
+  delskyStorageUsage.sourceStatus = { r2Available: true, supabaseAvailable: true }
   delskyStorageUsage.updatedAt = Date.now()
   if (view === 'inbox' && inboxUiMode === 'delsky') {
     applyDelskyUsagePanelToDom()
@@ -11452,6 +11471,10 @@ async function refreshDelskyStorageUsage(opts = {}) {
     quotaBytes: quota,
     percent: Math.min(100, Math.max(0, summary.percent || (used / quota) * 100)),
     bySource: summary.bySource || { r2Bytes: 0, supabaseBytes: 0 },
+    sourceStatus: {
+      r2Available: Boolean(summary.sourceStatus?.r2Available),
+      supabaseAvailable: Boolean(summary.sourceStatus?.supabaseAvailable),
+    },
     updatedAt: Date.now(),
     status: 'ready',
     isNearLimit: Boolean(summary.nearLimit || used >= quota * 0.85),
