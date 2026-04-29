@@ -366,3 +366,61 @@ export async function cloudFetchStandalonePhotosForFolder(folderKey) {
   if (data && typeof data === 'object' && Array.isArray(data.photos)) return data.photos
   return []
 }
+
+/**
+ * @returns {Promise<{
+ *  quotaBytes: number,
+ *  usedBytes: number,
+ *  percent: number,
+ *  bySource: { r2Bytes: number, supabaseBytes: number },
+ *  nearLimit: boolean,
+ *  overLimit: boolean,
+ *  updatedAt: string | null
+ * } | null>}
+ */
+export async function cloudFetchStorageUsageSummary() {
+  try {
+    const r = await cloudJson('/v1/storage/usage-summary', 'GET')
+    if (!r.ok) return null
+    const j = await r.json()
+    if (!j || typeof j !== 'object') return null
+    const quotaBytes = Number(
+      /** @type {{ quotaBytes?: unknown }} */ (j).quotaBytes,
+    )
+    const usedBytes = Number(
+      /** @type {{ usedBytes?: unknown }} */ (j).usedBytes,
+    )
+    const percent = Number(
+      /** @type {{ percent?: unknown }} */ (j).percent,
+    )
+    const src =
+      /** @type {{ bySource?: unknown }} */ (j).bySource &&
+      typeof /** @type {{ bySource?: unknown }} */ (j).bySource === 'object'
+        ? /** @type {{ r2Bytes?: unknown, supabaseBytes?: unknown }} */ (
+            /** @type {{ bySource?: unknown }} */ (j).bySource
+          )
+        : {}
+    const updatedAtRaw = /** @type {{ updatedAt?: unknown }} */ (j).updatedAt
+    return {
+      quotaBytes: Number.isFinite(quotaBytes) && quotaBytes > 0 ? quotaBytes : 0,
+      usedBytes: Number.isFinite(usedBytes) && usedBytes >= 0 ? usedBytes : 0,
+      percent: Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0,
+      bySource: {
+        r2Bytes:
+          Number.isFinite(Number(src.r2Bytes)) && Number(src.r2Bytes) >= 0
+            ? Number(src.r2Bytes)
+            : 0,
+        supabaseBytes:
+          Number.isFinite(Number(src.supabaseBytes)) &&
+          Number(src.supabaseBytes) >= 0
+            ? Number(src.supabaseBytes)
+            : 0,
+      },
+      nearLimit: Boolean(/** @type {{ nearLimit?: unknown }} */ (j).nearLimit),
+      overLimit: Boolean(/** @type {{ overLimit?: unknown }} */ (j).overLimit),
+      updatedAt: typeof updatedAtRaw === 'string' ? updatedAtRaw : null,
+    }
+  } catch {
+    return null
+  }
+}

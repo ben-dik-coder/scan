@@ -73,7 +73,7 @@ export const VEGREF_MIN_INTERVAL_MS = 200
 export const VEGREF_MIN_MOVE_M = 0.7
 
 /** LRU-cache for /posisjon-svar (reduserer gjentatte kall ved GPS-jitter). */
-const POSISJON_CACHE_TTL_MS = 32_000
+const POSISJON_CACHE_TTL_MS = 16_000
 const POSISJON_CACHE_MAX = 50
 /** @type {Map<string, { res: VegrefDescribeResult, at: number, lat: number, lng: number }>} */
 let posisjonCache = new Map()
@@ -82,13 +82,13 @@ let posisjonCache = new Map()
  * mellom parallelle veier ikke «låser» UI på feil vei.
  */
 /** Kortere enn før: raskere aksept av bekreftet ny nvdb-id (færre «wait»-ticks). */
-const POSISJON_PENDING_ACCEPT_MS = 1000
+const POSISJON_PENDING_ACCEPT_MS = 650
 
 /**
  * Ikke avbryt pågående NVDB-kall ved mikro-bevegelse (reduserer «henger» / evig retry).
  * Skaler litt med GPS-nøyaktighet.
  */
-const VEGREF_INFLIGHT_COALESCE_BASE_M = 6
+const VEGREF_INFLIGHT_COALESCE_BASE_M = 3.5
 
 /** Gjenbruk siste treff ved stasjonær / lav fart (parkert, dårlig dekning). */
 const OFFLINE_REUSE_NVDB_M = 50
@@ -127,12 +127,18 @@ let lastConfidenceDecayAt = 0
 let posisjonPendingNewNvdbId = /** @type {string | number | null} */ (null)
 /** Tidspunkt (ms) da vi først så en kandidat-ny-id — brukes til å akseptere etter timeout. */
 let posisjonPendingFirstSeenAt = 0
+/** Forhindre umiddelbar flip-flop mellom to road-id ved kryss/støy. */
+let lastAcceptedRoadSwitchAt = 0
+let lastAcceptedRoadSwitchFromId = /** @type {string | number | null} */ (null)
+let lastAcceptedRoadSwitchToId = /** @type {string | number | null} */ (null)
+const ROAD_SWITCH_LOCKOUT_MS = 900
 
 /** Siste GPS-punkter til trace-momentum i `pickBestSegment` (fallback hvis `getRecentTrace` mangler). */
 let lastTraceSamples = /** @type {Array<{ lat: number, lng: number, at: number }>} */ ([])
 
 function posisjonCacheKey(lat, lng) {
-  return `${Math.round(lat * 1e4)}:${Math.round(lng * 1e4)}`
+  /* Finere nøkkel (~1.1 m) så vi ikke gjenbruker feil vei ved korte skifter. */
+  return `${Math.round(lat * 1e5)}:${Math.round(lng * 1e5)}`
 }
 
 /**
@@ -148,7 +154,7 @@ function getPosisjonFromCache(h, lat, lng) {
     posisjonCache.delete(key)
     return null
   }
-  if (h.haversineM(hit.lat, hit.lng, lat, lng) > 5) return null
+  if (h.haversineM(hit.lat, hit.lng, lat, lng) > 2.5) return null
   return hit.res
 }
 
@@ -257,6 +263,17 @@ let lastAppliedRes = null
 let lastAppliedLat = /** @type {number | null} */ (null)
 let lastAppliedLng = /** @type {number | null} */ (null)
 
+/** Separat display-clock: jevn UI uavhengig av GPS/NVDB-kadens. */
+const VEGREF_DISPLAY_TICK_MS = 120
+/** @type {VegrefDescribeResult | null} */
+let pendingDisplayRes = null
+let pendingDisplayLat = /** @type {number | null} */ (null)
+let pendingDisplayLng = /** @type {number | null} */ (null)
+let hasPendingDisplay = false
+let lastDisplayFlushAt = 0
+/** @type {ReturnType<typeof setTimeout> | null} */
+let displayFlushTimer = null
+
 /**
  * @param {number} lat
  * @param {number} lng
@@ -364,17 +381,26 @@ function offlineOrFallbackResult(lat, lng) {
  * @param {number} lat
  * @param {number} lng
  */
-function applyToOpenUIs(res, lat, lng) {
+function flushPendingDisplayToOpenUis() {
   const h = hooks
   if (!h) return
+  if (!hasPendingDisplay || pendingDisplayLat == null || pendingDisplayLng == null) {
+    return
+  }
 
   const effective =
-    res ||
-    offlineOrFallbackResult(lat, lng)
+    pendingDisplayRes ||
+    offlineOrFallbackResult(pendingDisplayLat, pendingDisplayLng)
 
   lastAppliedRes = effective
-  lastAppliedLat = lat
-  lastAppliedLng = lng
+  lastAppliedLat = pendingDisplayLat
+  lastAppliedLng = pendingDisplayLng
+  lastDisplayFlushAt = Date.now()
+  displayFlushTimer = null
+  pendingDisplayRes = null
+  pendingDisplayLat = null
+  pendingDisplayLng = null
+  hasPendingDisplay = false
 
   if (h.getViewHome()) {
     h.applyHome(effective)
@@ -382,6 +408,30 @@ function applyToOpenUIs(res, lat, lng) {
   if (h.getKmtOpen()) {
     h.applyKmt(effective)
   }
+}
+
+/**
+ * @param {VegrefDescribeResult | null} res
+ * @param {number} lat
+ * @param {number} lng
+ */
+function applyToOpenUIs(res, lat, lng) {
+  const h = hooks
+  if (!h) return
+  hasPendingDisplay = true
+  pendingDisplayRes = res
+  pendingDisplayLat = lat
+  pendingDisplayLng = lng
+  const now = Date.now()
+  if (now - lastDisplayFlushAt >= VEGREF_DISPLAY_TICK_MS) {
+    flushPendingDisplayToOpenUis()
+    return
+  }
+  if (displayFlushTimer != null) return
+  const wait = Math.max(8, VEGREF_DISPLAY_TICK_MS - (now - lastDisplayFlushAt))
+  displayFlushTimer = setTimeout(() => {
+    flushPendingDisplayToOpenUis()
+  }, wait)
 }
 
 /**
@@ -451,8 +501,17 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
       const isVlsOnly =
         typeof nid === 'string' && nid.startsWith('vls:')
       const _clearOnRoadEff = clearOnRoad && !isVlsOnly
+      const flipFlopBlocked =
+        oid != null &&
+        nid != null &&
+        lastAcceptedRoadSwitchFromId != null &&
+        lastAcceptedRoadSwitchToId != null &&
+        String(oid) === String(lastAcceptedRoadSwitchToId) &&
+        String(nid) === String(lastAcceptedRoadSwitchFromId) &&
+        Date.now() - lastAcceptedRoadSwitchAt < ROAD_SWITCH_LOCKOUT_MS
       const _pendingAccepted =
-        recoveryToPublic || _clearOnRoadEff || pendingMatch || pendingAgedOut
+        !flipFlopBlocked &&
+        (recoveryToPublic || _clearOnRoadEff || pendingMatch || pendingAgedOut)
       // #region agent log H2
       vegrefDebugTrace('pending_dec', {
         hyp: 'H2',
@@ -477,10 +536,14 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
         oldTier,
         newTier,
         isVlsOnly,
+        flipFlopBlocked,
         runId: 'post-fix',
       })
       // #endregion
       if (_pendingAccepted) {
+        lastAcceptedRoadSwitchAt = Date.now()
+        lastAcceptedRoadSwitchFromId = oid
+        lastAcceptedRoadSwitchToId = nid
         posisjonPendingNewNvdbId = null
         posisjonPendingFirstSeenAt = 0
       } else {
@@ -544,8 +607,7 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
     lastAppliedRes = res
     lastAppliedLat = lat
     lastAppliedLng = lng
-    if (h.getViewHome()) h.applyHome(res)
-    if (h.getKmtOpen()) h.applyKmt(res)
+    applyToOpenUIs(res, lat, lng)
     return
   }
 
@@ -553,8 +615,7 @@ function applyNvdbNullable(res, lat, lng, ctx = {}) {
   lastAppliedRes = off
   lastAppliedLat = lat
   lastAppliedLng = lng
-  if (h.getViewHome()) h.applyHome(off)
-  if (h.getKmtOpen()) h.applyKmt(off)
+  applyToOpenUIs(off, lat, lng)
 }
 
 /**
@@ -584,6 +645,14 @@ export function vegrefStopPipeline() {
     nvdbAbort.abort()
     nvdbAbort = null
   }
+  if (displayFlushTimer != null) {
+    clearTimeout(displayFlushTimer)
+    displayFlushTimer = null
+  }
+  hasPendingDisplay = false
+  pendingDisplayRes = null
+  pendingDisplayLat = null
+  pendingDisplayLng = null
   fetchGeneration += 1
   inFlightAnchorLat = null
   inFlightAnchorLng = null
@@ -595,8 +664,7 @@ export function vegrefReapplyLastToDom() {
   if (!h || !lastAppliedRes || lastAppliedLat == null || lastAppliedLng == null) {
     return
   }
-  if (h.getViewHome()) h.applyHome(lastAppliedRes)
-  if (h.getKmtOpen()) h.applyKmt(lastAppliedRes)
+  applyToOpenUIs(lastAppliedRes, lastAppliedLat, lastAppliedLng)
 }
 
 export function vegrefHasLastDisplay() {
@@ -781,6 +849,9 @@ export function vegrefResetSessionCache() {
   lastPosForSpeed = null
   posisjonPendingNewNvdbId = null
   posisjonPendingFirstSeenAt = 0
+  lastAcceptedRoadSwitchAt = 0
+  lastAcceptedRoadSwitchFromId = null
+  lastAcceptedRoadSwitchToId = null
   lastTraceSamples = []
   posisjonCache = new Map()
   clearSegmentNearCache()
@@ -1115,6 +1186,28 @@ export function vegrefNotifyGps(lat, lng, opts = {}) {
         vegrefDebugTrace('pipeline_res', {
           hasRes: Boolean(off),
           source: 'offline-null-skip-net',
+          nvdbId: off?.nvdbId != null ? String(off.nvdbId) : null,
+          m: off?.m != null ? String(off.m) : null,
+          distToRoadM:
+            typeof off?.distToRoadM === 'number' && Number.isFinite(off.distToRoadM)
+              ? Math.round(off.distToRoadM * 10) / 10
+              : null,
+          road: String(off?.roadLineShort || off?.roadLine || '').slice(0, 140),
+        })
+        const applyCtx = { accuracyM, speedMps, online }
+        applyNvdbNullable(off, nvdbLat, nvdbLng, applyCtx)
+        return
+      }
+
+      if (
+        typeof h.shouldPreferOfflineResolver === 'function' &&
+        h.shouldPreferOfflineResolver()
+      ) {
+        if (signal.aborted || seq !== fetchGeneration) return
+        const off = offlineOrFallbackResult(nvdbLat, nvdbLng)
+        vegrefDebugTrace('pipeline_res', {
+          hasRes: Boolean(off),
+          source: 'offline-only-policy',
           nvdbId: off?.nvdbId != null ? String(off.nvdbId) : null,
           m: off?.m != null ? String(off.m) : null,
           distToRoadM:
