@@ -373,6 +373,7 @@ export async function cloudFetchStandalonePhotosForFolder(folderKey) {
  *  usedBytes: number,
  *  percent: number,
  *  bySource: { r2Bytes: number, supabaseBytes: number },
+ *  sourceStatus: { r2Available: boolean, supabaseAvailable: boolean, r2Error: string | null, supabaseError: string | null },
  *  nearLimit: boolean,
  *  overLimit: boolean,
  *  updatedAt: string | null
@@ -415,6 +416,28 @@ export async function cloudFetchStorageUsageSummary() {
           Number(src.supabaseBytes) >= 0
             ? Number(src.supabaseBytes)
             : 0,
+      },
+      sourceStatus: {
+        r2Available: Boolean(
+          /** @type {{ sourceStatus?: { r2Available?: unknown } }} */ (j).sourceStatus
+            ?.r2Available,
+        ),
+        supabaseAvailable: Boolean(
+          /** @type {{ sourceStatus?: { supabaseAvailable?: unknown } }} */ (j).sourceStatus
+            ?.supabaseAvailable,
+        ),
+        r2Error:
+          typeof /** @type {{ sourceStatus?: { r2Error?: unknown } }} */ (j).sourceStatus
+            ?.r2Error === 'string'
+            ? /** @type {{ sourceStatus: { r2Error: string } }} */ (j).sourceStatus
+                .r2Error
+            : null,
+        supabaseError:
+          typeof /** @type {{ sourceStatus?: { supabaseError?: unknown } }} */ (j).sourceStatus
+            ?.supabaseError === 'string'
+            ? /** @type {{ sourceStatus: { supabaseError: string } }} */ (j).sourceStatus
+                .supabaseError
+            : null,
       },
       nearLimit: Boolean(/** @type {{ nearLimit?: unknown }} */ (j).nearLimit),
       overLimit: Boolean(/** @type {{ overLimit?: unknown }} */ (j).overLimit),

@@ -165,71 +165,87 @@ function supabaseObjectSizeBytes(row) {
 
 /**
  * @param {string} userId
- * @returns {Promise<number>}
+ * @returns {Promise<{ bytes: number, available: boolean, error: string | null }>}
  */
 async function listR2UsageBytesForUser(userId) {
   const s3 = getR2Client()
-  if (!s3) return 0
+  if (!s3) {
+    return { bytes: 0, available: false, error: 'R2 klient ikke tilgjengelig' }
+  }
   const Bucket = envStr('R2_BUCKET_NAME')
-  if (!Bucket) return 0
+  if (!Bucket) {
+    return { bytes: 0, available: false, error: 'R2 bucket mangler' }
+  }
   const prefixes = [`${userId}/`, `users/${userId}/`]
   let total = 0
-  for (const Prefix of prefixes) {
-    let token = undefined
-    do {
-      const out = await s3.send(
-        new ListObjectsV2Command({
-          Bucket,
-          Prefix,
-          ContinuationToken: token,
-          MaxKeys: 1000,
-        }),
-      )
-      const rows = Array.isArray(out.Contents) ? out.Contents : []
-      for (const row of rows) {
-        total += asSafeInt(row?.Size)
-      }
-      token = out.IsTruncated ? out.NextContinuationToken : undefined
-    } while (token)
+  try {
+    for (const Prefix of prefixes) {
+      let token = undefined
+      do {
+        const out = await s3.send(
+          new ListObjectsV2Command({
+            Bucket,
+            Prefix,
+            ContinuationToken: token,
+            MaxKeys: 1000,
+          }),
+        )
+        const rows = Array.isArray(out.Contents) ? out.Contents : []
+        for (const row of rows) {
+          total += asSafeInt(row?.Size)
+        }
+        token = out.IsTruncated ? out.NextContinuationToken : undefined
+      } while (token)
+    }
+    return { bytes: total, available: true, error: null }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'R2 listing feilet'
+    return { bytes: 0, available: false, error: msg.slice(0, 180) }
   }
-  return total
 }
 
 /**
  * @param {string} userId
- * @returns {Promise<number>}
+ * @returns {Promise<{ bytes: number, available: boolean, error: string | null }>}
  */
 async function listSupabaseUsageBytesForUser(userId) {
-  if (!supabaseAuthConfigured()) return 0
+  if (!supabaseAuthConfigured()) {
+    return { bytes: 0, available: false, error: 'Supabase ikke konfigurert' }
+  }
   let sb
   try {
     sb = createClient(envStr('SUPABASE_URL'), envStr('SUPABASE_SERVICE_ROLE_KEY'))
   } catch {
-    return 0
+    return { bytes: 0, available: false, error: 'Supabase klient kunne ikke opprettes' }
   }
   let from = 0
   const page = 1000
   let total = 0
-  while (true) {
-    const to = from + page - 1
-    const { data, error } = await sb
-      .from('storage.objects')
-      .select('name,owner,bucket_id,metadata')
-      .or(`owner.eq.${userId},name.like.${userId}/%`)
-      .range(from, to)
-    if (error) {
-      throw error
+  try {
+    while (true) {
+      const to = from + page - 1
+      const { data, error } = await sb
+        .from('storage.objects')
+        .select('name,owner,bucket_id,metadata')
+        .or(`owner.eq.${userId},name.like.${userId}/*`)
+        .range(from, to)
+      if (error) {
+        throw error
+      }
+      const rows = Array.isArray(data) ? data : []
+      for (const row of rows) {
+        total += supabaseObjectSizeBytes(
+          /** @type {Record<string, unknown>} */ (row),
+        )
+      }
+      if (rows.length < page) break
+      from += page
     }
-    const rows = Array.isArray(data) ? data : []
-    for (const row of rows) {
-      total += supabaseObjectSizeBytes(
-        /** @type {Record<string, unknown>} */ (row),
-      )
-    }
-    if (rows.length < page) break
-    from += page
+    return { bytes: total, available: true, error: null }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Supabase listing feilet'
+    return { bytes: 0, available: false, error: msg.slice(0, 180) }
   }
-  return total
 }
 
 const PRESIGN_PUT_EXPIRES_SEC = 3600
@@ -265,10 +281,12 @@ export function registerScanixCloudV1R2Routes(app) {
       return
     }
     try {
-      const [r2Bytes, supabaseBytes] = await Promise.all([
+      const [r2Usage, supabaseUsage] = await Promise.all([
         listR2UsageBytesForUser(uid),
         listSupabaseUsageBytesForUser(uid),
       ])
+      const r2Bytes = r2Usage.bytes
+      const supabaseBytes = supabaseUsage.bytes
       const usedBytes = r2Bytes + supabaseBytes
       const percent = Math.min(100, (usedBytes / DELSKY_QUOTA_BYTES) * 100)
       res.json({
@@ -278,6 +296,12 @@ export function registerScanixCloudV1R2Routes(app) {
         bySource: {
           r2Bytes,
           supabaseBytes,
+        },
+        sourceStatus: {
+          r2Available: r2Usage.available,
+          supabaseAvailable: supabaseUsage.available,
+          r2Error: r2Usage.error,
+          supabaseError: supabaseUsage.error,
         },
         nearLimit: usedBytes >= DELSKY_QUOTA_BYTES * 0.85,
         overLimit: usedBytes >= DELSKY_QUOTA_BYTES,
