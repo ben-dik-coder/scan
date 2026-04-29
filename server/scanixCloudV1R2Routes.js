@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -131,6 +132,106 @@ function appStateObjectKey(userId) {
   return `users/${userId}/app-state.json`
 }
 
+const DELSKY_QUOTA_BYTES = 50 * 1024 * 1024 * 1024
+
+/**
+ * @param {unknown} v
+ * @returns {number}
+ */
+function asSafeInt(v) {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.floor(n)
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} row
+ * @returns {number}
+ */
+function supabaseObjectSizeBytes(row) {
+  if (!row || typeof row !== 'object') return 0
+  const meta =
+    row.metadata && typeof row.metadata === 'object'
+      ? /** @type {Record<string, unknown>} */ (row.metadata)
+      : null
+  if (!meta) return 0
+  return (
+    asSafeInt(meta.size) ||
+    asSafeInt(meta.contentLength) ||
+    asSafeInt(meta.content_length) ||
+    asSafeInt(meta.bytes)
+  )
+}
+
+/**
+ * @param {string} userId
+ * @returns {Promise<number>}
+ */
+async function listR2UsageBytesForUser(userId) {
+  const s3 = getR2Client()
+  if (!s3) return 0
+  const Bucket = envStr('R2_BUCKET_NAME')
+  if (!Bucket) return 0
+  const prefixes = [`${userId}/`, `users/${userId}/`]
+  let total = 0
+  for (const Prefix of prefixes) {
+    let token = undefined
+    do {
+      const out = await s3.send(
+        new ListObjectsV2Command({
+          Bucket,
+          Prefix,
+          ContinuationToken: token,
+          MaxKeys: 1000,
+        }),
+      )
+      const rows = Array.isArray(out.Contents) ? out.Contents : []
+      for (const row of rows) {
+        total += asSafeInt(row?.Size)
+      }
+      token = out.IsTruncated ? out.NextContinuationToken : undefined
+    } while (token)
+  }
+  return total
+}
+
+/**
+ * @param {string} userId
+ * @returns {Promise<number>}
+ */
+async function listSupabaseUsageBytesForUser(userId) {
+  if (!supabaseAuthConfigured()) return 0
+  let sb
+  try {
+    sb = createClient(envStr('SUPABASE_URL'), envStr('SUPABASE_SERVICE_ROLE_KEY'))
+  } catch {
+    return 0
+  }
+  let from = 0
+  const page = 1000
+  let total = 0
+  while (true) {
+    const to = from + page - 1
+    const { data, error } = await sb
+      .from('storage.objects')
+      .select('name,owner,bucket_id,metadata')
+      .or(`owner.eq.${userId},name.like.${userId}/%`)
+      .range(from, to)
+    if (error) {
+      throw error
+    }
+    const rows = Array.isArray(data) ? data : []
+    for (const row of rows) {
+      total += supabaseObjectSizeBytes(
+        /** @type {Record<string, unknown>} */ (row),
+      )
+    }
+    if (rows.length < page) break
+    from += page
+  }
+  return total
+}
+
 const PRESIGN_PUT_EXPIRES_SEC = 3600
 const SIGNED_GET_EXPIRES_MIN = 60
 const SIGNED_GET_EXPIRES_MAX = 86_400
@@ -155,6 +256,37 @@ function assertPhotoPathOwnedByUser(userId, raw) {
 export function registerScanixCloudV1R2Routes(app) {
   app.get('/v1/health', (_req, res) => {
     res.json({ ok: true })
+  })
+
+  app.get('/v1/storage/usage-summary', async (req, res) => {
+    const uid = await userIdFromBearer(req)
+    if (!uid) {
+      res.status(401).json({ error: 'Uautorisert' })
+      return
+    }
+    try {
+      const [r2Bytes, supabaseBytes] = await Promise.all([
+        listR2UsageBytesForUser(uid),
+        listSupabaseUsageBytesForUser(uid),
+      ])
+      const usedBytes = r2Bytes + supabaseBytes
+      const percent = Math.min(100, (usedBytes / DELSKY_QUOTA_BYTES) * 100)
+      res.json({
+        quotaBytes: DELSKY_QUOTA_BYTES,
+        usedBytes,
+        percent,
+        bySource: {
+          r2Bytes,
+          supabaseBytes,
+        },
+        nearLimit: usedBytes >= DELSKY_QUOTA_BYTES * 0.85,
+        overLimit: usedBytes >= DELSKY_QUOTA_BYTES,
+        updatedAt: new Date().toISOString(),
+      })
+    } catch (e) {
+      console.error('storage usage summary:', e)
+      res.status(500).json({ error: 'Kunne ikke hente lagringsbruk.' })
+    }
   })
 
   app.head('/v1/app-state', async (req, res) => {

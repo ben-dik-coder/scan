@@ -123,6 +123,7 @@ import {
   previewHapticFeedback,
   readHapticEnabled,
   readHapticProfileId,
+  triggerHapticAiReply,
   triggerHapticMark,
   triggerHapticPhoto,
   writeHapticEnabled,
@@ -147,6 +148,7 @@ import {
   upsertRemoteUserAppState,
 } from './remoteAppStateBackend.js'
 import {
+  cloudFetchStorageUsageSummary,
   cloudGetSessionSharePayload,
   cloudGetSignedReadUrlForPhotoPath,
   cloudProbeAppStateExists,
@@ -223,6 +225,11 @@ import {
 
 const STORAGE_KEY_V2 = 'scanix-sessions-v2'
 const STORAGE_KEY_DEVICE_FALLBACK = 'scanix-sessions-v2-device-fallback'
+const STORAGE_KEY_CORE_SUFFIX = 'scanix-sessions-v2-core'
+const STORAGE_KEY_EMERGENCY_DELTA = 'scanix-sessions-v2-emergency-delta'
+const STORAGE_DEBUG_TRACE_KEY = 'scanix-storage-debug-trace-v1'
+const STORAGE_DEBUG_TRACE_ENABLED_KEY = 'scanix-storage-debug-enabled-v1'
+const STORAGE_DEBUG_TRACE_MAX = 180
 const LEGACY_STORAGE_KEY = 'count-clicker-v1'
 const AUTH_USERS_KEY = 'scanix-users-v1'
 const AUTH_SESSION_KEY = 'scanix-auth-session'
@@ -388,6 +395,25 @@ function sessionsKeyForCurrentContext() {
   return currentUser?.id
     ? sessionsKeyForUser(currentUser.id)
     : STORAGE_KEY_DEVICE_FALLBACK
+}
+
+/**
+ * Per bruker/enhet: liten «nødsnapshot» skrevet synkront ved app-lukk.
+ * Brukes hvis full (asynkron) save ikke rekker ferdig før iOS dreper appen.
+ */
+function emergencyDeltaKeyForCurrentContext() {
+  return `${sessionsKeyForCurrentContext()}-${STORAGE_KEY_EMERGENCY_DELTA}`
+}
+
+function coreSnapshotKeyForCurrentContext() {
+  return `${sessionsKeyForCurrentContext()}-${STORAGE_KEY_CORE_SUFFIX}`
+}
+
+/**
+ * @param {string} userId
+ */
+function coreSnapshotKeyForUser(userId) {
+  return `${sessionsKeyForUser(userId)}-${STORAGE_KEY_CORE_SUFFIX}`
 }
 
 function contactsStorageKeyForUser(userId) {
@@ -985,6 +1011,25 @@ function normalizePhotoVegref(vr) {
 }
 
 /**
+ * @param {unknown} tsRaw
+ * @returns {string}
+ */
+function formatPhotoOverlayTimestamp(tsRaw) {
+  const ts = typeof tsRaw === 'string' ? tsRaw.trim() : ''
+  if (!ts) return ''
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ''
+  try {
+    return new Intl.DateTimeFormat('nb-NO', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(d)
+  } catch {
+    return d.toISOString().replace('T', ' ').slice(0, 19)
+  }
+}
+
+/**
  * Mappe-navn per vei for album / eksport (virtuell sti: images/NAME/).
  * @param {string} [name]
  */
@@ -1018,7 +1063,7 @@ function resolveKmtPhotoFolderSeed(opts = {}) {
 /**
  * @param {{ road: string, compact: string, kortform: string }} v
  */
-function formatPhotoVegrefOverlayLinesHtml(v, noteOpt) {
+function formatPhotoVegrefOverlayLinesHtml(v, noteOpt, timestampTextOpt = '') {
   const parts = []
   if (v.road) {
     parts.push(
@@ -1043,6 +1088,11 @@ function formatPhotoVegrefOverlayLinesHtml(v, noteOpt) {
       )
     }
   }
+  if (typeof timestampTextOpt === 'string' && timestampTextOpt.trim()) {
+    parts.push(
+      `<div class="photo-vegref-overlay__time">${escapeHtml(timestampTextOpt.trim())}</div>`,
+    )
+  }
   return parts.join('')
 }
 
@@ -1050,8 +1100,8 @@ function formatPhotoVegrefOverlayLinesHtml(v, noteOpt) {
  * @param {{ road: string, compact: string, kortform: string }} v
  * @param {'thumb' | 'fullscreen'} variant
  */
-function formatPhotoVegrefOverlayHtml(v, variant, noteOpt) {
-  const inner = formatPhotoVegrefOverlayLinesHtml(v, noteOpt)
+function formatPhotoVegrefOverlayHtml(v, variant, noteOpt, timestampTextOpt = '') {
+  const inner = formatPhotoVegrefOverlayLinesHtml(v, noteOpt, timestampTextOpt)
   if (!inner) return ''
   const cls =
     variant === 'fullscreen'
@@ -1064,11 +1114,16 @@ function formatPhotoVegrefOverlayHtml(v, variant, noteOpt) {
 function formatPhotoThumbOverlayHtml(ph) {
   const v = ph?.vegref && normalizePhotoVegref(ph.vegref)
   const note = typeof ph?.note === 'string' ? ph.note : ''
+  const ts =
+    ph?.captureWithVegrefDateTime === true
+      ? formatPhotoOverlayTimestamp(ph?.timestamp)
+      : ''
   if (!v && !note.trim()) return ''
   return formatPhotoVegrefOverlayHtml(
     v || { road: '', compact: '', kortform: '' },
     'thumb',
     note,
+    ts,
   )
 }
 
@@ -1160,6 +1215,9 @@ function normalizePhoto(p) {
     /** @type {{ storageThumbPath?: string }} */ (p).storageThumbPath.trim()
       ? /** @type {{ storageThumbPath: string }} */ (p).storageThumbPath.trim()
       : null
+  const captureWithVegrefDateTime =
+    /** @type {{ captureWithVegrefDateTime?: unknown }} */ (p)
+      .captureWithVegrefDateTime === true
   return /** @type {NonNullable<ReturnType<typeof normalizePhoto>>} */ (
     ensureStorageFullPathParallelToThumb(
       ensureStorageThumbPathParallelToFull({
@@ -1178,6 +1236,7 @@ function normalizePhoto(p) {
         ...(thumbDataUrl ? { thumbDataUrl } : {}),
         ...(storageFullPath ? { storageFullPath } : {}),
         ...(storageThumbPath ? { storageThumbPath } : {}),
+        ...(captureWithVegrefDateTime ? { captureWithVegrefDateTime: true } : {}),
       }),
     )
   )
@@ -1223,6 +1282,7 @@ function normalizePhotoOrSkeleton(p) {
     typeof o.storageThumbPath === 'string' && o.storageThumbPath.trim()
       ? o.storageThumbPath.trim()
       : null
+  const captureWithVegrefDateTime = o.captureWithVegrefDateTime === true
   if (thumbDataUrl || storageFullPath || storageThumbPath) {
     const pathPair = /** @type {{ storageFullPath?: string, storageThumbPath?: string }} */ (
       ensureStorageFullPathParallelToThumb(
@@ -1254,6 +1314,7 @@ function normalizePhotoOrSkeleton(p) {
       ...(pixelPending ? { pixelPending: true } : {}),
       ...(vegref ? { vegref } : {}),
       ...(note ? { note } : {}),
+      ...(captureWithVegrefDateTime ? { captureWithVegrefDateTime: true } : {}),
       ...(imageFolder != null && imagePath != null
         ? { imageFolder, imagePath }
         : {}),
@@ -1269,6 +1330,7 @@ function normalizePhotoOrSkeleton(p) {
     pixelPending: true,
     ...(vegref ? { vegref } : {}),
     ...(note ? { note } : {}),
+    ...(captureWithVegrefDateTime ? { captureWithVegrefDateTime: true } : {}),
     ...(imageFolder != null && imagePath != null
       ? { imageFolder, imagePath }
       : {}),
@@ -2014,6 +2076,120 @@ function normalizeSession(p) {
 }
 
 /**
+ * Rask, lett serialisering for lokal "core"-persist (synkron/robust ved app-lukk).
+ * Vi tar med nok felt til at økter vises/gjenopptas; tunge bildebytes holdes ute.
+ * @param {unknown} ph
+ */
+function toCorePhotoSnapshot(ph) {
+  if (!ph || typeof ph !== 'object') return null
+  const p = /** @type {Record<string, unknown>} */ (ph)
+  const id = typeof p.id === 'string' ? p.id : ''
+  if (!id) return null
+  return {
+    id,
+    timestamp: typeof p.timestamp === 'string' ? p.timestamp : nowIso(),
+    lat: typeof p.lat === 'number' ? p.lat : 0,
+    lng: typeof p.lng === 'number' ? p.lng : 0,
+    ...(typeof p.note === 'string' && p.note.trim() ? { note: p.note } : {}),
+    ...(typeof p.vegref === 'string' && p.vegref.trim() ? { vegref: p.vegref } : {}),
+    ...(typeof p.storageFullPath === 'string' && p.storageFullPath.trim()
+      ? { storageFullPath: p.storageFullPath }
+      : {}),
+    ...(typeof p.storageThumbPath === 'string' && p.storageThumbPath.trim()
+      ? { storageThumbPath: p.storageThumbPath }
+      : {}),
+    ...(typeof p.thumbDataUrl === 'string' && p.thumbDataUrl.startsWith('data:image/')
+      ? { thumbDataUrl: p.thumbDataUrl }
+      : {}),
+    ...(typeof p.imageFolder === 'string' && p.imageFolder.trim()
+      ? { imageFolder: p.imageFolder }
+      : {}),
+    ...(typeof p.imagePath === 'string' && p.imagePath.trim()
+      ? { imagePath: p.imagePath }
+      : {}),
+  }
+}
+
+/**
+ * @param {typeof sessions[number]} s
+ */
+function toCoreSessionSnapshot(s) {
+  if (!s || typeof s !== 'object') return null
+  const photos = Array.isArray(s.photos)
+    ? s.photos.map((p) => toCorePhotoSnapshot(p)).filter(Boolean)
+    : []
+  return {
+    id: s.id,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+    title: s.title ?? null,
+    registeredNote: s.registeredNote ?? null,
+    count: typeof s.count === 'number' ? s.count : 0,
+    clickHistory: Array.isArray(s.clickHistory) ? s.clickHistory : [],
+    log: Array.isArray(s.log) ? s.log : [],
+    roadSide: s.roadSide ?? null,
+    photos,
+    objectCategories: Array.isArray(s.objectCategories) ? s.objectCategories : [],
+    activeCategoryId: s.activeCategoryId ?? null,
+  }
+}
+
+function writeCoreSnapshotSync(reason = 'core') {
+  try {
+    const key = coreSnapshotKeyForCurrentContext()
+    const payload = {
+      version: 1,
+      at: nowIso(),
+      reason,
+      currentSessionId: typeof currentSessionId === 'string' ? currentSessionId : null,
+      lastResumeSessionId:
+        typeof lastResumeSessionId === 'string' ? lastResumeSessionId : null,
+      sessions: sessions
+        .map((s) => toCoreSessionSnapshot(s))
+        .filter(Boolean),
+    }
+    localStorage.setItem(key, JSON.stringify(payload))
+    appendStorageDebugTrace('core_snapshot_written', {
+      key,
+      reason,
+      sessionsCount: payload.sessions.length,
+    })
+  } catch (e) {
+    appendStorageDebugTrace('core_snapshot_write_failed', {
+      reason,
+      errorName: e?.name || null,
+      errorMessage: e instanceof Error ? e.message : String(e),
+    })
+  }
+}
+
+/**
+ * @param {string} userId
+ */
+function readCoreSnapshotForUser(userId) {
+  const key =
+    userId === STORAGE_KEY_DEVICE_FALLBACK
+      ? `${STORAGE_KEY_DEVICE_FALLBACK}-${STORAGE_KEY_CORE_SUFFIX}`
+      : coreSnapshotKeyForUser(userId)
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return { sessions: [], currentSessionId: null, lastResumeSessionId: null }
+    const p = JSON.parse(raw)
+    const rows = Array.isArray(p?.sessions) ? p.sessions : []
+    const sess = rows.map((x) => normalizeSession(x)).filter(Boolean)
+    return {
+      sessions: sess,
+      currentSessionId:
+        typeof p?.currentSessionId === 'string' ? p.currentSessionId : null,
+      lastResumeSessionId:
+        typeof p?.lastResumeSessionId === 'string' ? p.lastResumeSessionId : null,
+    }
+  } catch {
+    return { sessions: [], currentSessionId: null, lastResumeSessionId: null }
+  }
+}
+
+/**
  * Laster økter for innlogget bruker. Migrerer eldre `scanix-sessions-v2` til per-bruker-nøkkel én gang.
  * Bildedata kan ligge i IndexedDB (idbImage); metadata i JSON.
  * @param {string} userId
@@ -2026,6 +2202,7 @@ async function loadAppStateFromStorageForUser(userId) {
       ? STORAGE_KEY_DEVICE_FALLBACK
       : sessionsKeyForUser(userId)
   let rawV2 = localStorage.getItem(key)
+  const core = readCoreSnapshotForUser(userId)
   // Bruker-kontekst: hvis per-bruker nøkkel mangler, prøv enhets-fallback (f.eks. før auth ble klar).
   if (!rawV2 && !isDeviceFallbackLoad) {
     const fallbackRaw = localStorage.getItem(STORAGE_KEY_DEVICE_FALLBACK)
@@ -2038,6 +2215,12 @@ async function loadAppStateFromStorageForUser(userId) {
       }
     }
   }
+  appendStorageDebugTrace('load_begin', {
+    userIdArg: userId || null,
+    key,
+    hasRawV2: Boolean(rawV2),
+    isDeviceFallbackLoad,
+  })
   // #region agent log
   fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H4',location:'main.js:loadAppStateFromStorageForUser:start',message:'load_app_state_begin',data:{userIdPresent:Boolean(userId),key,hasRawV2:Boolean(rawV2)},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
@@ -2086,10 +2269,34 @@ async function loadAppStateFromStorageForUser(userId) {
           }
         }
       }
+      if (core.sessions.length > 0) {
+        sess = mergeRemoteAndDiskSessions(sess, core.sessions)
+        appendStorageDebugTrace('load_core_merged', {
+          key,
+          coreSessions: core.sessions.length,
+        })
+      }
+      const emergency = readEmergencySessionDeltaForUser(userId)
+      if (emergency.session) {
+        sess = mergeRemoteAndDiskSessions(sess, [emergency.session])
+        appendStorageDebugTrace('load_emergency_delta_merged', {
+          key,
+          mergedSessionId: emergency.session.id,
+        })
+      }
+      appendStorageDebugTrace('load_success', {
+        key,
+        sessionsLoaded: Array.isArray(sess) ? sess.length : 0,
+        standaloneLoaded: Array.isArray(hydratedStandalone)
+          ? hydratedStandalone.length
+          : 0,
+      })
       return {
         sessions: sess,
         currentSessionId:
-          typeof p.currentSessionId === 'string' ? p.currentSessionId : null,
+          emergency.currentSessionId ||
+          core.currentSessionId ||
+          (typeof p.currentSessionId === 'string' ? p.currentSessionId : null),
         standalonePhotos: normalizeStandalonePhotosList(hydratedStandalone),
         frictionMeasurements: normalizeFrictionMeasurementsList(
           p.frictionMeasurements,
@@ -2103,11 +2310,18 @@ async function loadAppStateFromStorageForUser(userId) {
             ? p.frictionPreviousSessionId
             : null,
         lastResumeSessionId:
-          typeof p.lastResumeSessionId === 'string'
+          emergency.lastResumeSessionId ||
+          core.lastResumeSessionId ||
+          (typeof p.lastResumeSessionId === 'string'
             ? p.lastResumeSessionId
-            : null,
+            : null),
       }
     } catch (e) {
+      appendStorageDebugTrace('load_parse_failed', {
+        key,
+        errorName: e?.name || null,
+        errorMessage: e instanceof Error ? e.message : String(e),
+      })
       // #region agent log
       fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H5',location:'main.js:loadAppStateFromStorageForUser:rawV2Catch',message:'load_app_state_parse_failed',data:{key,errorName:e?.name||null,errorMessage:e instanceof Error ? e.message : String(e)},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
@@ -2147,6 +2361,44 @@ async function loadAppStateFromStorageForUser(userId) {
       /* fall through */
     }
   }
+  let hadLegacy = false
+  try {
+    hadLegacy = Boolean(localStorage.getItem(LEGACY_STORAGE_KEY))
+  } catch {
+    hadLegacy = false
+  }
+  const emergencyOnly = readEmergencySessionDeltaForUser(userId)
+  if (emergencyOnly.session) {
+    appendStorageDebugTrace('load_emergency_only_return', {
+      key,
+      sessionId: emergencyOnly.session.id,
+    })
+    return {
+      sessions: [emergencyOnly.session],
+      currentSessionId: emergencyOnly.currentSessionId || null,
+      standalonePhotos: [],
+      frictionMeasurements: [],
+      frictionActiveSessionId: null,
+      frictionPreviousSessionId: null,
+      lastResumeSessionId: emergencyOnly.lastResumeSessionId || null,
+    }
+  }
+  if (core.sessions.length > 0) {
+    appendStorageDebugTrace('load_core_only_return', {
+      key,
+      coreSessions: core.sessions.length,
+    })
+    return {
+      sessions: core.sessions,
+      currentSessionId: core.currentSessionId,
+      standalonePhotos: [],
+      frictionMeasurements: [],
+      frictionActiveSessionId: null,
+      frictionPreviousSessionId: null,
+      lastResumeSessionId: core.lastResumeSessionId,
+    }
+  }
+  appendStorageDebugTrace('load_empty_return', { key, hadLegacy })
   return {
     sessions: [],
     currentSessionId: null,
@@ -2366,7 +2618,18 @@ async function flushLocalStorageAppState(key) {
     // #region agent log
     fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H2',location:'main.js:flushLocalStorageAppState:beforeSetItem',message:'localstorage_set_attempt',data:{key,sessionsCount:sessionsOut.length,standaloneCount:standaloneOut.length,storedLen:toStore.length,useIdb},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
+    appendStorageDebugTrace('flush_setitem_attempt', {
+      key,
+      sessionsToStore: sessionsOut.length,
+      standaloneToStore: standaloneOut.length,
+      storedLen: toStore.length,
+      useIdb,
+    })
     localStorage.setItem(key, toStore)
+    appendStorageDebugTrace('flush_setitem_ok', {
+      key,
+      storedLen: toStore.length,
+    })
     // #region agent log
     const __setMs = performance.now() - __s0
     const __total = performance.now() - __flushT0
@@ -2386,6 +2649,11 @@ async function flushLocalStorageAppState(key) {
     }
     // #endregion
   } catch (e) {
+    appendStorageDebugTrace('flush_setitem_failed', {
+      key,
+      errorName: e?.name || null,
+      errorMessage: e instanceof Error ? e.message : String(e),
+    })
     // #region agent log
     fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H2',location:'main.js:flushLocalStorageAppState:catch',message:'localstorage_set_failed',data:{key,errorName:e?.name||null,errorMessage:e instanceof Error ? e.message : String(e)},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -2410,15 +2678,25 @@ async function flushLocalStorageAppState(key) {
   }
 }
 
-async function saveAppStateWorker() {
+/**
+ * @param {{ skipDiskMerge?: boolean }} [opts]
+ */
+async function saveAppStateWorker(opts = {}) {
+  const skipDiskMerge = Boolean(opts.skipDiskMerge)
   const key = sessionsKeyForCurrentContext()
+  appendStorageDebugTrace('save_worker_start', {
+    key,
+    sessionsCount: sessions.length,
+    currentSessionId,
+    skipDiskMerge,
+  })
   // #region agent log
   fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H3',location:'main.js:saveAppStateWorker:start',message:'save_worker_start',data:{userId:currentUser?.id||null,key,sessionsCount:sessions.length,currentSessionId},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   /** @type {typeof sessions} */
   let mergedSessions = sessions
   let mergedChanged = false
-  if (needsAppStateDiskMerge) {
+  if (needsAppStateDiskMerge && !skipDiskMerge) {
     try {
       const raw = localStorage.getItem(key)
       if (raw) {
@@ -2462,6 +2740,9 @@ async function saveAppStateWorker() {
       needsAppStateDiskMerge = false
     }
   }
+  if (needsAppStateDiskMerge && skipDiskMerge) {
+    appendStorageDebugTrace('save_worker_skip_disk_merge', { key })
+  }
   sessions = mergedSessions
   if (currentSessionId && mergedChanged) {
     const prevChLen = state.clickHistory.length
@@ -2475,14 +2756,22 @@ async function saveAppStateWorker() {
     }
   }
   try {
+    writeCoreSnapshotSync(skipDiskMerge ? 'worker_fast_close' : 'worker')
     await flushLocalStorageAppState(key)
+    appendStorageDebugTrace('save_worker_ok', { key })
   } catch {
+    appendStorageDebugTrace('save_worker_failed', { key })
     /* toast allerede vist */
   }
   if (isRemoteAppStateDataEnabled()) scheduleSupabaseAppStatePush()
 }
 
 function saveAppState() {
+  appendStorageDebugTrace('save_scheduled', {
+    key: sessionsKeyForCurrentContext(),
+    sessionsCount: sessions.length,
+    currentSessionId,
+  })
   // #region agent log
   fetch('http://127.0.0.1:7637/ingest/e58399ea-bfe1-456f-9512-3bdae1c6fc15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ff8b7b'},body:JSON.stringify({sessionId:'ff8b7b',runId:'pre-fix',hypothesisId:'H3',location:'main.js:saveAppState:schedule',message:'save_debounce_scheduled',data:{userId:currentUser?.id||null,currentSessionId,sessionsCount:sessions.length,debounceMs:220,key:sessionsKeyForCurrentContext()},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
@@ -2496,12 +2785,20 @@ function saveAppState() {
 }
 
 function forceSaveAppStateNow(reason = 'force') {
+  appendStorageDebugTrace('save_force_now', { reason })
+  writeCoreSnapshotSync(`force_${reason}`)
+  writeEmergencySessionDelta(reason)
   if (appStatePersistDebounce) {
     clearTimeout(appStatePersistDebounce)
     appStatePersistDebounce = null
   }
   appStateSaveChain = appStateSaveChain
-    .then(() => saveAppStateWorker())
+    .then(() =>
+      saveAppStateWorker({
+        // Ved app-lukk er tid kritisk; hopp over tung disk-merge og skriv direkte.
+        skipDiskMerge: true,
+      }),
+    )
     .catch((e) => console.warn(`forceSaveAppStateNow(${reason})`, e))
 }
 
@@ -2569,6 +2866,8 @@ let sessions = []
 let currentSessionId = null
 /** Siste økt brukeren var i (for «Fortsett» på forsiden); persisteres i localStorage. */
 let lastResumeSessionId = null
+/** Siste økt som ble oppdatert i minne, brukt for nødsnapshot ved app-lukk. */
+let lastTouchedSessionId = null
 
 function stashActiveSessionForResumeBeforeLeave() {
   if (
@@ -2604,6 +2903,32 @@ let view = 'home'
 /** Innboks: hele DelSky-hub vs. kun innkommende meldinger (fra varslingsikon). */
 /** @type {'delsky' | 'messages'} */
 let inboxUiMode = 'delsky'
+const DELSKY_QUOTA_BYTES = 50 * 1024 * 1024 * 1024
+const DELSKY_USAGE_POLL_MS = 20_000
+/** @type {{
+ * usedBytes: number,
+ * quotaBytes: number,
+ * percent: number,
+ * bySource: { r2Bytes: number, supabaseBytes: number },
+ * updatedAt: number,
+ * status: 'idle' | 'loading' | 'ready' | 'error',
+ * isNearLimit: boolean,
+ * isOverLimit: boolean
+ * }} */
+let delskyStorageUsage = {
+  usedBytes: 0,
+  quotaBytes: DELSKY_QUOTA_BYTES,
+  percent: 0,
+  bySource: { r2Bytes: 0, supabaseBytes: 0 },
+  updatedAt: 0,
+  status: 'idle',
+  isNearLimit: false,
+  isOverLimit: false,
+}
+/** @type {ReturnType<typeof setInterval> | null} */
+let delskyUsagePollId = null
+/** @type {ReturnType<typeof setTimeout> | null} */
+let delskyUsageDebouncedRefresh = null
 /** @type {'oversikt' | 'kart'} */
 let sharedSessionReviewTab = 'oversikt'
 /** Faner under «Økten»: oversikt, gjenoppta, last ned, importer. */
@@ -3158,7 +3483,7 @@ function notePartialCloudPushForPhotoId(photoId) {
   }
 }
 
-setPhotoStorageUploadCallbacks((photoId, paths) => {
+setPhotoStorageUploadCallbacks((photoId, paths, usageDeltaBytes = 0) => {
   for (const s of sessions) {
     for (const ph of s.photos || []) {
       if (ph && /** @type {{ id?: string }} */ (ph).id === photoId) {
@@ -3172,6 +3497,10 @@ setPhotoStorageUploadCallbacks((photoId, paths) => {
     }
   }
   notePartialCloudPushForPhotoId(photoId)
+  if (isScanixCloudApiConfigured() && usageDeltaBytes > 0) {
+    bumpDelskyUsageOptimistic(usageDeltaBytes)
+    scheduleDelskyUsageRefreshSoon()
+  }
   saveAppState()
   scheduleSupabaseAppStatePush()
   syncPhotoUploadDeferralBanner()
@@ -4351,13 +4680,21 @@ let homeVegrefCrossingActive = false
 let homeVegrefUiUncertain = false
 /** Siste viste usikkerhetstekst (unngår repeterende DOM ved hvert GPS-tick). */
 let homeVegrefUncertainLastLabel = ''
+/** Debug-metrikk for tuning av smoothness. */
+let homeVegrefJitterWindow = /** @type {number[]} */ ([])
+let homeVegrefLastJitterLoggedAt = 0
+let homeVegrefFrameSkips = 0
+let homeVegrefFrameTicks = 0
+let homeVegrefSwitchPendingAt = 0
+let homeVegrefSwitchPendingFrom = ''
+let homeVegrefSwitchPendingTo = ''
 /** @type {Array<{ lat: number, lng: number, accuracy: number, timestamp: number, headingDeg: number | null }>} */
 let homeVegrefGpsBuffer = []
 const HOME_VEGREF_GPS_BUFFER_MAX = 5
 const HOME_VEGREF_STALE_REUSE_MS = 8 * 60 * 1000
-const HOME_VEGREF_UNCERTAIN_HOLD_MS = 15_000
+const HOME_VEGREF_UNCERTAIN_HOLD_MS = 6_000
 /** Ingen fersk GPS-callback → vurder coast for meter-ekstrapolasjon (tunnel / tapt fix). */
-const HOME_VEGREF_GPS_STALE_MS = 2000
+const HOME_VEGREF_GPS_STALE_MS = 1500
 /** GPS-accuracy over dette regnes som «effektivt stale» for coast: iOS sender
  *  ofte dead-reckonede posisjoner i tunnel med acc 80–300 m. Da fortsetter
  *  `homeVegrefLastRawGpsWallMs`-stempling slik at vanlig stale-timer aldri
@@ -4366,7 +4703,7 @@ const HOME_VEGREF_COAST_ACC_FLOOR_M = 80
 /** Min fart for å huske coast-hastighet (typisk kjøring, gange = 1,4 m/s). */
 const HOME_VEGREF_COAST_MIN_SPEED_MPS = 1.2
 /** Maks varighet for estimert telling etter tapt GPS. */
-const HOME_VEGREF_COAST_MAX_MS = 210_000
+const HOME_VEGREF_COAST_MAX_MS = 120_000
 
 /** KMT / vegreferanse-panelet – samme NVDB-kø som forsiden (`vegrefLive.js`). */
 let kmtDialogOpen = false
@@ -4415,6 +4752,13 @@ function resetHomeVegrefRuntimeState() {
   homeVegrefLastHighClassRank = -1
   homeVegrefLastHighClassAt = 0
   homeVegrefCrossingActive = false
+  homeVegrefJitterWindow = []
+  homeVegrefLastJitterLoggedAt = 0
+  homeVegrefFrameSkips = 0
+  homeVegrefFrameTicks = 0
+  homeVegrefSwitchPendingAt = 0
+  homeVegrefSwitchPendingFrom = ''
+  homeVegrefSwitchPendingTo = ''
   homeVegrefHoldNullDashExtrap = false
   homeVegrefGpsInstSpeedMps = 0
   homeVegrefGpsSpeedLat = null
@@ -4422,6 +4766,35 @@ function resetHomeVegrefRuntimeState() {
   homeVegrefGpsSpeedTs = null
   homeVegrefAnyGpsWallMs = 0
   resetHomeVegrefMeterUiHold()
+}
+
+function noteHomeVegrefDisplayJitter(displayedMeter) {
+  if (typeof displayedMeter !== 'number' || !Number.isFinite(displayedMeter)) return
+  homeVegrefJitterWindow.push(displayedMeter)
+  while (homeVegrefJitterWindow.length > 24) homeVegrefJitterWindow.shift()
+  const now = Date.now()
+  if (now - homeVegrefLastJitterLoggedAt < 2200 || homeVegrefJitterWindow.length < 8) {
+    return
+  }
+  const deltas = []
+  for (let i = 1; i < homeVegrefJitterWindow.length; i += 1) {
+    deltas.push(Math.abs(homeVegrefJitterWindow[i] - homeVegrefJitterWindow[i - 1]))
+  }
+  const mean = deltas.reduce((a, b) => a + b, 0) / Math.max(1, deltas.length)
+  const variance =
+    deltas.reduce((acc, d) => acc + (d - mean) * (d - mean), 0) /
+    Math.max(1, deltas.length)
+  const stddev = Math.sqrt(Math.max(0, variance))
+  const skipRate =
+    homeVegrefFrameTicks > 0
+      ? Math.round((homeVegrefFrameSkips / homeVegrefFrameTicks) * 1000) / 10
+      : 0
+  vegrefDebugTrace('display_quality', {
+    jitterStdDevM: Math.round(stddev * 100) / 100,
+    jitterMeanM: Math.round(mean * 100) / 100,
+    frameSkipRatePct: skipRate,
+  })
+  homeVegrefLastJitterLoggedAt = now
 }
 
 /**
@@ -4787,29 +5160,29 @@ function homeVegrefMeterMinTweenGapMs() {
   const spd = vegrefGetLastSpeed()
   /* Kjøring: kortere gap — offline/NVDB tikker typisk ~10–20 m per sek; for lang
      pause ga opplevd «80–100 m mellom hvert tall» når post-commit også demper. */
-  if (spd >= 16 && acc <= 12) return 72
-  if (spd >= 12 && acc <= 12) return 88
-  if (spd >= 10 && acc <= 14) return 102
-  if (spd >= 8 && acc <= 12) return 175
+  if (spd >= 16 && acc <= 12) return 88
+  if (spd >= 12 && acc <= 12) return 104
+  if (spd >= 10 && acc <= 14) return 118
+  if (spd >= 8 && acc <= 12) return 190
   /* 22–36 km/t: tidligere falt vi i 220 ms-grenen → opplevd treg meter. */
-  if (spd >= 6 && spd < 10 && acc <= 16) return 108
-  if (spd >= 5 && acc <= 15) return 220
+  if (spd >= 6 && spd < 10 && acc <= 16) return 130
+  if (spd >= 5 && acc <= 15) return 245
   /* Gange (~1–1,6 m/s): la NVDB slippe til oftere — telleren føltes treg. */
-  if (spd >= 0.85 && spd < 3.2 && acc <= 18) return 112
-  if (spd > 0.5 && spd < 3 && acc <= 16) return 135
+  if (spd >= 0.85 && spd < 3.2 && acc <= 18) return 132
+  if (spd > 0.5 && spd < 3 && acc <= 16) return 155
   return HOME_VEGREF_METER_MIN_TWEEN_GAP_MS
 }
 
 /** Dynamisk tween-varighet: litt lengre tween = jevnere opplevd meter. */
 function homeVegrefMeterTweenMs() {
   const spd = vegrefGetLastSpeed()
-  if (spd > 25) return 72
-  if (spd > 18) return 80
-  if (spd > 15) return 95
-  if (spd > 6) return 125
-  if (spd >= 0.85 && spd < 3.2) return 88
-  if (spd > 0.5 && spd < 3) return 98
-  return 138
+  if (spd > 25) return 90
+  if (spd > 18) return 102
+  if (spd > 15) return 118
+  if (spd > 6) return 145
+  if (spd >= 0.85 && spd < 3.2) return 112
+  if (spd > 0.5 && spd < 3) return 124
+  return 160
 }
 /**
  * Snap-terskel: over dette hoppes direkte (veiskifte/teleport).
@@ -4828,22 +5201,41 @@ function homeVegrefMeterSnapThreshold() {
 function homeVegrefMeterDeadbandM() {
   const acc = lastVegrefGpsAccuracyM
   const spd = vegrefGetLastSpeed()
-  let d = 3 + Math.min(10, acc * 0.15)
-  if (spd > 28) d += 6
-  else if (spd > 18) d += 3
+  let d = 3.6 + Math.min(10, acc * 0.17)
+  if (spd > 28) d += 6.5
+  else if (spd > 18) d += 3.8
   /* Fix H1: ved reell bevegelse og god nøyaktighet er Δm reell distanse, ikke støy.
      Uten denne krympingen havner typiske 4–8 m NVDB-inkrementer under deadband
      og UI står stille i flere sekunder ved normal kjørefart. */
   if (spd >= 3 && acc <= 15) {
-    d = Math.max(2.05, Math.min(d, 2.65 + acc * 0.09))
+    d = Math.max(2.35, Math.min(d, 2.95 + acc * 0.1))
   } else if (spd >= 3 && acc <= 20) {
     /* Litt videre nøyaktighet (12–20 m): fortsatt kjøring — hold dødbånd nede, men ikke så stramt som ≤15 m. */
-    d = Math.max(2.25, Math.min(d, 3.35 + acc * 0.085))
+    d = Math.max(2.5, Math.min(d, 3.7 + acc * 0.095))
   } else if (spd > 0.45 && spd < 3 && acc <= 15) {
     /* Gange med grei GPS: litt strammere dødbånd enn «default» for lav fart. */
-    d = Math.max(1.8, Math.min(d, 2.35 + acc * 0.1))
+    d = Math.max(2.05, Math.min(d, 2.65 + acc * 0.105))
   }
   return Math.min(18, d)
+}
+
+/**
+ * Hopp-guardrail: begrenser urealistiske meterhopp på samme segment.
+ * Segmentbytte får passere raskt for korrekt veiidentitet.
+ * @param {number} target
+ * @param {number | null} displayed
+ * @param {boolean} segChanged
+ */
+function guardrailHomeVegrefTargetMeter(target, displayed, segChanged) {
+  if (displayed == null || segChanged) return target
+  const delta = target - displayed
+  const absDelta = Math.abs(delta)
+  if (!Number.isFinite(absDelta) || absDelta <= 0) return target
+  const spd = Math.max(0, vegrefGetLastSpeed())
+  const acc = Number.isFinite(lastVegrefGpsAccuracyM) ? lastVegrefGpsAccuracyM : 22
+  const maxStep = Math.max(16, Math.min(135, 14 + spd * 1.45 + Math.max(0, acc - 8) * 0.32))
+  if (absDelta <= maxStep) return target
+  return Math.round(displayed + Math.sign(delta) * maxStep)
 }
 /**
  * @param {number} mInt
@@ -7337,10 +7729,11 @@ async function captureKmtCameraPhoto() {
     typeof rawNote === 'string' && rawNote.trim()
       ? rawNote.trim().slice(0, 800)
       : ''
-  /** @type {{ vegref?: NonNullable<ReturnType<typeof normalizePhotoVegref>>, note?: string }} */
+  /** @type {{ vegref?: NonNullable<ReturnType<typeof normalizePhotoVegref>>, note?: string, captureWithVegrefDateTime?: boolean }} */
   const addOpts = {}
   if (vegref) addOpts.vegref = vegref
   if (noteTrim) addOpts.note = noteTrim
+  addOpts.captureWithVegrefDateTime = true
   try {
     await addPhotoFromCompressedDataUrl(dataUrl, addOpts)
   } catch (err) {
@@ -7494,7 +7887,9 @@ function applyKmtResult(res) {
     return
   }
   const mInt = parseKmtMeterInt(res.m)
-  if (mInt == null) {
+  const mTarget =
+    mInt != null ? guardrailHomeVegrefTargetMeter(mInt, kmtDisplayedMeter, segmentChanged) : null
+  if (mTarget == null) {
     cancelKmtMeterTween()
     kmtDisplayedMeter = null
     kmtLastMeterUiCommitAt = 0
@@ -7504,25 +7899,25 @@ function applyKmtResult(res) {
   }
   if (kmtDisplayedMeter == null) {
     cancelKmtMeterTween()
-    kmtDisplayedMeter = mInt
+    kmtDisplayedMeter = mTarget
     kmtLastMeterUiCommitAt = Date.now()
-    mEl.textContent = formatHomeVegrefMeterText(mInt)
+    mEl.textContent = formatHomeVegrefMeterText(mTarget)
     syncKmtCompactLine()
     return
   }
-  const delta = Math.abs(mInt - kmtDisplayedMeter)
+  const delta = Math.abs(mTarget - kmtDisplayedMeter)
   const snap = kmtMeterSnapThreshold()
   if (delta >= snap) {
     cancelKmtMeterTween()
-    kmtDisplayedMeter = mInt
+    kmtDisplayedMeter = mTarget
     kmtLastMeterUiCommitAt = Date.now()
-    mEl.textContent = formatHomeVegrefMeterText(mInt)
+    mEl.textContent = formatHomeVegrefMeterText(mTarget)
     syncKmtCompactLine()
     return
   }
   if (
     shouldSkipVegrefMeterDisplayUpdate(
-      mInt,
+      mTarget,
       kmtDisplayedMeter,
       segmentChanged,
       kmtMeterSnapThreshold,
@@ -7534,7 +7929,7 @@ function applyKmtResult(res) {
     return
   }
   kmtLastMeterUiCommitAt = Date.now()
-  startKmtMeterTweenTo(mInt)
+  startKmtMeterTweenTo(mTarget)
 }
 
 function applyKmtError(err) {
@@ -7626,6 +8021,7 @@ function setHomeVegrefCompactDom(s, d, meterPart) {
   if (dEl) dEl.textContent = `D${dd}`
   if (mEl) {
     if (typeof meterPart === 'number' && Number.isFinite(meterPart)) {
+      noteHomeVegrefDisplayJitter(meterPart)
       mEl.textContent = formatHomeVegrefMeterTextForHomeUi(meterPart)
     } else {
       resetHomeVegrefMeterUiHold()
@@ -7814,6 +8210,8 @@ function tickHomeVegrefMeterLive() {
   const dtRaw = homeVegrefMeterLiveLastTs
     ? (now - homeVegrefMeterLiveLastTs) / 1000
     : 0
+  homeVegrefFrameTicks += 1
+  if (dtRaw > 0.09) homeVegrefFrameSkips += 1
   // #region agent log
   __tickDtRaw = dtRaw
   // #endregion
@@ -7879,6 +8277,7 @@ function tickHomeVegrefMeterLive() {
       wall - homeVegrefMeterLiveLastDomWallMs >= domMs
     ) {
       mEl.textContent = formatHomeVegrefMeterTextForHomeUi(v)
+      noteHomeVegrefDisplayJitter(v)
       homeVegrefMeterLiveLastDomWallMs = wall
       homeVegrefMeterLiveLastDomInt = v
     }
@@ -8401,6 +8800,11 @@ function applyHomeVegrefResult(res) {
   const segChanged = segKeyId !== homeVegrefSegKey
   const softSegChange =
     segChanged && homeVegrefKfNeighborSegKeys(prevHomeSegKey, segKeyId)
+  if (segChanged) {
+    homeVegrefSwitchPendingAt = Date.now()
+    homeVegrefSwitchPendingFrom = prevHomeSegKey || ''
+    homeVegrefSwitchPendingTo = segKeyId || ''
+  }
   if (segChanged && !softSegChange) {
     vegrefClearSegmentLock()
     cancelHomeVegrefMeterTween()
@@ -8419,15 +8823,19 @@ function applyHomeVegrefResult(res) {
   const segBreakForMeter = segChanged && !softSegChange
 
   const mInt = parseKmtMeterInt(res.m)
+  const mTarget =
+    mInt != null
+      ? guardrailHomeVegrefTargetMeter(mInt, homeVegrefDisplayedMeter, segBreakForMeter)
+      : null
   const nid = res.nvdbId != null ? res.nvdbId : null
 
   if (view !== 'home') {
     homeVegrefHasDisplayedResult = true
     homeVegrefCompactS = res.s
     homeVegrefCompactD = res.d
-    if (mInt != null) {
+    if (mTarget != null) {
       homeVegrefMeterNullSinceMs = 0
-      homeVegrefDisplayedMeter = mInt
+      homeVegrefDisplayedMeter = mTarget
       if (nid != null) homeVegrefMeterNvdbId = nid
     }
     const earlyMeta = String(
@@ -8478,6 +8886,17 @@ function applyHomeVegrefResult(res) {
     homeVegrefMeterNullSinceMs = 0
     homeVegrefHoldNullDashExtrap = false
     setHomeVegrefUncertainUi(false, '')
+    if (homeVegrefSwitchPendingAt > 0 && homeVegrefSwitchPendingTo === segKeyId) {
+      vegrefDebugTrace('switch_latency', {
+        latencyMs: Math.max(0, Date.now() - homeVegrefSwitchPendingAt),
+        fromSeg: homeVegrefSwitchPendingFrom || null,
+        toSeg: homeVegrefSwitchPendingTo || null,
+        softSegChange,
+      })
+      homeVegrefSwitchPendingAt = 0
+      homeVegrefSwitchPendingFrom = ''
+      homeVegrefSwitchPendingTo = ''
+    }
   }
   prim.textContent = displayEff || officialShortEff
   if (typeEl) {
@@ -8508,7 +8927,7 @@ function applyHomeVegrefResult(res) {
     homeVegrefCompactD = res.d
     homeVegrefSegKey = segKeyId
 
-    if (mInt == null) {
+    if (mTarget == null) {
       cancelHomeVegrefMeterTween()
       /* Fix H3: ikke skru av live-ekstrapolering proaktivt — vi må ticke meter
          videre basert på fart når NVDB kortvarig ikke har meter (drift 25–60 m
@@ -8539,10 +8958,19 @@ function applyHomeVegrefResult(res) {
         !holdTooFar &&
         !holdTimedOutHard &&
         (!segBreakForMeter || (nid != null && homeVegrefMeterNvdbId != null))
+      const softHoldRecent =
+        homeVegrefDisplayedMeter != null &&
+        !holdTooFar &&
+        !holdTimedOutHard &&
+        !segBreakForMeter &&
+        Date.now() - homeVegrefLastMeterUiCommitAt < 9000
+      const holdNullMeterEffective = holdNullMeter || softHoldRecent
       // #region agent log H3
       vegrefDebugTrace('hold_null', {
         hyp: 'H3',
-        holdNullMeter,
+        holdNullMeter: holdNullMeterEffective,
+        holdNullMeterStrict: holdNullMeter,
+        softHoldRecent,
         nvdbAligned,
         segChanged,
         holdTooFar,
@@ -8561,7 +8989,7 @@ function applyHomeVegrefResult(res) {
         softSegChange,
       })
       // #endregion
-      if (holdNullMeter) {
+      if (holdNullMeterEffective) {
         homeVegrefHoldNullDashExtrap = true
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         /* Fix H3: hold meter + ekstrapoler videre basert på fart, slik at UI
@@ -8586,24 +9014,24 @@ function applyHomeVegrefResult(res) {
     } else if (homeVegrefDisplayedMeter == null) {
       cancelHomeVegrefMeterTween()
       resetHomeVegrefMeterUiHold()
-      homeVegrefDisplayedMeter = mInt
+      homeVegrefDisplayedMeter = mTarget
       homeVegrefLastMeterUiCommitAt = Date.now()
-      setHomeVegrefCompactDom(res.s, res.d, mInt)
+      setHomeVegrefCompactDom(res.s, res.d, mTarget)
       homeVegrefSetExtrapDirFromNvdbVsDisplayed(
-        mInt,
+        mTarget,
         homeVegrefDisplayedMeter,
       )
-      homeVegrefPrevAuthMeter = mInt
+      homeVegrefPrevAuthMeter = mTarget
       startHomeVegrefMeterLiveExtrap()
     } else {
       let dbgMeterBranch = 'pending'
-      const delta = Math.abs(mInt - homeVegrefDisplayedMeter)
+      const delta = Math.abs(mTarget - homeVegrefDisplayedMeter)
       const snap = homeVegrefMeterSnapThreshold()
       const _deadband = homeVegrefMeterDeadbandM()
       const _skipped =
         delta < snap &&
         shouldSkipVegrefMeterDisplayUpdate(
-          mInt,
+          mTarget,
           homeVegrefDisplayedMeter,
           segBreakForMeter,
           homeVegrefMeterSnapThreshold,
@@ -8638,7 +9066,7 @@ function applyHomeVegrefResult(res) {
           // #region agent log seg-snap
           vegrefDebugTrace('seg_snap_tween', {
             fromDisplayed: homeVegrefDisplayedMeter,
-            toMeter: mInt,
+            toMeter: mTarget,
             delta,
             softSegChange,
             prevSegKey: prevHomeSegKey,
@@ -8648,19 +9076,19 @@ function applyHomeVegrefResult(res) {
           homeVegrefLastMeterUiCommitAt = Date.now()
           setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
           homeVegrefSetExtrapDirFromNvdbVsDisplayed(
-            mInt,
+            mTarget,
             homeVegrefDisplayedMeter,
           )
-          homeVegrefPrevAuthMeter = mInt
+          homeVegrefPrevAuthMeter = mTarget
           /* Hvis det nye segmentet har lavere meter enn det vi viser
              (NVDB-fragment-grense med motsatt fra→til-retning), snap
              stille i stedet for å animere nedover. Brukeren skal aldri
              se at telleren teller bakover. Live-extrap fortsetter
              forover fra det nye startpunktet. */
-          if (mInt < homeVegrefDisplayedMeter) {
+          if (mTarget < homeVegrefDisplayedMeter) {
             cancelHomeVegrefMeterTween()
-            homeVegrefDisplayedMeter = mInt
-            setHomeVegrefCompactDom(res.s, res.d, mInt)
+            homeVegrefDisplayedMeter = mTarget
+            setHomeVegrefCompactDom(res.s, res.d, mTarget)
             /* Fragment med lavere meter enn vist: fortsett ekstrap forover. */
             homeVegrefMeterExtrapDir = 1
             // #region agent log
@@ -8670,7 +9098,7 @@ function applyHomeVegrefResult(res) {
               location: 'main.js:applyHomeVegrefResult:seg_snap_force_fwd',
               message: 'seg_changed_mInt_lt_displayed_forces_extrapDir_plus_1',
               data: {
-                mInt,
+                mTarget,
                 displayed: homeVegrefDisplayedMeter,
                 softSegChange,
                 segKeyId,
@@ -8682,7 +9110,7 @@ function applyHomeVegrefResult(res) {
           } else {
             /* Kort fast varighet: synlig som animasjon, men kort nok til god respons. */
             const segTweenMs = softSegChange ? 145 : 185
-            startHomeVegrefMeterTweenTo(mInt, segTweenMs)
+            startHomeVegrefMeterTweenTo(mTarget, segTweenMs)
           }
         } else {
           /* Stor meter-delta uten segmentbytte: typisk live-extrap som har løpt
@@ -8693,37 +9121,37 @@ function applyHomeVegrefResult(res) {
           homeVegrefLastMeterUiCommitAt = Date.now()
           setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
           homeVegrefSetExtrapDirFromNvdbVsDisplayed(
-            mInt,
+            mTarget,
             homeVegrefDisplayedMeter,
           )
-          homeVegrefPrevAuthMeter = mInt
+          homeVegrefPrevAuthMeter = mTarget
           const largeTweenMs =
             delta > 900 ? 265 : delta > 550 ? 215 : delta > 380 ? 175 : 130
-          startHomeVegrefMeterTweenTo(mInt, largeTweenMs)
+          startHomeVegrefMeterTweenTo(mTarget, largeTweenMs)
         }
       } else if (_skipped) {
         dbgMeterBranch = 'skipped'
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         homeVegrefSetExtrapDirFromNvdbVsDisplayed(
-          mInt,
+          mTarget,
           homeVegrefDisplayedMeter,
         )
-        homeVegrefPrevAuthMeter = mInt
+        homeVegrefPrevAuthMeter = mTarget
         startHomeVegrefMeterLiveExtrap()
       } else {
         dbgMeterBranch = 'normal_commit'
         homeVegrefLastMeterUiCommitAt = Date.now()
         setHomeVegrefCompactDom(res.s, res.d, homeVegrefDisplayedMeter)
         homeVegrefSetExtrapDirFromNvdbVsDisplayed(
-          mInt,
+          mTarget,
           homeVegrefDisplayedMeter,
         )
-        homeVegrefPrevAuthMeter = mInt
+        homeVegrefPrevAuthMeter = mTarget
         /* Ignorer nedover-korreksjoner på samme segment innenfor slack: live-
            extrap ligger ofte 20–50 m foran NVDB ved 10–18 m/s; fast 30 m var
            for trang og ga unødvendige tweens (flimmer). */
         const wouldGoDown =
-          homeVegrefDisplayedMeter != null && mInt < homeVegrefDisplayedMeter
+          homeVegrefDisplayedMeter != null && mTarget < homeVegrefDisplayedMeter
         const downGap =
           wouldGoDown && homeVegrefDisplayedMeter != null
             ? homeVegrefDisplayedMeter - mInt
@@ -8741,7 +9169,7 @@ function applyHomeVegrefResult(res) {
           if (wouldGoDown && homeVegrefDisplayedMeter != null && downGap > 0) {
             const chunk = homeVegrefMeterBackwardTweenChunkM()
             if (downGap > chunk + 2) {
-              tweenTarget = Math.max(mInt, homeVegrefDisplayedMeter - chunk)
+              tweenTarget = Math.max(mTarget, homeVegrefDisplayedMeter - chunk)
               dbgMeterBranch = 'tween_chunk_down'
             } else {
               dbgMeterBranch = 'tween_to_mInt'
@@ -8753,7 +9181,7 @@ function applyHomeVegrefResult(res) {
         }
       }
       // #region agent log
-      if (view === 'home' && typeof mInt === 'number') {
+      if (view === 'home' && typeof mTarget === 'number') {
         postScanixDebugPayload({
           sessionId: 'ff8b7b',
           hypothesisId: 'H2',
@@ -8761,10 +9189,10 @@ function applyHomeVegrefResult(res) {
           message: 'meter_apply_tick',
           data: {
             branch: dbgMeterBranch,
-            mInt,
+            mTarget,
             resM: res.m != null ? String(res.m) : null,
             displayed: homeVegrefDisplayedMeter,
-            delta: Math.abs(mInt - (homeVegrefDisplayedMeter ?? 0)),
+            delta: Math.abs(mTarget - (homeVegrefDisplayedMeter ?? 0)),
             skipped: _skipped,
             extrapDir: homeVegrefMeterExtrapDir,
             prevAuth: homeVegrefPrevAuthMeter,
@@ -9730,9 +10158,15 @@ function renderCount() {
 }
 
 function flushCurrentSession() {
-  if (!currentSessionId) return
+  if (!currentSessionId) {
+    appendStorageDebugTrace('flush_current_no_session')
+    return
+  }
   const idx = sessions.findIndex((s) => s.id === currentSessionId)
-  if (idx === -1) return
+  if (idx === -1) {
+    appendStorageDebugTrace('flush_current_missing_session', { currentSessionId })
+    return
+  }
   const cats = normalizeObjectCategoryList(state.objectCategories)
   const activeCat =
     typeof state.activeCategoryId === 'string' && cats.includes(state.activeCategoryId)
@@ -9751,7 +10185,14 @@ function flushCurrentSession() {
     activeCategoryId: activeCat,
     updatedAt: nowIso(),
   }
+  lastTouchedSessionId = currentSessionId
   notePartialCloudPushForSessionId(currentSessionId)
+  writeCoreSnapshotSync('flush_current')
+  appendStorageDebugTrace('flush_current_session', {
+    sessionId: currentSessionId,
+    clickHistoryLen: state.clickHistory.length,
+    photosLen: Array.isArray(state.photos) ? state.photos.length : 0,
+  })
   saveAppState()
 }
 
@@ -10051,14 +10492,18 @@ async function compressDataUrlToJpegUnderBytes(dataUrl, opts = {}) {
  * @param {number} h canvas height
  * @param {{ road?: string, compact?: string, kortform?: string } | null | undefined} vr
  * @param {string} [note]
+ * @param {string} [timestampText]
  */
-function burnVegrefOntoCanvas(ctx, w, h, vr, note) {
+function burnVegrefOntoCanvas(ctx, w, h, vr, note, timestampText = '') {
   const lines = []
   if (vr?.road) lines.push(vr.road)
   if (vr?.compact) lines.push(vr.compact)
   if (vr?.kortform) lines.push(vr.kortform)
   const trimNote = typeof note === 'string' ? note.trim().slice(0, 200) : ''
   if (trimNote) lines.push(trimNote)
+  const trimTs =
+    typeof timestampText === 'string' ? timestampText.trim().slice(0, 60) : ''
+  if (trimTs) lines.push(trimTs)
   if (!lines.length) return
   const fontSize = Math.max(14, Math.round(w * 0.028))
   ctx.save()
@@ -10092,9 +10537,10 @@ function burnVegrefOntoCanvas(ctx, w, h, vr, note) {
  * @param {string} srcDataUrl
  * @param {{ road?: string, compact?: string, kortform?: string } | null | undefined} vr
  * @param {string} [note]
+ * @param {string} [timestampText]
  * @returns {Promise<string>}
  */
-function stampPhotoWithVegref(srcDataUrl, vr, note) {
+function stampPhotoWithVegref(srcDataUrl, vr, note, timestampText = '') {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
@@ -10108,7 +10554,7 @@ function stampPhotoWithVegref(srcDataUrl, vr, note) {
         return
       }
       ctx.drawImage(img, 0, 0, w, h)
-      burnVegrefOntoCanvas(ctx, w, h, vr, note)
+      burnVegrefOntoCanvas(ctx, w, h, vr, note, timestampText)
       resolve(c.toDataURL('image/jpeg', 0.93))
     }
     img.onerror = () => reject(new Error('image'))
@@ -10121,16 +10567,73 @@ function stampPhotoWithVegref(srcDataUrl, vr, note) {
  * @param {NonNullable<ReturnType<typeof normalizePhoto>>} ph
  */
 async function savePhotoToDevice(ph) {
-  if (!ph?.dataUrl) return
+  if (!ph || typeof ph !== 'object') return
+  let sourceDataUrl =
+    typeof ph.dataUrl === 'string' && ph.dataUrl.startsWith('data:image/')
+      ? ph.dataUrl
+      : ''
+  if (!sourceDataUrl) {
+    const id = typeof ph.id === 'string' ? ph.id : ''
+    if (id && (await isPhotoBlobStoreAvailable())) {
+      try {
+        const fromIdb = await getPhotoDataUrl(id)
+        if (typeof fromIdb === 'string' && fromIdb.startsWith('data:image/')) {
+          sourceDataUrl = fromIdb
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  if (!sourceDataUrl) {
+    const thumbMem =
+      typeof ph.thumbDataUrl === 'string' &&
+      ph.thumbDataUrl.startsWith('data:image/')
+        ? ph.thumbDataUrl
+        : ''
+    if (thumbMem) sourceDataUrl = thumbMem
+  }
+  if (!sourceDataUrl) {
+    const sb = getSupabase()
+    const fullPath =
+      typeof ph.storageFullPath === 'string' ? ph.storageFullPath.trim() : ''
+    const thumbPath =
+      typeof ph.storageThumbPath === 'string' ? ph.storageThumbPath.trim() : ''
+    const tryPath = async (path) => {
+      if (!path) return ''
+      try {
+        const signed = await storageObjectUrlFromPath(sb, path)
+        if (!signed) return ''
+        const res = await fetch(signed)
+        if (!res.ok) return ''
+        const blob = await res.blob()
+        return await new Promise((resolve) => {
+          const r = new FileReader()
+          r.onload = () => resolve(typeof r.result === 'string' ? r.result : '')
+          r.onerror = () => resolve('')
+          r.readAsDataURL(blob)
+        })
+      } catch {
+        return ''
+      }
+    }
+    sourceDataUrl = await tryPath(fullPath)
+    if (!sourceDataUrl) sourceDataUrl = await tryPath(thumbPath)
+  }
+  if (!sourceDataUrl) return
   const vr = ph.vegref ? normalizePhotoVegref(ph.vegref) : null
   const note = typeof ph.note === 'string' ? ph.note : ''
+  const captureTs =
+    ph.captureWithVegrefDateTime === true
+      ? formatPhotoOverlayTimestamp(ph.timestamp)
+      : ''
   let dataUrl
   try {
-    dataUrl = (vr || note.trim())
-      ? await stampPhotoWithVegref(ph.dataUrl, vr, note)
-      : ph.dataUrl
+    dataUrl = (vr || note.trim() || captureTs)
+      ? await stampPhotoWithVegref(sourceDataUrl, vr, note, captureTs)
+      : sourceDataUrl
   } catch {
-    dataUrl = ph.dataUrl
+    dataUrl = sourceDataUrl
   }
   const blob = await (await fetch(dataUrl)).blob()
   const ts = ph.timestamp
@@ -10172,6 +10675,7 @@ const PHOTO_JPEG_QUALITY = 0.9
  *   lng?: number | null
  *   vegref?: { road: string, compact: string, kortform: string } | null
  *   note?: string
+ *   captureWithVegrefDateTime?: boolean
  * }} [opts] Eksplisitte koord (f.eks. EXIF) brukes først. `vegref` vises som HTML-overlay (skarp ved zoom), ikke innprintet i pikslene. Mappe (`images/…/`) utledes fra KMT-feltet `kmt-road-folder-src` + evt. vegref.
  */
 async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
@@ -10249,6 +10753,7 @@ async function addPhotoFromCompressedDataUrl(dataUrl, opts = {}) {
     ...(thumbDataUrl ? { thumbDataUrl } : {}),
     ...(opts.vegref ? { vegref: opts.vegref } : {}),
     ...(noteOpt ? { note: noteOpt } : {}),
+    ...(opts.captureWithVegrefDateTime ? { captureWithVegrefDateTime: true } : {}),
     imageFolder: folderSeed,
   })
   if (!entry) return
@@ -10818,6 +11323,7 @@ function renderInboxHtml() {
   return `<div class="view-inbox surface view-panel-enter">
     <button type="button" class="btn btn-back" id="btn-back-from-inbox">← Meny</button>
     <h2 class="subview-title">DelSky</h2>
+    <div id="delsky-usage-panel">${renderDelskyUsagePanelHtml()}</div>
     <p class="inbox-lead">Økter du <strong>lagrer</strong> (og sky-knappen i oppdraget) synkes til delsky når nett og innstillinger tillater det. De ligger under <strong>Mine økter</strong> her og på Mac/PC med <strong>samme innlogging</strong>. Trykk <strong>Hent siste fra delsky</strong> på nett hvis lista er tom. «Del oppdrag» til annen bruker er noe annet.</p>
     <button type="button" class="btn btn-secondary btn-delsky-pull" id="btn-delsky-pull-now">Hent siste fra delsky</button>
     <p id="delsky-pull-status" class="delsky-pull-status" role="status" aria-live="polite"></p>
@@ -10828,6 +11334,161 @@ function renderInboxHtml() {
     <p id="incoming-shares-status" class="home-incoming__status" role="status" aria-live="polite"></p>
     <ul id="incoming-shares-list" class="home-incoming-list"></ul>
   </div>`
+}
+
+/**
+ * @param {number} bytes
+ */
+function formatDelskyUsageBytes(bytes) {
+  const n = Number.isFinite(bytes) && bytes > 0 ? bytes : 0
+  const gb = n / (1024 ** 3)
+  if (gb >= 1) return `${gb.toFixed(gb >= 10 ? 1 : 2)} GB`
+  const mb = n / (1024 ** 2)
+  return `${Math.max(0, Math.round(mb))} MB`
+}
+
+function delskyUsageStatusText() {
+  if (!isScanixCloudApiConfigured()) {
+    return 'Skyforbruk vises når cloud API er aktiv.'
+  }
+  if (delskyStorageUsage.status === 'loading') return 'Oppdaterer skyforbruk …'
+  if (delskyStorageUsage.status === 'error') return 'Kunne ikke hente skyforbruk nå.'
+  if (delskyStorageUsage.isOverLimit) {
+    return 'Du er over anbefalt kvote på 50 GB.'
+  }
+  if (delskyStorageUsage.isNearLimit) {
+    return 'Du nærmer deg kvoten på 50 GB.'
+  }
+  return 'Skyforbruk oppdateres fortløpende.'
+}
+
+function renderDelskyUsagePanelHtml() {
+  const hasFreshUsage = delskyStorageUsage.status === 'ready'
+  const used = hasFreshUsage
+    ? formatDelskyUsageBytes(delskyStorageUsage.usedBytes)
+    : '–'
+  const quota = formatDelskyUsageBytes(delskyStorageUsage.quotaBytes || DELSKY_QUOTA_BYTES)
+  const r2 = hasFreshUsage
+    ? formatDelskyUsageBytes(delskyStorageUsage.bySource?.r2Bytes || 0)
+    : '–'
+  const supabase = hasFreshUsage
+    ? formatDelskyUsageBytes(delskyStorageUsage.bySource?.supabaseBytes || 0)
+    : '–'
+  const pct = hasFreshUsage
+    ? Math.max(0, Math.min(100, Math.round(delskyStorageUsage.percent)))
+    : 0
+  const stateClass = delskyStorageUsage.isOverLimit
+    ? 'delsky-usage--over'
+    : delskyStorageUsage.isNearLimit
+      ? 'delsky-usage--near'
+      : 'delsky-usage--ok'
+  return `<section class="delsky-usage ${stateClass}" aria-label="Skyforbruk">
+    <div class="delsky-usage__head">
+      <strong>Skyforbruk</strong>
+      <span id="delsky-usage-value">${escapeHtml(used)} / ${escapeHtml(quota)}</span>
+    </div>
+    <div class="delsky-usage__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Brukt skykvote">
+      <span id="delsky-usage-bar-fill" class="delsky-usage__bar-fill" style="width:${pct}%"></span>
+    </div>
+    <div class="delsky-usage__meta">
+      <span id="delsky-usage-percent">${hasFreshUsage ? `${pct}% brukt` : 'Venter på data …'}</span>
+      <span id="delsky-usage-status">${escapeHtml(delskyUsageStatusText())}</span>
+    </div>
+    <div class="delsky-usage__sources" id="delsky-usage-sources">
+      R2: ${escapeHtml(r2)} · Supabase: ${escapeHtml(supabase)}
+    </div>
+    <button type="button" class="btn btn-text delsky-usage__help-btn" id="btn-delsky-usage-help" aria-expanded="false" aria-controls="delsky-usage-help-text">Hva betyr dette?</button>
+    <p class="delsky-usage__help" id="delsky-usage-help-text" hidden>
+      R2 er bilde-lagring i sky. Supabase er annen skylagring appen bruker. Sammen viser de hvor mye av 50 GB-kvoten som er brukt.
+    </p>
+  </section>`
+}
+
+function applyDelskyUsagePanelToDom() {
+  const host = document.getElementById('delsky-usage-panel')
+  if (!host) return
+  host.outerHTML = `<div id="delsky-usage-panel">${renderDelskyUsagePanelHtml()}</div>`
+}
+
+/**
+ * @param {number} deltaBytes
+ */
+function bumpDelskyUsageOptimistic(deltaBytes) {
+  if (!Number.isFinite(deltaBytes) || deltaBytes <= 0) return
+  const used = Math.max(0, delskyStorageUsage.usedBytes + Math.floor(deltaBytes))
+  const quota = delskyStorageUsage.quotaBytes || DELSKY_QUOTA_BYTES
+  delskyStorageUsage.usedBytes = used
+  delskyStorageUsage.percent = Math.min(100, (used / quota) * 100)
+  delskyStorageUsage.isNearLimit = used >= quota * 0.85
+  delskyStorageUsage.isOverLimit = used >= quota
+  delskyStorageUsage.updatedAt = Date.now()
+  if (view === 'inbox' && inboxUiMode === 'delsky') {
+    applyDelskyUsagePanelToDom()
+  }
+}
+
+/**
+ * @param {{ force?: boolean }} [opts]
+ */
+async function refreshDelskyStorageUsage(opts = {}) {
+  if (!currentUser?.id || !isScanixCloudApiConfigured()) return
+  if (view !== 'inbox' || inboxUiMode !== 'delsky') return
+  const now = Date.now()
+  if (!opts.force && delskyStorageUsage.status === 'ready' && now - delskyStorageUsage.updatedAt < 3500) {
+    return
+  }
+  delskyStorageUsage.status = 'loading'
+  applyDelskyUsagePanelToDom()
+  const summary = await cloudFetchStorageUsageSummary()
+  if (!summary) {
+    delskyStorageUsage.status = 'error'
+    applyDelskyUsagePanelToDom()
+    return
+  }
+  const quota = summary.quotaBytes > 0 ? summary.quotaBytes : DELSKY_QUOTA_BYTES
+  const used = Math.max(0, summary.usedBytes)
+  delskyStorageUsage = {
+    usedBytes: used,
+    quotaBytes: quota,
+    percent: Math.min(100, Math.max(0, summary.percent || (used / quota) * 100)),
+    bySource: summary.bySource || { r2Bytes: 0, supabaseBytes: 0 },
+    updatedAt: Date.now(),
+    status: 'ready',
+    isNearLimit: Boolean(summary.nearLimit || used >= quota * 0.85),
+    isOverLimit: Boolean(summary.overLimit || used >= quota),
+  }
+  applyDelskyUsagePanelToDom()
+}
+
+function scheduleDelskyUsageRefreshSoon() {
+  if (delskyUsageDebouncedRefresh != null) return
+  delskyUsageDebouncedRefresh = setTimeout(() => {
+    delskyUsageDebouncedRefresh = null
+    void refreshDelskyStorageUsage({ force: true })
+  }, 900)
+}
+
+function stopDelskyUsagePolling() {
+  if (delskyUsagePollId != null) {
+    clearInterval(delskyUsagePollId)
+    delskyUsagePollId = null
+  }
+  if (delskyUsageDebouncedRefresh != null) {
+    clearTimeout(delskyUsageDebouncedRefresh)
+    delskyUsageDebouncedRefresh = null
+  }
+}
+
+function startDelskyUsagePolling() {
+  stopDelskyUsagePolling()
+  if (!currentUser?.id || !isScanixCloudApiConfigured()) return
+  if (view !== 'inbox' || inboxUiMode !== 'delsky') return
+  void refreshDelskyStorageUsage({ force: true })
+  delskyUsagePollId = setInterval(() => {
+    if (view === 'inbox' && inboxUiMode === 'delsky') {
+      void refreshDelskyStorageUsage()
+    }
+  }, DELSKY_USAGE_POLL_MS)
 }
 
 function buildSessionRowsReadOnlyHtml() {
@@ -11390,6 +12051,7 @@ function renderMenuSettingsHtml() {
   const traceOn = isVegrefDebugTraceEnabled()
   const registerTraceOn = isRegisterTraceDebugPersisted()
   const registerNetOn = isRegisterNetworkDebugPersisted()
+  const storageTraceOn = isStorageDebugTraceEnabled()
   const vegrefHighData = getVegrefDataMode() === 'normal'
   const photoUploadAllowCellular = readPhotoUploadAllowOnCellular()
   const pilotMinDownloadOn = isMinDownloadMode()
@@ -11441,6 +12103,15 @@ function renderMenuSettingsHtml() {
         <p class="menu-info-prose menu-info-prose--compact">Samme avkrysning styrer også <strong>nedlasting av full bildeoppløsning</strong> fra sky i album (meny «Bilder»): på mobilnett uten avkrysning brukes lokalt/miniatur fra sky; unngår store MB per trykk. I installert app (Capacitor) brukes systemets nettverkstype direkte. I vanlig nettleser uten Network Information (ofte iOS Safari) behandles ukjent type som «ikke Wi‑Fi». Metadata og miniatyr synkes fortsatt; full bildefil til sky går på Wi‑Fi eller når du har krysset av over. Full oppløsning lagres lokalt (IndexedDB) til da.</p>
         <button type="button" class="btn btn-ghost" id="btn-settings-debug-storage">Debug lagring (økter)</button>
         <p class="menu-info-prose menu-info-prose--compact">Viser lagringsnøkler i konsollen (Safari Web Inspector/Xcode) og kort status i appen.</p>
+        <label class="menu-settings-trace-label">
+          <input type="checkbox" id="chk-storage-debug-trace"${storageTraceOn ? ' checked' : ''} />
+          Spill inn lagringslogg som overlever app-lukking
+        </label>
+        <div class="menu-settings-trace-actions">
+          <button type="button" class="btn btn-ghost" id="btn-settings-copy-storage-trace">Kopier lagringslogg</button>
+          <button type="button" class="btn btn-ghost" id="btn-settings-clear-storage-trace">Tøm lagringslogg</button>
+        </div>
+        <p class="menu-info-prose menu-info-prose--compact">Slå på, reproducer feilen (ta bilde/lag økt, lukk app helt), åpne appen igjen og trykk «Kopier lagringslogg».</p>
       </div>
       <div class="menu-card">
         <h3 class="menu-card__title">Prøvedrift (minimal nedlasting)</h3>
@@ -13481,6 +14152,7 @@ function renderPhotoFullscreenDialogHtml() {
   return `<dialog id="photo-fullscreen-dialog" class="photo-fullscreen-dialog" aria-label="Bilde i fullskjerm">
     <div class="photo-fullscreen-dialog__inner">
       <button type="button" class="photo-fullscreen-dialog__close" id="btn-photo-fullscreen-close" aria-label="Lukk">×</button>
+      <button type="button" class="photo-fullscreen-dialog__close photo-fullscreen-dialog__save" id="btn-photo-fullscreen-save" aria-label="Lagre bilde">Lagre</button>
       <div class="photo-fullscreen-dialog__frame photo-zoom-host" id="photo-fullscreen-zoom-host">
         <div class="photo-zoom-pan" id="photo-fullscreen-zoom-pan">
           <img id="photo-fullscreen-img" class="photo-fullscreen-dialog__img" alt="" draggable="false" />
@@ -13661,7 +14333,13 @@ async function openPhotoFullscreenFromPhotoRecord(ph) {
     return
   }
   photoFullscreenActivePhotoId = pid
-  openPhotoFullscreen(url, p.vegref, p.note)
+  openPhotoFullscreen(
+    url,
+    p.vegref,
+    p.note,
+    p.timestamp,
+    p.captureWithVegrefDateTime === true,
+  )
   if (
     storageFull &&
     isRemoteAppStateDataEnabled() &&
@@ -13677,8 +14355,16 @@ async function openPhotoFullscreenFromPhotoRecord(ph) {
  * @param {string} dataUrl data- eller https‑URL til bildet
  * @param {unknown} [vegrefRaw] lagret vegref-objekt; tekst vises som vektor-overlay (skarp ved zoom).
  * @param {unknown} [noteRaw] valgfri kommentar lagret med bildet.
+ * @param {unknown} [timestampRaw] foto-tidspunkt.
+ * @param {boolean} [showTimestamp] vis dato/klokkeslett i overlay.
  */
-function openPhotoFullscreen(dataUrl, vegrefRaw, noteRaw) {
+function openPhotoFullscreen(
+  dataUrl,
+  vegrefRaw,
+  noteRaw,
+  timestampRaw,
+  showTimestamp = false,
+) {
   const dlg = document.getElementById('photo-fullscreen-dialog')
   const img = document.getElementById('photo-fullscreen-img')
   const vrLayer = document.getElementById('photo-fullscreen-vegref')
@@ -13703,10 +14389,12 @@ function openPhotoFullscreen(dataUrl, vegrefRaw, noteRaw) {
     typeof noteRaw === 'string' && noteRaw.trim()
       ? noteRaw.trim().slice(0, 800)
       : ''
+  const tsText = showTimestamp ? formatPhotoOverlayTimestamp(timestampRaw) : ''
   if (vrLayer) {
     const inner = formatPhotoVegrefOverlayLinesHtml(
       vr || { road: '', compact: '', kortform: '' },
       note,
+      tsText,
     )
     if (inner) {
       vrLayer.innerHTML = inner
@@ -13764,6 +14452,17 @@ function wirePhotoFullscreenDialog() {
   document.getElementById('btn-photo-fullscreen-close')?.addEventListener(
     'click',
     onClose,
+    { signal },
+  )
+  document.getElementById('btn-photo-fullscreen-save')?.addEventListener(
+    'click',
+    () => {
+      const id = photoFullscreenActivePhotoId
+      if (!id) return
+      const ph = getAllPhotosFlat().find((p) => p.id === id)
+      if (!ph) return
+      void savePhotoToDevice(ph)
+    },
     { signal },
   )
   dlg.addEventListener(
@@ -14074,6 +14773,9 @@ function renderSessionHtml() {
       hidden
       aria-label="Bilder fra oppdraget"
     >
+      <div class="session-sheet-tier session-sheet-tier--secondary">
+        <button type="button" id="btn-session-photos-save" class="btn btn-secondary" aria-label="Lagre bilder fra denne økta">Lagre bilder</button>
+      </div>
       <p id="session-photos-folders-summary" class="session-photos-folders-summary" hidden aria-live="polite"></p>
       <div id="photos-gallery" class="photos-gallery photos-gallery--session"></div>
     </section>
@@ -15948,6 +16650,7 @@ function enterHomeAiChatWithImage(dataUrl) {
   const st = document.getElementById('home-ai-status')
   if (st) st.textContent = ''
   document.getElementById('home-ai-chat-input')?.focus({ preventScroll: true })
+  triggerHapticPhoto()
 }
 
 function retakeHomeAiDoc() {
@@ -16359,6 +17062,7 @@ async function sendHomeAiContractRagMessage() {
     finishHomeAiContractPillProgress(true)
     stopHomeAiThinkingUx()
     await appendHomeAiAssistantPlainTextStreamed(reply)
+    triggerHapticAiReply()
     if (statusEl) statusEl.textContent = ''
   } catch (e) {
     homeAiRagMessages.pop()
@@ -16531,6 +17235,7 @@ function bindInboxListeners() {
         try {
           if (st) st.textContent = 'Henter fra delsky …'
           await hydrateUserAppStateFromRemote()
+          await refreshDelskyStorageUsage({ force: true })
         } catch (e) {
           console.warn('DelSky manuell hent', e)
         } finally {
@@ -16538,6 +17243,20 @@ function bindInboxListeners() {
         }
         void refreshIncomingSharesPanel()
       })()
+    },
+    { signal },
+  )
+  document.getElementById('btn-delsky-usage-help')?.addEventListener(
+    'click',
+    () => {
+      const btn = document.getElementById('btn-delsky-usage-help')
+      const help = document.getElementById('delsky-usage-help-text')
+      if (!(btn instanceof HTMLButtonElement) || !(help instanceof HTMLElement)) {
+        return
+      }
+      const open = help.hidden
+      help.hidden = !open
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false')
     },
     { signal },
   )
@@ -16591,6 +17310,8 @@ function bindInboxListeners() {
     { signal },
   )
   setupSessionShareInbox()
+  if (inboxUiMode === 'delsky') startDelskyUsagePolling()
+  else stopDelskyUsagePolling()
 }
 
 function setMenuSessionTab(tab) {
@@ -16957,6 +17678,42 @@ function bindMenuInfoListeners() {
       },
       { signal },
     )
+  document
+    .getElementById('btn-settings-copy-storage-trace')
+    ?.addEventListener(
+      'click',
+      () => {
+        void copyStorageDebugTraceReport()
+      },
+      { signal },
+    )
+  document
+    .getElementById('btn-settings-clear-storage-trace')
+    ?.addEventListener(
+      'click',
+      () => {
+        clearStorageDebugTrace()
+        showSessionToast('Lagringslogg tømt.', 2000)
+      },
+      { signal },
+    )
+  document.getElementById('chk-storage-debug-trace')?.addEventListener(
+    'change',
+    (ev) => {
+      const el = /** @type {HTMLInputElement | null} */ (
+        ev.target && 'checked' in ev.target ? ev.target : null
+      )
+      const enabled = Boolean(el?.checked)
+      setStorageDebugTraceEnabled(enabled)
+      if (enabled) {
+        appendStorageDebugTrace('trace_enabled')
+        showSessionToast('Lagringslogg er på.', 2000)
+      } else {
+        showSessionToast('Lagringslogg er av.', 2000)
+      }
+    },
+    { signal },
+  )
   document.getElementById('chk-vegref-high-data')?.addEventListener(
     'change',
     (ev) => {
@@ -17085,6 +17842,171 @@ function bindMenuInfoListeners() {
   )
 }
 
+function isStorageDebugTraceEnabled() {
+  try {
+    return localStorage.getItem(STORAGE_DEBUG_TRACE_ENABLED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * @param {boolean} enabled
+ */
+function setStorageDebugTraceEnabled(enabled) {
+  try {
+    if (enabled) localStorage.setItem(STORAGE_DEBUG_TRACE_ENABLED_KEY, '1')
+    else localStorage.removeItem(STORAGE_DEBUG_TRACE_ENABLED_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function readStorageDebugTraceEntries() {
+  try {
+    const raw = localStorage.getItem(STORAGE_DEBUG_TRACE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * @param {string} ev
+ * @param {Record<string, unknown>} [data]
+ */
+function appendStorageDebugTrace(ev, data = {}) {
+  if (!isStorageDebugTraceEnabled()) return
+  try {
+    const key = sessionsKeyForCurrentContext()
+    const row = {
+      at: new Date().toISOString(),
+      ev,
+      userId: currentUser?.id || null,
+      key,
+      currentSessionId,
+      sessionsInMemory: sessions.length,
+      ...data,
+    }
+    const entries = readStorageDebugTraceEntries()
+    entries.unshift(row)
+    if (entries.length > STORAGE_DEBUG_TRACE_MAX) {
+      entries.length = STORAGE_DEBUG_TRACE_MAX
+    }
+    localStorage.setItem(STORAGE_DEBUG_TRACE_KEY, JSON.stringify(entries))
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearStorageDebugTrace() {
+  try {
+    localStorage.removeItem(STORAGE_DEBUG_TRACE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeEmergencySessionDelta(reason = 'emergency') {
+  try {
+    const sid =
+      (typeof lastTouchedSessionId === 'string' && lastTouchedSessionId) ||
+      (typeof lastResumeSessionId === 'string' && lastResumeSessionId) ||
+      (typeof currentSessionId === 'string' && currentSessionId) ||
+      ''
+    const key = emergencyDeltaKeyForCurrentContext()
+    const session =
+      sid && Array.isArray(sessions) ? sessions.find((s) => s.id === sid) : null
+    const payload = {
+      at: new Date().toISOString(),
+      reason,
+      sid: sid || null,
+      currentSessionId:
+        typeof currentSessionId === 'string' ? currentSessionId : null,
+      lastResumeSessionId:
+        typeof lastResumeSessionId === 'string' ? lastResumeSessionId : null,
+      session: session || null,
+    }
+    localStorage.setItem(key, JSON.stringify(payload))
+    appendStorageDebugTrace('emergency_delta_written', {
+      key,
+      sid: payload.sid,
+      hasSession: Boolean(payload.session),
+    })
+  } catch (e) {
+    appendStorageDebugTrace('emergency_delta_write_failed', {
+      errorName: e?.name || null,
+      errorMessage: e instanceof Error ? e.message : String(e),
+    })
+  }
+}
+
+/**
+ * @param {string} userId
+ * @returns {{ session: any | null, currentSessionId: string | null, lastResumeSessionId: string | null }}
+ */
+function readEmergencySessionDeltaForUser(userId) {
+  try {
+    const key =
+      userId === STORAGE_KEY_DEVICE_FALLBACK
+        ? `${STORAGE_KEY_DEVICE_FALLBACK}-${STORAGE_KEY_EMERGENCY_DELTA}`
+        : `${sessionsKeyForUser(userId)}-${STORAGE_KEY_EMERGENCY_DELTA}`
+    const raw = localStorage.getItem(key)
+    if (!raw) {
+      return { session: null, currentSessionId: null, lastResumeSessionId: null }
+    }
+    const p = JSON.parse(raw)
+    if (!p || typeof p !== 'object') {
+      return { session: null, currentSessionId: null, lastResumeSessionId: null }
+    }
+    const s = normalizeSession(
+      /** @type {{ session?: unknown }} */ (p).session || null,
+    )
+    return {
+      session: s || null,
+      currentSessionId:
+        typeof /** @type {{ currentSessionId?: unknown }} */ (p).currentSessionId ===
+        'string'
+          ? /** @type {{ currentSessionId: string }} */ (p).currentSessionId
+          : null,
+      lastResumeSessionId:
+        typeof /** @type {{ lastResumeSessionId?: unknown }} */ (p)
+          .lastResumeSessionId === 'string'
+          ? /** @type {{ lastResumeSessionId: string }} */ (p).lastResumeSessionId
+          : null,
+    }
+  } catch {
+    return { session: null, currentSessionId: null, lastResumeSessionId: null }
+  }
+}
+
+function buildStorageDebugTraceText() {
+  const entries = readStorageDebugTraceEntries()
+  return JSON.stringify(
+    {
+      now: new Date().toISOString(),
+      enabled: isStorageDebugTraceEnabled(),
+      entriesCount: entries.length,
+      entries,
+    },
+    null,
+    2,
+  )
+}
+
+async function copyStorageDebugTraceReport() {
+  try {
+    const text = buildStorageDebugTraceText()
+    await navigator.clipboard.writeText(text)
+    showSessionToast('Lagringslogg kopiert.', 2400)
+  } catch (e) {
+    console.warn('copyStorageDebugTraceReport', e)
+    showSessionToast('Kunne ikke kopiere logg.', 2800)
+  }
+}
+
 function runSessionStorageDebugSnapshot() {
   try {
     const userId = currentUser?.id || null
@@ -17107,6 +18029,8 @@ function runSessionStorageDebugSnapshot() {
       currentSessionId,
       sessionsInMemory: sessions.length,
       report,
+      traceEnabled: isStorageDebugTraceEnabled(),
+      traceEntries: readStorageDebugTraceEntries().length,
     })
     showSessionToast('Debug lagring skrevet til konsollen.', 2600)
   } catch (e) {
@@ -17264,6 +18188,7 @@ async function logoutUser() {
 }
 
 function navigateHomeClearSession() {
+  stopDelskyUsagePolling()
   stashActiveSessionForResumeBeforeLeave()
   flushCurrentSession()
   destroyMap()
@@ -17389,6 +18314,7 @@ function openInboxView() {
   renderApp()
   bindInboxListeners()
   void refreshIncomingSharesPanel()
+  startDelskyUsagePolling()
   if (
     !isMinDownloadMode() &&
     isSupabaseConfigured() &&
@@ -17399,6 +18325,7 @@ function openInboxView() {
       try {
         if (st) st.textContent = 'Henter fra delsky …'
         await hydrateUserAppStateFromRemote()
+        await refreshDelskyStorageUsage({ force: true })
       } catch (e) {
         console.warn('DelSky auto-hent', e)
       } finally {
@@ -17420,6 +18347,7 @@ function openInboxMessagesView() {
   saveAppState()
   renderApp()
   bindInboxListeners()
+  stopDelskyUsagePolling()
   void refreshIncomingSharesPanel()
 }
 
@@ -18280,6 +19208,7 @@ function commitNewSessionWithCategories(roadSide, categoryIds, opts = {}) {
   sessions.push(s)
   currentSessionId = s.id
   lastResumeSessionId = s.id
+  lastTouchedSessionId = s.id
   state = {
     ...defaultState(),
     roadSide,
@@ -18360,6 +19289,7 @@ function resumeSession(id) {
   flushCurrentSession()
   currentSessionId = id
   lastResumeSessionId = id
+  lastTouchedSessionId = id
   state = loadCurrentSessionState()
   saveAppState()
   view = 'session'
@@ -20429,6 +21359,28 @@ function bindSessionListeners() {
     { signal },
   )
 
+  document.getElementById('btn-session-photos-save')?.addEventListener(
+    'click',
+    async () => {
+      const photos = Array.isArray(state.photos) ? state.photos : []
+      if (!photos.length) {
+        showSessionToast('Ingen bilder å lagre i denne økta.', 2200)
+        return
+      }
+      if (photos.length > 1 && typeof confirm === 'function') {
+        const ok = confirm(
+          `Lagre ${photos.length} bilder? (iPhone viser lagringsvalg for hvert bilde)`,
+        )
+        if (!ok) return
+      }
+      for (const ph of photos) {
+        await savePhotoToDevice(ph)
+      }
+      showSessionToast('Bilder er sendt til lagring.', 2600)
+    },
+    { signal },
+  )
+
   wireSessionBottomSheet(signal)
   wireSessionGpsSheetMirror(signal)
   wireMapThemeDock(signal, {
@@ -20607,10 +21559,8 @@ async function bootstrap() {
     fetchRoadReferenceNear: fetchRoadReferenceNearForApp,
     fetchRoadReferenceNearOffline: resolveOfflineRoadReferenceNear,
     getSurfacePreference,
-    shouldPreferOfflineResolver: () =>
-      offlineVegrefReady &&
-      typeof navigator !== 'undefined' &&
-      navigator.onLine === false,
+    /* Policy: kun lokal vegref-data (ingen internett-fallback). */
+    shouldPreferOfflineResolver: () => offlineVegrefReady,
     getViewHome: () => view === 'home',
     getKmtOpen: () => kmtDialogOpen,
     getRecentTrace: () =>
@@ -20634,13 +21584,7 @@ async function bootstrap() {
        i stedet for å henge på nett. Utenfor disse områdene beholdes NVDB. */
     skipNetworkWhenOfflineReady: (lat, lng) => {
       if (isMinDownloadMode()) return true
-      if (
-        offlineVegrefReady &&
-        typeof navigator !== 'undefined' &&
-        navigator.onLine === false
-      ) {
-        return true
-      }
+      if (offlineVegrefReady) return true
       if (
         typeof lat === 'number' &&
         typeof lng === 'number' &&
@@ -20666,7 +21610,8 @@ async function bootstrap() {
   })
   initDelegator({
     fetchOnline: (lat, lng, opts) => fetchRoadReferenceNearForApp(lat, lng, opts),
-    allowOnlineFallback: !isMinDownloadMode(),
+    /* Policy: kun lokal vegref-data. */
+    allowOnlineFallback: false,
   })
   window.addEventListener('online', () => {
     void enrichPendingClicks()
@@ -20755,6 +21700,7 @@ async function bootstrap() {
   }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
+      appendStorageDebugTrace('lifecycle_visibility_hidden')
       flushCurrentSession()
       forceSaveAppStateNow('visibility_hidden')
       /* Forside: watchPosition med enableHighAccuracy er svært strømkrevende.
@@ -20768,6 +21714,7 @@ async function bootstrap() {
       }
     }
     if (document.visibilityState === 'visible') {
+      appendStorageDebugTrace('lifecycle_visibility_visible')
       queueRefreshLeafletAfterResume()
       if (view === 'home' && currentUser) {
         startHomeVegrefTracking()
@@ -20794,6 +21741,7 @@ async function bootstrap() {
     }
   })
   window.addEventListener('pagehide', () => {
+    appendStorageDebugTrace('lifecycle_pagehide')
     flushCurrentSession()
     forceSaveAppStateNow('pagehide')
   })
@@ -20913,6 +21861,7 @@ try {
 }
 
 window.addEventListener('beforeunload', () => {
+  appendStorageDebugTrace('lifecycle_beforeunload')
   flushCurrentSession()
   forceSaveAppStateNow('beforeunload')
   stopLocationWatch()

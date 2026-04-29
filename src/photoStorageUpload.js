@@ -46,11 +46,11 @@ export function writePhotoUploadAllowOnCellular(allow) {
 
 /** @typedef {{ photoId: string, attempts: number }} QueuedPhoto */
 
-/** @type {((photoId: string, paths: { storageFullPath: string, storageThumbPath: string }) => void) | null} */
+/** @type {((photoId: string, paths: { storageFullPath: string, storageThumbPath: string }, usageDeltaBytes?: number) => void) | null} */
 let onUploaded = null
 
 /**
- * @param {(photoId: string, paths: { storageFullPath: string, storageThumbPath: string }) => void} fn
+ * @param {(photoId: string, paths: { storageFullPath: string, storageThumbPath: string }, usageDeltaBytes?: number) => void} fn
  */
 export function setPhotoStorageUploadCallbacks(fn) {
   onUploaded = typeof fn === 'function' ? fn : null
@@ -75,16 +75,20 @@ export function shouldDeferPhotoUploadOnNetwork() {
   const c =
     typeof navigator !== 'undefined' ? navigator.connection : null
   /**
-   * Uten Network Information API (mange iOS Safari / WKWebView): ikke gjett «Wi‑Fi».
+   * I vanlig nettleser (Mac/PC) finnes ofte ikke Network Information API.
+   * Da skal vi IKKE blokkere opplasting med «venter på Wi‑Fi» — bruk heller navigator.onLine.
    * (I Capacitor-app brukes @capacitor/network i stedet, se over.)
    */
-  if (!c || typeof c.type !== 'string') return true
+  if (!c || typeof c.type !== 'string') return false
   try {
     if (c.saveData === true) return true
   } catch {
     /* ignore */
   }
-  return c.type !== 'wifi' && c.type !== 'ethernet'
+  if (c.type === 'wifi' || c.type === 'ethernet') return false
+  if (c.type === 'cellular' || c.type === 'wimax') return true
+  /* unknown/other -> ikke blokker i nettleser */
+  return false
 }
 
 /** @returns {number} antall bilder som venter i opplastingskøen */
@@ -371,7 +375,9 @@ export function preparePhotosArrayForShareRpc(photos) {
       if (id) missing.push(id)
       continue
     }
-    const { dataUrl: _d, thumbDataUrl: _t, ...rest } = o
+    /* Behold thumbDataUrl i deling slik at mottaker alltid ser alle bilder i liste/kart
+       selv om fullfil hentes via storage-path senere. */
+    const { dataUrl: _d, ...rest } = o
     out.push(rest)
   }
   if (missing.length) {
@@ -538,10 +544,11 @@ export async function tryDrainPhotoUploadQueue(ctx = {}) {
         q = q.filter((x) => x.photoId !== photoId)
         writeQueue(q)
         try {
+          const usageDeltaBytes = fullBlob.size + thumbBlob.size
           onUploaded?.(photoId, {
             storageFullPath: fullPath,
             storageThumbPath: thumbPath,
-          })
+          }, usageDeltaBytes)
         } catch (e) {
           console.warn('photoStorageUpload onUploaded', e)
         }
