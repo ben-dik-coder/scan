@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CheckCircle2, ArrowRight } from "lucide-react";
+import { PlanCheckoutButton } from "@/components/billing/PlanCheckoutButton";
 import { Container } from "@/components/ui/Container";
 import { PLANS } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
@@ -93,20 +94,24 @@ export function PricingSection({ loggedIn = false }: Props) {
                   ))}
                 </ul>
 
-                <Link
-                  href={
-                    loggedIn
-                      ? `/app/abonnement?plan=${plan.id}`
-                      : `/registrer?plan=${plan.id}`
-                  }
-                  className={cn(
-                    "btn-primary mt-8 w-full",
-                    !plan.popular && "!bg-brand-navy"
-                  )}
-                >
-                  Velg {plan.name}
-                  <ArrowRight className="h-4 w-4 stroke-[2.5]" />
-                </Link>
+                {loggedIn ? (
+                  <PlanCheckoutButton
+                    planId={plan.id}
+                    planName={plan.name}
+                    popular={plan.popular}
+                  />
+                ) : (
+                  <Link
+                    href={`/registrer?plan=${plan.id}`}
+                    className={cn(
+                      "btn-primary mt-8 w-full",
+                      !plan.popular && "!bg-brand-navy"
+                    )}
+                  >
+                    Velg {plan.name}
+                    <ArrowRight className="h-4 w-4 stroke-[2.5]" />
+                  </Link>
+                )}
               </div>
             </div>
           ))}

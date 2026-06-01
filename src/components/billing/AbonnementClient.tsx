@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PlanCheckoutButton } from "@/components/billing/PlanCheckoutButton";
 import { PricingSection } from "@/components/marketing/PricingSection";
 import { PLANS, formatPlanName, isValidPlanId, type PlanId } from "@/lib/billing/plans";
 import type { Entitlements } from "@/lib/billing/entitlements";
@@ -36,7 +37,12 @@ export function AbonnementClient({ profile, entitlements }: Props) {
       router.replace("/app/abonnement");
     }
     const planParam = searchParams.get("plan");
-    if (planParam && isValidPlanId(planParam) && entitlements.plan !== planParam) {
+    if (
+      planParam &&
+      isValidPlanId(planParam) &&
+      !entitlements.hasAccess &&
+      loading === null
+    ) {
       void startCheckout(planParam);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,9 +178,32 @@ export function AbonnementClient({ profile, entitlements }: Props) {
         </div>
       ) : (
         <>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            Du trenger et aktivt abonnement for å bruke appen. Velg en pakke under (test-betaling
-            nå — ingen ekte kort).
+          <div className="glass space-y-4 p-5 sm:p-6">
+            <p className="text-sm font-medium text-white/90">
+              Du trenger en pakke for å bruke appen. Trykk på en knapp — test-modus aktiverer med
+              én gang (ingen kort).
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {PLANS.map((plan) => (
+                <div
+                  key={plan.id}
+                  className="flex flex-col rounded-xl border border-white/15 bg-white/10 p-4"
+                >
+                  <p className="font-display text-sm font-bold uppercase text-white">
+                    {plan.name}
+                  </p>
+                  <p className="mt-1 text-xs text-white/55">
+                    {plan.priceNok} kr/mnd
+                  </p>
+                  <PlanCheckoutButton
+                    planId={plan.id}
+                    planName={plan.name}
+                    popular={plan.popular}
+                    className="!mt-4 !py-2.5 !text-xs"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
           <PricingSection loggedIn />
         </>

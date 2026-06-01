@@ -1,12 +1,12 @@
 import type { PlanId } from "@/lib/billing/plans";
-import { isStripeConfigured } from "@/lib/billing/stripe";
+import { isStripeFullyConfigured } from "@/lib/billing/stripe";
 import { createServiceClient } from "@/lib/supabase/service";
 
-/** Test-betaling uten Stripe (lokalt / inntil Stripe er klar). */
+/** Test-betaling uten Stripe. Standard på når Stripe ikke er fullt satt opp. */
 export function isFakeBillingEnabled(): boolean {
-  if (process.env.BILLING_FAKE === "true") return true;
   if (process.env.BILLING_FAKE === "false") return false;
-  return process.env.NODE_ENV === "development" && !isStripeConfigured();
+  if (process.env.BILLING_FAKE === "true") return true;
+  return !isStripeFullyConfigured();
 }
 
 export async function activateFakeSubscription(userId: string, planId: PlanId) {
@@ -26,6 +26,11 @@ export async function activateFakeSubscription(userId: string, planId: PlanId) {
     .eq("id", userId);
 
   if (error) {
+    if (error.message.includes("column") || error.code === "42703") {
+      throw new Error(
+        "Database mangler abonnementsfelt. Kjør migrasjon 004_billing.sql i Supabase."
+      );
+    }
     throw new Error(error.message);
   }
 }

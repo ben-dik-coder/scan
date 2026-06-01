@@ -32,7 +32,20 @@ export async function POST(request: Request) {
   const base = appUrl();
 
   if (useFake) {
-    await activateFakeSubscription(user.id, planId);
+    try {
+      await activateFakeSubscription(user.id, planId);
+    } catch (err) {
+      console.error("[billing/checkout] fake activate failed:", err);
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : "Kunne ikke aktivere test-abonnement.",
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({
       url: `${base}/app/abonnement?success=1`,
       fake: true,
