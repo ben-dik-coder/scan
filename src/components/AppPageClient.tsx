@@ -405,7 +405,6 @@ export function AppPageClient(props: Props) {
         noWebsiteCount={noWebsiteCount}
         withWebsiteCount={withWebsiteCount}
         listFilter={listFilter}
-        totalWithEmail={withEmailCount}
         notScannedCount={notScannedCount}
         onRescan={rescan}
         scanResults={websiteScans}

@@ -19,7 +19,6 @@ type Props = {
   noWebsiteCount: number;
   withWebsiteCount: number;
   listFilter: ListFilter;
-  totalWithEmail: number;
   notScannedCount: number;
   onRescan: () => void;
   scanResults: Map<string, WebsiteScanResult>;
@@ -38,7 +37,6 @@ export function WebsiteScanStatus({
   noWebsiteCount,
   withWebsiteCount,
   listFilter,
-  totalWithEmail,
   notScannedCount,
   onRescan,
 }: Props) {
