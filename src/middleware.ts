@@ -6,10 +6,20 @@ function supabaseConfigured() {
   return Boolean(url && key && url.startsWith("http"));
 }
 
-export async function middleware(request: NextRequest) {
-  const demo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+function isProtectedPath(pathname: string) {
+  return pathname.startsWith("/app") || pathname.startsWith("/admin");
+}
 
-  if (demo || !supabaseConfigured()) {
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  if (!supabaseConfigured()) {
+    if (isProtectedPath(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/innlogging";
+      url.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next();
   }
 
@@ -18,6 +28,12 @@ export async function middleware(request: NextRequest) {
     return await updateSession(request);
   } catch (err) {
     console.error("[middleware] Supabase session failed:", err);
+    if (isProtectedPath(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/innlogging";
+      url.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next();
   }
 }

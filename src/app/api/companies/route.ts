@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
+import { getEntitlements } from "@/lib/billing/entitlements";
+import { applyCompanyContactLimit } from "@/lib/billing/usage";
 import { fetchCompaniesFromBrreg } from "@/lib/brreg/fetch-companies";
-import { isBrregLive } from "@/lib/demo/config";
+import { isBrregLive, isDemoMode } from "@/lib/demo/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -11,6 +14,11 @@ export async function GET(request: NextRequest) {
       { error: "Live Brreg er av. Sett NEXT_PUBLIC_BRREG_LIVE=true" },
       { status: 403 }
     );
+  }
+
+  const user = await getSessionUser();
+  if (!user && !isDemoMode()) {
+    return NextResponse.json({ error: "Du må være innlogget." }, { status: 401 });
   }
 
   const { searchParams } = request.nextUrl;
@@ -37,11 +45,47 @@ export async function GET(request: NextRequest) {
       industryGroup: industryGroup || undefined,
     });
 
+    let companies = result.companies;
+    let contactUsage:
+      | {
+          used: number;
+          limit: number;
+          remaining: number;
+          limitReached: boolean;
+          newlyAdded: number;
+        }
+      | undefined;
+
+    if (user && !isDemoMode()) {
+      const entitlements = await getEntitlements(user.id);
+      if (!entitlements.hasAccess) {
+        return NextResponse.json(
+          { error: "Aktivt abonnement kreves. Gå til Abonnement." },
+          { status: 403 }
+        );
+      }
+
+      const limited = await applyCompanyContactLimit(
+        user.id,
+        companies,
+        entitlements.maxCompaniesWithContactPerMonth
+      );
+      companies = limited.companies;
+      contactUsage = limited.usage;
+    }
+
+    const withEmail = companies.filter((c) => c.has_email).length;
+
     return NextResponse.json({
-      ...result,
+      companies,
+      total: companies.length,
+      withEmail,
+      brregTotal: result.brregTotal,
+      truncated: result.truncated,
       source: "brreg",
       allTime: days === 0,
       fetchedAt: new Date().toISOString(),
+      contactUsage,
     });
   } catch (err) {
     console.error("[api/companies]", err);

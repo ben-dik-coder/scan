@@ -2,16 +2,15 @@ import Link from "next/link";
 import {
   ArrowRight,
   Building2,
-  CheckCircle2,
   Filter,
   Globe,
   Mail,
   MapPin,
   MousePointerClick,
   Send,
-  Zap,
 } from "lucide-react";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
+import { PricingSection } from "@/components/marketing/PricingSection";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Container } from "@/components/ui/Container";
@@ -59,7 +58,7 @@ const FEATURES = [
 const TRUST = [
   "Brønnøysundregistrene",
   "For webdesignere",
-  "Send fra din mail",
+  "Pro: send fra din mail",
   "Velg 20 på ett klikk",
   "Norsk regelverk",
 ];
@@ -152,9 +151,6 @@ export default function HomePage() {
                 key={title}
                 className={`feature-row ${i % 2 === 1 ? "md:flex-row-reverse" : ""}`}
               >
-                <span className="absolute right-4 top-4 font-display text-5xl font-black text-brand-gold/10 sm:right-6 sm:top-6 md:text-7xl">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
                 <div
                   className={`relative flex shrink-0 items-center justify-center rounded-lg bg-brand-navy ${
                     featured ? "h-[72px] w-[72px]" : "h-14 w-14"
@@ -202,57 +198,15 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12 text-center sm:mt-16">
-            <Link href="/app" className="btn-primary">
-              Prøv med demo-firma
+            <Link href="/innlogging" className="btn-primary">
+              Logg inn og kom i gang
               <ArrowRight className="h-4 w-4 stroke-[2.5]" />
             </Link>
           </div>
         </Container>
       </section>
 
-      <section id="pris" className="py-16 sm:py-24 md:py-32">
-        <Container wide>
-          <div className="premium-card mx-auto max-w-lg">
-            <div className="relative overflow-hidden bg-brand-navy px-6 py-10 text-center sm:px-10 sm:py-12">
-              <div className="pointer-events-none absolute inset-0 bg-gold-sweep opacity-50" />
-              <Zap className="relative mx-auto h-8 w-8 text-brand-gold" />
-              <h2 className="type-h3 relative mt-5 text-white">Enkel pris</h2>
-              <p className="relative mt-2 font-sans text-sm text-white/50">
-                Brønnøysund-data er gratis — du betaler for verktøyet
-              </p>
-              <p className="relative mt-6 font-display text-6xl font-black leading-none text-brand-goldLight sm:mt-8 sm:text-7xl">
-                990
-              </p>
-              <p className="relative mt-1 font-display text-sm font-bold uppercase tracking-[0.12em] text-white/40">
-                kr / måned
-              </p>
-            </div>
-
-            <div className="px-6 py-8 sm:px-10 sm:py-10">
-              <ul className="space-y-3.5">
-                {[
-                  "Skann nye firma i ditt område",
-                  "Velg og send til 20–100 på én gang",
-                  "Send fra din egen e-postkonto",
-                  "Maler for nettside-tilbud",
-                ].map((item) => (
-                  <li
-                    key={item}
-                    className="flex items-center gap-3 font-sans text-sm font-medium text-slate-600"
-                  >
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-gold" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/app" className="btn-primary mt-10 w-full">
-                Start gratis demo
-                <ArrowRight className="h-4 w-4 stroke-[2.5]" />
-              </Link>
-            </div>
-          </div>
-        </Container>
-      </section>
+      <PricingSection />
 
       <section className="border-t border-slate-100 bg-[#f8f9fb] py-16">
         <Container wide>

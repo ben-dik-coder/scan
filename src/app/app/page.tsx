@@ -125,6 +125,12 @@ function FirmaPageBrreg() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [brregTotal, setBrregTotal] = useState<number | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [contactUsage, setContactUsage] = useState<{
+    used: number;
+    limit: number;
+    remaining: number;
+    limitReached: boolean;
+  } | null>(null);
   const [slowLoad, setSlowLoad] = useState(false);
   const loadGenRef = useRef(0);
 
@@ -152,6 +158,7 @@ function FirmaPageBrreg() {
       setFetchedAt(data.fetchedAt ?? null);
       setBrregTotal(data.brregTotal ?? null);
       setTruncated(Boolean(data.truncated));
+      setContactUsage(data.contactUsage ?? null);
     } catch (err) {
       if (gen !== loadGenRef.current) return;
       if (err instanceof Error && err.name === "AbortError") {
@@ -166,6 +173,7 @@ function FirmaPageBrreg() {
       setWithEmail(0);
       setBrregTotal(null);
       setTruncated(false);
+      setContactUsage(null);
     } finally {
       clearTimeout(timeout);
       if (gen === loadGenRef.current) setLoading(false);
@@ -287,6 +295,29 @@ function FirmaPageBrreg() {
         </button>
       </div>
 
+      {contactUsage && (
+        <p
+          className={`app-card px-4 py-3 text-center text-xs ${
+            contactUsage.limitReached ? "text-amber-800" : "text-slate-600"
+          }`}
+        >
+          {contactUsage.used} av {contactUsage.limit} bedrifter med tlf/e-post brukt denne
+          måneden
+          {contactUsage.limitReached ? (
+            <>
+              {" "}
+              — grensen er nådd.{" "}
+              <a href="/app/abonnement" className="font-semibold underline">
+                Oppgrader til Pro
+              </a>{" "}
+              for flere.
+            </>
+          ) : (
+            <> ({contactUsage.remaining} igjen)</>
+          )}
+        </p>
+      )}
+
       {truncated && brregTotal != null && (
         <p className="app-card px-4 py-3 text-center text-xs text-amber-800">
           Viser {total.toLocaleString("nb-NO")} av {brregTotal.toLocaleString("nb-NO")} i
@@ -319,7 +350,7 @@ function FirmaPageInner() {
 
 export default function FirmaPage() {
   return (
-    <Suspense fallback={<p className="text-slate-500">Laster firma…</p>}>
+    <Suspense fallback={<p className="text-white/60">Laster firma…</p>}>
       <FirmaPageInner />
     </Suspense>
   );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Container } from "@/components/ui/Container";
+import { SiteLogo } from "@/components/layout/SiteLogo";
 import { site } from "@/lib/site";
 
 export function SiteFooter() {
@@ -10,28 +11,16 @@ export function SiteFooter() {
 
         <div className="flex flex-col gap-12 md:flex-row md:justify-between">
           <div>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-brand-gold font-display text-base font-black text-brand-navy">
-                N
-              </span>
-              <span className="font-display text-2xl font-black uppercase tracking-wide">
-                {site.name}
-              </span>
-            </div>
+            <SiteLogo className="h-10 w-auto sm:h-11" />
             <p className="mt-4 max-w-xs font-sans text-sm leading-relaxed text-white/40">
               {site.tagline}
             </p>
           </div>
 
-          <div className="flex gap-16">
+          <div className="flex flex-wrap gap-16">
             <div>
               <p className="type-eyebrow !text-white/25">Produkt</p>
               <ul className="mt-5 space-y-3 font-sans text-sm text-white/50">
-                <li>
-                  <Link href="/app/oversikt" className="transition hover:text-brand-goldLight">
-                    Prøv demo
-                  </Link>
-                </li>
                 <li>
                   <Link href="/innlogging" className="transition hover:text-brand-goldLight">
                     Logg inn
@@ -45,11 +34,22 @@ export function SiteFooter() {
               </ul>
             </div>
 
-            <div className="max-w-[200px]">
+            <div>
               <p className="type-eyebrow !text-white/25">Juridisk</p>
-              <p className="mt-5 font-sans text-xs leading-relaxed text-white/35">
-                Generelle bedriftsadresser er OK uten samtykke. Personlige adresser krever
-                samtykke.
+              <ul className="mt-5 space-y-3 font-sans text-sm text-white/50">
+                <li>
+                  <Link href="/personvern" className="transition hover:text-brand-goldLight">
+                    Personvern
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/vilkar" className="transition hover:text-brand-goldLight">
+                    Vilkår for bruk
+                  </Link>
+                </li>
+              </ul>
+              <p className="mt-5 max-w-[220px] font-sans text-xs leading-relaxed text-white/35">
+                Du er selv ansvarlig for lovlig markedsføring. Vi er en teknisk plattform.
               </p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
 import { enrollInSequence } from "@/lib/sales/sequences";
 
 export async function POST(request: Request) {
@@ -13,6 +14,12 @@ export async function POST(request: Request) {
     orgnrs?: string[];
   };
 
+  const entitlements = await getEntitlements(user.id);
+  const featureError = requireFeature(entitlements, "sequences");
+  if (featureError) {
+    return NextResponse.json({ error: featureError }, { status: 403 });
+  }
+
   if (!sequenceId || !orgnrs?.length) {
     return NextResponse.json(
       { error: "Sekvens og minst ett firma er påkrevd" },
@@ -20,8 +27,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (orgnrs.length > 100) {
-    return NextResponse.json({ error: "Maks 100 firma" }, { status: 400 });
+  if (orgnrs.length > entitlements.maxRecipientsPerSend) {
+    return NextResponse.json(
+      { error: `Maks ${entitlements.maxRecipientsPerSend} firma per gang på din pakke` },
+      { status: 400 }
+    );
   }
 
   try {

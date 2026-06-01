@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { site } from "@/lib/site";
+import { SiteLogo } from "@/components/layout/SiteLogo";
 import { cn } from "@/lib/utils";
 import { isBrregLive, isDemoMode } from "@/lib/demo/config";
 import {
   Building2,
+  CreditCard,
   GitBranch,
   LayoutDashboard,
   LogOut,
@@ -28,6 +29,8 @@ const NAV = [
   { href: "/app/maler", label: "Maler", icon: Mail, mobileTab: true },
   { href: "/app/sekvenser", label: "Sekvenser", icon: Workflow, mobileTab: false },
   { href: "/app/kampanjer", label: "Kampanjer", icon: Send, mobileTab: false },
+  { href: "/app/innstillinger", label: "E-post", icon: Mail, mobileTab: false },
+  { href: "/app/abonnement", label: "Abonnement", icon: CreditCard, mobileTab: false },
 ];
 
 const MOBILE_TABS = NAV.filter((n) => n.mobileTab);
@@ -46,10 +49,6 @@ export function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   async function logout() {
-    if (demo) {
-      router.push("/");
-      return;
-    }
     const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -70,23 +69,16 @@ export function AppShell({
       <div className="px-4 py-6">
         <Link
           href="/app/oversikt"
-          className="group flex items-center gap-3"
+          className="group block transition hover:opacity-90"
           onClick={() => setDrawerOpen(false)}
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-goldLight to-brand-gold font-display text-sm font-black text-brand-navy shadow-md transition group-hover:shadow-lg">
-            N
-          </span>
-          <div className="min-w-0">
-            <span className="block truncate font-display text-base font-bold text-slate-900">
-              {site.name}
-            </span>
-            {demo && (
-              <p className="flex items-center gap-1 text-[10px] font-semibold text-brand-gold">
-                <Sparkles className="h-3 w-3" />
-                Demo
-              </p>
-            )}
-          </div>
+          <SiteLogo className="h-9 w-auto max-w-full" />
+          {demo && (
+            <p className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-brand-gold">
+              <Sparkles className="h-3 w-3" />
+              Demo
+            </p>
+          )}
         </Link>
       </div>
 
@@ -114,7 +106,7 @@ export function AppShell({
         )}
       </nav>
 
-      <div className="border-t border-white/50 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <button type="button" onClick={logout} className="glass-nav-link w-full">
           <LogOut className="h-4 w-4" />
           Logg ut
@@ -162,7 +154,7 @@ export function AppShell({
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
-              className="absolute right-3 top-3 z-10 rounded-lg p-2 text-slate-500 hover:bg-white/60"
+              className="absolute right-3 top-3 z-10 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white"
               aria-label="Lukk meny"
             >
               <X className="h-5 w-5" />
@@ -178,20 +170,14 @@ export function AppShell({
           (demo || brregLive) && "pt-8 sm:pt-9"
         )}
       >
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/40 bg-white/40 px-4 backdrop-blur-xl lg:hidden">
-          <Link
-            href="/app/oversikt"
-            className="flex items-center gap-2 font-display text-base font-bold text-slate-900"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gold text-xs font-black text-brand-navy">
-              N
-            </span>
-            {site.name}
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/15 bg-brand-navy/35 px-4 backdrop-blur-xl lg:hidden">
+          <Link href="/app/oversikt" className="flex items-center">
+            <SiteLogo className="h-8 w-auto" />
           </Link>
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="rounded-xl border border-white/60 bg-white/50 p-2 text-slate-600 backdrop-blur-md"
+            className="rounded-xl border border-white/25 bg-white/15 p-2 text-white/80 backdrop-blur-md"
             aria-label="Meny"
           >
             <Menu className="h-5 w-5" />
@@ -204,7 +190,7 @@ export function AppShell({
           </div>
         </main>
 
-        <nav className="fixed inset-x-3 bottom-3 z-40 rounded-2xl border border-white/60 bg-white/55 shadow-lg backdrop-blur-2xl lg:hidden">
+        <nav className="fixed inset-x-3 bottom-3 z-40 rounded-2xl border border-white/25 bg-brand-navy/50 shadow-lg backdrop-blur-2xl lg:hidden">
           <div className="flex items-stretch pb-[env(safe-area-inset-bottom)]">
             {MOBILE_TABS.map(({ href, label, icon: Icon }) => (
               <Link
@@ -212,13 +198,13 @@ export function AppShell({
                 href={href}
                 className={cn(
                   "flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 transition",
-                  isActive(href) ? "text-brand-navy" : "text-slate-400"
+                  isActive(href) ? "text-white" : "text-white/50"
                 )}
               >
                 <span
                   className={cn(
                     "flex h-8 w-8 items-center justify-center rounded-xl transition",
-                    isActive(href) && "bg-white/80 shadow-sm"
+                    isActive(href) && "bg-white/20 shadow-sm"
                   )}
                 >
                   <Icon
@@ -234,13 +220,13 @@ export function AppShell({
               onClick={() => setDrawerOpen(true)}
               className={cn(
                 "flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 transition",
-                drawerOpen ? "text-brand-navy" : "text-slate-400"
+                drawerOpen ? "text-white" : "text-white/50"
               )}
             >
               <span
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-xl",
-                  drawerOpen && "bg-white/80 shadow-sm"
+                  drawerOpen && "bg-white/20 shadow-sm"
                 )}
               >
                 <MoreHorizontal className="h-5 w-5" />

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
 import { upsertUserLead, logActivity } from "@/lib/sales/activities";
 import { pauseEnrollmentsOnReply } from "@/lib/sales/sequences";
 import type { LeadStatus } from "@/types/database";
@@ -11,6 +12,12 @@ export async function PATCH(
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const entitlements = await getEntitlements(user.id);
+  const featureError = requireFeature(entitlements, "pipeline");
+  if (featureError) {
+    return NextResponse.json({ error: featureError }, { status: 403 });
   }
 
   const { orgnr } = await params;

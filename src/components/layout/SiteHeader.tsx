@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Container } from "@/components/ui/Container";
-import { site } from "@/lib/site";
+import { SiteLogo } from "@/components/layout/SiteLogo";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -20,18 +20,19 @@ export function SiteHeader({ className }: { className?: string }) {
     <>
       <header
         className={cn(
-          "fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-brand-navy/95 backdrop-blur-md",
+          "fixed inset-x-0 top-0 z-50 overflow-visible border-b border-white/[0.06] bg-brand-navy/95 backdrop-blur-md",
           className
         )}
       >
-        <Container wide className="flex h-14 items-center justify-between sm:h-[72px]">
-          <Link href="/" className="group flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-gold font-display text-sm font-black text-brand-navy transition group-hover:brightness-110 sm:h-10 sm:w-10 sm:text-base">
-              N
-            </span>
-            <span className="truncate font-display text-lg font-black uppercase tracking-wide text-white sm:text-xl">
-              {site.name}
-            </span>
+        <Container wide className="flex h-14 items-center justify-between overflow-visible sm:h-[72px]">
+          <Link
+            href="/"
+            className="relative z-10 flex shrink-0 items-center transition hover:opacity-90"
+          >
+            <SiteLogo
+              priority
+              className="h-[4.5rem] w-auto origin-left sm:h-[7.25rem]"
+            />
           </Link>
 
           <nav className="hidden items-center gap-8 lg:gap-10 md:flex">
@@ -48,16 +49,16 @@ export function SiteHeader({ className }: { className?: string }) {
 
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
-              href="/innlogging"
+              href="/registrer"
               className="hidden font-display text-xs font-bold uppercase tracking-athletic text-white/50 transition hover:text-white md:inline"
             >
-              Logg inn
+              Register
             </Link>
             <Link
-              href="/app/oversikt"
+              href="/innlogging"
               className="btn-primary !px-4 !py-2.5 !text-[10px] sm:!px-5 sm:!py-3 sm:!text-xs"
             >
-              Demo
+              Logg inn
             </Link>
             <button
               type="button"
@@ -108,18 +109,18 @@ export function SiteHeader({ className }: { className?: string }) {
 
             <div className="space-y-2 border-t border-white/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <Link
-                href="/innlogging"
+                href="/registrer"
                 onClick={() => setOpen(false)}
                 className="block rounded-md border border-white/20 px-4 py-3.5 text-center font-display text-xs font-bold uppercase tracking-athletic text-white"
               >
-                Logg inn
+                Register
               </Link>
               <Link
-                href="/app/oversikt"
+                href="/innlogging"
                 onClick={() => setOpen(false)}
                 className="btn-primary w-full"
               >
-                Prøv demo
+                Logg inn
               </Link>
             </div>
           </div>

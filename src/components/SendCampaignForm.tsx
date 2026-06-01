@@ -3,10 +3,13 @@
 import { useState } from "react";
 import type { Company, EmailTemplate } from "@/types/database";
 import { isPersonalEmail } from "@/lib/brreg/map-company";
+import { EmailConnect, useConnectedEmail } from "@/components/EmailConnect";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { cn } from "@/lib/utils";
 import { Mail, Send } from "lucide-react";
+import Link from "next/link";
+import { legal } from "@/lib/legal";
 
 type SequenceOption = { id: string; name: string; steps: unknown[] };
 
@@ -46,13 +49,14 @@ export function SendCampaignForm({
     templates.find((t) => t.is_default) ??
     templates[0];
 
-  const [senderEmail, setSenderEmail] = useState("deg@dittbyra.no");
+  const { email: connectedEmail, loading: emailLoading } = useConnectedEmail();
   const [subject, setSubject] = useState(
     websiteTemplate?.subject ?? DEFAULT_WEBSITE_PITCH.subject
   );
   const [body, setBody] = useState(websiteTemplate?.body ?? DEFAULT_WEBSITE_PITCH.body);
   const [selectedTemplateId, setSelectedTemplateId] = useState(websiteTemplate?.id ?? "");
   const [allowPersonal, setAllowPersonal] = useState(false);
+  const [legalConfirm, setLegalConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +83,10 @@ export function SendCampaignForm({
       setError("Du har valgt personlige e-postadresser. Kryss av for å tillate, eller fjern dem.");
       return;
     }
+    if (!legalConfirm) {
+      setError("Bekreft at sendingen er lovlig før du sender.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -86,12 +94,42 @@ export function SendCampaignForm({
 
     try {
       const orgnrs = withEmail.map((c) => c.orgnr);
-      demo.sendCampaignDemo(orgnrs, subject);
+
+      if (isDemoMode()) {
+        demo.sendCampaignDemo(orgnrs, subject);
+        setResult(`Demo: ${orgnrs.length} e-poster «sendt» (øvelse)`);
+        onSent();
+        return;
+      }
+
+      if (!connectedEmail) {
+        setError("Koble Gmail eller Outlook før du sender.");
+        return;
+      }
+
+      const res = await fetch("/api/campaigns/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject,
+          body,
+          orgnrs,
+          allowPersonal,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Sending feilet");
+      }
+
+      const from = data.fromEmail ?? connectedEmail;
       setResult(
-        isDemoMode()
-          ? `Demo: ${orgnrs.length} e-poster «sendt» fra ${senderEmail}`
-          : `Sendt til ${orgnrs.length} firma fra ${senderEmail}`
+        `Sendt ${data.sent} av ${orgnrs.length} fra ${from}` +
+          (data.failed > 0 ? ` (${data.failed} feilet)` : "")
       );
+      if (data.errors?.length) {
+        setError(data.errors.slice(0, 3).join(" · "));
+      }
       onSent();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ukjent feil");
@@ -169,36 +207,23 @@ export function SendCampaignForm({
         </div>
       </div>
 
-      <div
-        className={
-          light
-            ? "rounded-xl border border-amber-100 bg-amber-50/80 p-4"
-            : "rounded-lg border border-brand-gold/25 bg-brand-gold/5 p-4"
-        }
-      >
-        <label className="block text-sm">
-          <span className={light ? "scan-label" : "font-display text-[10px] font-bold uppercase tracking-[0.12em] text-brand-gold"}>
-            Sendes fra din e-post
-          </span>
-          <input
-            type="email"
-            value={senderEmail}
-            onChange={(e) => setSenderEmail(e.target.value)}
-            placeholder="deg@dittbyra.no"
-            className={light ? "scan-input mt-2" : "input-dark mt-2 py-2.5 text-sm"}
-          />
-        </label>
-        {isDemoMode() ? (
-          <p className={light ? "mt-2 text-xs text-slate-500" : "mt-2 font-sans text-xs text-white/45"}>
-            Demo: Gmail/Outlook kobles på når backend er klar. Da sendes mailen fra kontoen din — ikke
-            fra oss.
-          </p>
-        ) : (
-          <p className={light ? "mt-2 text-xs text-slate-500" : "mt-2 font-sans text-xs text-white/45"}>
-            Koble til Gmail eller Outlook i innstillinger for å sende fra din egen konto.
-          </p>
-        )}
-      </div>
+      <EmailConnect light={light} compact />
+
+      {!isDemoMode() && !emailLoading && !connectedEmail && (
+        <p className={light ? "text-xs text-amber-800" : "text-xs text-amber-200/90"}>
+          Du må{" "}
+          <Link href="/app/innstillinger" className="font-semibold underline">
+            koble e-post
+          </Link>{" "}
+          før du kan sende.
+        </p>
+      )}
+
+      {!isDemoMode() && connectedEmail && (
+        <p className={light ? "text-xs text-slate-500" : "text-xs text-white/45"}>
+          Sendes fra <strong>{connectedEmail}</strong>
+        </p>
+      )}
 
       {templates.length > 0 && (
         <label className="block text-sm">
@@ -262,6 +287,29 @@ export function SendCampaignForm({
         </label>
       )}
 
+      <label
+        className={
+          light
+            ? "flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600"
+            : "flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm text-white/55"
+        }
+      >
+        <input
+          type="checkbox"
+          checked={legalConfirm}
+          onChange={(e) => setLegalConfirm(e.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          Jeg bekrefter at denne e-posten er lovlig markedsføring, at jeg har grunnlag for å
+          kontakte mottakerne, og at jeg følger{" "}
+          <Link href="/vilkar" target="_blank" className="font-semibold underline">
+            vilkårene
+          </Link>
+          . {legal.productName} er ikke ansvarlig for innhold eller misbruk jeg sender.
+        </span>
+      </label>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
       {result && (
         <p className={light ? "text-sm text-emerald-600" : "text-sm text-brand-gold"}>{result}</p>
@@ -269,12 +317,19 @@ export function SendCampaignForm({
 
       <button
         type="submit"
-        disabled={loading || withEmail.length === 0}
+        disabled={
+          loading ||
+          withEmail.length === 0 ||
+          !legalConfirm ||
+          (!isDemoMode() && !connectedEmail)
+        }
         className="btn-primary w-full disabled:opacity-50"
       >
         {loading
           ? "Sender…"
-          : `Send til ${withEmail.length} firma fra ${senderEmail.split("@")[0]}@…`}
+          : connectedEmail
+            ? `Send til ${withEmail.length} firma fra ${connectedEmail.split("@")[0]}@…`
+            : `Koble e-post for å sende`}
       </button>
 
       <button

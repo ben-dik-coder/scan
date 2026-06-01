@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { SiteLogo } from "@/components/layout/SiteLogo";
 import { site } from "@/lib/site";
-import { isDemoMode } from "@/lib/demo/config";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
+import { isValidPlanId } from "@/lib/billing/plans";
 
 function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
@@ -16,30 +17,42 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   const [companyName, setCompanyName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === "register" && !acceptedTerms) {
+      setError("Du må godta vilkårene og personvernerklæringen for å registrere deg.");
+      return;
+    }
     setLoading(true);
     setError(null);
 
-    const redirect = searchParams.get("redirect") ?? "/app/oversikt";
-
-    if (isDemoMode()) {
-      router.push(redirect);
-      return;
-    }
+    const planParam = searchParams.get("plan");
+    const redirectParam = searchParams.get("redirect");
+    const redirect =
+      planParam && isValidPlanId(planParam)
+        ? `/app/abonnement?plan=${planParam}`
+        : redirectParam ?? "/app/oversikt";
 
     try {
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
 
       if (mode === "register") {
+        const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirect)}`;
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { company_name: companyName || null } },
+          options: {
+            data: { company_name: companyName || null },
+            emailRedirectTo,
+          },
         });
         if (signUpError) throw signUpError;
+        router.push("/innlogging?registered=1");
+        router.refresh();
+        return;
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -59,11 +72,8 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
     <div className="flex min-h-screen bg-gradient-to-br from-brand-navy via-brand-navyLight to-brand-navy">
       <div className="relative hidden w-1/2 overflow-hidden bg-brand-navy lg:flex lg:flex-col lg:justify-between">
         <div className="relative p-10">
-          <Link href="/" className="group flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand-gold font-display text-sm font-black text-brand-navy">
-              N
-            </span>
-            <span className="font-display text-lg font-black uppercase tracking-wide text-white">{site.name}</span>
+          <Link href="/" className="group inline-block transition hover:opacity-90">
+            <SiteLogo className="h-9 w-auto sm:h-10" />
           </Link>
         </div>
         <div className="relative px-10 pb-16">
@@ -90,15 +100,9 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
           ← Tilbake til {site.name}
         </Link>
 
-        {isDemoMode() && (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-brand-gold/25 bg-brand-gold/10 p-4 text-sm text-brand-gold">
-            <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p className="font-bold">Demo-modus</p>
-              <p className="mt-1 text-brand-gold/80">
-                Backend er ikke koblet til ennå. Klikk under for å gå rett inn i demo.
-              </p>
-            </div>
+        {searchParams.get("registered") === "1" && mode === "login" && (
+          <div className="mb-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+            Konto opprettet! Sjekk e-posten for bekreftelse (hvis påkrevd), deretter logg inn her.
           </div>
         )}
 
@@ -130,7 +134,7 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="deg@firma.no"
-              required={!isDemoMode()}
+              required
               className="input-dark mt-1.5"
             />
           </label>
@@ -140,27 +144,44 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required={!isDemoMode()}
+              required
               minLength={6}
               placeholder="••••••••"
               className="input-dark mt-1.5"
             />
           </label>
 
+          {mode === "register" && (
+            <label className="flex items-start gap-3 text-sm text-white/60">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1"
+                required
+              />
+              <span>
+                Jeg har lest og godtar{" "}
+                <Link href="/vilkar" target="_blank" className="text-brand-gold hover:underline">
+                  vilkårene
+                </Link>{" "}
+                og{" "}
+                <Link href="/personvern" target="_blank" className="text-brand-gold hover:underline">
+                  personvernerklæringen
+                </Link>
+                . Jeg forstår at jeg selv er ansvarlig for lovlig e-post jeg sender.
+              </span>
+            </label>
+          )}
+
           {error && <p className="text-sm text-red-400">{error}</p>}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (mode === "register" && !acceptedTerms)}
             className="btn-primary w-full py-3.5 disabled:opacity-50"
           >
-            {loading
-              ? "Vent…"
-              : isDemoMode()
-                ? "Gå til demo"
-                : mode === "login"
-                  ? "Logg inn"
-                  : "Registrer"}
+            {loading ? "Vent…" : mode === "login" ? "Logg inn" : "Registrer"}
             <ArrowRight className="h-4 w-4" />
           </button>
         </form>

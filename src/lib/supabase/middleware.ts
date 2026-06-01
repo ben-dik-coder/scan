@@ -1,5 +1,26 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/plans";
+
+function isDemoMode() {
+  return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+}
+
+function hasBillingAccess(profile: {
+  role: string;
+  plan: string | null;
+  subscription_status: string | null;
+}) {
+  if (profile.role === "admin") return true;
+  if (isDemoMode()) return true;
+  if (!profile.plan) return false;
+  return (
+    profile.subscription_status !== null &&
+    ACTIVE_SUBSCRIPTION_STATUSES.includes(
+      profile.subscription_status as (typeof ACTIVE_SUBSCRIPTION_STATUSES)[number]
+    )
+  );
+}
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -39,9 +60,33 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && (pathname === "/innlogging" || pathname === "/registrer")) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, plan, subscription_status")
+      .eq("id", user.id)
+      .single();
+
     const url = request.nextUrl.clone();
-    url.pathname = "/app/oversikt";
+    url.pathname =
+      profile && hasBillingAccess(profile)
+        ? "/app/oversikt"
+        : "/app/abonnement";
     return NextResponse.redirect(url);
+  }
+
+  if (user && pathname.startsWith("/app")) {
+    const isAbonnement = pathname === "/app/abonnement";
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, plan, subscription_status")
+      .eq("id", user.id)
+      .single();
+
+    if (profile && !isAbonnement && !hasBillingAccess(profile)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/app/abonnement";
+      return NextResponse.redirect(url);
+    }
   }
 
   if (user && pathname.startsWith("/admin")) {

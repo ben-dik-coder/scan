@@ -42,7 +42,8 @@ body {
 @layer components {
   /* ── Typografi (Gymshark-stil: condensed, uppercase, bold) ── */
   .type-hero {
-    @apply font-display text-[2.5rem] font-black uppercase leading-[0.92] tracking-[-0.04em] sm:text-6xl lg:text-[5.25rem] xl:text-[5.5rem];
+    @apply font-display text-[2.5rem] font-black uppercase leading-[1.08] tracking-[0.08em] sm:text-6xl lg:text-[5.25rem] xl:text-[5.5rem];
+    word-spacing: 0.14em;
   }
 
   .type-h2 {
@@ -54,7 +55,8 @@ body {
   }
 
   .type-eyebrow {
-    @apply font-display text-xs font-bold uppercase tracking-[0.12em] text-brand-gold;
+    @apply font-display text-xs font-bold uppercase tracking-[0.22em] text-brand-gold;
+    word-spacing: 0.2em;
   }
 
   .type-body {
@@ -159,23 +161,18 @@ body {
     @apply font-display text-2xl font-bold tracking-tight text-white sm:text-3xl;
   }
 
-  /* ── Lys app med glass ── */
+  /* ── App: samme blå som forsiden, litt lysere ── */
   .app-shell-bg {
-    @apply relative min-h-screen text-slate-800;
-    background: linear-gradient(145deg, #f8fafc 0%, #eef2f7 40%, #e8eef6 100%);
+    @apply relative min-h-screen text-white;
+    background: linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--brand-navy-light) 55%, #2d5a8a) 0%,
+      color-mix(in srgb, var(--brand-navy-light) 80%, #1e4068) 42%,
+      var(--brand-navy-light) 72%,
+      color-mix(in srgb, var(--brand-navy) 88%, #163a5c) 100%
+    );
   }
 
-  .app-shell-bg::before {
-    content: "";
-    pointer-events: none;
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    background:
-      radial-gradient(ellipse 55% 45% at 8% 12%, rgba(201, 162, 39, 0.12), transparent 55%),
-      radial-gradient(ellipse 45% 40% at 92% 8%, rgba(12, 31, 61, 0.06), transparent 50%),
-      radial-gradient(ellipse 50% 50% at 70% 90%, rgba(201, 162, 39, 0.08), transparent 55%);
-  }
 
   .glass {
     @apply rounded-2xl border border-white/70 bg-white/55 text-slate-900 shadow-sm backdrop-blur-xl;
@@ -189,20 +186,29 @@ body {
   }
 
   .glass-sidebar {
-    @apply border border-white/50 bg-white/45 backdrop-blur-2xl;
-    box-shadow: 4px 0 24px -8px rgba(12, 31, 61, 0.06);
+    @apply border border-white/10 backdrop-blur-2xl;
+    background: color-mix(in srgb, #1a2d45 72%, rgba(15, 25, 40, 0.92));
+    box-shadow: 4px 0 32px -8px rgba(0, 0, 0, 0.35);
   }
 
   .glass-nav-link {
-    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition;
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/75 transition;
+  }
+
+  .glass-nav-link svg {
+    @apply text-white/55;
   }
 
   .glass-nav-link:hover {
-    @apply bg-white/50 text-slate-900;
+    @apply bg-white/10 text-white;
+  }
+
+  .glass-nav-link:hover svg {
+    @apply text-white/80;
   }
 
   .glass-nav-link-active {
-    @apply bg-white/80 text-brand-navy shadow-sm ring-1 ring-white/80;
+    @apply bg-white/15 text-white shadow-sm ring-1 ring-white/20;
   }
 
   .glass-nav-link-active svg {
@@ -270,6 +276,38 @@ body {
 
   .feature-row:hover::after {
     @apply opacity-100;
+  }
+
+  .legal-prose {
+    @apply font-sans text-base leading-relaxed text-slate-700;
+  }
+
+  .legal-prose > p {
+    @apply mb-4;
+  }
+
+  .legal-prose h2 {
+    @apply mb-3 mt-10 font-display text-xl font-bold text-brand-navy first:mt-0;
+  }
+
+  .legal-prose h3 {
+    @apply mb-2 mt-6 text-lg font-semibold text-brand-navy;
+  }
+
+  .legal-prose ul {
+    @apply mb-4 list-disc space-y-2 pl-6;
+  }
+
+  .legal-prose li {
+    @apply text-slate-700;
+  }
+
+  .legal-prose a {
+    @apply font-medium text-brand-gold underline decoration-brand-gold/40 underline-offset-2 hover:text-brand-navy;
+  }
+
+  .legal-prose strong {
+    @apply font-semibold text-slate-900;
   }
 }
 

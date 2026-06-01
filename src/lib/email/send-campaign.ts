@@ -9,6 +9,10 @@ import {
 } from "./utils";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logActivity, upsertUserLead } from "@/lib/sales/activities";
+import { getPreferredMailAccount } from "@/lib/email/oauth/accounts";
+import { sendViaGmail } from "@/lib/email/oauth/google";
+import { sendViaMicrosoft } from "@/lib/email/oauth/microsoft";
+import type { MailProvider } from "@/lib/email/oauth/config";
 
 function getResend() {
   const key = process.env.RESEND_API_KEY;
@@ -18,11 +22,12 @@ function getResend() {
 
 export async function sendCampaign(
   userId: string,
-  input: SendCampaignInput
-): Promise<SendCampaignResult & { campaignId: string | null }> {
+  input: SendCampaignInput & { mailProvider?: MailProvider }
+): Promise<SendCampaignResult & { campaignId: string | null; fromEmail?: string }> {
   const supabase = createServiceClient();
   const resend = getResend();
   const from = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
+  const userMail = await getPreferredMailAccount(userId, input.mailProvider);
 
   const { data: unsubRows } = await supabase
     .from("email_unsubscribes")
@@ -96,69 +101,86 @@ export async function sendCampaign(
       .select("id")
       .single();
 
-    if (!resend) {
+    const renderedSubject = renderTemplate(input.subject, {
+      firmanavn: recipient.name,
+    });
+
+    if (!userMail && !resend) {
       failed += 1;
-      errors.push("RESEND_API_KEY mangler — e-post ble ikke sendt.");
+      const msg =
+        "Koble Gmail eller Outlook under Innstillinger, eller sett RESEND_API_KEY.";
+      errors.push(msg);
       if (recipientRow) {
         await supabase
           .from("email_campaign_recipients")
-          .update({
-            status: "failed",
-            error_message: "RESEND_API_KEY mangler",
-          })
+          .update({ status: "failed", error_message: msg })
           .eq("id", recipientRow.id);
       }
       continue;
     }
 
     try {
-      const { error } = await resend.emails.send({
-        from,
-        to: recipient.email,
-        subject: renderTemplate(input.subject, { firmanavn: recipient.name }),
-        html,
-      });
-
-      if (error) {
-        failed += 1;
-        errors.push(`${recipient.email}: ${error.message}`);
-        if (recipientRow) {
-          await supabase
-            .from("email_campaign_recipients")
-            .update({
-              status: "failed",
-              error_message: error.message,
-            })
-            .eq("id", recipientRow.id);
+      if (userMail) {
+        if (userMail.provider === "google") {
+          await sendViaGmail({
+            accessToken: userMail.accessToken,
+            fromEmail: userMail.email,
+            to: recipient.email,
+            subject: renderedSubject,
+            html,
+          });
+        } else {
+          await sendViaMicrosoft({
+            accessToken: userMail.accessToken,
+            to: recipient.email,
+            subject: renderedSubject,
+            html,
+          });
         }
-      } else {
-        sent += 1;
-        const now = new Date().toISOString();
-        if (recipientRow) {
-          await supabase
-            .from("email_campaign_recipients")
-            .update({
-              status: "sent",
-              sent_at: now,
-            })
-            .eq("id", recipientRow.id);
-        }
-        await upsertUserLead(userId, recipient.orgnr, {
-          status: "kontaktet",
-          last_contacted_at: now,
+      } else if (resend) {
+        const { error } = await resend.emails.send({
+          from,
+          to: recipient.email,
+          subject: renderedSubject,
+          html,
         });
-        await logActivity(
-          userId,
-          recipient.orgnr,
-          "email_sent",
-          `E-post sendt: ${input.subject}`,
-          { campaign_id: campaign.id }
-        );
+        if (error) {
+          throw new Error(error.message);
+        }
       }
+
+      sent += 1;
+      const now = new Date().toISOString();
+      if (recipientRow) {
+        await supabase
+          .from("email_campaign_recipients")
+          .update({
+            status: "sent",
+            sent_at: now,
+          })
+          .eq("id", recipientRow.id);
+      }
+      await upsertUserLead(userId, recipient.orgnr, {
+        status: "kontaktet",
+        last_contacted_at: now,
+      });
+      await logActivity(
+        userId,
+        recipient.orgnr,
+        "email_sent",
+        `E-post sendt: ${input.subject}`,
+        { campaign_id: campaign.id }
+      );
     } catch (err) {
       failed += 1;
       const msg = err instanceof Error ? err.message : "Ukjent feil";
       errors.push(`${recipient.email}: ${msg}`);
+      if (recipientRow) {
+        await supabase
+          .from("email_campaign_recipients")
+          .update({ status: "failed", error_message: msg })
+          .eq("id", recipientRow.id);
+      }
     }
 
     await sleep(100);
@@ -176,5 +198,6 @@ export async function sendCampaign(
     blocked,
     unsubscribed,
     errors,
+    fromEmail: userMail?.email,
   };
 }

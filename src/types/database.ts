@@ -1,9 +1,24 @@
 export type ProfileRole = "user" | "admin";
 
+export type PlanId = "start" | "pro" | "agency";
+
+export type SubscriptionStatus =
+  | "active"
+  | "trialing"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "unpaid";
+
 export type Profile = {
   id: string;
   role: ProfileRole;
   company_name: string | null;
+  plan: PlanId | null;
+  subscription_status: SubscriptionStatus | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  subscription_current_period_end: string | null;
   created_at: string;
   updated_at: string;
 };

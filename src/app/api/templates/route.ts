@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -34,6 +35,27 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient();
+  const entitlements = await getEntitlements(user.id);
+  const emailError = requireFeature(entitlements, "email");
+  if (emailError) {
+    return NextResponse.json({ error: emailError }, { status: 403 });
+  }
+
+  if (entitlements.maxTemplates !== null) {
+    const { count } = await supabase
+      .from("email_templates")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id);
+
+    if ((count ?? 0) >= entitlements.maxTemplates) {
+      return NextResponse.json(
+        {
+          error: `Start-pakken tillater maks ${entitlements.maxTemplates} maler. Oppgrader til Pro.`,
+        },
+        { status: 403 }
+      );
+    }
+  }
 
   if (is_default) {
     await supabase
