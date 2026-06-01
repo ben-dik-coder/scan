@@ -1,3 +1,4 @@
+# Scanix + NyLead (combined)
 node_modules/
 server/node_modules/
 dist/
@@ -5,7 +6,7 @@ dist/
 .env.*
 !.env.example
 !.env.production.example
-# Konfidensiell kontrakt til AI-kontekst (kopiér fra contract-context.example.txt)
+!.env.local.example
 server/contract-context.txt
 .DS_Store
 *.log
@@ -13,7 +14,7 @@ cert.pem
 key.pem
 *.backup.js
 
-# Capacitor - native build outputs
+# Capacitor
 ios/App/Pods/
 ios/App/App/public/
 ios/DerivedData/
@@ -26,3 +27,18 @@ android/local.properties
 android/.idea/
 ios/App/App.xcworkspace/xcuserdata/
 ios/App/App.xcodeproj/xcuserdata/
+
+# Next.js
+/.next/
+/out/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+/coverage
+/build
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vercel
+*.tsbuildinfo
+next-env.d.ts

@@ -1,12 +1,91 @@
+# nye-firma-plattform (NyLead + Scanix)
+
+Dette repoet inneholder **NyLead** (Next.js salgsplattform) og **Scanix** (GPS/kart PWA).
+
+---
+
+# NyLead — Nye firma-plattform
+
+# NyLead — Nye firma-plattform
+
+Finn nye registrerte bedrifter fra Brønnøysund, filtrer på område og e-post, og send tilbud til mange på én gang.
+
+## Frontend først (demo-modus)
+
+Appen kjører nå i **demo-modus** — ingen Supabase eller backend trengs.
+
+```bash
+cd nye-firma-plattform
+
+Åpne [http://localhost:3000](http://localhost:3000) og klikk **Prøv demo**.
+
+| Side | Hva du ser |
+|------|------------|
+| `/` | Markedsførings-forside |
+| `/app/oversikt` | Salgs-dashboard |
+| `/app` | Firma-liste med filter og send |
+| `/app/pipeline` | Kanban pipeline |
+| `/app/maler` | E-postmaler |
+| `/app/sekvenser` | Automatisk oppfølging |
+| `/app/kampanjer` | Sendt-historikk |
+| `/admin` | Sync-panel (simulert) |
+
+Demo-data: 12 norske firma i Narvik, Tromsø og Oslo.
+
+## Senere: koble på backend
+
+Når du er klar, sett `NEXT_PUBLIC_DEMO_MODE=false` og fyll inn Supabase-nøkler i `.env.local`.
+
+## Salgsverktøy
+
+Se [`docs/SALGSVERKTOY.md`](docs/SALGSVERKTOY.md) for research og funksjoner.
+
+| Side | Funksjon |
+|------|----------|
+| `/app/oversikt` | Dashboard med pipeline-tall |
+| `/app` | Finn firma, filtrer, send e-post |
+| `/app/pipeline` | Kanban — dra leads i salgsprosessen |
+| `/app/maler` | Lagre e-postmaler |
+| `/app/sekvenser` | Automatisk oppfølging (dag 0, 3, 7) |
+| `/app/kampanjer` | Historikk over sendte kampanjer |
+
+## Stack
+
+- Next.js 14 + TypeScript + Tailwind
+- Supabase (Auth + Postgres)
+- Brønnøysund Enhetsregisteret API (gratis)
+- Resend (e-post)
+
+## Viktig om e-post
+
+- Kun generelle adresser (post@, info@) uten samtykke
+- Personlige adresser blokkeres som standard
+- Hver e-post har avmeldingslenke
+
+## API-endepunkter
+
+| Metode | Sti | Beskrivelse |
+|--------|-----|-------------|
+| POST | `/api/sync/brreg` | Sync fra Brreg (admin eller cron) |
+| POST | `/api/campaigns/send` | Send kampanje til valgte orgnr |
+| POST | `/api/unsubscribe` | Avmeld e-post |
+
+Cron-sync (valgfritt):
+```bash
+curl -X POST https://dittdomene.no/api/sync/brreg \
+  -H "x-cron-secret: $CRON_SECRET"
+```
+
+---
+
+# Scanix (GPS + kart + logg)
+
 # Scanix (GPS + kart + logg)
 
 ## Kjøre lokalt på PC
 
 ```bash
 cd count-clicker
-npm install
-npm run dev
-```
 
 Åpne lenken Vite viser (vanligvis `https://localhost:5173`). Godkjenn sertifikatvarselet ved første besøk – det er forventet med lokal HTTPS.
 

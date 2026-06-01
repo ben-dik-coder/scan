@@ -1,0 +1,285 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-navy: #0c1f3d;
+  --brand-navy-light: #122a4a;
+  --brand-navy-dark: #081428;
+  --brand-gold: #c9a227;
+  --brand-gold-light: #e5c04a;
+  --shadow-card: 0 2px 8px rgba(12, 31, 61, 0.04), 0 24px 48px -12px rgba(12, 31, 61, 0.1);
+  --shadow-card-hover: 0 4px 12px rgba(12, 31, 61, 0.06), 0 32px 64px -16px rgba(12, 31, 61, 0.14);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 24px 48px -24px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 60px -12px rgba(201, 162, 39, 0.5);
+  --shadow-premium: 0 0 0 1px rgba(201, 162, 39, 0.15), 0 32px 64px -24px rgba(12, 31, 61, 0.2);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(201, 162, 39, 0.35);
+  color: #fff;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: 2px;
+}
+
+@layer components {
+  /* ── Typografi (Gymshark-stil: condensed, uppercase, bold) ── */
+  .type-hero {
+    @apply font-display text-[2.5rem] font-black uppercase leading-[0.92] tracking-[-0.04em] sm:text-6xl lg:text-[5.25rem] xl:text-[5.5rem];
+  }
+
+  .type-h2 {
+    @apply font-display text-3xl font-black uppercase leading-none tracking-tight sm:text-4xl lg:text-5xl;
+  }
+
+  .type-h3 {
+    @apply font-display text-xl font-bold uppercase tracking-wide sm:text-2xl;
+  }
+
+  .type-eyebrow {
+    @apply font-display text-xs font-bold uppercase tracking-[0.12em] text-brand-gold;
+  }
+
+  .type-body {
+    @apply font-sans text-base font-normal leading-relaxed text-slate-600;
+  }
+
+  .type-stat {
+    @apply font-display text-4xl font-black uppercase leading-none tracking-tight text-brand-goldLight sm:text-5xl;
+  }
+
+  .type-label {
+    @apply font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45;
+  }
+
+  /* ── Surfaces ── */
+  .surface-panel {
+    @apply rounded-xl border border-slate-200/80 bg-white;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+
+  .surface-panel:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: color-mix(in srgb, var(--brand-gold) 25%, #f1f5f9);
+  }
+
+  .surface-panel-dark {
+    @apply rounded-xl border border-white/[0.08];
+    background: linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--brand-navy-light) 85%, transparent),
+      color-mix(in srgb, var(--brand-navy-dark) 95%, transparent)
+    );
+    box-shadow: var(--shadow-panel);
+  }
+
+  .panel {
+    @apply surface-panel-dark overflow-hidden;
+    background-color: var(--brand-navy-dark);
+  }
+
+  .premium-card {
+    @apply overflow-hidden rounded-xl bg-white;
+    box-shadow: var(--shadow-premium);
+  }
+
+  .gold-divider {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(201, 162, 39, 0.7) 50%, transparent);
+  }
+
+  /* ── Knapper (athletic: skarp, uppercase, bold) ── */
+  .btn-primary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2.5 rounded-md px-6 py-3.5 font-display text-sm font-bold uppercase tracking-[0.12em] transition duration-200 hover:translate-y-[-1px] active:translate-y-0 active:scale-[0.99] sm:min-h-0 sm:px-8 sm:py-4;
+    background: linear-gradient(180deg, var(--brand-gold-light) 0%, var(--brand-gold) 100%);
+    color: var(--brand-navy);
+    box-shadow: 0 2px 8px rgba(12, 31, 61, 0.12);
+  }
+
+  .btn-secondary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2.5 rounded-md border-2 border-white/40 bg-transparent px-6 py-3.5 font-display text-sm font-bold uppercase tracking-[0.12em] text-white transition duration-200 hover:border-white hover:bg-white/10 sm:min-h-0 sm:px-8 sm:py-4;
+  }
+
+  .btn-secondary-light {
+    @apply inline-flex items-center justify-center gap-2.5 rounded-md border-2 border-brand-navy/20 px-8 py-4 font-display text-sm font-bold uppercase tracking-[0.12em] text-brand-navy transition duration-200 hover:border-brand-gold hover:bg-brand-gold/5;
+  }
+
+  /* Legacy aliases */
+  .heading-xl { @apply type-hero; }
+  .heading-lg { @apply type-h2; }
+  .section-eyebrow { @apply type-eyebrow; }
+  .label-caps { @apply type-eyebrow; }
+
+  .input-dark {
+    @apply w-full rounded-md border border-white/10 px-4 py-3.5 font-sans text-sm text-white transition focus:outline-none focus:ring-2;
+    background-color: color-mix(in srgb, var(--brand-navy-dark) 80%, transparent);
+  }
+
+  .input-dark::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .input-dark:focus {
+    border-color: color-mix(in srgb, var(--brand-gold) 50%, transparent);
+    --tw-ring-color: color-mix(in srgb, var(--brand-gold) 15%, transparent);
+  }
+
+  .hero-orb {
+    @apply pointer-events-none absolute rounded-full blur-3xl;
+  }
+
+  .feature-row {
+    @apply relative flex flex-col gap-5 overflow-hidden rounded-xl border border-slate-200/80 bg-white p-6 transition duration-300 sm:gap-6 sm:p-8 md:flex-row md:items-center md:p-10;
+    box-shadow: var(--shadow-card);
+  }
+
+  .page-header {
+    @apply flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:pb-6;
+  }
+
+  .page-header-title {
+    @apply font-display text-2xl font-bold tracking-tight text-white sm:text-3xl;
+  }
+
+  /* ── Lys app med glass ── */
+  .app-shell-bg {
+    @apply relative min-h-screen text-slate-800;
+    background: linear-gradient(145deg, #f8fafc 0%, #eef2f7 40%, #e8eef6 100%);
+  }
+
+  .app-shell-bg::before {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 55% 45% at 8% 12%, rgba(201, 162, 39, 0.12), transparent 55%),
+      radial-gradient(ellipse 45% 40% at 92% 8%, rgba(12, 31, 61, 0.06), transparent 50%),
+      radial-gradient(ellipse 50% 50% at 70% 90%, rgba(201, 162, 39, 0.08), transparent 55%);
+  }
+
+  .glass {
+    @apply rounded-2xl border border-white/70 bg-white/55 text-slate-900 shadow-sm backdrop-blur-xl;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 8px 32px -8px rgba(12, 31, 61, 0.08);
+  }
+
+  .glass-subtle {
+    @apply rounded-xl border border-white/60 bg-white/40 backdrop-blur-lg;
+  }
+
+  .glass-sidebar {
+    @apply border border-white/50 bg-white/45 backdrop-blur-2xl;
+    box-shadow: 4px 0 24px -8px rgba(12, 31, 61, 0.06);
+  }
+
+  .glass-nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition;
+  }
+
+  .glass-nav-link:hover {
+    @apply bg-white/50 text-slate-900;
+  }
+
+  .glass-nav-link-active {
+    @apply bg-white/80 text-brand-navy shadow-sm ring-1 ring-white/80;
+  }
+
+  .glass-nav-link-active svg {
+    @apply text-brand-gold;
+  }
+
+  .app-card {
+    @apply glass;
+  }
+
+  .scan-label {
+    @apply flex items-center gap-1.5 text-xs font-medium text-slate-500;
+  }
+
+  .scan-input {
+    @apply w-full rounded-xl border border-white/80 bg-white/70 px-3 py-2.5 text-sm text-slate-900 shadow-sm backdrop-blur-sm transition placeholder:text-slate-400 focus:border-brand-gold/50 focus:bg-white/90 focus:outline-none focus:ring-2 focus:ring-brand-gold/20;
+  }
+
+  .scan-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/50 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-md;
+  }
+
+  .scan-chip-active {
+    @apply border-brand-gold/35 bg-amber-50/80 text-brand-navy ring-1 ring-brand-gold/25;
+  }
+
+  .scan-tab {
+    @apply inline-flex items-center gap-1.5 rounded-xl border border-transparent px-3.5 py-2 text-sm font-medium text-slate-500 transition hover:border-white/60 hover:bg-white/40 hover:text-slate-800;
+  }
+
+  .scan-tab-active {
+    @apply border-white/70 bg-white/75 text-brand-navy shadow-sm backdrop-blur-md;
+  }
+
+  .scan-tab-active svg {
+    @apply text-brand-gold;
+  }
+
+  .scan-btn-ghost {
+    @apply inline-flex items-center gap-1.5 rounded-xl border border-white/70 bg-white/50 px-3 py-2 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-md transition hover:bg-white/80;
+  }
+
+  .scan-btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-xl bg-brand-navy px-3 py-2 text-xs font-medium text-white shadow-md transition hover:bg-brand-navy/90 hover:shadow-lg;
+  }
+
+  .mobile-scroll-hint {
+    @apply mb-2 font-sans text-[11px] font-medium text-white/35 md:hidden;
+  }
+
+  .feature-row:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: color-mix(in srgb, var(--brand-gold) 30%, #e2e8f0);
+  }
+
+  .feature-row::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+    background: linear-gradient(105deg, transparent 40%, rgba(201, 162, 39, 0.06) 50%, transparent 60%);
+  }
+
+  .feature-row:hover::after {
+    @apply opacity-100;
+  }
+}
+
+.app-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.app-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.app-scroll::-webkit-scrollbar-thumb {
+  background: rgba(12, 31, 61, 0.15);
+  border-radius: 4px;
+}
