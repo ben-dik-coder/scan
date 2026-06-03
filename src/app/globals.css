@@ -404,11 +404,25 @@ body {
 
   /* ── Skann markedet: Glass Kommand (03-glass-kommand) ── */
   /* Single fixed gradient on document — shell stays transparent (no stacked layers) */
-  html.app-glass-theme,
+  /* Fixed pseudo-element: background-attachment:fixed is broken on iOS/mobile Safari */
+  html.app-glass-theme {
+    min-height: 100%;
+    background-color: #1e3a5f;
+  }
+
+  html.app-glass-theme::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
+    pointer-events: none;
+  }
+
   body.app-glass-theme {
     min-height: 100%;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
-    background-attachment: fixed;
+    min-height: 100dvh;
+    background: transparent !important;
     color: #f1f5f9;
   }
 
