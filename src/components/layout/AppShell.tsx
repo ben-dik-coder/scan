@@ -208,7 +208,7 @@ export function AppShell({
           </button>
         </header>
 
-        <main className="app-scroll relative min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <main className="app-scroll relative min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-transparent pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           <div
             className={cn(
               "relative z-10 w-full min-w-0 max-w-none",

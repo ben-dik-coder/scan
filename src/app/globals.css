@@ -403,17 +403,26 @@ body {
   }
 
   /* ── Skann markedet: Glass Kommand (03-glass-kommand) ── */
+  /* Fallback only on document — gradient lives on fixed app shell */
   html.app-glass-theme,
   body.app-glass-theme {
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
-    background-attachment: fixed;
+    min-height: 100%;
+    background-color: #0f172a;
     color: #f1f5f9;
   }
 
-  .scan-glass-page-bg,
   .app-shell-bg.scan-glass-page-bg {
+    min-height: 100vh;
     background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
     color: #f1f5f9;
+  }
+
+  .scan-glass-shell .app-scroll,
+  .scan-glass-shell .app-scroll > * {
+    background: transparent;
   }
 
   .scan-glass-shell-header {
