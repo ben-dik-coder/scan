@@ -148,7 +148,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="border-t border-slate-100 pt-2">
+      <div className="scan-glass-divider border-t pt-2">
         <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <Briefcase className="h-3.5 w-3.5 text-brand-gold" />
@@ -164,7 +164,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
             spellCheck={false}
           />
           {professionDraft.trim().length >= 2 && (
-            <span className="text-[10px] text-slate-500">
+            <span className="scan-glass-muted text-[10px]">
               {matchedProfession
                 ? `Finner: ${matchedProfession}`
                 : "Søker i navn og bransje — prøv et annet ord hvis du får lite treff"}
@@ -173,8 +173,8 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
-        <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      <div className="scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2">
+        <span className="scan-glass-muted w-full text-[10px] font-semibold uppercase tracking-wide">
           Bransje-presets
         </span>
         <button
@@ -203,7 +203,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+      <div className="scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2">
         <label
           className={`scan-chip cursor-pointer ${filters.hasEmail ? "scan-chip-active" : ""}`}
         >
@@ -237,8 +237,8 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
-        <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      <div className="scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2">
+        <span className="scan-glass-muted w-full text-[10px] font-semibold uppercase tracking-wide">
           Etter Google-sjekk
         </span>
         <label className="flex flex-col gap-0.5 min-w-[7rem]">

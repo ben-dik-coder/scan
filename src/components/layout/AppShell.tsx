@@ -155,7 +155,7 @@ export function AppShell({
         <main
           className={cn(
             "app-scroll relative min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]",
-            isScanPage && "bg-white"
+            isScanPage && "scan-glass-page-bg"
           )}
         >
           <div

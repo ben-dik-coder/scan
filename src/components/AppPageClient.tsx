@@ -414,13 +414,13 @@ export function AppPageClient(props: Props) {
   const showExactTotal = pagination && !pagination.truncated;
 
   return (
-    <div className="w-full max-w-none space-y-2 pb-6 lg:space-y-2.5">
+    <div className="scan-glass-kommand w-full max-w-none space-y-2 pb-6 lg:space-y-2.5">
       <section className="scan-surface-full overflow-hidden">
-        <header className="p-2.5 lg:p-3">
+        <header className="scan-glass-header p-2.5 lg:p-3">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold text-slate-900">Skann markedet</h1>
-              <p className="text-xs text-slate-500">
+              <h1 className="scan-glass-title">Skann markedet</h1>
+              <p className="scan-glass-subtitle">
                 Velg firma → sjekk (maks 10) → send e-post
               </p>
             </div>
@@ -439,8 +439,8 @@ export function AppPageClient(props: Props) {
               </span>
             </div>
           </div>
-          <details className="mt-1 text-xs text-slate-500">
-            <summary className="cursor-pointer select-none hover:text-slate-700">
+          <details className="scan-glass-muted mt-1">
+            <summary className="cursor-pointer select-none hover:text-slate-200">
               Tilfeldig rekkefølge denne måneden
             </summary>
             <p className="mt-0.5 leading-snug">
@@ -449,19 +449,19 @@ export function AppPageClient(props: Props) {
           </details>
         </header>
 
-        <div className="border-t border-slate-200 p-2.5 lg:p-3">
+        <div className="scan-glass-divider border-t p-2.5 lg:p-3">
           <CompanyFilters
             filters={filters}
             municipalities={props.municipalities}
             onChange={applyFilters}
           />
           {filterSummary && (
-            <p className="mt-1 text-xs text-slate-500">{filterSummary}</p>
+            <p className="scan-glass-muted mt-1">{filterSummary}</p>
           )}
 
-          <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="scan-glass-divider mt-2 flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <span className="scan-glass-muted shrink-0 text-xs font-semibold uppercase tracking-wide">
                 Google-sjekk
               </span>
               <label className="scan-chip cursor-pointer">
@@ -495,7 +495,7 @@ export function AppPageClient(props: Props) {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {selected.size > 0 && (
-                <span className="text-xs font-semibold text-brand-navy">
+                <span className="scan-glass-accent-text text-xs font-semibold">
                   {selected.size} valgt
                 </span>
               )}
@@ -504,10 +504,10 @@ export function AppPageClient(props: Props) {
                 onClick={scanSelectedWithGoogle}
                 disabled={scanning || selected.size === 0}
                 className={cn(
-                  "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded px-3 text-xs font-semibold transition",
+                  "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-2xl px-3 text-xs font-semibold transition",
                   selected.size > 0 && !scanning
-                    ? "bg-sky-600 text-white hover:bg-sky-700"
-                    : "cursor-not-allowed bg-slate-200 text-slate-500"
+                    ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
+                    : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
                 )}
               >
                 <Search className="h-3.5 w-3.5" />
@@ -520,7 +520,7 @@ export function AppPageClient(props: Props) {
             </div>
           </div>
           {scanSelectionMessage && (
-            <p className="mt-1.5 text-xs font-medium text-amber-900">{scanSelectionMessage}</p>
+            <p className="mt-1.5 text-xs font-medium text-amber-200">{scanSelectionMessage}</p>
           )}
         </div>
 
@@ -532,7 +532,7 @@ export function AppPageClient(props: Props) {
             (props.brregTotal != null &&
               props.brregTotal > props.total + 2 &&
               props.companiesSource !== "db")) && (
-            <div className="flex gap-2 border-t border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-950 lg:px-3">
+            <div className="scan-glass-notice flex gap-2 lg:px-3">
               <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
               <p>
                 {props.companiesSource === "db" ? (
@@ -584,7 +584,7 @@ export function AppPageClient(props: Props) {
           scanResults={websiteScans}
         />
 
-        <div className="border-t border-slate-200 px-2.5 py-2 lg:px-3">
+        <div className="scan-glass-divider border-t px-2.5 py-2 lg:px-3">
           <div className="-mx-0.5 flex flex-wrap gap-1 px-0.5">
             {listTabs.map((tab) => {
               const TabIcon = tab.icon;
@@ -608,21 +608,21 @@ export function AppPageClient(props: Props) {
           </div>
 
           <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <p className="text-xs text-slate-600">
+            <p className="scan-glass-muted">
             {pagination ? (
               <>
                 Viser{" "}
-                <strong className="text-slate-900">
+                <strong className="scan-glass-strong">
                   {pageStart > 0 ? `${pageStart}–${pageEnd}` : "0"}
                 </strong>{" "}
                 {showExactTotal ? (
                   <>
-                    av <strong className="text-slate-900">{pagination.total}</strong>
+                    av <strong className="scan-glass-strong">{pagination.total}</strong>
                   </>
                 ) : props.brregTotal != null ? (
                   <>
                     (ca.{" "}
-                    <strong className="text-slate-900">
+                    <strong className="scan-glass-strong">
                       {props.brregTotal.toLocaleString("nb-NO")}
                     </strong>{" "}
                     i Brønnøysund)
@@ -630,20 +630,20 @@ export function AppPageClient(props: Props) {
                 ) : (
                   <>
                     av minst{" "}
-                    <strong className="text-slate-900">{pagination.total}</strong>
+                    <strong className="scan-glass-strong">{pagination.total}</strong>
                   </>
                 )}
                 {listFilter !== "all" && (
                   <>
                     {" "}
-                    · <strong className="text-slate-900">{displayCompanies.length}</strong> i
+                    · <strong className="scan-glass-strong">{displayCompanies.length}</strong> i
                     valgt fane
                   </>
                 )}
               </>
             ) : (
               <>
-                Viser <strong className="text-slate-900">{displayCompanies.length}</strong> av{" "}
+                Viser <strong className="scan-glass-strong">{displayCompanies.length}</strong> av{" "}
                 {companies.length}
               </>
             )}
@@ -651,12 +651,12 @@ export function AppPageClient(props: Props) {
 
             {pagination && props.onPageChange && (
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs text-slate-600">
-                  Side <strong className="text-slate-900">{pagination.page}</strong>
+                <p className="scan-glass-muted">
+                  Side <strong className="scan-glass-strong">{pagination.page}</strong>
                   {showExactTotal ? (
                     <>
                       {" "}
-                      / <strong className="text-slate-900">{pagination.totalPages}</strong>
+                      / <strong className="scan-glass-strong">{pagination.totalPages}</strong>
                     </>
                   ) : null}
                 </p>
@@ -693,7 +693,7 @@ export function AppPageClient(props: Props) {
               </button>
             )}
             {exportMessage && (
-              <p className="w-full text-xs text-emerald-700">{exportMessage}</p>
+              <p className="w-full text-xs text-emerald-300">{exportMessage}</p>
             )}
             <button
               type="button"
@@ -723,7 +723,7 @@ export function AppPageClient(props: Props) {
           </div>
         </div>
 
-        <div className="border-t border-slate-100 p-2">
+        <div className="scan-glass-divider border-t p-2">
           <CompanyTable
             companies={displayCompanies}
             selected={selected}
@@ -737,13 +737,13 @@ export function AppPageClient(props: Props) {
           />
 
           {pagination && props.onPageChange && (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2">
-              <p className="text-xs text-slate-600">
-                Side <strong className="text-slate-900">{pagination.page}</strong>
+            <div className="scan-glass-divider mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+              <p className="scan-glass-muted">
+                Side <strong className="scan-glass-strong">{pagination.page}</strong>
                 {showExactTotal ? (
                   <>
                     {" "}
-                    / <strong className="text-slate-900">{pagination.totalPages}</strong>
+                    / <strong className="scan-glass-strong">{pagination.totalPages}</strong>
                   </>
                 ) : null}
               </p>
@@ -771,8 +771,8 @@ export function AppPageClient(props: Props) {
       </section>
 
       {selected.size > 0 && (
-        <div className="fixed inset-x-3 bottom-4 z-20 flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 shadow-lg sm:inset-x-auto sm:right-6 sm:max-w-md">
-          <span className="text-xs font-semibold text-slate-900">
+        <div className="scan-glass-floating-bar fixed inset-x-3 bottom-4 z-20 flex items-center justify-between gap-2 border px-3 py-2 sm:inset-x-auto sm:right-6 sm:max-w-md">
+          <span className="text-xs font-semibold">
             {selected.size} valgt
           </span>
           {selected.size > 0 && (
@@ -799,8 +799,8 @@ export function AppPageClient(props: Props) {
         />
       </div>
 
-      <details className="scan-surface-pad w-full max-w-none text-sm text-slate-600 lg:hidden">
-        <summary className="cursor-pointer font-medium text-slate-800">
+      <details className="scan-surface-pad w-full max-w-none text-sm lg:hidden">
+        <summary className="scan-glass-strong cursor-pointer font-medium">
           Lagre søk (valgfritt)
         </summary>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -814,7 +814,7 @@ export function AppPageClient(props: Props) {
             Lagre
           </button>
         </div>
-        {saveMessage && <p className="mt-2 text-emerald-600">{saveMessage}</p>}
+        {saveMessage && <p className="mt-2 text-emerald-300">{saveMessage}</p>}
       </details>
     </div>
   );

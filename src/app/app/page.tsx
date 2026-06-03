@@ -318,16 +318,17 @@ function FirmaPageBrreg() {
 
   if (loading && companies.length === 0) {
     return (
-      <div className="scan-surface-full overflow-hidden ring-2 ring-sky-200">
-        <div className="flex items-start gap-2.5 bg-sky-50/40 px-2.5 py-2.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-amber-100">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-700" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-slate-900">
-              Henter firma fra registeret…
-            </p>
-            <p className="text-[11px] text-slate-600">
+      <div className="scan-glass-kommand px-2 sm:px-3">
+        <div className="scan-surface-full overflow-hidden ring-2 ring-sky-400/25">
+          <div className="scan-glass-scan-status is-scanning flex items-start gap-2.5 px-2.5 py-2.5">
+            <div className="scan-glass-status-icon is-scanning flex h-7 w-7 shrink-0 items-center justify-center">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="scan-glass-strong text-xs font-semibold">
+                Henter firma fra registeret…
+              </p>
+              <p className="scan-glass-muted text-[11px]">
               {filters.municipalityCode
                 ? `Kommune ${filters.municipalityCode} · ${periodLabel(filters.days)}`
                 : filters.regionId
@@ -335,14 +336,14 @@ function FirmaPageBrreg() {
                   : `Hele Norge · ${periodLabel(filters.days)}`}
             </p>
             {filters.days === 0 && (
-              <p className="mt-1 text-[11px] text-amber-800/90">
+              <p className="mt-1 text-[11px] text-amber-200">
                 {filters.municipalityCode || filters.regionId
                   ? "«Alle firma» kan ta litt tid — mange sider fra Brønnøysund"
                   : "Tips: velg område eller kommune — ellers blir det veldig mange firma"}
               </p>
             )}
             {slowLoad && (
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="scan-glass-muted mt-1 text-[11px]">
                 Tar litt tid… Brønnøysund har mange firma å sjekke.
               </p>
             )}
@@ -359,38 +360,39 @@ function FirmaPageBrreg() {
           </div>
         </div>
       </div>
+      </div>
     );
   }
 
   if (error && companies.length === 0) {
     return (
-      <div className="glass border-red-200/80 p-6 text-center">
-        <p className="font-semibold text-red-700">{error}</p>
-        <button
-          type="button"
-          onClick={loadCompanies}
-          className="btn-primary mt-4 inline-flex gap-2 text-xs"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Prøv igjen
-        </button>
+      <div className="scan-glass-kommand px-2 sm:px-3">
+        <div className="scan-surface-pad text-center">
+          <p className="font-semibold text-red-300">{error}</p>
+          <button
+            type="button"
+            onClick={loadCompanies}
+            className="scan-btn-primary mt-4 inline-flex gap-2 px-4 py-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Prøv igjen
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-none space-y-6">
+    <div className="scan-glass-kommand w-full max-w-none space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-3">
         <span
-          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
-            companiesSource === "db"
-              ? "border-sky-200 bg-sky-50 text-sky-800"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          className={`scan-glass-source-badge inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+            companiesSource === "db" ? "" : "is-live"
           }`}
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              companiesSource === "db" ? "bg-sky-500" : "bg-emerald-500"
+              companiesSource === "db" ? "bg-sky-400" : "bg-emerald-400"
             }`}
           />
           {companiesSource === "db"
@@ -401,7 +403,7 @@ function FirmaPageBrreg() {
               }`
             : "Live fra Brønnøysund"}
           {fetchedAt && (
-            <span className="text-slate-500">
+            <span className="opacity-70">
               · {new Date(fetchedAt).toLocaleTimeString("nb-NO")}
             </span>
           )}
@@ -410,7 +412,7 @@ function FirmaPageBrreg() {
           type="button"
           onClick={loadCompanies}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-brand-border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-brand-surface disabled:opacity-50"
+          className="scan-glass-toolbar-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Oppdater liste
@@ -419,8 +421,8 @@ function FirmaPageBrreg() {
 
       {contactUsage && (
         <p
-          className={`app-card mx-2 px-4 py-3 text-center text-xs sm:mx-3 ${
-            contactUsage.limitReached ? "text-amber-800" : "text-slate-600"
+          className={`scan-surface-pad mx-2 text-center text-xs sm:mx-3 ${
+            contactUsage.limitReached ? "text-amber-200" : "scan-glass-muted"
           }`}
         >
           {contactUsage.used} av {contactUsage.limit} bedrifter med tlf/e-post brukt denne
@@ -469,7 +471,7 @@ function FirmaPageInner() {
 
 export default function FirmaPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-slate-600">Laster firma…</p>}>
+    <Suspense fallback={<p className="scan-glass-kommand scan-glass-muted px-3 py-4 text-sm">Laster firma…</p>}>
       <FirmaPageInner />
     </Suspense>
   );

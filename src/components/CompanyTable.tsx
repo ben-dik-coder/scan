@@ -364,7 +364,7 @@ function CompanyMobileDetailSheet({
     <div className="fixed inset-0 z-50 md:hidden">
       <button
         type="button"
-        className="absolute inset-0 bg-slate-900/40"
+        className="scan-glass-backdrop absolute inset-0"
         aria-label="Lukk bedriftsinfo"
         onClick={handleClose}
       />
@@ -372,14 +372,14 @@ function CompanyMobileDetailSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="company-detail-title"
-        className="absolute bottom-0 left-0 right-0 max-h-[min(88vh,100dvh)] overflow-y-auto rounded-t-2xl bg-white shadow-2xl"
+        className="scan-glass-mobile-sheet absolute bottom-0 left-0 right-0 max-h-[min(88vh,100dvh)] overflow-y-auto border shadow-2xl"
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--cv-border)] bg-white px-4 py-3">
-          <p className="text-sm font-semibold text-[var(--cv-text)]">Bedriftsinfo</p>
+        <div className="scan-glass-mobile-sheet-header sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3">
+          <p className="scan-glass-strong text-sm font-semibold">Bedriftsinfo</p>
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            className="scan-glass-mobile-sheet-close rounded-lg p-2"
             aria-label="Lukk"
           >
             <X className="h-5 w-5" />
