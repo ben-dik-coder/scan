@@ -15,9 +15,11 @@ function daysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-type RawCompany = Omit<CompanyWithLead, "user_lead"> & {
+type RawCompany = Omit<CompanyWithLead, "user_lead" | "city" | "website"> & {
   status?: LeadStatus;
   notes?: string;
+  city?: string | null;
+  website?: string | null;
 };
 
 const RAW: RawCompany[] = [
@@ -34,6 +36,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(3),
     updated_at: daysAgo(3),
     status: "ny",
@@ -51,6 +54,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(5),
     updated_at: daysAgo(5),
     status: "kontaktet",
@@ -68,6 +72,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(8),
     updated_at: daysAgo(8),
     status: "svarte",
@@ -85,13 +90,14 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: false,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(12),
     updated_at: daysAgo(12),
     status: "ny",
   },
   {
     orgnr: "923456793",
-    name: "Midnattsol Media AS",
+    name: "Midnattsol Digitalbyrå AS",
     email: "post@midnattsolmedia.no",
     phone: "76907890",
     mobile: null,
@@ -102,6 +108,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(15),
     updated_at: daysAgo(15),
     status: "moete_booket",
@@ -119,13 +126,14 @@ const RAW: RawCompany[] = [
     has_email: false,
     email_is_generic: false,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(18),
     updated_at: daysAgo(18),
     status: "ny",
   },
   {
     orgnr: "923456795",
-    name: "Studio Lumen AS",
+    name: "Lumen Webdesign AS",
     email: "info@studiolumen.no",
     phone: null,
     mobile: null,
@@ -136,6 +144,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(22),
     updated_at: daysAgo(22),
     status: "kontaktet",
@@ -153,6 +162,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(25),
     updated_at: daysAgo(25),
     status: "ny",
@@ -170,6 +180,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: false,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(28),
     updated_at: daysAgo(28),
     status: "ikke_interessert",
@@ -187,6 +198,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(35),
     updated_at: daysAgo(35),
     status: "vunnet",
@@ -204,6 +216,7 @@ const RAW: RawCompany[] = [
     has_email: true,
     email_is_generic: true,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(40),
     updated_at: daysAgo(40),
     status: "tapt",
@@ -221,6 +234,7 @@ const RAW: RawCompany[] = [
     has_email: false,
     email_is_generic: false,
     brreg_updated_at: null,
+    daglig_leder: null,
     created_at: daysAgo(45),
     updated_at: daysAgo(45),
     status: "ny",
@@ -232,7 +246,7 @@ function toUserLead(c: RawCompany): UserLead {
     user_id: "demo-user",
     orgnr: c.orgnr,
     status: c.status ?? "ny",
-    score: computeLeadScore(c),
+    score: computeLeadScore({ ...c, city: c.city ?? null, website: c.website ?? null }),
     notes: c.notes ?? null,
     last_contacted_at: c.status === "kontaktet" ? daysAgo(2) : null,
     next_follow_up_at: c.status === "svarte" ? daysAgo(-2) : null,
@@ -242,9 +256,11 @@ function toUserLead(c: RawCompany): UserLead {
 }
 
 export function buildDemoCompanies(): CompanyWithLead[] {
-  return RAW.map(({ status, notes, ...company }) => ({
+  return RAW.map(({ status, notes, city, website, ...company }) => ({
     ...company,
-    user_lead: toUserLead({ ...company, status, notes } as RawCompany),
+    city: city ?? null,
+    website: website ?? null,
+    user_lead: toUserLead({ ...company, status, notes, city, website } as RawCompany),
   }));
 }
 
@@ -338,6 +354,7 @@ export const DEMO_CAMPAIGNS: EmailCampaign[] = [
     id: "camp-1",
     user_id: "demo-user",
     subject: "Gratulerer med oppstart!",
+    subject_b: null,
     body: "...",
     sent_count: 24,
     failed_count: 1,
@@ -347,6 +364,7 @@ export const DEMO_CAMPAIGNS: EmailCampaign[] = [
     id: "camp-2",
     user_id: "demo-user",
     subject: "Tilbud til nye bedrifter i Narvik",
+    subject_b: null,
     body: "...",
     sent_count: 18,
     failed_count: 0,

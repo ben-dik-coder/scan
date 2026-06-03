@@ -4,6 +4,8 @@ import type { MailProvider } from "./config";
 import { refreshGoogleAccessToken } from "./google";
 import { refreshMicrosoftAccessToken } from "./microsoft";
 
+const PROVIDER_ORDER: MailProvider[] = ["google", "smtp", "microsoft"];
+
 export type MailAccount = {
   id: string;
   provider: MailProvider;
@@ -27,8 +29,8 @@ export async function getPreferredMailAccount(
   if (accounts.length === 0) return null;
 
   const order: MailProvider[] = preferred
-    ? [preferred, preferred === "google" ? "microsoft" : "google"]
-    : ["google", "microsoft"];
+    ? [preferred, ...PROVIDER_ORDER.filter((p) => p !== preferred)]
+    : PROVIDER_ORDER;
 
   for (const provider of order) {
     const acc = accounts.find((a) => a.provider === provider);
@@ -68,6 +70,14 @@ export async function saveMailAccount(
   if (error) throw new Error(error.message);
 }
 
+export async function saveSmtpAccount(
+  userId: string,
+  email: string,
+  appPassword: string
+) {
+  await saveMailAccount(userId, "smtp", email, appPassword, null);
+}
+
 export async function deleteMailAccount(userId: string, provider: MailProvider) {
   const supabase = createServiceClient();
   await supabase
@@ -90,6 +100,14 @@ async function getValidAccessToken(
     .maybeSingle();
 
   if (error || !data) return null;
+
+  if (provider === "smtp" && data.access_token_enc) {
+    try {
+      return decryptToken(data.access_token_enc);
+    } catch {
+      return null;
+    }
+  }
 
   const expiresAt = data.expires_at ? new Date(data.expires_at).getTime() : 0;
   const stillValid = expiresAt > Date.now() + 60_000;

@@ -13,16 +13,20 @@ export async function POST() {
   }
 
   const profile = await getProfile();
-  if (!profile?.stripe_customer_id) {
+  const customerId = profile?.stripe_customer_id;
+  if (!customerId || customerId.startsWith("fake_")) {
     return NextResponse.json(
-      { error: "Ingen Stripe-kunde funnet. Velg en pakke først." },
+      {
+        error:
+          "Ingen ekte Stripe-kunde funnet. Velg pakke og betal med kort først (test-abonnement støtter ikke portal).",
+      },
       { status: 400 }
     );
   }
 
   const stripe = getStripe();
   const session = await stripe.billingPortal.sessions.create({
-    customer: profile.stripe_customer_id,
+    customer: customerId,
     return_url: `${appUrl()}/app/abonnement`,
   });
 

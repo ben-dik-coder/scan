@@ -43,16 +43,23 @@ export type CompanyInsert = {
   mobile: string | null;
   municipality_code: string | null;
   municipality_name: string | null;
+  city: string | null;
+  website: string | null;
   industry_code: string | null;
+  /** Brreg naeringskode1.beskrivelse — kun live Brreg, ikke i DB */
+  industry_description: string | null;
   registered_at: string | null;
   has_email: boolean;
   email_is_generic: boolean;
   brreg_updated_at: string;
+  /** Fra Brreg roller-API — fylles ved sync/backfill, ikke i bulk-fil */
+  daglig_leder?: string | null;
 };
 
 export function mapBrregEnhet(enhet: BrregEnhet): CompanyInsert {
   const email = enhet.epostadresse?.trim() || null;
   const address = enhet.forretningsadresse ?? enhet.postadresse;
+  const website = enhet.hjemmeside?.trim() || null;
 
   return {
     orgnr: enhet.organisasjonsnummer,
@@ -62,7 +69,10 @@ export function mapBrregEnhet(enhet: BrregEnhet): CompanyInsert {
     mobile: enhet.mobil?.trim() || null,
     municipality_code: address?.kommunenummer ?? null,
     municipality_name: address?.kommune ?? null,
+    city: address?.poststed?.trim() || null,
+    website,
     industry_code: enhet.naeringskode1?.kode ?? null,
+    industry_description: enhet.naeringskode1?.beskrivelse?.trim() || null,
     registered_at: enhet.registreringsdatoEnhetsregisteret ?? null,
     has_email: Boolean(email),
     email_is_generic: email ? isGenericEmail(email) : false,

@@ -61,6 +61,14 @@ Se [`docs/SALGSVERKTOY.md`](docs/SALGSVERKTOY.md) for research og funksjoner.
 - Kun generelle adresser (post@, info@) uten samtykke
 - Personlige adresser blokkeres som standard
 - Hver e-post har avmeldingslenke
+- Brukere sender fra egen **Gmail** eller **Outlook** (NyLead-abonnement)
+
+### Koble Gmail / Outlook
+
+1. Kopier `.env.local.example` → `.env.local` og fyll inn OAuth-nøkler.
+2. **Outlook:** følg [`docs/OUTLOOK_SETUP.md`](docs/OUTLOOK_SETUP.md) (Azure App Registration, redirect URI, env i Vercel).
+3. **Gmail:** Google Cloud Console → OAuth 2.0 → redirect `{NEXT_PUBLIC_APP_URL}/api/email/callback/google`.
+4. I appen: **Innstillinger** → **Koble Gmail** / **Koble Outlook**.
 
 ## API-endepunkter
 

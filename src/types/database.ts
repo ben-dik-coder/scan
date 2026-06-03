@@ -1,6 +1,11 @@
 export type ProfileRole = "user" | "admin";
 
-export type PlanId = "start" | "pro" | "agency";
+export type PlanId = "nylead";
+
+/** Eldre planer i databasen — behandles som NyLead i appen */
+export type LegacyPlanId = "start" | "pro" | "agency";
+
+export type StoredPlanId = PlanId | LegacyPlanId;
 
 export type SubscriptionStatus =
   | "active"
@@ -14,7 +19,7 @@ export type Profile = {
   id: string;
   role: ProfileRole;
   company_name: string | null;
-  plan: PlanId | null;
+  plan: StoredPlanId | null;
   subscription_status: SubscriptionStatus | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
@@ -31,11 +36,18 @@ export type Company = {
   mobile: string | null;
   municipality_code: string | null;
   municipality_name: string | null;
+  /** Poststed fra Brreg (ofte mer presist enn kommune i sosialsøk) */
+  city: string | null;
+  /** Offisiell hjemmeside fra Brreg */
+  website: string | null;
   industry_code: string | null;
+  /** Brreg naeringskode1.beskrivelse — kun live Brreg, ikke lagret i DB */
+  industry_description?: string | null;
   registered_at: string | null;
   has_email: boolean;
   email_is_generic: boolean;
   brreg_updated_at: string | null;
+  daglig_leder: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -51,10 +63,21 @@ export type EmailCampaign = {
   id: string;
   user_id: string;
   subject: string;
+  subject_b: string | null;
   body: string;
   sent_count: number;
   failed_count: number;
   created_at: string;
+};
+
+export type UserSettings = {
+  user_id: string;
+  webhook_url: string | null;
+  weekly_alert_enabled: boolean;
+  weekly_alert_filters: Record<string, unknown>;
+  weekly_alert_last_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CampaignRecipientStatus =

@@ -1,0 +1,40 @@
+/* Premium refinement of current NyLead brand: navy + gold/green */
+.pl-nylead-nordic {
+  --pl-bg: #0c1929;
+  --pl-surface: #132337;
+  --pl-text: #f8fafc;
+  --pl-muted: #94a3b8;
+  --pl-border: rgba(255,255,255,0.1);
+  --pl-accent: #c9a227;
+  --pl-accent-muted: rgba(201, 162, 39, 0.15);
+  --pl-cta-bg: linear-gradient(135deg, #c9a227, #a8861f);
+  --pl-cta-text: #0c1929;
+  --pl-banner-bg: #1a3a52;
+  --pl-banner-text: #e2c96a;
+  --pl-hero-bg: linear-gradient(180deg, #0c1929 0%, #132337 100%);
+  --pl-card-bg: rgba(255,255,255,0.04);
+  --pl-mock-bg: #0f2137;
+  --pl-radius: 10px;
+  --pl-radius-lg: 14px;
+  --pl-shadow: 0 20px 50px rgba(0,0,0,0.35);
+  --pl-font: "Barlow Condensed", system-ui, sans-serif;
+}
+
+.ps-nylead-nordic {
+  --ps-bg: #f8fafc;
+  --ps-surface: #fff;
+  --ps-text: #0c1929;
+  --ps-muted: #64748b;
+  --ps-border: #e2e8f0;
+  --ps-accent: #1a5f4a;
+  --ps-header-bg: #0c1929;
+  --ps-scan-bg: #fff;
+  --ps-chip-bg: #ecfdf5;
+  --ps-cta-bg: linear-gradient(135deg, #1a5f4a, #14503d);
+  --ps-cta-text: #fff;
+  --ps-table-head: #f1f5f9;
+  --ps-badge-bg: #d1fae5;
+  --ps-warn: #b45309;
+  --ps-radius: 8px;
+  --ps-font: system-ui, sans-serif;
+}

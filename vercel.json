@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/sync/brreg",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-alerts",
+      "schedule": "0 7 * * 1"
+    }
+  ]
+}

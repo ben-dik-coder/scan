@@ -68,6 +68,13 @@ export function PersonvernContent() {
         logging. Du må kun sende til adresser du har lovlig grunnlag til å kontakte.
       </p>
 
+      <h3>2.6 Informasjonskapsler</h3>
+      <p>
+        Vi bruker kun nødvendige informasjonskapsler for innlogging (Supabase Auth). Vi bruker
+        ikke sporings- eller analyse-informasjonskapsler. Noen innstillinger lagres i
+        nettleserens localStorage (f.eks. filtervalg), ikke som informasjonskapsler.
+      </p>
+
       <h2>3. Formål og rettslig grunnlag (GDPR art. 6)</h2>
       <ul>
         <li>

@@ -1,0 +1,13 @@
+.nylead-theme-corporate-blue {
+  --cv-bg: #eff6ff;
+  --cv-surface: #ffffff;
+  --cv-text: #1e3a5f;
+  --cv-muted: #64748b;
+  --cv-border: #bfdbfe;
+  --cv-accent: #1d4ed8;
+  --cv-header: #1e40af;
+  --cv-link: #2563eb;
+  --cv-radius: 6px;
+  --cv-font: system-ui, sans-serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

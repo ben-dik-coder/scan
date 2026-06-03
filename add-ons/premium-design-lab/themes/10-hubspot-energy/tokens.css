@@ -1,0 +1,39 @@
+.pl-hubspot-energy {
+  --pl-bg: #fff;
+  --pl-surface: #fff7ed;
+  --pl-text: #33475b;
+  --pl-muted: #516f90;
+  --pl-border: #eaf0f6;
+  --pl-accent: #ff7a59;
+  --pl-accent-muted: #fff0eb;
+  --pl-cta-bg: #ff7a59;
+  --pl-cta-text: #fff;
+  --pl-banner-bg: #fff0eb;
+  --pl-banner-text: #c4552d;
+  --pl-hero-bg: linear-gradient(180deg, #fff 0%, #fff7ed 100%);
+  --pl-card-bg: #fff;
+  --pl-mock-bg: #fff;
+  --pl-radius: 8px;
+  --pl-radius-lg: 12px;
+  --pl-shadow: 0 12px 40px rgba(255,122,89,0.15);
+  --pl-font: system-ui, sans-serif;
+}
+
+.ps-hubspot-energy {
+  --ps-bg: #f5f8fa;
+  --ps-surface: #fff;
+  --ps-text: #33475b;
+  --ps-muted: #516f90;
+  --ps-border: #cbd6e2;
+  --ps-accent: #ff7a59;
+  --ps-header-bg: #33475b;
+  --ps-scan-bg: #fff;
+  --ps-chip-bg: #fff0eb;
+  --ps-cta-bg: #ff7a59;
+  --ps-cta-text: #fff;
+  --ps-table-head: #f5f8fa;
+  --ps-badge-bg: #fff0eb;
+  --ps-warn: #d97706;
+  --ps-radius: 8px;
+  --ps-font: system-ui, sans-serif;
+}

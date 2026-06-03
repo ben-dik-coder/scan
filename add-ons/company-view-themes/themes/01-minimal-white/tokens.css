@@ -1,0 +1,12 @@
+.nylead-theme-minimal-white {
+  --cv-bg: #fafafa;
+  --cv-surface: #ffffff;
+  --cv-text: #111827;
+  --cv-muted: #6b7280;
+  --cv-border: #e5e7eb;
+  --cv-accent: #111827;
+  --cv-link: #374151;
+  --cv-radius: 4px;
+  --cv-font: system-ui, -apple-system, sans-serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

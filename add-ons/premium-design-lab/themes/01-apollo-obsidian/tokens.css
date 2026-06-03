@@ -1,0 +1,39 @@
+.pl-apollo-obsidian {
+  --pl-bg: #0f0f14;
+  --pl-surface: #16161f;
+  --pl-text: #f4f4f5;
+  --pl-muted: #a1a1aa;
+  --pl-border: #27272a;
+  --pl-accent: #a78bfa;
+  --pl-accent-muted: rgba(167, 139, 250, 0.15);
+  --pl-cta-bg: linear-gradient(135deg, #7c3aed, #6366f1);
+  --pl-cta-text: #fff;
+  --pl-banner-bg: #1e1b4b;
+  --pl-banner-text: #c4b5fd;
+  --pl-hero-bg: linear-gradient(180deg, #0f0f14 0%, #1e1b4b 100%);
+  --pl-card-bg: #1a1a24;
+  --pl-mock-bg: #12121a;
+  --pl-radius: 8px;
+  --pl-radius-lg: 12px;
+  --pl-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+  --pl-font: "Inter", system-ui, sans-serif;
+}
+
+.ps-apollo-obsidian {
+  --ps-bg: #0c0c10;
+  --ps-surface: #14141c;
+  --ps-text: #fafafa;
+  --ps-muted: #71717a;
+  --ps-border: #27272a;
+  --ps-accent: #c4b04a;
+  --ps-header-bg: #0f0f14;
+  --ps-scan-bg: #1a1a22;
+  --ps-chip-bg: #1e1e28;
+  --ps-cta-bg: linear-gradient(135deg, #d4af37, #b8941f);
+  --ps-cta-text: #0c0c10;
+  --ps-table-head: #1e1e28;
+  --ps-badge-bg: rgba(196, 176, 74, 0.2);
+  --ps-warn: #fbbf24;
+  --ps-radius: 6px;
+  --ps-font: "Inter", system-ui, sans-serif;
+}

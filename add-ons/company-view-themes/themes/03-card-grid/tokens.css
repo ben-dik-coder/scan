@@ -1,0 +1,14 @@
+.nylead-theme-card-grid {
+  --cv-bg: #f0f4f8;
+  --cv-surface: #ffffff;
+  --cv-text: #1e293b;
+  --cv-muted: #64748b;
+  --cv-border: #cbd5e1;
+  --cv-accent: #6366f1;
+  --cv-accent-2: #ec4899;
+  --cv-accent-3: #14b8a6;
+  --cv-link: #4f46e5;
+  --cv-radius: 12px;
+  --cv-font: system-ui, sans-serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

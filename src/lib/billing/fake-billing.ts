@@ -28,7 +28,7 @@ export async function activateFakeSubscription(userId: string, planId: PlanId) {
   if (error) {
     if (error.message.includes("column") || error.code === "42703") {
       throw new Error(
-        "Database mangler abonnementsfelt. Kjør migrasjon 004_billing.sql i Supabase."
+        "Database mangler abonnementsfelt. Åpne Supabase SQL Editor og kjør filen supabase/SETUP_BILLING.sql (se link under Abonnement)."
       );
     }
     throw new Error(error.message);

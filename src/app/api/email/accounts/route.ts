@@ -31,7 +31,7 @@ export async function DELETE(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const provider = searchParams.get("provider") as MailProvider | null;
-  if (provider !== "google" && provider !== "microsoft") {
+  if (provider !== "google" && provider !== "microsoft" && provider !== "smtp") {
     return NextResponse.json({ error: "Ugyldig provider" }, { status: 400 });
   }
 

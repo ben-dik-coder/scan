@@ -1,0 +1,13 @@
+.nylead-theme-compact-table {
+  --cv-bg: #ffffff;
+  --cv-surface: #f8fafc;
+  --cv-text: #0f172a;
+  --cv-muted: #475569;
+  --cv-border: #e2e8f0;
+  --cv-accent: #0ea5e9;
+  --cv-link: #0284c7;
+  --cv-radius: 2px;
+  --cv-font: system-ui, sans-serif;
+  --cv-font-mono: "SF Mono", ui-monospace, monospace;
+  --cv-row-height: 36px;
+}

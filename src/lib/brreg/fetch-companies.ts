@@ -1,4 +1,5 @@
 import { computeLeadScore } from "@/lib/sales/lead-score";
+import { seededRank } from "@/lib/shuffle/seeded-shuffle";
 import type { Company, CompanyWithLead } from "@/types/database";
 import {
   daysAgoISO,
@@ -16,6 +17,18 @@ import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
 import { isPersonalEmail, mapBrregEnhet, type CompanyInsert } from "./map-company";
 
 let kommuneCodesCache: string[] | null = null;
+
+export const DEFAULT_PAGE_SIZE = 100;
+export const MAX_PAGE_SIZE = 100;
+
+export function parsePaginationParams(page?: number, pageSize?: number) {
+  const parsedPage = Math.max(1, Math.floor(page ?? 1));
+  const parsedPageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, Math.floor(pageSize ?? DEFAULT_PAGE_SIZE))
+  );
+  return { page: parsedPage, pageSize: parsedPageSize };
+}
 
 async function getAllKommuneCodes(): Promise<string[]> {
   if (!kommuneCodesCache) {
@@ -49,8 +62,13 @@ export type BrregCompanyFilters = {
   hasEmail?: boolean;
   genericEmailOnly?: boolean;
   industryGroup?: string;
-  /** Maks antall sider à 100 firma */
+  /** Maks antall sider à 100 firma (sikkerhetsgrense) */
   maxPages?: number;
+  /** 1-basert side */
+  page?: number;
+  pageSize?: number;
+  /** Deterministisk rekkefølge før paginering */
+  sortSeed?: string;
 };
 
 export function isAllTimePeriod(days?: number): boolean {
@@ -61,6 +79,7 @@ function toCompany(row: CompanyInsert): Company {
   const now = new Date().toISOString();
   return {
     ...row,
+    daglig_leder: null,
     created_at: now,
     updated_at: now,
   };
@@ -98,7 +117,12 @@ function matchesFilters(
     if (!company.email_is_generic) return false;
     if (company.email && isPersonalEmail(company.email)) return false;
   }
-  if (!matchesIndustryGroup(company.industry_code, filters.industryGroup ?? "")) {
+  if (
+    !matchesIndustryGroup(company.industry_code, filters.industryGroup ?? "", {
+      name: company.name,
+      industryDescription: company.industry_description,
+    })
+  ) {
     return false;
   }
   return true;
@@ -131,6 +155,24 @@ async function fetchPagesBatch(
   );
 }
 
+function sortCompanies(
+  companies: CompanyWithLead[],
+  sortSeed?: string
+) {
+  if (sortSeed) {
+    companies.sort((a, b) => {
+      const rankDiff = seededRank(a.orgnr, sortSeed) - seededRank(b.orgnr, sortSeed);
+      if (rankDiff !== 0) return rankDiff;
+      return (b.registered_at ?? "").localeCompare(a.registered_at ?? "");
+    });
+    return;
+  }
+
+  companies.sort((a, b) =>
+    (b.registered_at ?? "").localeCompare(a.registered_at ?? "")
+  );
+}
+
 /**
  * Henter firma direkte fra Brønnøysundregistrene (ingen database).
  */
@@ -142,7 +184,15 @@ export async function fetchCompaniesFromBrreg(
   withEmail: number;
   brregTotal: number | null;
   truncated: boolean;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
 }> {
+  const { page, pageSize } = parsePaginationParams(filters.page, filters.pageSize);
+  const neededCount = page * pageSize + 1;
+
   const allTime = isAllTimePeriod(filters.days);
   const days = filters.days ?? 30;
   const wantsFiltered = Boolean(filters.hasEmail || filters.genericEmailOnly);
@@ -162,12 +212,6 @@ export async function fetchCompaniesFromBrreg(
   const geo = await resolveMunicipalityCodes(filters);
   const hasGeoFilter = Boolean(geo.municipalityCode || geo.municipalityCodes?.length);
 
-  /**
-   * Uten bransje i Brreg-søket: stopp tidlig (få sider med alle næringer).
-   * Med bransje/område: hent alle sider Brreg returnerer.
-   */
-  const targetResults = industryAtBrreg ? 50_000 : wantsFiltered ? 250 : 400;
-
   const defaultMaxPages = allTime
     ? hasGeoFilter
       ? wantsFiltered
@@ -183,9 +227,6 @@ export async function fetchCompaniesFromBrreg(
       : wantsFiltered
         ? 10
         : 6;
-
-  const maxPages =
-    filters.maxPages ?? (industryAtBrreg ? 50 : defaultMaxPages);
 
   const searchBase: Omit<SearchEnheterParams, "page"> = {
     ...geo,
@@ -206,41 +247,62 @@ export async function fetchCompaniesFromBrreg(
   pagesFetched = 1;
   ingestEnheter(first._embedded?.enheter, filters, seen, companies);
 
-  const pagesToFetch: number[] = [];
   const fetchAllPages = industryAtBrreg;
-  const pageLimit = fetchAllPages
+  const pageAwareMaxPages = fetchAllPages
     ? totalPagesFromApi
-    : Math.min(maxPages, totalPagesFromApi);
-  const lastPage = pageLimit - 1;
+    : Math.min(
+        totalPagesFromApi,
+        Math.max(
+          filters.maxPages ?? defaultMaxPages,
+          Math.ceil(neededCount / 15) + 3
+        )
+      );
+
+  const pagesToFetch: number[] = [];
+  const lastPage = pageAwareMaxPages - 1;
   for (let p = 1; p <= lastPage; p++) {
     pagesToFetch.push(p);
   }
 
   const batchSize = 4;
   for (let i = 0; i < pagesToFetch.length; i += batchSize) {
-    if (!fetchAllPages && companies.length >= targetResults) break;
+    if (!fetchAllPages && companies.length >= neededCount) break;
 
     const batch = pagesToFetch.slice(i, i + batchSize);
     const results = await fetchPagesBatch(searchBase, batch);
     pagesFetched += batch.length;
     for (const data of results) {
       ingestEnheter(data._embedded?.enheter, filters, seen, companies);
-      if (!fetchAllPages && companies.length >= targetResults) break;
+      if (!fetchAllPages && companies.length >= neededCount) break;
     }
   }
 
-  companies.sort((a, b) =>
-    (b.registered_at ?? "").localeCompare(a.registered_at ?? "")
-  );
+  sortCompanies(companies, filters.sortSeed);
 
-  const withEmail = companies.filter((c) => c.has_email).length;
-  const truncated = pagesFetched < totalPagesFromApi;
+  const total = companies.length;
+  const allBrregPagesFetched = pagesFetched >= totalPagesFromApi;
+  const truncated = !allBrregPagesFetched;
+
+  const start = (page - 1) * pageSize;
+  const pageCompanies = companies.slice(start, start + pageSize);
+  const hasNext = total > page * pageSize || truncated;
+  const hasPrev = page > 1;
+  const totalPages = allBrregPagesFetched
+    ? Math.max(1, Math.ceil(total / pageSize))
+    : Math.max(page, hasNext ? page + 1 : page);
+
+  const withEmail = pageCompanies.filter((c) => c.has_email).length;
 
   return {
-    companies,
-    total: companies.length,
+    companies: pageCompanies,
+    total,
     withEmail,
     brregTotal,
     truncated,
+    page,
+    pageSize,
+    totalPages,
+    hasNext,
+    hasPrev,
   };
 }

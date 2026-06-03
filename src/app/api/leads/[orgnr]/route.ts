@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
-import { upsertUserLead, logActivity } from "@/lib/sales/activities";
+import { upsertUserLead, logActivity, deleteUserLead } from "@/lib/sales/activities";
 import { pauseEnrollmentsOnReply } from "@/lib/sales/sequences";
 import type { LeadStatus } from "@/types/database";
 
@@ -68,4 +68,27 @@ export async function POST(
   });
 
   return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ orgnr: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { orgnr } = await params;
+  if (!orgnr?.trim()) {
+    return NextResponse.json({ error: "orgnr mangler" }, { status: 400 });
+  }
+
+  try {
+    await deleteUserLead(user.id, orgnr.trim());
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Sletting feilet";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

@@ -1,10 +1,13 @@
-import { DemoProvider } from "@/lib/demo/store";
 import { AppShell } from "@/components/layout/AppShell";
+import { getProfile } from "@/lib/auth";
+import { DemoProvider } from "@/lib/demo/store";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const profile = await getProfile();
+
   return (
     <DemoProvider>
-      <AppShell isAdmin>{children}</AppShell>
+      <AppShell isAdmin={profile?.role === "admin"}>{children}</AppShell>
     </DemoProvider>
   );
 }

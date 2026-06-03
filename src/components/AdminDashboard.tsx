@@ -69,7 +69,7 @@ export function AdminDashboard({ initialStats, demo }: Props) {
       />
 
       {(demo || isDemoMode()) && !isBrregLive() && (
-        <div className="flex items-start gap-3 rounded-2xl border border-brand-gold/25 bg-brand-gold/10 p-4 text-sm text-brand-gold">
+        <div className="flex items-start gap-3 rounded-2xl border border-brand-gold/25 bg-brand-goldPale p-4 text-sm text-brand-navy">
           <Database className="mt-0.5 h-5 w-5 shrink-0" />
           <p>
             Backend er ikke koblet til. Knappene under simulerer sync — sett opp Supabase for
@@ -78,7 +78,7 @@ export function AdminDashboard({ initialStats, demo }: Props) {
         </div>
       )}
       {isBrregLive() && (demo || isDemoMode()) && (
-        <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           <Database className="mt-0.5 h-5 w-5 shrink-0" />
           <p>
             Skann-siden henter firma live fra Brønnøysund. Sync-knappene lagrer til Supabase når
@@ -121,27 +121,27 @@ export function AdminDashboard({ initialStats, demo }: Props) {
       </div>
 
       {meta && (
-        <p className="text-sm text-white/50">
+        <p className="text-sm text-slate-600">
           Siste kjøring: {meta.mode} — {meta.upserted ?? 0} lagret
         </p>
       )}
       {message && <p className="text-sm text-brand-gold">{message}</p>}
 
       <section>
-        <h2 className="mb-4 font-display text-lg font-bold text-white">Topp kommuner</h2>
+        <h2 className="app-section-title">Topp kommuner</h2>
         <div className="panel overflow-hidden">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-white/[0.06] bg-white/[0.02] text-left text-[11px] font-bold uppercase tracking-wider text-white/50">
+          <table className="app-table min-w-full text-sm">
+            <thead>
               <tr>
-                <th className="px-5 py-3.5">Kommune</th>
-                <th className="px-5 py-3.5">Antall</th>
+                <th>Kommune</th>
+                <th>Antall</th>
               </tr>
             </thead>
             <tbody>
               {stats.topKommuner.map((k) => (
-                <tr key={k.code} className="border-t border-white/[0.04]">
-                  <td className="px-5 py-3.5 text-white">{k.name}</td>
-                  <td className="px-5 py-3.5 text-white/50">{k.count}</td>
+                <tr key={k.code}>
+                  <td className="font-medium text-brand-navy">{k.name}</td>
+                  <td className="muted">{k.count}</td>
                 </tr>
               ))}
             </tbody>

@@ -24,9 +24,9 @@ export function ScoreRing({
         ? "#cbd5e1"
         : "rgba(255,255,255,0.15)"
       : score >= 80
-        ? "#c9a227"
+        ? "#635bff"
         : score >= 50
-          ? "#e5c04a"
+          ? "#7c75ff"
           : score === 0
             ? light
               ? "#94a3b8"
@@ -94,13 +94,13 @@ export function ScoreRing({
 
 export function StatusPill({ status, label }: { status: string; label: string }) {
   const colors: Record<string, string> = {
-    ny: "bg-white/10 text-white/70 border-white/15",
-    kontaktet: "bg-blue-500/15 text-blue-300 border-blue-500/25",
-    svarte: "bg-brand-gold/15 text-brand-gold border-brand-gold/25",
-    moete_booket: "bg-violet-500/15 text-violet-300 border-violet-500/25",
-    vunnet: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
-    tapt: "bg-red-500/15 text-red-300 border-red-500/25",
-    ikke_interessert: "bg-orange-500/15 text-orange-300 border-orange-500/25",
+    ny: "bg-slate-100 text-slate-700 border-slate-200",
+    kontaktet: "bg-blue-50 text-blue-800 border-blue-200",
+    svarte: "bg-brand-goldPale text-brand-gold border-brand-gold/25",
+    moete_booket: "bg-violet-50 text-violet-800 border-violet-200",
+    vunnet: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    tapt: "bg-red-50 text-red-800 border-red-200",
+    ikke_interessert: "bg-orange-50 text-orange-800 border-orange-200",
   };
   return (
     <span
@@ -128,7 +128,7 @@ export function PageHeader({
       <div className="min-w-0 flex-1">
         <h1 className="page-header-title">{title}</h1>
         {description && (
-          <p className="mt-1.5 font-sans text-xs font-medium text-white/50 sm:mt-2 sm:text-sm">
+          <p className="mt-1.5 font-sans text-xs font-medium text-slate-600 sm:mt-2 sm:text-sm">
             {description}
           </p>
         )}
@@ -154,28 +154,28 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "surface-panel-dark relative overflow-hidden p-5",
-        highlight && "border-brand-gold/30 bg-brand-gold/5"
+        "surface-panel relative overflow-hidden p-5",
+        highlight && "border-brand-gold/35 bg-brand-goldPale ring-1 ring-brand-gold/15"
       )}
     >
       <div className="flex items-start justify-between">
-        <p className="font-display text-[10px] font-bold uppercase tracking-athletic text-white/40">{label}</p>
-        {Icon && <Icon className="h-4 w-4 text-white/40" />}
+        <p className="font-sans text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+        {Icon && <Icon className="h-4 w-4 text-brand-gold" />}
       </div>
-      <p className="mt-3 font-display text-4xl font-black leading-none text-white">{value}</p>
-      {sub && <p className="mt-1 text-xs text-white/50">{sub}</p>}
+      <p className="mt-3 font-display text-4xl font-black leading-none text-brand-navy">{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 py-16 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5">
-        <span className="text-2xl opacity-40">∅</span>
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-border bg-white py-16 text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-goldPale">
+        <span className="text-2xl text-brand-gold/50">∅</span>
       </div>
-      <p className="font-display font-semibold text-white">{title}</p>
-      <p className="mt-1 max-w-sm text-sm text-white/50">{description}</p>
+      <p className="font-display font-semibold text-brand-navy">{title}</p>
+      <p className="mt-1 max-w-sm text-sm text-slate-600">{description}</p>
     </div>
   );
 }

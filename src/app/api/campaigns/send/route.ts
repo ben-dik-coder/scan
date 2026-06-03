@@ -11,14 +11,30 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { subject, body: emailBody, orgnrs, allowPersonal } = body as {
+  const {
+    subject,
+    subjectB,
+    body: emailBody,
+    orgnrs,
+    recipients: clientRecipients,
+    allowPersonal,
+    mailProvider,
+  } = body as {
     subject?: string;
+    subjectB?: string;
     body?: string;
     orgnrs?: string[];
+    recipients?: Array<{ orgnr: string; email: string; name: string }>;
     allowPersonal?: boolean;
+    mailProvider?: "google" | "microsoft" | "smtp";
   };
 
-  if (!subject?.trim() || !emailBody?.trim() || !orgnrs?.length) {
+  const hasClientRecipients = Boolean(clientRecipients?.length);
+  const targetOrgnrs = hasClientRecipients
+    ? clientRecipients!.map((r) => r.orgnr)
+    : orgnrs;
+
+  if (!subject?.trim() || !emailBody?.trim() || !targetOrgnrs?.length) {
     return NextResponse.json(
       { error: "Emne, melding og minst ett firma er påkrevd." },
       { status: 400 }
@@ -38,7 +54,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: emailError }, { status: 403 });
   }
 
-  if (orgnrs.length > entitlements.maxRecipientsPerSend) {
+  if (targetOrgnrs.length > entitlements.maxRecipientsPerSend) {
     return NextResponse.json(
       {
         error: `Maks ${entitlements.maxRecipientsPerSend} mottakere per utsendelse på din pakke.`,
@@ -47,40 +63,70 @@ export async function POST(request: Request) {
     );
   }
 
-  if (orgnrs.length > entitlements.emailsRemainingThisMonth) {
+  if (targetOrgnrs.length > entitlements.emailsRemainingThisMonth) {
     return NextResponse.json(
       {
-        error: `Du har ${entitlements.emailsRemainingThisMonth} e-poster igjen denne måneden (${entitlements.maxEmailsPerMonth} totalt). Oppgrader pakken for mer.`,
+        error: `Du har ${entitlements.emailsRemainingThisMonth} e-poster igjen denne måneden (${entitlements.maxEmailsPerMonth} totalt).`,
       },
       { status: 400 }
     );
   }
 
   const supabase = await createClient();
-  const { data: companies, error } = await supabase
-    .from("companies")
-    .select("orgnr, name, email, has_email")
-    .in("orgnr", orgnrs)
-    .eq("has_email", true);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let recipients: Array<{ orgnr: string; email: string; name: string }>;
+
+  if (hasClientRecipients) {
+    const { data: companies, error } = await supabase
+      .from("companies")
+      .select("orgnr, name")
+      .in("orgnr", targetOrgnrs);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const companyByOrgnr = new Map((companies ?? []).map((c) => [c.orgnr, c.name]));
+    recipients = clientRecipients!
+      .filter((r) => companyByOrgnr.has(r.orgnr) && r.email?.trim())
+      .map((r) => ({
+        orgnr: r.orgnr,
+        email: r.email.trim(),
+        name: r.name?.trim() || companyByOrgnr.get(r.orgnr) || r.orgnr,
+      }));
+  } else {
+    const { data: companies, error } = await supabase
+      .from("companies")
+      .select("orgnr, name, email, has_email")
+      .in("orgnr", targetOrgnrs!)
+      .eq("has_email", true);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    recipients = (companies ?? [])
+      .filter((c) => c.email)
+      .map((c) => ({
+        orgnr: c.orgnr,
+        email: c.email as string,
+        name: c.name,
+      }));
   }
-
-  const recipients = (companies ?? [])
-    .filter((c) => c.email)
-    .map((c) => ({
-      orgnr: c.orgnr,
-      email: c.email as string,
-      name: c.name,
-    }));
 
   try {
     const result = await sendCampaign(user.id, {
       subject,
+      subjectB: subjectB?.trim() || undefined,
       body: emailBody,
       recipients,
       allowPersonal: Boolean(allowPersonal),
+      mailProvider:
+        mailProvider === "google" ||
+        mailProvider === "microsoft" ||
+        mailProvider === "smtp"
+          ? mailProvider
+          : undefined,
     });
 
     return NextResponse.json(result);

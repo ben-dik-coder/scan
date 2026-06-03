@@ -71,3 +71,18 @@ export async function upsertUserLead(
     );
   }
 }
+
+export async function deleteUserLead(userId: string, orgnr: string) {
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("user_leads")
+    .delete()
+    .eq("user_id", userId)
+    .eq("orgnr", orgnr);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await logActivity(userId, orgnr, "status_changed", "Lead slettet fra kø");
+}

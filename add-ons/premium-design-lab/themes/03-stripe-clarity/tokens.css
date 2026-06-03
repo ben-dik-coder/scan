@@ -1,0 +1,39 @@
+.pl-stripe-clarity {
+  --pl-bg: #f6f9fc;
+  --pl-surface: #fff;
+  --pl-text: #0a2540;
+  --pl-muted: #425466;
+  --pl-border: #e6ebf1;
+  --pl-accent: #635bff;
+  --pl-accent-muted: rgba(99, 91, 255, 0.1);
+  --pl-cta-bg: #635bff;
+  --pl-cta-text: #fff;
+  --pl-banner-bg: #eef2ff;
+  --pl-banner-text: #4338ca;
+  --pl-hero-bg: linear-gradient(135deg, #f6f9fc 0%, #e0e7ff 50%, #f6f9fc 100%);
+  --pl-card-bg: #fff;
+  --pl-mock-bg: #fff;
+  --pl-radius: 10px;
+  --pl-radius-lg: 16px;
+  --pl-shadow: 0 30px 60px rgba(50,50,93,0.12);
+  --pl-font: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.ps-stripe-clarity {
+  --ps-bg: #f6f9fc;
+  --ps-surface: #fff;
+  --ps-text: #0a2540;
+  --ps-muted: #697386;
+  --ps-border: #e6ebf1;
+  --ps-accent: #635bff;
+  --ps-header-bg: #fff;
+  --ps-scan-bg: #fff;
+  --ps-chip-bg: #f6f9fc;
+  --ps-cta-bg: #635bff;
+  --ps-cta-text: #fff;
+  --ps-table-head: #f6f9fc;
+  --ps-badge-bg: #eef2ff;
+  --ps-warn: #9a6700;
+  --ps-radius: 10px;
+  --ps-font: -apple-system, sans-serif;
+}

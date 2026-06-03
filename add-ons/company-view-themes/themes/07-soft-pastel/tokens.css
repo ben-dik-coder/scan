@@ -1,0 +1,13 @@
+.nylead-theme-soft-pastel {
+  --cv-bg: #fdf4ff;
+  --cv-surface: #ffffff;
+  --cv-text: #581c87;
+  --cv-muted: #a78bfa;
+  --cv-border: #e9d5ff;
+  --cv-accent: #c084fc;
+  --cv-accent-2: #f9a8d4;
+  --cv-link: #7c3aed;
+  --cv-radius: 16px;
+  --cv-font: "Segoe UI", system-ui, sans-serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

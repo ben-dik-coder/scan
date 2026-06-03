@@ -1,0 +1,12 @@
+.nylead-theme-magazine-editorial {
+  --cv-bg: #f5f0e8;
+  --cv-surface: #fffef9;
+  --cv-text: #1c1917;
+  --cv-muted: #78716c;
+  --cv-border: #d6d3d1;
+  --cv-accent: #b45309;
+  --cv-link: #92400e;
+  --cv-radius: 0;
+  --cv-font: Georgia, "Times New Roman", serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

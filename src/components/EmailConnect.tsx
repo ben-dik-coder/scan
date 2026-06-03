@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { isDemoMode } from "@/lib/demo/config";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Loader2, Mail, Unlink } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Loader2, Mail, Unlink } from "lucide-react";
+
+type MailProvider = "google" | "microsoft" | "smtp";
 
 type MailAccount = {
   id: string;
-  provider: "google" | "microsoft";
+  provider: MailProvider;
   email: string;
 };
 
@@ -17,12 +19,23 @@ type Props = {
   compact?: boolean;
 };
 
-export function EmailConnect({ light = false, compact = false }: Props) {
+function providerLabel(provider: MailProvider) {
+  if (provider === "google") return "Gmail";
+  if (provider === "smtp") return "Outlook (app-passord)";
+  return "Outlook";
+}
+
+export function EmailConnect({ light = true, compact = false }: Props) {
   const demo = isDemoMode();
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [providers, setProviders] = useState({ google: false, microsoft: false });
   const [loading, setLoading] = useState(true);
-  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<MailProvider | null>(null);
+  const [smtpOpen, setSmtpOpen] = useState(false);
+  const [smtpEmail, setSmtpEmail] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpSaving, setSmtpSaving] = useState(false);
+  const [smtpError, setSmtpError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (demo) {
@@ -45,13 +58,37 @@ export function EmailConnect({ light = false, compact = false }: Props) {
     void load();
   }, [load]);
 
-  async function disconnect(provider: "google" | "microsoft") {
+  async function disconnect(provider: MailProvider) {
     setDisconnecting(provider);
     try {
       await fetch(`/api/email/accounts?provider=${provider}`, { method: "DELETE" });
       await load();
     } finally {
       setDisconnecting(null);
+    }
+  }
+
+  async function saveSmtp(e: React.FormEvent) {
+    e.preventDefault();
+    setSmtpSaving(true);
+    setSmtpError(null);
+    try {
+      const res = await fetch("/api/email/smtp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: smtpEmail, appPassword: smtpPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Kunne ikke lagre");
+      }
+      setSmtpPassword("");
+      setSmtpOpen(false);
+      await load();
+    } catch (err) {
+      setSmtpError(err instanceof Error ? err.message : "Ukjent feil");
+    } finally {
+      setSmtpSaving(false);
     }
   }
 
@@ -84,6 +121,7 @@ export function EmailConnect({ light = false, compact = false }: Props) {
 
   const google = accounts.find((a) => a.provider === "google");
   const microsoft = accounts.find((a) => a.provider === "microsoft");
+  const smtp = accounts.find((a) => a.provider === "smtp");
 
   return (
     <div className={cn(boxClass, compact && "p-3")}>
@@ -107,6 +145,7 @@ export function EmailConnect({ light = false, compact = false }: Props) {
       <div className="mt-4 space-y-2">
         <ProviderRow
           label="Gmail"
+          hint="Anbefalt — ett klikk"
           connected={google}
           configured={providers.google}
           connectHref="/api/email/connect/google"
@@ -114,22 +153,129 @@ export function EmailConnect({ light = false, compact = false }: Props) {
           disconnecting={disconnecting === "google"}
           light={light}
         />
+
+        {smtp ? (
+          <ProviderRow
+            label="Outlook / Hotmail"
+            hint="App-passord"
+            connected={smtp}
+            configured
+            connectHref="#"
+            onDisconnect={() => disconnect("smtp")}
+            disconnecting={disconnecting === "smtp"}
+            light={light}
+          />
+        ) : (
+          <div
+            className={cn(
+              "rounded-lg border",
+              light ? "border-slate-200 bg-slate-50/80" : "border-white/10 bg-white/[0.02]"
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => setSmtpOpen((v) => !v)}
+              className={cn(
+                "flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-xs font-semibold",
+                light ? "text-slate-800" : "text-white/90"
+              )}
+            >
+              <span>
+                Outlook / Hotmail
+                <span className={cn("ml-1.5 font-normal", light ? "text-slate-500" : "text-white/45")}>
+                  — fungerer ikke for alle Hotmail-kontoer
+                </span>
+              </span>
+              {smtpOpen ? (
+                <ChevronUp className="h-4 w-4 shrink-0 opacity-60" />
+              ) : (
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+              )}
+            </button>
+
+            {smtpOpen && (
+              <form onSubmit={saveSmtp} className="space-y-2 border-t border-slate-200/80 px-3 py-3">
+                <p className={cn("text-[11px] leading-relaxed", light ? "text-slate-500" : "text-white/40")}>
+                  Du lager et app-passord på{" "}
+                  <a
+                    href="https://account.microsoft.com/security"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-brand-gold"
+                  >
+                    account.microsoft.com/security
+                  </a>{" "}
+                  og limer det inn her. Merk: Microsoft har slått av app-passord for mange
+                  Hotmail-kontoer — fungerer det ikke, bruk «Outlook (OAuth)» under.
+                </p>
+                <input
+                  type="email"
+                  required
+                  placeholder="din@outlook.com eller @hotmail.com"
+                  value={smtpEmail}
+                  onChange={(e) => setSmtpEmail(e.target.value)}
+                  className={cn(
+                    "w-full rounded-md border px-2.5 py-2 text-xs",
+                    light
+                      ? "border-slate-200 bg-white text-slate-900"
+                      : "border-white/15 bg-white/5 text-white"
+                  )}
+                />
+                <input
+                  type="password"
+                  required
+                  autoComplete="off"
+                  placeholder="App-passord (16 tegn)"
+                  value={smtpPassword}
+                  onChange={(e) => setSmtpPassword(e.target.value)}
+                  className={cn(
+                    "w-full rounded-md border px-2.5 py-2 text-xs",
+                    light
+                      ? "border-slate-200 bg-white text-slate-900"
+                      : "border-white/15 bg-white/5 text-white"
+                  )}
+                />
+                {smtpError && (
+                  <p className="text-[11px] text-red-600">{smtpError}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={smtpSaving}
+                  className={cn(
+                    "w-full rounded-md px-3 py-2 text-xs font-semibold transition",
+                    light
+                      ? "bg-brand-gold text-slate-900 hover:bg-amber-400"
+                      : "bg-brand-gold/90 text-slate-900 hover:bg-brand-gold"
+                  )}
+                >
+                  {smtpSaving ? "Tester og lagrer…" : "Lagre Outlook-kobling"}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
         <ProviderRow
-          label="Outlook"
+          label="Outlook (OAuth)"
+          hint={
+            providers.microsoft
+              ? "Anbefalt for Hotmail når app-passord feiler"
+              : "Krever Azure-oppsett — se docs/OUTLOOK_SETUP.md"
+          }
           connected={microsoft}
           configured={providers.microsoft}
           connectHref="/api/email/connect/microsoft"
           onDisconnect={() => disconnect("microsoft")}
           disconnecting={disconnecting === "microsoft"}
           light={light}
+          muted={!providers.microsoft}
         />
       </div>
 
       {!compact && (
         <p className={cn("mt-3 text-xs", light ? "text-slate-400" : "text-white/35")}>
-          <Link href="/app/innstillinger" className="underline hover:text-brand-gold">
-            Flere innstillinger
-          </Link>
+          Privat Hotmail som ikke tar app-passord? Bruk <strong>Outlook (OAuth)</strong> under
+          (plattform-eier må sette opp Azure én gang).
         </p>
       )}
     </div>
@@ -138,20 +284,24 @@ export function EmailConnect({ light = false, compact = false }: Props) {
 
 function ProviderRow({
   label,
+  hint,
   connected,
   configured,
   connectHref,
   onDisconnect,
   disconnecting,
   light,
+  muted = false,
 }: {
   label: string;
+  hint?: string;
   connected?: MailAccount;
   configured: boolean;
   connectHref: string;
   onDisconnect: () => void;
   disconnecting: boolean;
   light: boolean;
+  muted?: boolean;
 }) {
   if (connected) {
     return (
@@ -187,8 +337,15 @@ function ProviderRow({
 
   if (!configured) {
     return (
-      <p className={cn("rounded-lg px-3 py-2 text-xs", light ? "bg-slate-50 text-slate-400" : "bg-white/5 text-white/35")}>
-        {label} er ikke satt opp på serveren ennå.
+      <p
+        className={cn(
+          "rounded-lg px-3 py-2 text-xs",
+          light ? "bg-slate-50 text-slate-400" : "bg-white/5 text-white/35",
+          muted && "opacity-70"
+        )}
+      >
+        {label}
+        {hint ? ` — ${hint}` : " er ikke satt opp på serveren ennå."}
       </p>
     );
   }
@@ -204,21 +361,26 @@ function ProviderRow({
       )}
     >
       Koble {label}
+      {hint ? (
+        <span className={cn("mt-0.5 block text-[10px] font-normal opacity-70")}>{hint}</span>
+      ) : null}
     </a>
   );
 }
 
 export function useConnectedEmail(): {
+  accounts: MailAccount[];
   email: string | null;
+  provider: MailProvider | null;
   loading: boolean;
   refresh: () => void;
 } {
-  const [email, setEmail] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
     if (isDemoMode()) {
-      setEmail(null);
+      setAccounts([]);
       setLoading(false);
       return;
     }
@@ -226,8 +388,7 @@ export function useConnectedEmail(): {
     fetch("/api/email/accounts")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        const first = data?.accounts?.[0] as MailAccount | undefined;
-        setEmail(first?.email ?? null);
+        setAccounts((data?.accounts ?? []) as MailAccount[]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -236,5 +397,14 @@ export function useConnectedEmail(): {
     refresh();
   }, [refresh]);
 
-  return { email, loading, refresh };
+  const first = accounts[0];
+  return {
+    accounts,
+    email: first?.email ?? null,
+    provider: first?.provider ?? null,
+    loading,
+    refresh,
+  };
 }
+
+export { providerLabel };

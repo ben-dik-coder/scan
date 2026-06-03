@@ -1,17 +1,33 @@
 "use client";
 
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { LEAD_STATUSES, statusLabel } from "@/lib/sales/constants";
-import { isPersonalEmail } from "@/lib/brreg/map-company";
 import type { CompanyWithLead } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
-import { hasUncertainWebsiteHits } from "@/lib/website-scan/parse-results";
 import {
-  computeWebsiteBadnessScore,
-  websiteBadnessLabel,
-} from "@/lib/website-scan/website-badness-score";
-import { ScoreRing, StatusPill, EmptyState } from "@/components/ui/primitives";
+  resolveCompanyEmail,
+  type ResolvedCompanyEmail,
+} from "@/lib/website-scan/resolve-company-email";
+import { hasUncertainWebsiteHits, displayNameDiffersFromLegal } from "@/lib/website-scan/parse-results";
+import { StatusPill, EmptyState } from "@/components/ui/primitives";
 import { cn, formatRegisteredDate } from "@/lib/utils";
-import { Globe, Globe2, HelpCircle } from "lucide-react";
+import { Globe, Globe2, HelpCircle, X } from "lucide-react";
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+    </svg>
+  );
+}
+
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+    </svg>
+  );
+}
 
 type Props = {
   companies: CompanyWithLead[];
@@ -23,135 +39,484 @@ type Props = {
   liveBrreg?: boolean;
   websiteScans?: Map<string, WebsiteScanResult>;
   scanningOrgnrs?: Set<string>;
-  light?: boolean;
 };
 
-function WebsiteBadge({
+function PresenceBadge({
+  kind,
+  label,
+}: {
+  kind: "ok" | "warn" | "muted" | "info";
+  label: string;
+}) {
+  const styles = {
+    ok: "bg-emerald-100 text-emerald-800",
+    warn: "bg-amber-100 text-amber-900",
+    muted: "bg-slate-100 text-slate-600",
+    info: "bg-sky-100 text-sky-800",
+  };
+  return (
+    <span
+      className={cn(
+        "ml-1 inline-flex shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+        styles[kind]
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function WebsiteCell({
   scan,
   scanning,
   companyName,
-  light = false,
 }: {
   scan?: WebsiteScanResult;
   scanning?: boolean;
   companyName: string;
-  light?: boolean;
 }) {
   if (scanning) {
-    return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 text-[10px]",
-          light ? "text-slate-400" : "text-white/40"
-        )}
-      >
-        <span className="h-3 w-3 animate-pulse rounded-full bg-brand-gold/50" />
-        Sjekker…
-      </span>
-    );
+    return <span className="cv-muted">Sjekker…</span>;
   }
   if (!scan) {
     return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 text-[10px]",
-          light ? "text-slate-300" : "text-white/30"
-        )}
-        title="Ikke skannet"
-      >
-        <HelpCircle className="h-3.5 w-3.5" />
+      <span className="cv-muted inline-flex items-center gap-0.5" title="Ikke sjekket">
+        <HelpCircle className="h-3 w-3 shrink-0" />
         —
       </span>
     );
   }
   if (scan.hasWebsite) {
+    const showDisplayName =
+      scan.displayName &&
+      displayNameDiffersFromLegal(scan.displayName, companyName);
+
     return (
-      <a
-        href={scan.websiteUrl ?? "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={cn(
-          "inline-flex max-w-full items-center gap-1 truncate text-[11px] hover:underline",
-          light ? "text-emerald-600" : "text-emerald-300"
+      <div className="min-w-0">
+        <a
+          href={scan.websiteUrl ?? "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cv-accent inline-flex max-w-[10rem] items-center gap-0.5 truncate"
+          title={scan.websiteUrl ?? scan.websiteDomain ?? "Har nettside"}
+        >
+          <Globe2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{scan.websiteDomain ?? "Ja"}</span>
+        </a>
+        {showDisplayName && (
+          <p
+            className="cv-meta max-w-[10rem] truncate text-sky-700"
+            title={`Vises som: ${scan.displayName}`}
+          >
+            vises som: {scan.displayName}
+          </p>
         )}
-        title={scan.websiteUrl ?? scan.websiteDomain ?? "Har nettside"}
-      >
-        <Globe2 className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{scan.websiteDomain ?? "Ja"}</span>
-      </a>
+      </div>
     );
   }
   if (scan.websiteKind === "booking_only" && scan.confidence !== "low") {
     return (
-      <span
-        className={cn(
-          "inline-flex max-w-full items-center gap-1 truncate text-[11px] font-semibold",
-          light ? "text-amber-700" : "text-amber-200"
-        )}
-        title={`Kun booking (${scan.bookingPlatform ?? "Timma/Fixit"}) — ingen egen nettside`}
-      >
-        <Globe className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">Kun booking</span>
+      <span className="inline-flex max-w-[10rem] items-center gap-0.5 truncate font-semibold text-amber-700">
+        <Globe className="h-3 w-3 shrink-0" />
+        Kun booking
       </span>
     );
   }
   if (hasUncertainWebsiteHits(scan.topHits, companyName)) {
-    const hint = scan.topHits?.find((h) => h.domain)?.domain ?? "mulig treff";
     return (
-      <span
-        className={cn(
-          "inline-flex max-w-full items-center gap-1 truncate text-[11px] font-semibold",
-          light ? "text-sky-600" : "text-sky-300"
-        )}
-        title={`Google viste noe (${hint}) — sjekk selv om det er deres side`}
-      >
-        <HelpCircle className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">Usikker</span>
+      <span className="inline-flex max-w-[10rem] items-center gap-0.5 truncate font-semibold text-sky-700">
+        <HelpCircle className="h-3 w-3 shrink-0" />
+        Usikker
       </span>
     );
   }
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-[11px] font-semibold",
-        light ? "text-amber-700" : "text-brand-gold"
-      )}
-      title="Ingen nettside funnet — god kandidat for tilbud"
-    >
-      <Globe className="h-3.5 w-3.5" />
+    <span className="inline-flex items-center gap-0.5 font-semibold text-amber-800">
+      <Globe className="h-3 w-3 shrink-0" />
       Ingen nettside
     </span>
   );
 }
 
-function EmailCell({ email, light = false }: { email: string; light?: boolean }) {
-  const personal = isPersonalEmail(email);
+function EmailCell({ resolved }: { resolved: ResolvedCompanyEmail }) {
+  const { email, source, isPersonal } = resolved;
   return (
-    <span
-      className={cn(
-        "block truncate",
-        personal
-          ? light
-            ? "text-amber-700"
-            : "text-amber-300"
-          : light
-            ? "text-brand-navy"
-            : "text-brand-gold"
-      )}
+    <a
+      href={`mailto:${email}`}
+      className={cn("cv-link block truncate", isPersonal && "text-amber-700")}
       title={email}
     >
       {email}
-      {personal && (
-        <span
-          className={cn(
-            "ml-1 whitespace-nowrap text-[10px]",
-            light ? "text-amber-600/80" : "text-amber-300/70"
-          )}
-        >
-          (personlig)
+      {isPersonal && <span className="ml-0.5 text-[10px] opacity-80">(pers.)</span>}
+      {source === "facebook" && (
+        <span className="ml-1 shrink-0 rounded bg-blue-100 px-1 text-[9px] font-semibold text-blue-700">
+          Fra Facebook
         </span>
       )}
-    </span>
+    </a>
+  );
+}
+
+function SocialCell({
+  scanning,
+  url,
+  icon,
+  label,
+  viaFb,
+  confidence,
+  scanned,
+}: {
+  scanning: boolean;
+  url?: string | null;
+  icon: ReactNode;
+  label: string;
+  viaFb?: boolean;
+  confidence?: "high" | "medium" | "low";
+  scanned?: boolean;
+}) {
+  if (scanning) return <span className="cv-muted">…</span>;
+  if (!url) {
+    if (scanned) {
+      return <span className="cv-muted text-[11px]">Ingen</span>;
+    }
+    return <span className="cv-muted">—</span>;
+  }
+  const uncertain = confidence === "medium";
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "inline-flex max-w-[6rem] items-center gap-0.5 truncate",
+        uncertain ? "font-semibold text-sky-700" : "cv-link"
+      )}
+      title={uncertain ? `${label} (usikker treff)` : label}
+    >
+      {icon}
+      <span className="truncate">{uncertain ? "Usikker" : label}</span>
+      {viaFb && (
+        <span className="shrink-0 rounded bg-blue-100 px-0.5 text-[9px] font-semibold text-blue-700">FB</span>
+      )}
+    </a>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-0.5 border-b border-[var(--cv-border)] py-2 last:border-b-0">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-[var(--cv-muted)]">
+        {label}
+      </dt>
+      <dd className="min-w-0 text-[13px]">{children}</dd>
+    </div>
+  );
+}
+
+function CompanyDetailBody({
+  company: c,
+  scan,
+  isScanning,
+  onStatusChange,
+}: {
+  company: CompanyWithLead;
+  scan?: WebsiteScanResult;
+  isScanning?: boolean;
+  onStatusChange?: (orgnr: string, status: string) => void;
+}) {
+  const status = c.user_lead?.status ?? "ny";
+  const resolved = resolveCompanyEmail(c, scan);
+  const phone = c.phone ?? c.mobile;
+
+  return (
+    <dl className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <DetailRow label="Firma">
+        <p className="cv-firma font-semibold" id="company-detail-title">
+          {c.name}
+        </p>
+        {(c.municipality_name || c.registered_at) && (
+          <p className="cv-meta mt-0.5 text-[12px]">
+            {c.municipality_name ?? "—"}
+            {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
+          </p>
+        )}
+      </DetailRow>
+      <DetailRow label="Org.nr">
+        <span className="cv-mono">{c.orgnr}</span>
+      </DetailRow>
+      <DetailRow label="E-post">
+        {resolved ? (
+          <EmailCell resolved={resolved} />
+        ) : (
+          <span className="cv-muted">—</span>
+        )}
+      </DetailRow>
+      <DetailRow label="Tlf">
+        {phone ? (
+          <a href={`tel:${phone}`} className="cv-link">
+            {phone}
+          </a>
+        ) : (
+          <span className="cv-muted">—</span>
+        )}
+      </DetailRow>
+      <DetailRow label="Nettside">
+        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+          <WebsiteCell scan={scan} scanning={isScanning} companyName={c.name} />
+          {scan && !isScanning && (
+            <>
+              {scan.hasWebsite && <PresenceBadge kind="ok" label="Web" />}
+              {!scan.hasWebsite &&
+                scan.websiteKind === "none" &&
+                scan.confidence !== "low" && <PresenceBadge kind="warn" label="Uten" />}
+            </>
+          )}
+        </div>
+      </DetailRow>
+      <DetailRow label="Facebook">
+        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+          <SocialCell
+            scanning={!!isScanning}
+            url={scan?.facebookUrl}
+            confidence={scan?.facebookConfidence}
+            scanned={Boolean(scan?.socialScan?.includeFacebook)}
+            icon={<FacebookIcon className="h-3.5 w-3.5 shrink-0 text-blue-700" />}
+            label={scan?.facebookProfile?.name ?? "FB"}
+          />
+          {scan?.facebookUrl && !isScanning && <PresenceBadge kind="info" label="FB" />}
+          {scan?.socialScan?.includeFacebook && !scan.facebookUrl && !isScanning && (
+            <PresenceBadge kind="muted" label="Nei" />
+          )}
+        </div>
+      </DetailRow>
+      <DetailRow label="Instagram">
+        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+          <SocialCell
+            scanning={!!isScanning}
+            url={scan?.instagramUrl}
+            confidence={scan?.instagramConfidence}
+            scanned={Boolean(scan?.socialScan?.includeInstagram)}
+            icon={<InstagramIcon className="h-3.5 w-3.5 shrink-0 text-pink-700" />}
+            label={
+              scan?.instagramProfile?.username ?? scan?.instagramProfile?.name ?? "IG"
+            }
+            viaFb={scan?.instagramFromFacebook}
+          />
+          {scan?.instagramUrl && !isScanning && <PresenceBadge kind="info" label="IG" />}
+          {scan?.socialScan?.includeInstagram && !scan.instagramUrl && !isScanning && (
+            <PresenceBadge kind="muted" label="Nei" />
+          )}
+        </div>
+      </DetailRow>
+      <DetailRow label="Daglig leder">
+        {c.daglig_leder ?? <span className="cv-muted">—</span>}
+      </DetailRow>
+      <DetailRow label="Status">
+        {onStatusChange ? (
+          <select
+            value={status}
+            onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+            className="cv-status-select max-w-full"
+          >
+            {LEAD_STATUSES.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <StatusPill status={status} label={statusLabel(status)} />
+        )}
+      </DetailRow>
+    </dl>
+  );
+}
+
+function CompanyMobileDetailSheet({
+  company,
+  scan,
+  isScanning,
+  onClose,
+  onStatusChange,
+}: {
+  company: CompanyWithLead;
+  scan?: WebsiteScanResult;
+  isScanning?: boolean;
+  onClose: () => void;
+  onStatusChange?: (orgnr: string, status: string) => void;
+}) {
+  const handleClose = useCallback(() => onClose(), [onClose]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [handleClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 md:hidden">
+      <button
+        type="button"
+        className="absolute inset-0 bg-slate-900/40"
+        aria-label="Lukk bedriftsinfo"
+        onClick={handleClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="company-detail-title"
+        className="absolute bottom-0 left-0 right-0 max-h-[min(88vh,100dvh)] overflow-y-auto rounded-t-2xl bg-white shadow-2xl"
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--cv-border)] bg-white px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--cv-text)]">Bedriftsinfo</p>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Lukk"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <CompanyDetailBody
+          company={company}
+          scan={scan}
+          isScanning={isScanning}
+          onStatusChange={onStatusChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CompanyMobileCard({
+  company: c,
+  scan,
+  isScanning,
+  isSelected,
+  onToggle,
+  onOpenDetail,
+  onStatusChange,
+}: {
+  company: CompanyWithLead;
+  scan?: WebsiteScanResult;
+  isScanning?: boolean;
+  isSelected: boolean;
+  onToggle: (orgnr: string) => void;
+  onOpenDetail: (orgnr: string) => void;
+  onStatusChange?: (orgnr: string, status: string) => void;
+}) {
+  const status = c.user_lead?.status ?? "ny";
+  const resolved = resolveCompanyEmail(c, scan);
+  const phone = c.phone ?? c.mobile;
+
+  return (
+    <article
+      className={cn(
+        "flex gap-2 border-b border-[var(--cv-border)] px-3 py-2",
+        isSelected && "bg-[var(--cv-surface)]"
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={() => onToggle(c.orgnr)}
+        aria-label={`Velg ${c.name}`}
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-sky-600"
+      />
+      <div className="min-w-0 flex-1">
+        <div
+          role="button"
+          tabIndex={0}
+          className="w-full min-w-0 cursor-pointer rounded-md text-left outline-none ring-sky-500 focus-visible:ring-2"
+          onClick={() => onOpenDetail(c.orgnr)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpenDetail(c.orgnr);
+            }
+          }}
+          aria-label={`Vis detaljer for ${c.name}`}
+        >
+          <p className="cv-firma truncate text-[13px]" title={c.name}>
+            {c.name}
+          </p>
+          {(c.municipality_name || c.registered_at) && (
+            <p className="cv-meta truncate text-[11px]">
+              {c.municipality_name ?? "—"}
+              {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
+            </p>
+          )}
+          <p className="cv-mono mt-0.5 text-[11px]">{c.orgnr}</p>
+          <div className="mt-1 min-w-0 text-[12px]" onClick={(e) => e.stopPropagation()}>
+            {resolved ? (
+              <EmailCell resolved={resolved} />
+            ) : phone ? (
+              <a
+                href={`tel:${phone}`}
+                className="cv-link"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {phone}
+              </a>
+            ) : (
+              <span className="cv-muted">Ingen kontakt</span>
+            )}
+          </div>
+          <div
+            className="mt-1 flex flex-wrap items-center gap-1 text-[12px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <WebsiteCell scan={scan} scanning={isScanning} companyName={c.name} />
+            {scan && !isScanning && (
+              <>
+                {scan.hasWebsite && <PresenceBadge kind="ok" label="Web" />}
+                {!scan.hasWebsite &&
+                  scan.websiteKind === "none" &&
+                  scan.confidence !== "low" && <PresenceBadge kind="warn" label="Uten" />}
+              </>
+            )}
+            {scan?.facebookUrl && !isScanning && (
+              <a
+                href={scan.facebookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 text-blue-700"
+                title="Facebook"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <FacebookIcon className="h-3 w-3 shrink-0" />
+                <span className="text-[11px]">FB</span>
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="mt-1.5">
+          {onStatusChange ? (
+            <select
+              value={status}
+              onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+              className="cv-status-select max-w-full"
+            >
+              {LEAD_STATUSES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <StatusPill status={status} label={statusLabel(status)} />
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -165,8 +530,11 @@ export function CompanyTable({
   liveBrreg = false,
   websiteScans,
   scanningOrgnrs,
-  light = false,
 }: Props) {
+  const [detailOrgnr, setDetailOrgnr] = useState<string | null>(null);
+  const detailCompany =
+    detailOrgnr != null ? companies.find((c) => c.orgnr === detailOrgnr) : undefined;
+
   if (companies.length === 0) {
     return (
       <EmptyState
@@ -182,328 +550,198 @@ export function CompanyTable({
 
   return (
     <>
-      {/* Mobil + nettbrett: kort */}
-      <div className="space-y-3 lg:hidden">
-        <div className="flex items-center justify-between px-1">
-          <label
-            className={cn(
-              "flex items-center gap-2 text-xs font-medium",
-              light ? "text-slate-500" : "font-sans text-white/50"
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={onToggleAll}
-              className="h-4 w-4 rounded accent-brand-gold"
-            />
-            Velg alle med e-post
-          </label>
-          <span className={cn("text-xs", light ? "text-slate-400" : "font-sans text-white/40")}>
-            {companies.length} firma
-          </span>
+      <div className="nylead-theme-compact-table md:hidden">
+        <div className="flex items-center gap-2 border-b border-[var(--cv-border)] bg-[var(--cv-surface)] px-3 py-1.5">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={onToggleAll}
+            aria-label="Velg alle"
+            className="h-3.5 w-3.5 rounded accent-sky-600"
+          />
+          <span className="text-[11px] font-semibold text-[var(--cv-muted)]">Velg alle</span>
         </div>
-
-        {companies.map((c) => {
-          const scan = websiteScans?.get(c.orgnr);
-          const score = computeWebsiteBadnessScore(scan, c.name);
-          const status = c.user_lead?.status ?? "ny";
-
-          return (
-            <div
-              key={c.orgnr}
-              className={cn(
-                light
-                  ? "rounded-xl border border-white/60 bg-white/50 p-4 shadow-sm backdrop-blur-md"
-                  : "panel p-4",
-                selected.has(c.orgnr) &&
-                  (light ? "border-brand-gold/50 ring-1 ring-brand-gold/20" : "border-brand-gold/40")
-              )}
-            >
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={selected.has(c.orgnr)}
-                  onChange={() => onToggle(c.orgnr)}
-                  disabled={!c.has_email}
-                  className="mt-1 h-4 w-4 shrink-0 rounded accent-brand-gold"
-                />
-                <ScoreRing
-                  score={score}
-                  size="sm"
-                  light={light}
-                  title={websiteBadnessLabel(score)}
-                />
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={cn(
-                      "text-sm font-semibold leading-snug",
-                      light ? "text-slate-900" : "font-sans text-white"
-                    )}
-                  >
-                    {c.name}
-                  </p>
-                  <p className={cn("font-mono text-[11px]", light ? "text-slate-400" : "text-white/40")}>
-                    {c.orgnr}
-                  </p>
-                  <p className={cn("mt-0.5 text-xs", light ? "text-slate-500" : "text-white/50")}>
-                    {c.municipality_name} · {formatRegisteredDate(c.registered_at)}
-                  </p>
-                </div>
-              </div>
-
-              <div
-                className={cn(
-                  "mt-3 space-y-2 border-t pt-3",
-                  light ? "border-slate-100" : "border-white/[0.06]"
-                )}
-              >
-                <WebsiteBadge
-                  scan={scan}
-                  scanning={scanningOrgnrs?.has(c.orgnr)}
-                  companyName={c.name}
-                  light={light}
-                />
-                {c.email ? (
-                  <EmailCell email={c.email} light={light} />
-                ) : (
-                  <p className={cn("text-xs", light ? "text-slate-400" : "text-white/30")}>
-                    Ingen e-post
-                  </p>
-                )}
-                {(c.phone ?? c.mobile) && (
-                  <p className={cn("text-xs", light ? "text-slate-500" : "text-white/50")}>
-                    {c.phone ?? c.mobile}
-                  </p>
-                )}
-                {onStatusChange ? (
-                  <select
-                    value={status}
-                    onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
-                    className={
-                      light
-                        ? "scan-input py-2 text-xs"
-                        : "w-full rounded-md border border-white/10 bg-brand-navyDark px-2 py-2 text-xs text-white"
-                    }
-                  >
-                    {LEAD_STATUSES.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <StatusPill status={status} label={statusLabel(status)} />
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {companies.map((c) => (
+          <CompanyMobileCard
+            key={c.orgnr}
+            company={c}
+            scan={websiteScans?.get(c.orgnr)}
+            isScanning={scanningOrgnrs?.has(c.orgnr)}
+            isSelected={selected.has(c.orgnr)}
+            onToggle={onToggle}
+            onOpenDetail={setDetailOrgnr}
+            onStatusChange={onStatusChange}
+          />
+        ))}
       </div>
 
-      {/* PC: tabell med synlig e-post */}
-      <div
-        className={cn(
-          "hidden overflow-hidden lg:block",
-          !light && "panel"
-        )}
-      >
-        <p
-          className={cn(
-            "border-b px-4 py-2 text-[11px]",
-            light
-              ? "border-white/50 bg-white/40 text-slate-400 backdrop-blur-sm"
-              : "border-white/[0.06] bg-brand-navy/80 font-sans text-white/35"
-          )}
-        >
-          Scroll horisontalt for flere kolonner
-        </p>
-        <div
-          className={cn(
-            "app-scroll overflow-x-auto",
-            light ? "bg-white/30 backdrop-blur-sm" : "bg-brand-navyDark"
-          )}
-        >
-          <table
-            className={cn(
-              "w-full min-w-[1080px] table-fixed text-left text-sm",
-              light ? "bg-transparent" : "bg-brand-navyDark"
-            )}
-          >
-            <colgroup>
-              <col className="w-10" />
-              <col className="w-14" />
-              <col className="w-[min(220px,22vw)]" />
-              <col className="w-[min(240px,26vw)]" />
-              <col className="w-28" />
-              <col className="w-28" />
-              <col className="w-24" />
-              <col className="w-36" />
-              <col className="w-32" />
-            </colgroup>
-            <thead
-              className={cn(
-                "border-b text-[11px] font-semibold",
-                light
-                  ? "border-white/50 bg-white/45 text-slate-500 backdrop-blur-md"
-                  : "border-white/[0.06] bg-brand-navy font-bold uppercase tracking-wider text-white/50"
-              )}
-            >
-              <tr>
-                <th
-                  className={cn(
-                    "sticky left-0 z-10 px-3 py-3.5",
-                    light ? "bg-white/45" : "bg-brand-navy"
-                  )}
-                >
+      {detailCompany && (
+        <CompanyMobileDetailSheet
+          company={detailCompany}
+          scan={websiteScans?.get(detailCompany.orgnr)}
+          isScanning={scanningOrgnrs?.has(detailCompany.orgnr)}
+          onClose={() => setDetailOrgnr(null)}
+          onStatusChange={onStatusChange}
+        />
+      )}
+
+      <div className="nylead-theme-compact-table hidden w-full overflow-x-auto md:block">
+      <table className="nylead-compact-table w-full min-w-[880px]">
+        <thead>
+          <tr>
+            <th className="w-8">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={onToggleAll}
+                aria-label="Velg alle"
+                className="h-3.5 w-3.5 rounded accent-sky-600"
+              />
+            </th>
+            <th>Firma</th>
+            <th>Org.nr</th>
+            <th>E-post</th>
+            <th>Tlf</th>
+            <th>Nettside</th>
+            <th>Facebook</th>
+            <th>Instagram</th>
+            <th>Daglig leder</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {companies.map((c) => {
+            const scan = websiteScans?.get(c.orgnr);
+            const status = c.user_lead?.status ?? "ny";
+            const isScanning = scanningOrgnrs?.has(c.orgnr);
+            const isSelected = selected.has(c.orgnr);
+
+            return (
+              <tr key={c.orgnr} className={cn(isSelected && "is-selected")}>
+                <td>
                   <input
                     type="checkbox"
-                    checked={allSelected}
-                    onChange={onToggleAll}
-                    aria-label="Velg alle"
-                    className="rounded accent-brand-gold"
+                    checked={isSelected}
+                    onChange={() => onToggle(c.orgnr)}
+                    aria-label={`Velg ${c.name}`}
+                    className="h-3.5 w-3.5 rounded accent-sky-600"
                   />
-                </th>
-                <th
-                  className="px-2 py-3.5"
-                  title="0 = ingen nettside. Høyere tall = dårligere nettside."
-                >
-                  Nett
-                </th>
-                <th className={cn("sticky left-10 z-10 px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>
-                  Navn
-                </th>
-                <th className={cn("px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>E-post</th>
-                <th className={cn("px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>Nettside</th>
-                <th className={cn("px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>Telefon</th>
-                <th className={cn("px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>Registrert</th>
-                <th className={cn("px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>Kommune</th>
-                <th className={cn("px-3 py-3.5", light ? "bg-white/45" : "bg-brand-navy")}>Status</th>
-              </tr>
-            </thead>
-            <tbody className={light ? "bg-transparent" : "bg-brand-navyDark"}>
-              {companies.map((c) => {
-                const scan = websiteScans?.get(c.orgnr);
-                const score = computeWebsiteBadnessScore(scan, c.name);
-                const status = c.user_lead?.status ?? "ny";
-                const rowBg = light ? "bg-white/40" : "bg-brand-navyDark";
-                const rowHover = light ? "hover:bg-white/60" : "hover:bg-brand-navy/80";
-                return (
-                  <tr
-                    key={c.orgnr}
-                    className={cn(
-                      "border-t transition",
-                      light ? "border-slate-100" : "border-white/[0.04]",
-                      rowBg,
-                      rowHover,
-                      selected.has(c.orgnr) && light && "bg-amber-50/50"
-                    )}
-                  >
-                    <td className={cn("sticky left-0 z-10 px-3 py-3", rowBg)}>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(c.orgnr)}
-                        onChange={() => onToggle(c.orgnr)}
-                        disabled={!c.has_email}
-                        aria-label={`Velg ${c.name}`}
-                        className="rounded accent-brand-gold"
-                      />
-                    </td>
-                    <td className={cn("px-2 py-3", rowBg)}>
-                      <ScoreRing
-                        score={score}
-                        size="sm"
-                        light={light}
-                        title={websiteBadnessLabel(score)}
-                      />
-                    </td>
-                    <td className={cn("sticky left-10 z-10 px-3 py-3", rowBg)}>
-                      <p
-                        className={cn("truncate font-medium", light ? "text-slate-900" : "text-white")}
-                        title={c.name}
-                      >
-                        {c.name}
-                      </p>
-                      <p
-                        className={cn(
-                          "truncate font-mono text-[10px]",
-                          light ? "text-slate-400" : "text-white/40"
-                        )}
-                      >
-                        {c.orgnr}
-                      </p>
-                    </td>
-                    <td className={cn("px-3 py-3", rowBg)}>
-                      {c.email ? (
-                        <EmailCell email={c.email} light={light} />
-                      ) : (
-                        <span className={light ? "text-slate-300" : "text-white/40"}>—</span>
-                      )}
-                    </td>
-                    <td className={cn("px-3 py-3", rowBg)}>
-                      <WebsiteBadge
-                        scan={scan}
-                        scanning={scanningOrgnrs?.has(c.orgnr)}
-                        companyName={c.name}
-                        light={light}
-                      />
-                    </td>
-                    <td
-                      className={cn(
-                        "truncate px-3 py-3",
-                        rowBg,
-                        light ? "text-slate-600" : "text-white/50"
-                      )}
-                    >
-                      {c.phone ?? c.mobile ?? "—"}
-                    </td>
-                    <td
-                      className={cn(
-                        "whitespace-nowrap px-3 py-3",
-                        rowBg,
-                        light ? "text-slate-600" : "text-white/50"
-                      )}
-                    >
-                      {formatRegisteredDate(c.registered_at)}
-                    </td>
-                    <td
-                      className={cn(
-                        "truncate px-3 py-3",
-                        rowBg,
-                        light ? "text-slate-600" : "text-white/50"
-                      )}
-                      title={c.municipality_name ?? ""}
-                    >
+                </td>
+                <td>
+                  <p className="cv-firma max-w-[14rem] truncate" title={c.name}>
+                    {c.name}
+                  </p>
+                  {(c.municipality_name || c.registered_at) && (
+                    <p className="cv-meta max-w-[14rem] truncate">
                       {c.municipality_name ?? "—"}
-                    </td>
-                    <td className={cn("px-3 py-3", rowBg)}>
-                      {onStatusChange ? (
-                        <select
-                          value={status}
-                          onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
-                          className={
-                            light
-                              ? "scan-input max-w-[7.5rem] py-1 text-xs"
-                              : "w-full max-w-[7.5rem] rounded-lg border border-white/10 bg-brand-navyDark px-2 py-1 text-xs text-white"
-                          }
-                        >
-                          {LEAD_STATUSES.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <StatusPill status={status} label={statusLabel(status)} />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                      {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
+                    </p>
+                  )}
+                </td>
+                <td className="cv-mono whitespace-nowrap">{c.orgnr}</td>
+                <td className="max-w-[12rem]">
+                  {(() => {
+                    const resolved = resolveCompanyEmail(c, scan);
+                    return resolved ? (
+                      <EmailCell resolved={resolved} />
+                    ) : (
+                      <span className="cv-muted">—</span>
+                    );
+                  })()}
+                </td>
+                <td className="whitespace-nowrap">
+                  {c.phone ?? c.mobile ? (
+                    <a href={`tel:${c.phone ?? c.mobile}`} className="cv-link">
+                      {c.phone ?? c.mobile}
+                    </a>
+                  ) : (
+                    <span className="cv-muted">—</span>
+                  )}
+                </td>
+                <td className="max-w-[11rem]">
+                  <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                    <WebsiteCell scan={scan} scanning={isScanning} companyName={c.name} />
+                    {scan && !isScanning && (
+                      <>
+                        {scan.hasWebsite && (
+                          <PresenceBadge kind="ok" label="Web" />
+                        )}
+                        {!scan.hasWebsite &&
+                          scan.websiteKind === "none" &&
+                          scan.confidence !== "low" && (
+                            <PresenceBadge kind="warn" label="Uten" />
+                          )}
+                      </>
+                    )}
+                  </div>
+                </td>
+                <td className="max-w-[7rem]">
+                  <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                    <SocialCell
+                      scanning={!!isScanning}
+                      url={scan?.facebookUrl}
+                      confidence={scan?.facebookConfidence}
+                      scanned={Boolean(scan?.socialScan?.includeFacebook)}
+                      icon={<FacebookIcon className="h-3 w-3 shrink-0 text-blue-700" />}
+                      label={scan?.facebookProfile?.name ?? "FB"}
+                    />
+                    {scan?.facebookUrl && !isScanning && (
+                      <PresenceBadge kind="info" label="FB" />
+                    )}
+                    {scan?.socialScan?.includeFacebook &&
+                      !scan.facebookUrl &&
+                      !isScanning && <PresenceBadge kind="muted" label="Nei" />}
+                  </div>
+                </td>
+                <td className="max-w-[7rem]">
+                  <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                    <SocialCell
+                      scanning={!!isScanning}
+                      url={scan?.instagramUrl}
+                      confidence={scan?.instagramConfidence}
+                      scanned={Boolean(scan?.socialScan?.includeInstagram)}
+                      icon={<InstagramIcon className="h-3 w-3 shrink-0 text-pink-700" />}
+                      label={
+                        scan?.instagramProfile?.username ??
+                        scan?.instagramProfile?.name ??
+                        "IG"
+                      }
+                      viaFb={scan?.instagramFromFacebook}
+                    />
+                    {scan?.instagramUrl && !isScanning && (
+                      <PresenceBadge kind="info" label="IG" />
+                    )}
+                    {scan?.socialScan?.includeInstagram &&
+                      !scan.instagramUrl &&
+                      !isScanning && <PresenceBadge kind="muted" label="Nei" />}
+                  </div>
+                </td>
+                <td className="max-w-[8rem] truncate text-xs text-slate-700" title={c.daglig_leder ?? undefined}>
+                  {c.daglig_leder ?? <span className="cv-muted">—</span>}
+                </td>
+                <td>
+                  {onStatusChange ? (
+                    <select
+                      value={status}
+                      onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+                      className="cv-status-select"
+                    >
+                      {LEAD_STATUSES.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <StatusPill status={status} label={statusLabel(status)} />
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
     </>
   );
 }

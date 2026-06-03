@@ -8,7 +8,7 @@ export type Region = {
 };
 
 export const REGIONS: Region[] = [
-  { id: "", label: "Alle områder", countyPrefixes: [] },
+  { id: "", label: "Hele Norge", countyPrefixes: [] },
   { id: "oslo", label: "Oslo", countyPrefixes: ["03"] },
   { id: "akershus", label: "Akershus", countyPrefixes: ["32"] },
   { id: "ostfold", label: "Østfold", countyPrefixes: ["31"] },
@@ -27,7 +27,7 @@ export const REGIONS: Region[] = [
 ];
 
 export function regionLabel(regionId: string): string {
-  return REGIONS.find((r) => r.id === regionId)?.label ?? "Alle områder";
+  return REGIONS.find((r) => r.id === regionId)?.label ?? "Hele Norge";
 }
 
 export function kommuneBelongsToRegion(

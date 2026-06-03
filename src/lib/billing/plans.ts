@@ -1,4 +1,9 @@
-export type PlanId = "start" | "pro" | "agency";
+export type PlanId = "nylead";
+
+/** Eldre abonnement i databasen — samme rettigheter som NyLead */
+export type LegacyPlanId = "start" | "pro" | "agency";
+
+export type StoredPlanId = PlanId | LegacyPlanId;
 
 export type SubscriptionStatus =
   | "active"
@@ -14,7 +19,6 @@ export type PlanConfig = {
   tagline: string;
   priceNok: number;
   stripePriceId: string | undefined;
-  popular?: boolean;
   maxRecipientsPerSend: number;
   maxEmailsPerMonth: number;
   /** Unike firma med tlf og/eller e-post fra Brreg per måned */
@@ -26,98 +30,92 @@ export type PlanConfig = {
   features: string[];
 };
 
-function priceId(envKey: string): string | undefined {
-  const v = process.env[envKey]?.trim();
-  return v || undefined;
+function priceId(...envKeys: string[]): string | undefined {
+  for (const key of envKeys) {
+    let v = process.env[key]?.trim();
+    if (!v) continue;
+    if (
+      (v.startsWith('"') && v.endsWith('"')) ||
+      (v.startsWith("'") && v.endsWith("'"))
+    ) {
+      v = v.slice(1, -1).trim();
+    }
+    if (v) return v;
+  }
+  return undefined;
 }
 
-export const PLANS: PlanConfig[] = [
-  {
-    id: "start",
-    name: "Start",
-    tagline: "For deg som kommer i gang",
-    priceNok: 399,
-    stripePriceId: priceId("STRIPE_PRICE_START"),
-    maxRecipientsPerSend: 0,
-    maxEmailsPerMonth: 0,
-    maxCompaniesWithContactPerMonth: 150,
-    maxTemplates: 0,
-    emailIntegration: false,
-    sequences: false,
-    pipeline: false,
-    features: [
-      "Opptil 150 bedrifter med tlf og e-post per måned",
-      "Brreg-skanning i ditt område",
-      "Google nettside-sjekk (10 om gangen)",
-      "Filtrer og eksporter leads",
-      "Uten Gmail/Outlook — oppgrader til Pro for utsendelse",
-    ],
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    tagline: "For aktiv salg",
-    priceNok: 644,
-    stripePriceId: priceId("STRIPE_PRICE_PRO"),
-    popular: true,
-    maxRecipientsPerSend: 75,
-    maxEmailsPerMonth: 500,
-    maxCompaniesWithContactPerMonth: 250,
-    maxTemplates: null,
-    emailIntegration: true,
-    sequences: true,
-    pipeline: true,
-    features: [
-      "Opptil 250 bedrifter med tlf og e-post per måned",
-      "Brreg-skanning og Google nettside-sjekk",
-      "Send fra Gmail eller Outlook",
-      "Sekvenser og oppfølging",
-      "Pipeline / CRM",
-      "Ubegrenset maler",
-      "7 dagers prøveperiode",
-    ],
-  },
-  {
-    id: "agency",
-    name: "Byrå",
-    tagline: "For høyt volum",
-    priceNok: 1294,
-    stripePriceId: priceId("STRIPE_PRICE_AGENCY"),
-    maxRecipientsPerSend: 100,
-    maxEmailsPerMonth: 1000,
-    maxCompaniesWithContactPerMonth: 500,
-    maxTemplates: null,
-    emailIntegration: true,
-    sequences: true,
-    pipeline: true,
-    features: [
-      "Opptil 500 bedrifter med tlf og e-post per måned",
-      "Alt i Pro (sending, sekvenser, pipeline)",
-      "Opptil 100 mottakere per utsendelse",
-      "1 000 e-poster per måned",
-      "Prioritert support",
-    ],
-  },
+/** Én pakke — full tilgang (tidligere Pro-nivå) */
+export const NYLEAD_PLAN: PlanConfig = {
+  id: "nylead",
+  name: "NyLead",
+  tagline: "Skann Brreg, sjekk nettside, send fra din e-post — én pris, alt med",
+  priceNok: 499,
+  stripePriceId: priceId("STRIPE_PRICE", "STRIPE_PRICE_NYLEAD"),
+  maxRecipientsPerSend: 75,
+  maxEmailsPerMonth: 500,
+  maxCompaniesWithContactPerMonth: 250,
+  maxTemplates: null,
+  emailIntegration: true,
+  sequences: true,
+  pipeline: true,
+  features: [
+    "Opptil 250 bedrifter med tlf og e-post per måned",
+    "Brreg-skanning og Google nettside-sjekk",
+    "Send fra Gmail, Outlook eller SMTP",
+    "Sekvenser og oppfølging",
+    "Pipeline / CRM",
+    "Ubegrenset maler",
+    "7 dagers prøveperiode",
+  ],
+};
+
+export const PLANS: PlanConfig[] = [NYLEAD_PLAN];
+
+export const DEFAULT_PLAN_ID: PlanId = "nylead";
+
+const LEGACY_STRIPE_PRICE_MAP: { priceId: string | undefined; storedAs: LegacyPlanId }[] = [
+  { priceId: priceId("STRIPE_PRICE_START"), storedAs: "start" },
+  { priceId: priceId("STRIPE_PRICE_PRO"), storedAs: "pro" },
+  { priceId: priceId("STRIPE_PRICE_AGENCY"), storedAs: "agency" },
 ];
 
-export function getPlan(id: PlanId | string | null | undefined): PlanConfig | null {
+export function getPlan(
+  id: StoredPlanId | string | null | undefined
+): PlanConfig | null {
   if (!id) return null;
-  return PLANS.find((p) => p.id === id) ?? null;
-}
-
-export function isValidPlanId(id: string): id is PlanId {
-  return id === "start" || id === "pro" || id === "agency";
-}
-
-export function planFromStripePriceId(priceId: string): PlanId | null {
-  for (const plan of PLANS) {
-    if (plan.stripePriceId && plan.stripePriceId === priceId) return plan.id;
+  if (id === "nylead" || id === "start" || id === "pro" || id === "agency") {
+    return NYLEAD_PLAN;
   }
   return null;
 }
 
-export function formatPlanName(planId: PlanId | string): string {
-  return PLANS.find((p) => p.id === planId)?.name ?? String(planId);
+export function isValidPlanId(id: string): id is PlanId {
+  return id === "nylead";
+}
+
+export function isStoredPlanId(id: string): id is StoredPlanId {
+  return (
+    id === "nylead" || id === "start" || id === "pro" || id === "agency"
+  );
+}
+
+/** Stripe price → plan lagret i profiles (nye kjøp = nylead) */
+export function planFromStripePriceId(priceId: string): StoredPlanId | null {
+  if (NYLEAD_PLAN.stripePriceId && NYLEAD_PLAN.stripePriceId === priceId) {
+    return "nylead";
+  }
+  for (const legacy of LEGACY_STRIPE_PRICE_MAP) {
+    if (legacy.priceId && legacy.priceId === priceId) return legacy.storedAs;
+  }
+  return null;
+}
+
+export function formatPlanName(planId: StoredPlanId | string): string {
+  if (planId === "start") return "Start (eldre)";
+  if (planId === "pro") return "Pro (eldre)";
+  if (planId === "agency") return "Byrå (eldre)";
+  return NYLEAD_PLAN.name;
 }
 
 export const ACTIVE_SUBSCRIPTION_STATUSES: SubscriptionStatus[] = [

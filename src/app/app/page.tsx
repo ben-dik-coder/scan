@@ -5,11 +5,16 @@ import { DEMO_MUNICIPALITIES } from "@/lib/demo/data";
 import { isBrregLive } from "@/lib/demo/config";
 import { filterDemoCompanies, useDemo } from "@/lib/demo/store";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FilterState } from "@/components/CompanyFilters";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
 import { regionLabel } from "@/lib/constants/regions";
+import { getDemoShuffleSessionId } from "@/lib/shuffle/demo-session";
+import {
+  buildDemoShuffleSeed,
+  seededShuffle,
+} from "@/lib/shuffle/seeded-shuffle";
 import { Loader2, RefreshCw } from "lucide-react";
 
 function parseDaysParam(params: URLSearchParams): number {
@@ -25,7 +30,6 @@ function periodLabel(days: number): string {
 }
 
 function parseFilters(params: URLSearchParams, brreg = false): FilterState {
-  const hasGeneriskParam = params.has("generisk");
   const hasAnyFilter =
     params.has("omrade") ||
     params.has("kommune") ||
@@ -39,28 +43,63 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
   }
 
   return {
-    regionId: params.get("omrade") ?? (brreg ? DEFAULT_MARKET_FILTERS.regionId : ""),
-    municipalityCode:
-      params.get("kommune") ?? (brreg ? DEFAULT_MARKET_FILTERS.municipalityCode : ""),
+    regionId: params.has("omrade")
+      ? (params.get("omrade") ?? "")
+      : brreg && !hasAnyFilter
+        ? DEFAULT_MARKET_FILTERS.regionId
+        : "",
+    municipalityCode: params.has("kommune")
+      ? (params.get("kommune") ?? "")
+      : brreg && !hasAnyFilter
+        ? DEFAULT_MARKET_FILTERS.municipalityCode
+        : "",
     days: parseDaysParam(params),
-    hasEmail: params.get("epost") !== "0",
-    genericEmailOnly: hasGeneriskParam
+    hasEmail: params.has("epost")
+      ? params.get("epost") === "1"
+      : brreg
+        ? DEFAULT_MARKET_FILTERS.hasEmail
+        : false,
+    genericEmailOnly: params.has("generisk")
       ? params.get("generisk") === "1"
-      : false,
+      : brreg
+        ? DEFAULT_MARKET_FILTERS.genericEmailOnly
+        : false,
     industryGroup: params.get("bransje") ?? "",
+    websitePresence:
+      (params.get("web") as FilterState["websitePresence"]) || "all",
+    facebookPresence:
+      (params.get("fb") as FilterState["facebookPresence"]) || "all",
+    instagramPresence:
+      (params.get("ig") as FilterState["instagramPresence"]) || "all",
   };
 }
 
-function buildCompaniesQuery(filters: FilterState): string {
+function parsePageParam(params: URLSearchParams): number {
+  const raw = params.get("page");
+  if (!raw) return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+}
+
+function buildCompaniesQuery(filters: FilterState, page = 1): string {
   const params = new URLSearchParams();
   if (filters.regionId) params.set("omrade", filters.regionId);
   else params.delete("omrade");
   if (filters.municipalityCode) params.set("kommune", filters.municipalityCode);
+  else params.delete("kommune");
   params.set("dager", String(filters.days));
   params.set("epost", filters.hasEmail ? "1" : "0");
   params.set("generisk", filters.genericEmailOnly ? "1" : "0");
   if (filters.industryGroup) params.set("bransje", filters.industryGroup);
   else params.delete("bransje");
+  if (filters.websitePresence !== "all") params.set("web", filters.websitePresence);
+  else params.delete("web");
+  if (filters.facebookPresence !== "all") params.set("fb", filters.facebookPresence);
+  else params.delete("fb");
+  if (filters.instagramPresence !== "all") params.set("ig", filters.instagramPresence);
+  else params.delete("ig");
+  if (page > 1) params.set("page", String(page));
+  else params.delete("page");
   return params.toString();
 }
 
@@ -78,11 +117,26 @@ function FirmaPageDemo() {
     industryGroup: filters.industryGroup || undefined,
   });
 
+  const shuffled = useMemo(() => {
+    const seed = buildDemoShuffleSeed(
+      {
+        regionId: filters.regionId || undefined,
+        municipalityCode: filters.municipalityCode || undefined,
+        days: filters.days,
+        hasEmail: filters.hasEmail,
+        genericEmailOnly: filters.genericEmailOnly,
+        industryGroup: filters.industryGroup || undefined,
+      },
+      getDemoShuffleSessionId()
+    );
+    return seededShuffle(filtered, seed);
+  }, [filtered, filters]);
+
   return (
     <AppPageClient
-      companies={filtered}
-      total={filtered.length}
-      withEmail={filtered.filter((c) => c.has_email).length}
+      companies={shuffled}
+      total={shuffled.length}
+      withEmail={shuffled.filter((c) => c.has_email).length}
       municipalities={DEMO_MUNICIPALITIES}
       initialFilters={filters}
       templates={templates}
@@ -96,6 +150,7 @@ function FirmaPageBrreg() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filters = parseFilters(searchParams, true);
+  const currentPage = parsePageParam(searchParams);
   const { templates, sequences } = useDemo();
 
   useEffect(() => {
@@ -111,8 +166,8 @@ function FirmaPageBrreg() {
     params.set("omrade", DEFAULT_MARKET_FILTERS.regionId);
     params.set("kommune", DEFAULT_MARKET_FILTERS.municipalityCode);
     params.set("dager", String(DEFAULT_MARKET_FILTERS.days));
-    params.set("epost", "1");
-    params.set("generisk", "1");
+    params.set("epost", DEFAULT_MARKET_FILTERS.hasEmail ? "1" : "0");
+    params.set("generisk", DEFAULT_MARKET_FILTERS.genericEmailOnly ? "1" : "0");
     router.replace(`/app?${params.toString()}`);
   }, [searchParams, router]);
 
@@ -124,7 +179,17 @@ function FirmaPageBrreg() {
   const [error, setError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [brregTotal, setBrregTotal] = useState<number | null>(null);
+  const [companiesSource, setCompaniesSource] = useState<"db" | "brreg">("brreg");
+  const [dbCompanyCount, setDbCompanyCount] = useState<number | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 100,
+    total: 0,
+    totalPages: 1,
+    hasNext: false,
+    hasPrev: false,
+  });
   const [contactUsage, setContactUsage] = useState<{
     used: number;
     limit: number;
@@ -142,7 +207,7 @@ function FirmaPageBrreg() {
     setLoading(true);
     setError(null);
     setSlowLoad(false);
-    const query = buildCompaniesQuery(filters);
+    const query = buildCompaniesQuery(filters, currentPage);
 
     try {
       const res = await fetch(`/api/companies?${query}`, {
@@ -157,7 +222,19 @@ function FirmaPageBrreg() {
       setWithEmail(data.withEmail ?? 0);
       setFetchedAt(data.fetchedAt ?? null);
       setBrregTotal(data.brregTotal ?? null);
+      setCompaniesSource(data.source === "db" ? "db" : "brreg");
+      setDbCompanyCount(
+        typeof data.dbCompanyCount === "number" ? data.dbCompanyCount : null
+      );
       setTruncated(Boolean(data.truncated));
+      setPagination({
+        page: data.page ?? currentPage,
+        pageSize: data.pageSize ?? 100,
+        total: data.total ?? 0,
+        totalPages: data.totalPages ?? 1,
+        hasNext: Boolean(data.hasNext),
+        hasPrev: Boolean(data.hasPrev),
+      });
       setContactUsage(data.contactUsage ?? null);
     } catch (err) {
       if (gen !== loadGenRef.current) return;
@@ -172,7 +249,17 @@ function FirmaPageBrreg() {
       setTotal(0);
       setWithEmail(0);
       setBrregTotal(null);
+      setCompaniesSource("brreg");
+      setDbCompanyCount(null);
       setTruncated(false);
+      setPagination({
+        page: currentPage,
+        pageSize: 100,
+        total: 0,
+        totalPages: 1,
+        hasNext: false,
+        hasPrev: currentPage > 1,
+      });
       setContactUsage(null);
     } finally {
       clearTimeout(timeout);
@@ -185,7 +272,13 @@ function FirmaPageBrreg() {
     filters.hasEmail,
     filters.genericEmailOnly,
     filters.industryGroup,
+    currentPage,
   ]);
+
+  function goToPage(page: number) {
+    const params = new URLSearchParams(buildCompaniesQuery(filters, page));
+    router.push(`/app?${params.toString()}`);
+  }
 
   useEffect(() => {
     loadCompanies();
@@ -218,40 +311,46 @@ function FirmaPageBrreg() {
 
   if (loading && companies.length === 0) {
     return (
-      <div className="glass flex flex-col items-center justify-center gap-4 py-24 text-slate-600">
-        <Loader2 className="h-8 w-8 animate-spin text-brand-gold" />
-        <p className="text-sm font-semibold text-slate-800">
-          Henter firma fra Brønnøysund…
-        </p>
-        <p className="text-xs text-slate-500">
-          {filters.municipalityCode
-            ? `Kommune ${filters.municipalityCode} · ${periodLabel(filters.days)}`
-            : filters.regionId
-              ? `${regionLabel(filters.regionId)} · ${periodLabel(filters.days)}`
-              : `Hele Norge · ${periodLabel(filters.days)}`}
-        </p>
-        {filters.days === 0 && (
-          <p className="max-w-xs text-center text-xs text-amber-800/90">
-            {filters.municipalityCode || filters.regionId
-              ? "«Alle firma» kan ta litt tid — mange sider fra Brønnøysund"
-              : "Tips: velg område eller kommune — ellers blir det veldig mange firma"}
-          </p>
-        )}
-        {slowLoad && (
-          <p className="max-w-sm text-center text-xs text-slate-500">
-            Tar litt tid… Brønnøysund har mange firma å sjekke.
-          </p>
-        )}
-        {slowLoad && (
-          <button
-            type="button"
-            onClick={loadCompanies}
-            className="scan-btn-ghost mt-2"
-          >
-            <RefreshCw className="h-3 w-3" />
-            Prøv igjen
-          </button>
-        )}
+      <div className="scan-surface-full overflow-hidden ring-2 ring-sky-200">
+        <div className="flex items-start gap-2.5 bg-sky-50/40 px-2.5 py-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-amber-100">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-700" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-slate-900">
+              Henter firma fra registeret…
+            </p>
+            <p className="text-[11px] text-slate-600">
+              {filters.municipalityCode
+                ? `Kommune ${filters.municipalityCode} · ${periodLabel(filters.days)}`
+                : filters.regionId
+                  ? `${regionLabel(filters.regionId)} · ${periodLabel(filters.days)}`
+                  : `Hele Norge · ${periodLabel(filters.days)}`}
+            </p>
+            {filters.days === 0 && (
+              <p className="mt-1 text-[11px] text-amber-800/90">
+                {filters.municipalityCode || filters.regionId
+                  ? "«Alle firma» kan ta litt tid — mange sider fra Brønnøysund"
+                  : "Tips: velg område eller kommune — ellers blir det veldig mange firma"}
+              </p>
+            )}
+            {slowLoad && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Tar litt tid… Brønnøysund har mange firma å sjekke.
+              </p>
+            )}
+            {slowLoad && (
+              <button
+                type="button"
+                onClick={loadCompanies}
+                className="scan-btn-ghost mt-1.5 inline-flex gap-1.5"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Prøv igjen
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -273,13 +372,29 @@ function FirmaPageBrreg() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          Live fra Brønnøysund
+    <div className="w-full max-w-none space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-3">
+        <span
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+            companiesSource === "db"
+              ? "border-sky-200 bg-sky-50 text-sky-800"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              companiesSource === "db" ? "bg-sky-500" : "bg-emerald-500"
+            }`}
+          />
+          {companiesSource === "db"
+            ? `Fra database${
+                dbCompanyCount != null
+                  ? ` (${dbCompanyCount.toLocaleString("nb-NO")} firma totalt)`
+                  : ""
+              }`
+            : "Live fra Brønnøysund"}
           {fetchedAt && (
-            <span className="text-emerald-200/60">
+            <span className="text-slate-500">
               · {new Date(fetchedAt).toLocaleTimeString("nb-NO")}
             </span>
           )}
@@ -288,7 +403,7 @@ function FirmaPageBrreg() {
           type="button"
           onClick={loadCompanies}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-brand-border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-brand-surface disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Oppdater liste
@@ -297,7 +412,7 @@ function FirmaPageBrreg() {
 
       {contactUsage && (
         <p
-          className={`app-card px-4 py-3 text-center text-xs ${
+          className={`app-card mx-2 px-4 py-3 text-center text-xs sm:mx-3 ${
             contactUsage.limitReached ? "text-amber-800" : "text-slate-600"
           }`}
         >
@@ -308,20 +423,13 @@ function FirmaPageBrreg() {
               {" "}
               — grensen er nådd.{" "}
               <a href="/app/abonnement" className="font-semibold underline">
-                Oppgrader til Pro
+                Se abonnement
               </a>{" "}
-              for flere.
+              for mer.
             </>
           ) : (
             <> ({contactUsage.remaining} igjen)</>
           )}
-        </p>
-      )}
-
-      {truncated && brregTotal != null && (
-        <p className="app-card px-4 py-3 text-center text-xs text-amber-800">
-          Viser {total.toLocaleString("nb-NO")} av {brregTotal.toLocaleString("nb-NO")} i
-          Brønnøysund. Velg smalere filter for flere treff.
         </p>
       )}
 
@@ -334,8 +442,12 @@ function FirmaPageBrreg() {
         templates={templates as EmailTemplate[]}
         sequences={sequences}
         dataSource="brreg"
+        companiesSource={companiesSource}
         brregTotal={brregTotal}
+        dbCompanyCount={dbCompanyCount}
         allTime={filters.days === 0}
+        pagination={{ ...pagination, truncated }}
+        onPageChange={goToPage}
       />
     </div>
   );
@@ -350,7 +462,7 @@ function FirmaPageInner() {
 
 export default function FirmaPage() {
   return (
-    <Suspense fallback={<p className="text-white/60">Laster firma…</p>}>
+    <Suspense fallback={<p className="text-sm text-slate-600">Laster firma…</p>}>
       <FirmaPageInner />
     </Suspense>
   );

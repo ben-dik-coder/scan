@@ -12,7 +12,10 @@ type SerpApiResponse = {
 
 const SERPAPI_TIMEOUT_MS = 20_000;
 
-export async function searchSerpApi(query: string): Promise<SearchHit[]> {
+export async function searchSerpApi(
+  query: string,
+  options?: { num?: number }
+): Promise<SearchHit[]> {
   const apiKey = process.env.SERPAPI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("SerpAPI er ikke konfigurert");
@@ -25,7 +28,7 @@ export async function searchSerpApi(query: string): Promise<SearchHit[]> {
     gl: "no",
     hl: "no",
     google_domain: "google.no",
-    num: "10",
+    num: String(Math.min(20, Math.max(5, options?.num ?? 10))),
   });
 
   const controller = new AbortController();

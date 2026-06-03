@@ -12,6 +12,7 @@ import { logActivity, upsertUserLead } from "@/lib/sales/activities";
 import { getPreferredMailAccount } from "@/lib/email/oauth/accounts";
 import { sendViaGmail } from "@/lib/email/oauth/google";
 import { sendViaMicrosoft } from "@/lib/email/oauth/microsoft";
+import { sendViaOutlookSmtp } from "@/lib/email/smtp/outlook";
 import type { MailProvider } from "@/lib/email/oauth/config";
 
 function getResend() {
@@ -54,11 +55,15 @@ export async function sendCampaign(
     };
   }
 
+  const subjectB = input.subjectB?.trim() || null;
+  const useAb = Boolean(subjectB);
+
   const { data: campaign, error: campaignError } = await supabase
     .from("email_campaigns")
     .insert({
       user_id: userId,
       subject: input.subject,
+      subject_b: subjectB,
       body: input.body,
     })
     .select("id")
@@ -90,6 +95,14 @@ export async function sendCampaign(
       </div>
     `;
 
+    const abVariant: "a" | "b" | null = useAb
+      ? Math.random() < 0.5
+        ? "a"
+        : "b"
+      : null;
+    const subjectTemplate =
+      abVariant === "b" && subjectB ? subjectB : input.subject;
+
     const { data: recipientRow } = await supabase
       .from("email_campaign_recipients")
       .insert({
@@ -97,18 +110,19 @@ export async function sendCampaign(
         orgnr: recipient.orgnr,
         email: recipient.email,
         status: "pending",
+        ab_variant: abVariant,
       })
       .select("id")
       .single();
 
-    const renderedSubject = renderTemplate(input.subject, {
+    const renderedSubject = renderTemplate(subjectTemplate, {
       firmanavn: recipient.name,
     });
 
     if (!userMail && !resend) {
       failed += 1;
       const msg =
-        "Koble Gmail eller Outlook under Innstillinger, eller sett RESEND_API_KEY.";
+        "Koble Gmail eller Outlook under Innstillinger (eller SMTP app-passord), eller sett RESEND_API_KEY.";
       errors.push(msg);
       if (recipientRow) {
         await supabase
@@ -125,6 +139,14 @@ export async function sendCampaign(
           await sendViaGmail({
             accessToken: userMail.accessToken,
             fromEmail: userMail.email,
+            to: recipient.email,
+            subject: renderedSubject,
+            html,
+          });
+        } else if (userMail.provider === "smtp") {
+          await sendViaOutlookSmtp({
+            email: userMail.email,
+            appPassword: userMail.accessToken,
             to: recipient.email,
             subject: renderedSubject,
             html,

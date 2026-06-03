@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { SiteLogo } from "@/components/layout/SiteLogo";
+import { Suspense, useEffect, useState } from "react";
 import { site } from "@/lib/site";
 import { ArrowRight } from "lucide-react";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
-import { isValidPlanId } from "@/lib/billing/plans";
+import { isStoredPlanId } from "@/lib/billing/plans";
 
 function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
@@ -18,6 +17,13 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) {
+      setError(decodeURIComponent(urlError));
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,8 +37,8 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
     const planParam = searchParams.get("plan");
     const redirectParam = searchParams.get("redirect");
     const redirect =
-      planParam && isValidPlanId(planParam)
-        ? `/app/abonnement?plan=${planParam}`
+      planParam && isStoredPlanId(planParam)
+        ? `/app/abonnement?plan=nylead`
         : redirectParam ?? "/app/oversikt";
 
     try {
@@ -40,7 +46,11 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
       const supabase = createClient();
 
       if (mode === "register") {
-        const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirect)}`;
+        const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+        const baseUrl = configuredAppUrl?.startsWith("http")
+          ? configuredAppUrl.replace(/\/$/, "")
+          : window.location.origin;
+        const emailRedirectTo = `${baseUrl}/auth/callback?next=${encodeURIComponent(redirect)}`;
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -69,14 +79,9 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-brand-navy via-brand-navyLight to-brand-navy">
-      <div className="relative hidden w-1/2 overflow-hidden bg-brand-navy lg:flex lg:flex-col lg:justify-between">
-        <div className="relative p-10">
-          <Link href="/" className="group inline-block transition hover:opacity-90">
-            <SiteLogo className="h-9 w-auto sm:h-10" />
-          </Link>
-        </div>
-        <div className="relative px-10 pb-16">
+    <div className="flex min-h-screen bg-gradient-to-br from-brand-navy via-[#1a3a5c] to-brand-navy text-white">
+      <div className="relative hidden w-1/2 overflow-hidden bg-brand-navy lg:flex lg:flex-col lg:justify-end">
+        <div className="relative px-10 pb-16 pt-10">
           <h2 className="type-h2 text-white">
             Selg til nye
             <br />

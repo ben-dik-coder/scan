@@ -1,0 +1,39 @@
+.pl-glass-command {
+  --pl-bg: #0a0e17;
+  --pl-surface: rgba(255,255,255,0.06);
+  --pl-text: #f8fafc;
+  --pl-muted: #94a3b8;
+  --pl-border: rgba(255,255,255,0.12);
+  --pl-accent: #38bdf8;
+  --pl-accent-muted: rgba(56,189,248,0.15);
+  --pl-cta-bg: linear-gradient(135deg, #0ea5e9, #6366f1);
+  --pl-cta-text: #fff;
+  --pl-banner-bg: rgba(56,189,248,0.12);
+  --pl-banner-text: #7dd3fc;
+  --pl-hero-bg: radial-gradient(ellipse at top, #1e293b 0%, #0a0e17 70%);
+  --pl-card-bg: rgba(255,255,255,0.05);
+  --pl-mock-bg: rgba(15,23,42,0.8);
+  --pl-radius: 16px;
+  --pl-radius-lg: 20px;
+  --pl-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  --pl-font: system-ui, sans-serif;
+}
+
+.ps-glass-command {
+  --ps-bg: #0a0e17;
+  --ps-surface: rgba(255,255,255,0.06);
+  --ps-text: #f8fafc;
+  --ps-muted: #94a3b8;
+  --ps-border: rgba(255,255,255,0.1);
+  --ps-accent: #38bdf8;
+  --ps-header-bg: rgba(10,14,23,0.9);
+  --ps-scan-bg: rgba(255,255,255,0.04);
+  --ps-chip-bg: rgba(255,255,255,0.08);
+  --ps-cta-bg: linear-gradient(135deg, #0ea5e9, #6366f1);
+  --ps-cta-text: #fff;
+  --ps-table-head: rgba(255,255,255,0.06);
+  --ps-badge-bg: rgba(56,189,248,0.2);
+  --ps-warn: #fbbf24;
+  --ps-radius: 12px;
+  --ps-font: system-ui, sans-serif;
+}

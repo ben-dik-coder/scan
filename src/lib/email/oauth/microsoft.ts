@@ -18,6 +18,7 @@ export function microsoftAuthUrl(state: string) {
     response_type: "code",
     scope: MICROSOFT_SCOPES,
     response_mode: "query",
+    prompt: "consent",
     state,
   });
   return `${authUrlBase()}?${params}`;

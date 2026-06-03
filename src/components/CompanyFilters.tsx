@@ -2,7 +2,11 @@
 
 import { INDUSTRY_GROUPS } from "@/lib/constants/industries";
 import { kommuneBelongsToRegion, REGIONS } from "@/lib/constants/regions";
-import { Calendar, Mail, MapPin, MapPinned, Scissors } from "lucide-react";
+import { WEBBYRA_MARKET_PRESET } from "@/lib/constants/market";
+import { Calendar, Globe, Layout, Mail, MapPin, MapPinned, Scissors } from "lucide-react";
+
+export type WebsitePresenceFilter = "all" | "with" | "without" | "not_scanned";
+export type SocialPresenceFilter = "all" | "with" | "without";
 
 export type FilterState = {
   regionId: string;
@@ -11,6 +15,9 @@ export type FilterState = {
   hasEmail: boolean;
   genericEmailOnly: boolean;
   industryGroup: string;
+  websitePresence: WebsitePresenceFilter;
+  facebookPresence: SocialPresenceFilter;
+  instagramPresence: SocialPresenceFilter;
 };
 
 type Props = {
@@ -25,9 +32,9 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
     : municipalities;
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="flex flex-col gap-1.5">
+    <div className="space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <MapPin className="h-3.5 w-3.5 text-brand-gold" />
             Område
@@ -51,7 +58,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <MapPinned className="h-3.5 w-3.5 text-brand-gold" />
             Kommune
@@ -73,7 +80,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <Scissors className="h-3.5 w-3.5 text-brand-gold" />
             Bransje
@@ -91,7 +98,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <Calendar className="h-3.5 w-3.5 text-brand-gold" />
             Periode
@@ -109,7 +116,37 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-white/50 pt-4">
+      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+        <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          Bransje-presets
+        </span>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              ...filters,
+              industryGroup:
+                filters.industryGroup === WEBBYRA_MARKET_PRESET.industryGroup
+                  ? ""
+                  : WEBBYRA_MARKET_PRESET.industryGroup,
+              days:
+                filters.industryGroup === WEBBYRA_MARKET_PRESET.industryGroup
+                  ? filters.days
+                  : WEBBYRA_MARKET_PRESET.days,
+            })
+          }
+          className={`scan-chip cursor-pointer ${
+            filters.industryGroup === WEBBYRA_MARKET_PRESET.industryGroup
+              ? "scan-chip-active"
+              : ""
+          }`}
+        >
+          <Layout className="h-3.5 w-3.5" />
+          Selger nettsider (Brreg)
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
         <label
           className={`scan-chip cursor-pointer ${filters.hasEmail ? "scan-chip-active" : ""}`}
         >
@@ -140,6 +177,67 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
           />
           <Mail className="h-3.5 w-3.5" />
           Kun post@ / info@
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+        <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          Etter Google-sjekk
+        </span>
+        <label className="flex flex-col gap-0.5 min-w-[7rem]">
+          <span className="scan-label">
+            <Globe className="h-3.5 w-3.5 text-brand-gold" />
+            Nettside
+          </span>
+          <select
+            value={filters.websitePresence}
+            onChange={(e) =>
+              onChange({
+                ...filters,
+                websitePresence: e.target.value as WebsitePresenceFilter,
+              })
+            }
+            className="scan-input"
+          >
+            <option value="all">Alle</option>
+            <option value="with">Kun med nettside</option>
+            <option value="without">Kun uten nettside</option>
+            <option value="not_scanned">Ikke sjekket</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5 min-w-[7rem]">
+          <span className="scan-label">Facebook</span>
+          <select
+            value={filters.facebookPresence}
+            onChange={(e) =>
+              onChange({
+                ...filters,
+                facebookPresence: e.target.value as SocialPresenceFilter,
+              })
+            }
+            className="scan-input"
+          >
+            <option value="all">Alle</option>
+            <option value="with">Kun med Facebook</option>
+            <option value="without">Kun uten Facebook</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5 min-w-[7rem]">
+          <span className="scan-label">Instagram</span>
+          <select
+            value={filters.instagramPresence}
+            onChange={(e) =>
+              onChange({
+                ...filters,
+                instagramPresence: e.target.value as SocialPresenceFilter,
+              })
+            }
+            className="scan-input"
+          >
+            <option value="all">Alle</option>
+            <option value="with">Kun med Instagram</option>
+            <option value="without">Kun uten Instagram</option>
+          </select>
         </label>
       </div>
     </div>

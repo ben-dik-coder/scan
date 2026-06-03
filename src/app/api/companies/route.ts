@@ -2,11 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { applyCompanyContactLimit } from "@/lib/billing/usage";
-import { fetchCompaniesFromBrreg } from "@/lib/brreg/fetch-companies";
+import { shouldUseBrregDb } from "@/lib/brreg/db-source";
+import { fetchCompaniesFromDb } from "@/lib/brreg/fetch-companies-db";
+import {
+  fetchCompaniesFromBrreg,
+  parsePaginationParams,
+} from "@/lib/brreg/fetch-companies";
 import { isBrregLive, isDemoMode } from "@/lib/demo/config";
+import { buildMarketShuffleSeed } from "@/lib/shuffle/seeded-shuffle";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+function parsePageParam(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : undefined;
+}
 
 export async function GET(request: NextRequest) {
   if (!isBrregLive()) {
@@ -34,16 +46,40 @@ export async function GET(request: NextRequest) {
   const hasEmail = searchParams.get("epost") !== "0";
   const genericEmailOnly = searchParams.get("generisk") === "1";
   const industryGroup = searchParams.get("bransje") ?? "";
+  const { page, pageSize } = parsePaginationParams(
+    parsePageParam(searchParams.get("page")),
+    parsePageParam(searchParams.get("pageSize"))
+  );
+
+  const filterKey = {
+    regionId: regionId || undefined,
+    municipalityCode,
+    days,
+    hasEmail,
+    genericEmailOnly,
+    industryGroup: industryGroup || undefined,
+  };
 
   try {
-    const result = await fetchCompaniesFromBrreg({
-      regionId: regionId || undefined,
-      municipalityCode: municipalityCode || undefined,
-      days,
-      hasEmail,
-      genericEmailOnly,
-      industryGroup: industryGroup || undefined,
-    });
+    const shuffleSeed =
+      user && !isDemoMode()
+        ? buildMarketShuffleSeed(user.id, filterKey)
+        : undefined;
+
+    const useDb = await shouldUseBrregDb();
+    const result = useDb
+      ? await fetchCompaniesFromDb({
+          ...filterKey,
+          page,
+          pageSize,
+          sortSeed: shuffleSeed,
+        })
+      : await fetchCompaniesFromBrreg({
+          ...filterKey,
+          page,
+          pageSize,
+          sortSeed: shuffleSeed,
+        });
 
     let companies = result.companies;
     let contactUsage:
@@ -68,7 +104,9 @@ export async function GET(request: NextRequest) {
       const limited = await applyCompanyContactLimit(
         user.id,
         companies,
-        entitlements.maxCompaniesWithContactPerMonth
+        entitlements.maxCompaniesWithContactPerMonth,
+        shuffleSeed,
+        { preserveOrder: true }
       );
       companies = limited.companies;
       contactUsage = limited.usage;
@@ -78,12 +116,18 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       companies,
-      total: companies.length,
+      total: result.total,
       withEmail,
       brregTotal: result.brregTotal,
       truncated: result.truncated,
-      source: "brreg",
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+      hasNext: result.hasNext,
+      hasPrev: result.hasPrev,
+      source: useDb ? "db" : "brreg",
       allTime: days === 0,
+      dbCompanyCount: useDb && "dbCompanyCount" in result ? result.dbCompanyCount : undefined,
       fetchedAt: new Date().toISOString(),
       contactUsage,
     });

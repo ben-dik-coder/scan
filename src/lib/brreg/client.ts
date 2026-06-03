@@ -1,21 +1,23 @@
 const BRREG_BASE = "https://data.brreg.no/enhetsregisteret/api";
 
+export type BrregAddress = {
+  kommunenummer?: string;
+  kommune?: string;
+  poststed?: string;
+  postnummer?: string;
+};
+
 export type BrregEnhet = {
   organisasjonsnummer: string;
   navn: string;
   epostadresse?: string;
   telefon?: string;
   mobil?: string;
+  hjemmeside?: string;
   registreringsdatoEnhetsregisteret?: string;
-  naeringskode1?: { kode?: string };
-  forretningsadresse?: {
-    kommunenummer?: string;
-    kommune?: string;
-  };
-  postadresse?: {
-    kommunenummer?: string;
-    kommune?: string;
-  };
+  naeringskode1?: { kode?: string; beskrivelse?: string };
+  forretningsadresse?: BrregAddress;
+  postadresse?: BrregAddress;
 };
 
 export type BrregSearchResponse = {
@@ -25,6 +27,7 @@ export type BrregSearchResponse = {
 
 export type BrregUpdateEntry = {
   organisasjonsnummer: string;
+  oppdateringsid?: number;
   endringstype?: string;
   dato?: string;
 };
@@ -109,9 +112,30 @@ export async function searchEnheter(
   return brregFetch<BrregSearchResponse>(`/enheter?${query.toString()}`);
 }
 
-export async function fetchUpdates(page = 0): Promise<BrregUpdatesResponse> {
+export type FetchUpdatesParams = {
+  page?: number;
+  size?: number;
+  /** ISO-8601 — oppdateringer fra og med dette tidspunktet */
+  dato?: string;
+  /** Kun oppdateringer fra og med denne id (Brreg anbefaler id+1 etter forrige kjøring) */
+  oppdateringsid?: number;
+  updatedBefore?: string;
+};
+
+export async function fetchUpdates(
+  params: FetchUpdatesParams = {}
+): Promise<BrregUpdatesResponse> {
+  const query = new URLSearchParams();
+  query.set("page", String(params.page ?? 0));
+  query.set("size", String(params.size ?? 100));
+  if (params.dato) query.set("dato", params.dato);
+  if (params.oppdateringsid != null) {
+    query.set("oppdateringsid", String(params.oppdateringsid));
+  }
+  if (params.updatedBefore) query.set("updatedBefore", params.updatedBefore);
+
   return brregFetch<BrregUpdatesResponse>(
-    `/oppdateringer/enheter?page=${page}&size=100`
+    `/oppdateringer/enheter?${query.toString()}`
   );
 }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Container } from "@/components/ui/Container";
 import { SiteLogo } from "@/components/layout/SiteLogo";
+import { legal } from "@/lib/legal";
 import { site } from "@/lib/site";
 
 export function SiteFooter() {
@@ -11,10 +12,13 @@ export function SiteFooter() {
 
         <div className="flex flex-col gap-12 md:flex-row md:justify-between">
           <div>
-            <SiteLogo className="h-10 w-auto sm:h-11" />
+            <SiteLogo variant="dark" className="h-10 w-auto sm:h-11" />
             <p className="mt-4 max-w-xs font-sans text-sm leading-relaxed text-white/40">
               {site.tagline}
             </p>
+            {legal.orgNr ? (
+              <p className="mt-2 font-sans text-sm text-white/40">Org.nr {legal.orgNr}</p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-16">
@@ -29,6 +33,17 @@ export function SiteFooter() {
                 <li>
                   <Link href="/registrer" className="transition hover:text-brand-goldLight">
                     Opprett konto
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <p className="type-eyebrow !text-white/25">Selskap</p>
+              <ul className="mt-5 space-y-3 font-sans text-sm text-white/50">
+                <li>
+                  <Link href="/om-oss" className="transition hover:text-brand-goldLight">
+                    Om oss
                   </Link>
                 </li>
               </ul>

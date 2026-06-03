@@ -1,8 +1,10 @@
+import { isBillingFreeEmail } from "@/lib/billing/billing-free";
 import {
   ACTIVE_SUBSCRIPTION_STATUSES,
   getPlan,
+  NYLEAD_PLAN,
   type PlanConfig,
-  type PlanId,
+  type StoredPlanId,
 } from "@/lib/billing/plans";
 import { countCompaniesWithContactThisMonth } from "@/lib/billing/usage";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +14,9 @@ import type { Profile, SubscriptionStatus } from "@/types/database";
 export type Entitlements = {
   hasAccess: boolean;
   isAdmin: boolean;
-  plan: PlanId | null;
+  /** Gratis tilgang via BILLING_FREE_EMAILS (plattform-eier) */
+  isBillingFree: boolean;
+  plan: StoredPlanId | null;
   planConfig: PlanConfig | null;
   subscriptionStatus: SubscriptionStatus | null;
   maxRecipientsPerSend: number;
@@ -31,6 +35,7 @@ export type Entitlements = {
 const NO_ACCESS: Entitlements = {
   hasAccess: false,
   isAdmin: false,
+  isBillingFree: false,
   plan: null,
   planConfig: null,
   subscriptionStatus: null,
@@ -65,15 +70,16 @@ export async function countEmailsSentThisMonth(userId: string): Promise<number> 
 
 function buildEntitlements(
   planConfig: PlanConfig,
-  plan: PlanId,
+  plan: StoredPlanId,
   status: SubscriptionStatus,
   emailsSentThisMonth: number,
   companiesWithContactUsed: number,
-  extras: { isAdmin?: boolean }
+  extras: { isAdmin?: boolean; isBillingFree?: boolean }
 ): Entitlements {
   return {
     hasAccess: true,
     isAdmin: extras.isAdmin ?? false,
+    isBillingFree: extras.isBillingFree ?? false,
     plan,
     planConfig,
     subscriptionStatus: status,
@@ -100,13 +106,29 @@ function buildEntitlements(
 export function entitlementsFromProfile(
   profile: Profile,
   emailsSentThisMonth: number,
-  companiesWithContactUsed: number
+  companiesWithContactUsed: number,
+  email?: string | null
 ): Entitlements {
   if (profile.role === "admin") {
-    const pro = getPlan("pro")!;
-    return buildEntitlements(pro, "pro", "active", emailsSentThisMonth, companiesWithContactUsed, {
-      isAdmin: true,
-    });
+    return buildEntitlements(
+      NYLEAD_PLAN,
+      "nylead",
+      "active",
+      emailsSentThisMonth,
+      companiesWithContactUsed,
+      { isAdmin: true }
+    );
+  }
+
+  if (isBillingFreeEmail(email)) {
+    return buildEntitlements(
+      NYLEAD_PLAN,
+      "nylead",
+      "active",
+      emailsSentThisMonth,
+      companiesWithContactUsed,
+      { isBillingFree: true }
+    );
   }
 
   const status = profile.subscription_status;
@@ -132,36 +154,48 @@ export function entitlementsFromProfile(
   );
 }
 
-export async function getEntitlements(userId: string): Promise<Entitlements> {
+export async function getEntitlements(
+  userId: string,
+  email?: string | null
+): Promise<Entitlements> {
   const supabase = await createClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
+  const [{ data: profile }, authResult] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", userId).single(),
+    email === undefined
+      ? supabase.auth.getUser()
+      : Promise.resolve({ data: { user: null } }),
+  ]);
 
   if (!profile) return NO_ACCESS;
+
+  const userEmail =
+    email !== undefined ? email : authResult.data.user?.email ?? null;
 
   const [sent, companiesUsed] = await Promise.all([
     countEmailsSentThisMonth(userId),
     countCompaniesWithContactThisMonth(userId),
   ]);
-  return entitlementsFromProfile(profile as Profile, sent, companiesUsed);
+  return entitlementsFromProfile(
+    profile as Profile,
+    sent,
+    companiesUsed,
+    userEmail
+  );
 }
 
 export function requireFeature(
   entitlements: Entitlements,
   feature: "sequences" | "pipeline" | "email"
 ): string | null {
-  if (entitlements.isAdmin) return null;
+  if (entitlements.isAdmin || entitlements.isBillingFree) return null;
   if (feature === "email" && !entitlements.emailIntegration) {
-    return "Pro eller Byrå kreves for å sende e-post og koble Gmail/Outlook. Oppgrader fra Start.";
+    return "Aktivt NyLead-abonnement kreves for å sende e-post og koble Gmail/Outlook.";
   }
   if (feature === "sequences" && !entitlements.sequences) {
-    return "Pro eller Byrå kreves for sekvenser. Oppgrader abonnementet ditt.";
+    return "Aktivt NyLead-abonnement kreves for sekvenser.";
   }
   if (feature === "pipeline" && !entitlements.pipeline) {
-    return "Pro eller Byrå kreves for pipeline. Oppgrader abonnementet ditt.";
+    return "Aktivt NyLead-abonnement kreves for pipeline.";
   }
   return null;
 }

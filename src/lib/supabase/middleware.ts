@@ -1,17 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isBillingFreeEmail } from "@/lib/billing/billing-free";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/plans";
 
 function isDemoMode() {
   return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 }
 
-function hasBillingAccess(profile: {
-  role: string;
-  plan: string | null;
-  subscription_status: string | null;
-}) {
+function hasBillingAccess(
+  profile: {
+    role: string;
+    plan: string | null;
+    subscription_status: string | null;
+  },
+  email?: string | null
+) {
   if (profile.role === "admin") return true;
+  if (isBillingFreeEmail(email)) return true;
   if (isDemoMode()) return true;
   if (!profile.plan) return false;
   return (
@@ -68,7 +73,7 @@ export async function updateSession(request: NextRequest) {
 
     const url = request.nextUrl.clone();
     url.pathname =
-      profile && hasBillingAccess(profile)
+      profile && hasBillingAccess(profile, user.email)
         ? "/app/oversikt"
         : "/app/abonnement";
     return NextResponse.redirect(url);
@@ -82,7 +87,7 @@ export async function updateSession(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (profile && !isAbonnement && !hasBillingAccess(profile)) {
+    if (profile && !isAbonnement && !hasBillingAccess(profile, user.email)) {
       const url = request.nextUrl.clone();
       url.pathname = "/app/abonnement";
       return NextResponse.redirect(url);

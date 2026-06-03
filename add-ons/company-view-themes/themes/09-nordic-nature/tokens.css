@@ -1,0 +1,13 @@
+.nylead-theme-nordic-nature {
+  --cv-bg: #f4f6f0;
+  --cv-surface: #ffffff;
+  --cv-text: #2d3a2e;
+  --cv-muted: #6b7c6d;
+  --cv-border: #c5d4c0;
+  --cv-accent: #3d6b4f;
+  --cv-accent-2: #8b7355;
+  --cv-link: #2f5d42;
+  --cv-radius: 10px;
+  --cv-font: system-ui, sans-serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

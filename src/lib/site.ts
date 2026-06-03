@@ -1,15 +1,15 @@
 export const site = {
   name: "NyLead",
   tagline:
-    "For deg som selger nettsider og design. Finn firma med tlf og e-post fra Brreg, sjekk nettside med Google — send tilbud med Pro.",
-  heroTitle: "Finn nye kunder som trenger nettside",
+    "For deg som selger nettsider og design. Finn firma med tlf og e-post fra Brreg, sjekk nettside med Google — send tilbud fra din egen innboks.",
+  heroTitle: "Finn firma som trenger nettside",
   description:
-    "Hent firma fra Brønnøysund. Google sjekker automatisk om de har nettside. Du får en liste med kun de som trenger hjelp — klar til utsendelse.",
-  audience: "Webdesignere · Byråer · Selgere av nettsider",
+    "NyLead henter nye firma fra Brønnøysund, sjekker om de har nettside, og lar deg sende tilbud fra din egen e-post — uten Excel og manuell kopiering.",
+  audience: "For deg som selger nettsider i Norge",
   stats: [
     { value: "2 000+", label: "Nye firma per uke i Norge" },
-    { value: "30%", label: "Har e-post i Brønnøysund" },
-    { value: "150", label: "Bedrifter med kontakt på Start" },
+    { value: "30%", label: "Har e-post i Brreg" },
+    { value: "250", label: "Firma du kan kontakte per måned" },
   ],
 };
 
@@ -36,9 +36,9 @@ export const WORKFLOW_STEPS = [
   },
   {
     step: 4,
-    title: "Send tilbud (Pro)",
+    title: "Send tilbud",
     short: "Send",
     description:
-      "Med Pro sender du én felles e-post til valgte firma — fra din egen Gmail eller Outlook.",
+      "Send én felles e-post til valgte firma — fra din egen Gmail eller Outlook.",
   },
 ] as const;

@@ -49,12 +49,12 @@ export function SequencesManager({ sequences }: { sequences: Sequence[] }) {
         {sequences.map((seq) => (
           <div key={seq.id} className="panel p-5">
             <div className="flex items-center gap-3">
-              <h3 className="font-display text-lg font-bold text-white">{seq.name}</h3>
+              <h3 className="font-display text-lg font-bold text-brand-navy">{seq.name}</h3>
               <span
                 className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                   seq.active
-                    ? "bg-brand-gold/15 text-brand-gold"
-                    : "bg-white/10 text-white/50"
+                    ? "bg-brand-goldPale text-brand-gold"
+                    : "bg-slate-100 text-slate-500"
                 }`}
               >
                 {seq.active ? "Aktiv" : "Inaktiv"}
@@ -64,13 +64,13 @@ export function SequencesManager({ sequences }: { sequences: Sequence[] }) {
               {seq.steps.map((step, i) => (
                 <li
                   key={i}
-                  className="rounded-xl border border-white/[0.06] bg-brand-navyDark p-3 text-sm"
+                  className="rounded-xl border border-brand-border bg-brand-surface p-3 text-sm"
                 >
-                  <p className="font-semibold text-amber-300">
+                  <p className="font-semibold text-brand-gold">
                     Steg {step.step_order + 1} — dag {step.delay_days}
                   </p>
-                  <p className="mt-1 text-white/70">{step.subject}</p>
-                  <pre className="mt-2 max-h-20 overflow-auto whitespace-pre-wrap text-xs text-white/50">
+                  <p className="mt-1 font-medium text-slate-700">{step.subject}</p>
+                  <pre className="mt-2 max-h-20 overflow-auto whitespace-pre-wrap text-xs text-slate-500">
                     {step.body}
                   </pre>
                 </li>

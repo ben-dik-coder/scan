@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
 import {
   getWebsiteScanProviders,
   hasAnyWebsiteScanProvider,
 } from "@/lib/website-scan/config";
 import { scanCompanyWebsite, sleep } from "@/lib/website-scan/scan-company";
-import type { WebsiteScanCompanyInput } from "@/lib/website-scan/types";
+import {
+  loadCachedWebsiteScans,
+  persistCachedWebsiteScans,
+} from "@/lib/website-scan/saved-scans-server";
+import {
+  DEFAULT_SCAN_SOCIAL_OPTIONS,
+  isSocialScanComplete,
+  type ScanSocialOptions,
+} from "@/lib/website-scan/scan-social-options";
+import type { WebsiteScanCompanyInput, WebsiteScanResult } from "@/lib/website-scan/types";
 import { isDemoMode } from "@/lib/demo/config";
 import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
 
@@ -14,16 +24,25 @@ export const maxDuration = 120;
 const DELAY_MS = 200;
 
 export async function GET() {
+  const { hasSerpApi } = await import("@/lib/website-scan/config");
   return NextResponse.json({
     configured: hasAnyWebsiteScanProvider(),
     providers: getWebsiteScanProviders(),
+    serpApi: hasSerpApi(),
+    facebookProfileApi: hasSerpApi(),
+    instagramProfileApi: hasSerpApi(),
     demoFallback: isDemoMode() || !hasAnyWebsiteScanProvider(),
     maxPerSearch: MAX_WEBSITE_SCAN_BATCH,
   });
 }
 
 export async function POST(request: NextRequest) {
-  let body: { companies?: WebsiteScanCompanyInput[] };
+  let body: {
+    companies?: WebsiteScanCompanyInput[];
+    social?: Partial<ScanSocialOptions>;
+    /** Tving SerpAPI selv om lagret skann finnes (kun «Sjekk på nytt») */
+    forceRescan?: boolean;
+  };
   try {
     body = await request.json();
   } catch {
@@ -42,15 +61,42 @@ export async function POST(request: NextRequest) {
   }
 
   const useDemo = isDemoMode() && !hasAnyWebsiteScanProvider();
-  const results = [];
+  const forceRescan = body.forceRescan === true;
+  const social: ScanSocialOptions = {
+    ...DEFAULT_SCAN_SOCIAL_OPTIONS,
+    ...body.social,
+  };
+  const results: WebsiteScanResult[] = [];
+
+  const cachedByOrgnr = new Map(
+    forceRescan
+      ? []
+      : (await loadCachedWebsiteScans(companies.map((c) => c.orgnr))).map(
+          (scan) => [scan.orgnr, scan] as const
+        )
+  );
+
+  const user = await getSessionUser();
+  const freshResults: WebsiteScanResult[] = [];
 
   for (let i = 0; i < companies.length; i++) {
     const company = companies[i]!;
-    const result = await scanCompanyWebsite(company, { demo: useDemo });
+    const cached = cachedByOrgnr.get(company.orgnr);
+    if (cached && isSocialScanComplete(cached, social)) {
+      results.push(cached);
+      continue;
+    }
+
+    const result = await scanCompanyWebsite(company, { demo: useDemo, social });
     results.push(result);
+    freshResults.push(result);
     if (companies.length > 1 && i < companies.length - 1) {
       await sleep(DELAY_MS);
     }
+  }
+
+  if (user && freshResults.length > 0) {
+    void persistCachedWebsiteScans(freshResults, user.id);
   }
 
   const withoutWebsite = results.filter((r) => !r.hasWebsite).length;

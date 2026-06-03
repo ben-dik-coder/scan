@@ -1,6 +1,7 @@
 "use client";
 
 import { Globe, Loader2, RefreshCw } from "lucide-react";
+import { useScanProgressAnimation } from "@/hooks/useScanProgressAnimation";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { cn } from "@/lib/utils";
 
@@ -18,10 +19,16 @@ type Props = {
   truncated: boolean;
   noWebsiteCount: number;
   withWebsiteCount: number;
+  withFacebookCount?: number;
+  withInstagramCount?: number;
+  includeFacebook?: boolean;
+  includeInstagram?: boolean;
   listFilter: ListFilter;
   notScannedCount: number;
   onRescan: () => void;
   scanResults: Map<string, WebsiteScanResult>;
+  /** When true, renders inside a parent scan-surface (no extra card border). */
+  embedded?: boolean;
 };
 
 export function WebsiteScanStatus({
@@ -36,60 +43,111 @@ export function WebsiteScanStatus({
   truncated,
   noWebsiteCount,
   withWebsiteCount,
+  withFacebookCount = 0,
+  withInstagramCount = 0,
+  includeFacebook = true,
+  includeInstagram = true,
   listFilter,
   notScannedCount,
   onRescan,
+  embedded = false,
 }: Props) {
+  const total = progress.total || scanTargetCount || 0;
+  const done = progress.done;
+  const isFinished = scanComplete && !scanning;
+  const { currentStep, visualPercent, stepKey } = useScanProgressAnimation({
+    scanning,
+    scanComplete,
+    scanPending,
+    done,
+    total,
+    includeFacebook,
+    includeInstagram,
+  });
+
   if (!scanning && !scanComplete && !error && !scanPending) return null;
 
-  const total = progress.total || scanTargetCount || 0;
-  const done = scanComplete ? total : progress.done;
-  const percent =
-    total > 0 ? Math.min(100, Math.round((done / total) * 100)) : scanPending ? 0 : 0;
+  const displayPercent = isFinished
+    ? 100
+    : scanning
+      ? Math.round(visualPercent)
+      : scanPending
+        ? 0
+        : total > 0
+          ? Math.min(100, Math.round((done / total) * 100))
+          : 0;
+  const barWidth = isFinished
+    ? 100
+    : scanning
+      ? Math.max(displayPercent, 4)
+      : scanPending
+        ? undefined
+        : displayPercent > 0
+          ? Math.max(displayPercent, 4)
+          : 0;
   const showBar = scanning || scanPending || scanComplete;
 
   return (
     <div
       className={cn(
-        "glass overflow-hidden",
-        scanning && "ring-2 ring-brand-gold/25",
-        scanComplete && !scanning && "border-emerald-200/60"
+        embedded ? "border-t border-slate-200" : "scan-surface overflow-hidden",
+        scanning && (embedded ? "bg-sky-50/40 ring-1 ring-inset ring-sky-200" : "ring-2 ring-sky-200"),
+        scanComplete && !scanning && (embedded ? "bg-emerald-50/30" : "border-emerald-300")
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/50 bg-white/35 px-5 py-4 backdrop-blur-md">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-2.5 py-2">
+        <div className="flex items-center gap-2">
           <div
             className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-xl",
+              "flex h-7 w-7 items-center justify-center rounded",
               scanning ? "bg-amber-100" : scanComplete ? "bg-emerald-100" : "bg-slate-100"
             )}
           >
             {scanning ? (
-              <Loader2 className="h-5 w-5 animate-spin text-amber-700" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-700" />
             ) : (
               <Globe
                 className={cn(
-                  "h-5 w-5",
+                  "h-3.5 w-3.5",
                   scanComplete ? "text-emerald-600" : "text-slate-500"
                 )}
               />
             )}
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">
-              {scanning
-                ? "Google sjekker nettsider…"
-                : scanPending
-                  ? "Starter sjekk…"
-                  : "Google-sjekk ferdig"}
+            <p className="text-xs font-semibold text-slate-900">
+              {scanning && currentStep ? (
+                <span key={stepKey} className="scan-step-animate inline-block">
+                  {currentStep}
+                </span>
+              ) : scanPending ? (
+                "Starter…"
+              ) : (
+                "Ferdig!"
+              )}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {scanning
-                ? `${progress.done} av ${progress.total}${scanningName ? ` · ${scanningName}` : ""}`
-                : scanPending
-                  ? `Forbereder ${scanTargetCount || progress.total || "…"} firma`
-                  : `${noWebsiteCount} uten nettside · ${withWebsiteCount} med nettside`}
-              {providers.length > 0 && !scanning && ` · ${providers.join(" + ")}`}
+            <p className="text-xs text-slate-600">
+              {scanning ? (
+                <>
+                  {progress.done} av {progress.total}
+                  {scanningName && (
+                    <span className="mt-0.5 block truncate text-slate-500">{scanningName}</span>
+                  )}
+                </>
+              ) : scanPending ? (
+                `Forbereder ${scanTargetCount || progress.total || "…"} firma`
+              ) : (
+                <>
+                  <span>
+                    {noWebsiteCount} uten nettside · {withWebsiteCount} med nettside
+                    {includeFacebook && ` · ${withFacebookCount} Facebook`}
+                    {includeInstagram && ` · ${withInstagramCount} Instagram`}
+                  </span>
+                </>
+              )}
+              {providers.length > 0 && !scanning && (
+                <p className="mt-1 text-xs text-slate-400">{providers.join(" · ")}</p>
+              )}
             </p>
           </div>
         </div>
@@ -103,29 +161,43 @@ export function WebsiteScanStatus({
       </div>
 
       {showBar && (
-        <div className="space-y-2 px-5 py-4">
-          <div className="flex justify-between text-xs text-slate-500">
-            <span>{scanComplete ? "Ferdig" : scanning ? "Fremdrift" : "Venter…"}</span>
-            {(scanning || scanComplete) && (
+        <div className="space-y-1 px-2.5 py-2">
+          <div className="flex justify-between text-xs text-slate-600">
+            <span>
+              {isFinished ? (
+                "Ferdig"
+              ) : scanning && currentStep ? (
+                <span key={`bar-${stepKey}`} className="scan-step-animate inline-block">
+                  {currentStep}
+                </span>
+              ) : scanning ? (
+                "Fremdrift"
+              ) : (
+                "Venter…"
+              )}
+            </span>
+            {(scanning || isFinished) && (
               <span className="font-medium tabular-nums text-slate-700">
-                {scanComplete ? 100 : percent}%
+                {displayPercent}%
               </span>
             )}
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/50">
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
             <div
               className={cn(
-                "h-full rounded-full transition-[width] duration-500 ease-out",
-                scanComplete
+                "h-full rounded-full transition-[width] duration-300 ease-out",
+                isFinished
                   ? "bg-emerald-500"
                   : scanPending
                     ? "w-1/5 animate-pulse bg-amber-400"
-                    : "bg-brand-gold"
+                    : scanning
+                      ? "scan-bar-active"
+                      : "bg-brand-gold"
               )}
               style={
-                scanPending || (scanning && percent === 0)
+                scanPending || (scanning && barWidth === undefined)
                   ? undefined
-                  : { width: `${scanComplete ? 100 : Math.max(percent, 4)}%` }
+                  : { width: `${barWidth}%` }
               }
             />
           </div>
@@ -133,7 +205,7 @@ export function WebsiteScanStatus({
       )}
 
       {(truncated || error || (scanComplete && notScannedCount > 0)) && (
-        <div className="space-y-2 border-t border-white/50 bg-white/25 px-5 py-3 text-xs leading-relaxed text-slate-600 backdrop-blur-sm">
+        <div className="space-y-1 border-t border-slate-200 bg-slate-50 px-2.5 py-2 text-xs leading-snug text-slate-700">
           {truncated && (
             <p>
               Google sjekker <strong>maks 10 om gangen</strong>. Bruk «Ikke Google-sjekket» eller

@@ -1,0 +1,12 @@
+.nylead-theme-retro-terminal {
+  --cv-bg: #0a0f0a;
+  --cv-surface: #0d140d;
+  --cv-text: #33ff33;
+  --cv-muted: #1a991a;
+  --cv-border: #1a661a;
+  --cv-accent: #00ff00;
+  --cv-link: #66ff66;
+  --cv-radius: 0;
+  --cv-font: "Courier New", Courier, monospace;
+  --cv-font-mono: "Courier New", Courier, monospace;
+}

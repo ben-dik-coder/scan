@@ -35,6 +35,8 @@ type DemoContextValue = {
   campaigns: EmailCampaign[];
   savedLists: SavedList[];
   updateLeadStatus: (orgnr: string, status: LeadStatus) => void;
+  setLeadStatus: (orgnr: string, status: LeadStatus) => void;
+  deleteLead: (orgnr: string) => void;
   addTemplate: (t: Omit<EmailTemplate, "id" | "user_id" | "created_at" | "updated_at">) => void;
   removeTemplate: (id: string) => void;
   sendCampaignDemo: (orgnrs: string[], subject: string) => void;
@@ -51,20 +53,46 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [campaigns, setCampaigns] = useState(DEMO_CAMPAIGNS);
   const [savedLists, setSavedLists] = useState<SavedList[]>(DEMO_SAVED_LISTS);
 
-  const updateLeadStatus = useCallback((orgnr: string, status: LeadStatus) => {
+  const setLeadStatus = useCallback((orgnr: string, status: LeadStatus) => {
+    const now = new Date().toISOString();
     setCompanies((prev) =>
-      prev.map((c) =>
-        c.orgnr === orgnr && c.user_lead
-          ? {
-              ...c,
-              user_lead: {
-                ...c.user_lead,
-                status,
-                updated_at: new Date().toISOString(),
-              },
-            }
-          : c
-      )
+      prev.map((c) => {
+        if (c.orgnr !== orgnr) return c;
+        if (c.user_lead) {
+          return {
+            ...c,
+            user_lead: {
+              ...c.user_lead,
+              status,
+              updated_at: now,
+              last_contacted_at:
+                status === "kontaktet" ? now : c.user_lead.last_contacted_at,
+            },
+          };
+        }
+        return {
+          ...c,
+          user_lead: {
+            user_id: "demo-user",
+            orgnr,
+            status,
+            score: computeLeadScore(c),
+            notes: null,
+            last_contacted_at: status === "kontaktet" ? now : null,
+            next_follow_up_at: null,
+            created_at: now,
+            updated_at: now,
+          },
+        };
+      })
+    );
+  }, []);
+
+  const updateLeadStatus = setLeadStatus;
+
+  const deleteLead = useCallback((orgnr: string) => {
+    setCompanies((prev) =>
+      prev.map((c) => (c.orgnr === orgnr ? { ...c, user_lead: null } : c))
     );
   }, []);
 
@@ -109,6 +137,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         id: `camp-${Date.now()}`,
         user_id: "demo-user",
         subject,
+        subject_b: null,
         body: "",
         sent_count: orgnrs.length,
         failed_count: 0,
@@ -149,6 +178,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       campaigns,
       savedLists,
       updateLeadStatus,
+      setLeadStatus,
+      deleteLead,
       addTemplate,
       removeTemplate,
       sendCampaignDemo,
@@ -162,6 +193,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       campaigns,
       savedLists,
       updateLeadStatus,
+      setLeadStatus,
+      deleteLead,
       addTemplate,
       removeTemplate,
       sendCampaignDemo,
@@ -231,7 +264,14 @@ export function filterDemoCompanies(
       return false;
     if (filters.hasEmail && !c.has_email) return false;
     if (filters.genericEmailOnly && !c.email_is_generic) return false;
-    if (!matchesIndustryGroup(c.industry_code, filters.industryGroup ?? "")) return false;
+    if (
+      !matchesIndustryGroup(c.industry_code, filters.industryGroup ?? "", {
+        name: c.name,
+        industryDescription: c.industry_description,
+      })
+    ) {
+      return false;
+    }
     if (filters.minScore && (c.user_lead?.score ?? 0) < filters.minScore) return false;
     return true;
   });

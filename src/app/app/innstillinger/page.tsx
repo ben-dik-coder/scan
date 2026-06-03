@@ -5,7 +5,7 @@ export default function InnstillingerPage() {
   return (
     <Suspense
       fallback={
-        <p className="text-sm text-white/60">Laster innstillinger…</p>
+        <p className="text-sm text-slate-600">Laster innstillinger…</p>
       }
     >
       <InnstillingerClient />

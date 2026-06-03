@@ -1,10 +1,12 @@
-export type MailProvider = "google" | "microsoft";
+export type MailProvider = "google" | "microsoft" | "smtp";
 
 export function appUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(
-    /\/$/,
-    ""
-  );
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const fromVercel = process.env.VERCEL_URL?.trim();
+  const base =
+    fromEnv ||
+    (fromVercel ? `https://${fromVercel}` : "http://localhost:3000");
+  return base.replace(/\/$/, "");
 }
 
 export function redirectUri(provider: MailProvider) {

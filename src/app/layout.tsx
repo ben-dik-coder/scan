@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CookieBanner } from "@/components/layout/CookieBanner";
 import { barlow, inter } from "@/lib/fonts";
 import "./globals.css";
 import { site } from "@/lib/site";
@@ -19,7 +20,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="nb" className={`${barlow.variable} ${inter.variable}`}>
-      <body className="bg-brand-navyDark text-white antialiased">{children}</body>
+      <body className="bg-white text-brand-navy antialiased">
+        {children}
+        <CookieBanner />
+      </body>
     </html>
   );
 }

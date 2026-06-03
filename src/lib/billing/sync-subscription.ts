@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import {
   ACTIVE_SUBSCRIPTION_STATUSES,
   planFromStripePriceId,
-  type PlanId,
+  type StoredPlanId,
   type SubscriptionStatus,
 } from "@/lib/billing/plans";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -22,7 +22,7 @@ function mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
   return "canceled";
 }
 
-function planFromSubscription(sub: Stripe.Subscription): PlanId | null {
+function planFromSubscription(sub: Stripe.Subscription): StoredPlanId | null {
   const priceId = sub.items.data[0]?.price?.id;
   if (!priceId) return null;
   return planFromStripePriceId(priceId);

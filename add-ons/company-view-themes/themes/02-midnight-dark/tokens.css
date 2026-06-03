@@ -1,0 +1,12 @@
+.nylead-theme-midnight-dark {
+  --cv-bg: #0f1419;
+  --cv-surface: #1a2332;
+  --cv-text: #e8edf4;
+  --cv-muted: #8b9cb3;
+  --cv-border: #2d3a4f;
+  --cv-accent: #7eb8ff;
+  --cv-link: #9ec9ff;
+  --cv-radius: 8px;
+  --cv-font: system-ui, sans-serif;
+  --cv-font-mono: ui-monospace, monospace;
+}

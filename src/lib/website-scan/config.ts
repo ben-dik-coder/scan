@@ -15,6 +15,10 @@ export function hasAnyWebsiteScanProvider(): boolean {
 export function getWebsiteScanProviders(): string[] {
   const providers: string[] = [];
   if (hasGoogleCse()) providers.push("Google Custom Search");
-  if (hasSerpApi()) providers.push("SerpAPI");
+  if (hasSerpApi()) {
+    providers.push("SerpAPI Google");
+    providers.push("SerpAPI Facebook Profile");
+    providers.push("SerpAPI Instagram Profile");
+  }
   return providers;
 }

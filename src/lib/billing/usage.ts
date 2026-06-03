@@ -1,9 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
-
-function currentMonthKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
+import { currentMonthKey, seededShuffle } from "@/lib/shuffle/seeded-shuffle";
 
 export type CompanyContactRow = {
   orgnr: string;
@@ -67,24 +63,35 @@ export type CompanyContactUsage = {
 };
 
 /**
- * Start-pakken: maks unike firma med tlf/e-post per måned.
+ * NyLead: maks unike firma med tlf/e-post per måned.
  * Allerede viste firma denne måneden vises alltid igjen.
  */
 export async function applyCompanyContactLimit<T extends CompanyContactRow>(
   userId: string,
   companies: T[],
-  maxPerMonth: number
+  maxPerMonth: number,
+  shuffleSeed?: string,
+  options?: { preserveOrder?: boolean }
 ): Promise<{ companies: T[]; usage: CompanyContactUsage }> {
   const existing = await getRecordedOrgnrs(userId);
   const usedBefore = existing.size;
 
-  const withContact = companies.filter(hasContactInfo);
-  const withoutContact = companies.filter((c) => !hasContactInfo(c));
+  const ordered =
+    shuffleSeed && !options?.preserveOrder
+      ? seededShuffle(companies, shuffleSeed)
+      : companies;
+
+  const withContact = ordered.filter(hasContactInfo);
+  const withoutContact = ordered.filter((c) => !hasContactInfo(c));
 
   const newWithContact = withContact.filter((c) => !existing.has(c.orgnr));
 
   const remaining = Math.max(0, maxPerMonth - usedBefore);
-  const toUnlock = newWithContact.slice(0, remaining);
+  const pool =
+    shuffleSeed && newWithContact.length > 1
+      ? seededShuffle(newWithContact, `${shuffleSeed}|unlock`)
+      : newWithContact;
+  const toUnlock = pool.slice(0, remaining);
   await recordOrgnrs(
     userId,
     toUnlock.map((c) => c.orgnr)

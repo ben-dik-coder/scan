@@ -1,24 +1,13 @@
 "use client";
 
 import { LEAD_STATUSES } from "@/lib/sales/constants";
+import type { SalesDashboardStats } from "@/lib/sales/dashboard-stats";
 import type { EmailCampaign } from "@/types/database";
 import Link from "next/link";
 import { ArrowRight, Bell, Mail, TrendingUp, Users } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/ui/primitives";
 
-export function SalesOverview({
-  stats,
-}: {
-  stats: {
-    totalLeads: number;
-    statusCounts: Record<string, number>;
-    totalSent: number;
-    totalFailed: number;
-    activeSequences: number;
-    dueFollowUps: number;
-    totalActivities: number;
-  };
-}) {
+export function SalesOverview({ stats }: { stats: SalesDashboardStats }) {
   return (
     <div className="space-y-8">
       <PageHeader
@@ -45,7 +34,7 @@ export function SalesOverview({
       </div>
 
       <section>
-        <h2 className="mb-4 font-display text-lg font-bold text-white">Pipeline-fordeling</h2>
+        <h2 className="app-section-title">Pipeline-fordeling</h2>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {LEAD_STATUSES.map((s) => {
             const count = stats.statusCounts[s.id] ?? 0;
@@ -55,13 +44,13 @@ export function SalesOverview({
                 key={s.id}
                 className="panel flex items-center justify-between px-4 py-3"
               >
-                <span className="flex items-center gap-2.5 text-sm text-white/70">
+                <span className="flex items-center gap-2.5 text-sm font-medium text-slate-700">
                   <span className={`h-2 w-2 rounded-full ${s.color}`} />
                   {s.label}
                 </span>
                 <div className="text-right">
-                  <span className="font-display font-bold text-white">{count}</span>
-                  <span className="ml-1.5 text-xs text-white/50">{pct}%</span>
+                  <span className="font-display font-bold text-brand-navy">{count}</span>
+                  <span className="ml-1.5 text-xs font-medium text-slate-500">{pct}%</span>
                 </div>
               </div>
             );
@@ -81,29 +70,29 @@ export function CampaignsList({ campaigns }: { campaigns: EmailCampaign[] }) {
       />
 
       <div className="panel overflow-hidden">
-        <table className="min-w-full text-sm">
-          <thead className="border-b border-white/[0.06] bg-white/[0.02] text-left text-[11px] font-bold uppercase tracking-wider text-white/50">
+        <table className="app-table min-w-full text-sm">
+          <thead>
             <tr>
-              <th className="px-5 py-3.5">Dato</th>
-              <th className="px-5 py-3.5">Emne</th>
-              <th className="px-5 py-3.5">Sendt</th>
-              <th className="px-5 py-3.5">Feilet</th>
+              <th>Dato</th>
+              <th>Emne</th>
+              <th>Sendt</th>
+              <th>Feilet</th>
             </tr>
           </thead>
           <tbody>
             {campaigns.map((c) => (
-              <tr key={c.id} className="border-t border-white/[0.04] transition hover:bg-white/[0.02]">
-                <td className="px-5 py-3.5 text-white/50">
+              <tr key={c.id}>
+                <td className="muted">
                   {new Date(c.created_at).toLocaleString("nb-NO")}
                 </td>
-                <td className="px-5 py-3.5 font-medium text-white">{c.subject}</td>
-                <td className="px-5 py-3.5 font-semibold text-brand-gold">{c.sent_count}</td>
-                <td className="px-5 py-3.5 font-semibold text-red-400">{c.failed_count}</td>
+                <td className="font-medium text-brand-navy">{c.subject}</td>
+                <td className="font-semibold text-brand-gold">{c.sent_count}</td>
+                <td className="font-semibold text-red-600">{c.failed_count}</td>
               </tr>
             ))}
             {campaigns.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-12 text-center text-white/50">
+                <td colSpan={4} className="px-5 py-12 text-center text-slate-500">
                   Ingen kampanjer sendt ennå
                 </td>
               </tr>

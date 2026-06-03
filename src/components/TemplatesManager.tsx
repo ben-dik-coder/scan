@@ -37,7 +37,7 @@ export function TemplatesManager({
           <div key={t.id} className="panel p-5">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="font-display font-bold text-white">{t.name}</h3>
+                <h3 className="font-display font-bold text-brand-navy">{t.name}</h3>
                 {t.is_default && (
                   <span className="text-xs font-semibold text-brand-gold">Standard</span>
                 )}
@@ -50,8 +50,8 @@ export function TemplatesManager({
                 Slett
               </button>
             </div>
-            <p className="mt-2 text-sm text-white/70">Emne: {t.subject}</p>
-            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-white/50">
+            <p className="mt-2 text-sm text-slate-600">Emne: {t.subject}</p>
+            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-slate-500">
               {t.body}
             </pre>
           </div>
@@ -59,20 +59,20 @@ export function TemplatesManager({
       </div>
 
       <form onSubmit={createTemplate} className="panel space-y-4 p-5">
-        <h2 className="font-display font-bold text-white">Ny mal</h2>
+        <h2 className="font-display font-bold text-brand-navy">Ny mal</h2>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Malnavn"
           required
-          className="input-dark py-2"
+          className="input-app py-2"
         />
         <input
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Emne — bruk {firmanavn}"
           required
-          className="input-dark py-2"
+          className="input-app py-2"
         />
         <textarea
           value={body}
@@ -80,7 +80,7 @@ export function TemplatesManager({
           placeholder="Meldingstekst"
           rows={5}
           required
-          className="input-dark py-2"
+          className="input-app py-2"
         />
         <button type="submit" className="btn-primary">
           Lagre mal

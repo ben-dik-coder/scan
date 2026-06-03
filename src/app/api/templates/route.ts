@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if ((count ?? 0) >= entitlements.maxTemplates) {
       return NextResponse.json(
         {
-          error: `Start-pakken tillater maks ${entitlements.maxTemplates} maler. Oppgrader til Pro.`,
+          error: `Du har nådd grensen på ${entitlements.maxTemplates} maler.`,
         },
         { status: 403 }
       );

@@ -1,3 +1,6 @@
+import { industrySearchKeyword } from "./industry-keywords";
+import { companyGeoPlaces } from "@/lib/brreg/geo-place";
+
 const DIRECTORY_DOMAINS = [
   "brreg.no",
   "proff.no",
@@ -29,6 +32,24 @@ const DIRECTORY_DOMAINS = [
   "klikk.no",
   "degulesider.no",
   "data.brreg.no",
+  "118.no",
+  "180.no",
+  "eniro.no",
+  "180.no",
+  "norske-bedrifter.no",
+  "bizin.no",
+  "kompass.com",
+  "dnb.no",
+  "1881.no",
+  "hitta.se",
+  "yellowpages.com",
+  "tripadvisor.com",
+  "trustpilot.com",
+  "glassdoor.com",
+  "indeed.com",
+  "finanstilsynet.no",
+  "lex247.com",
+  "unternehmensregister.de",
 ];
 
 const HOSTED_PLATFORM_DOMAINS = [
@@ -89,6 +110,7 @@ const COMPANY_SUFFIXES = new Set([
 const LISTING_PATH_RE =
   /\/(selskap|company|bedrift|profil|profile|artikkel|nyhet|news|wiki|register|enhet|organization)/i;
 
+
 /** Korte ord som «bø» matcher feil (Bønes Spa ≠ Bø Pæng) */
 const MIN_TOKEN_LEN = 3;
 
@@ -136,14 +158,25 @@ export function isNonOwnWebsiteDomain(domain: string): boolean {
   );
 }
 
+export function stripCompanySuffix(name: string): string {
+  return name
+    .trim()
+    .replace(/\s+(as|asa|da|sa|enk|ans|nuf|ba|sf)\s*$/i, "")
+    .trim();
+}
+
 export function nameTokens(companyName: string): string[] {
-  return companyName
+  return stripCompanySuffix(companyName)
     .toLowerCase()
     .replace(/["']/g, "")
-    .replace(/\s+(as|asa|da|sa|enk|ans|nuf)\s*$/i, "")
     .split(/\s+/)
     .map((w) => w.replace(/[^a-z0-9æøå]/gi, ""))
     .filter((w) => w.length >= MIN_TOKEN_LEN && !COMPANY_SUFFIXES.has(w));
+}
+
+/** Første meningsfulle ord — for søk når merkenavn avviker fra Brreg-navn */
+export function primarySearchTokens(companyName: string, max = 2): string[] {
+  return nameTokens(companyName).slice(0, max);
 }
 
 export function compactAlnum(text: string): string {
@@ -233,22 +266,43 @@ type ScoredHit = SearchHit & {
   nameInDomain: boolean;
 };
 
+function municipalityInText(text: string, municipalityName?: string | null): boolean {
+  if (!municipalityName?.trim()) return false;
+  const place = compactAlnum(municipalityName);
+  if (place.length < 4) return false;
+  return compactAlnum(text).includes(place);
+}
+
 function scoreHit(
   domain: string,
   title: string,
   link: string,
-  companyName: string
+  companyName: string,
+  context?: { municipalityName?: string | null }
 ): ScoredHit | null {
   if (!domain || isNonOwnWebsiteDomain(domain)) return null;
   if (isListingPage(link)) return null;
-  if (!companyMatchesResult(title, link, companyName)) return null;
+
+  const strippedName = stripCompanySuffix(companyName);
+  const matchesLegal = companyMatchesResult(title, link, companyName);
+  const matchesStripped =
+    strippedName !== companyName &&
+    companyMatchesResult(title, link, strippedName);
+  const domainMatchLegal = domainSimilarToCompany(domain, companyName);
+  const domainMatchStripped =
+    strippedName !== companyName &&
+    domainSimilarToCompany(domain, strippedName);
+  const domainMatch = domainMatchLegal || domainMatchStripped;
+  const placeMatch = municipalityInText(`${title} ${link}`, context?.municipalityName);
+
+  if (!matchesLegal && !matchesStripped && !domainMatch) return null;
 
   const tokens = nameTokens(companyName);
   const domainBase = (domain.split(".")[0] ?? "").replace(/[^a-z0-9æøå]/gi, "");
   let score = 0;
   let nameInDomain = false;
 
-  if (domainSimilarToCompany(domain, companyName)) {
+  if (domainMatch) {
     nameInDomain = true;
     score += 10;
   }
@@ -260,14 +314,21 @@ function scoreHit(
     }
   }
 
-  if (strongTitleMatch(title, companyName)) score += 4;
+  if (matchesLegal || matchesStripped) score += 4;
+  else if (strongTitleMatch(title, strippedName)) score += 3;
+
+  if (placeMatch) score += 3;
   if (looksLikeHomepage(link)) score += 2;
-  if (domain.endsWith(".no") || domain.endsWith(".com")) score += 1;
+  if (domain.endsWith(".no")) score += 2;
+  else if (domain.endsWith(".com")) score += 1;
 
   const acceptAsOwn =
-    nameInDomain || (strongTitleMatch(title, companyName) && looksLikeHomepage(link));
+    nameInDomain ||
+    ((matchesLegal || matchesStripped) && looksLikeHomepage(link)) ||
+    (domainMatch && placeMatch && looksLikeHomepage(link));
 
-  if (!acceptAsOwn || score < 6) return null;
+  const minScore = domainMatch && !matchesLegal && !matchesStripped ? 8 : 6;
+  if (!acceptAsOwn || score < minScore) return null;
 
   return { title, link, domain, score, nameInDomain };
 }
@@ -296,7 +357,8 @@ function findBookingOnlyHit(
 
 export function pickBestWebsite(
   hits: SearchHit[],
-  companyName: string
+  companyName: string,
+  context?: { municipalityName?: string | null }
 ): {
   hasWebsite: boolean;
   websiteKind: WebsiteKind;
@@ -315,7 +377,7 @@ export function pickBestWebsite(
   const analyzed = hits
     .map((h) => {
       const domain = normalizeDomain(h.link);
-      return scoreHit(domain, h.title, h.link, companyName);
+      return scoreHit(domain, h.title, h.link, companyName, context);
     })
     .filter((h): h is ScoredHit => h !== null)
     .sort((a, b) => b.score - a.score);
@@ -367,15 +429,65 @@ export function pickBestWebsite(
 export function buildSearchQueries(company: {
   name: string;
   municipality_name?: string | null;
+  city?: string | null;
+  industry_code?: string | null;
 }): string[] {
   const name = company.name.trim();
-  const place = company.municipality_name?.trim();
+  const places = companyGeoPlaces(company);
+  const stripped = stripCompanySuffix(name);
+  const tokens = primarySearchTokens(name);
+  const industryKw = industrySearchKeyword(company.industry_code) ?? undefined;
 
-  if (place) {
-    return [`"${name}" ${place}`, `${name} ${place} nettside`];
+  const queries: string[] = [];
+  const seen = new Set<string>();
+  const add = (q: string) => {
+    const key = q.toLowerCase().replace(/\s+/g, " ");
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    queries.push(q);
+  };
+
+  if (places.length > 0) {
+    for (const place of places) {
+      add(`"${name}" ${place}`);
+      add(`${name} ${place} nettside`);
+      if (stripped !== name) {
+        add(`"${stripped}" ${place}`);
+        add(`${stripped} ${place} nettside`);
+      }
+      if (tokens.length > 0) {
+        add(`${tokens.join(" ")} ${place}${industryKw ? ` ${industryKw}` : ""}`);
+      }
+      if (industryKw) {
+        add(`"${stripped}" ${place} ${industryKw}`);
+      }
+    }
+  } else {
+    add(`"${name}"`);
+    add(`${name} nettside`);
+    if (stripped !== name) {
+      add(`"${stripped}"`);
+      add(`${stripped} nettside`);
+    }
+    if (tokens.length > 0 && industryKw) {
+      add(`${tokens.join(" ")} ${industryKw}`);
+    }
   }
 
-  return [`"${name}"`, `${name} nettside`];
+  return queries.slice(0, 6);
+}
+
+export function displayNameDiffersFromLegal(
+  displayName: string | null | undefined,
+  legalName: string
+): boolean {
+  if (!displayName?.trim()) return false;
+  const display = compactAlnum(displayName);
+  const legal = compactAlnum(stripCompanySuffix(legalName));
+  if (display.length < 3 || legal.length < 3) return false;
+  if (display === legal) return false;
+  if (display.includes(legal) || legal.includes(display)) return false;
+  return true;
 }
 
 export function buildSearchQuery(company: {

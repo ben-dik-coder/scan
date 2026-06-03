@@ -1,0 +1,12 @@
+.nylead-theme-brutalist {
+  --cv-bg: #ffff00;
+  --cv-surface: #ffffff;
+  --cv-text: #000000;
+  --cv-muted: #333333;
+  --cv-border: #000000;
+  --cv-accent: #ff0000;
+  --cv-link: #0000ff;
+  --cv-radius: 0;
+  --cv-font: "Arial Black", Impact, sans-serif;
+  --cv-font-mono: "Courier New", monospace;
+}

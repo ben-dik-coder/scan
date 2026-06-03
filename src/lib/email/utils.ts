@@ -37,6 +37,7 @@ export function renderTemplate(template: string, vars: Record<string, string>): 
 
 export type SendCampaignInput = {
   subject: string;
+  subjectB?: string;
   body: string;
   recipients: Array<{ orgnr: string; email: string; name: string }>;
   allowPersonal?: boolean;

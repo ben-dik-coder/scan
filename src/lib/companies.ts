@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { computeLeadScore } from "@/lib/sales/lead-score";
+import type { SalesDashboardStats } from "@/lib/sales/dashboard-stats";
 import type { Company, CompanyWithLead, UserLead } from "@/types/database";
 
 export type CompanyFilters = {
@@ -147,7 +148,9 @@ export async function fetchPipelineLeads(userId: string) {
   }));
 }
 
-export async function fetchSalesDashboard(userId: string) {
+export async function fetchSalesDashboard(
+  userId: string
+): Promise<SalesDashboardStats> {
   const supabase = await createClient();
 
   const [leadsRes, campaignsRes, enrollmentsRes, followUpsRes, activitiesRes] =
