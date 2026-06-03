@@ -403,8 +403,22 @@ body {
   }
 
   /* ── Skann markedet: Glass Kommand (03-glass-kommand) ── */
-  .scan-glass-page-bg {
+  .scan-glass-page-bg,
+  .app-shell-bg.scan-glass-page-bg {
     background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
+    color: #f1f5f9;
+  }
+
+  .scan-glass-shell-header {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: none;
+  }
+
+  .scan-glass-shell-menu-btn {
+    @apply rounded-xl border border-white/15 bg-white/5 p-2 text-slate-200 shadow-none backdrop-blur-md transition hover:bg-white/10 hover:text-white;
   }
 
   .scan-glass-kommand {

@@ -113,7 +113,12 @@ export function AppShell({
   );
 
   return (
-    <div className="app-shell-bg flex min-h-screen text-brand-navy">
+    <div
+      className={cn(
+        "app-shell-bg flex min-h-screen",
+        isScanPage ? "scan-glass-page-bg" : "text-brand-navy"
+      )}
+    >
       {drawerOpen && (
         <div className="fixed inset-0 z-50">
           <div
@@ -135,29 +140,35 @@ export function AppShell({
       )}
 
       <div className="relative z-10 flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between overflow-visible border-b border-slate-200 bg-white px-4 shadow-sm">
+        <header
+          className={cn(
+            "sticky top-0 z-30 flex h-14 items-center justify-between overflow-visible border-b px-4",
+            isScanPage
+              ? "scan-glass-shell-header"
+              : "border-slate-200 bg-white shadow-sm"
+          )}
+        >
           <Link href="/app/oversikt" className="flex items-center">
             <SiteLogo
-              variant="light"
+              variant={isScanPage ? "dark" : "light"}
               className="h-8 w-auto max-w-[11rem] object-contain object-left sm:h-9"
             />
           </Link>
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="rounded-xl border border-brand-border bg-white p-2 text-slate-600 shadow-sm"
+            className={
+              isScanPage
+                ? "scan-glass-shell-menu-btn"
+                : "rounded-xl border border-brand-border bg-white p-2 text-slate-600 shadow-sm"
+            }
             aria-label="Meny"
           >
             <Menu className="h-5 w-5" />
           </button>
         </header>
 
-        <main
-          className={cn(
-            "app-scroll relative min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]",
-            isScanPage && "scan-glass-page-bg"
-          )}
-        >
+        <main className="app-scroll relative min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           <div
             className={cn(
               "relative z-10 w-full min-w-0 max-w-none",
