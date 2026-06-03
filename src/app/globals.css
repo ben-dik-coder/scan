@@ -403,6 +403,13 @@ body {
   }
 
   /* ── Skann markedet: Glass Kommand (03-glass-kommand) ── */
+  html.app-glass-theme,
+  body.app-glass-theme {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
+    background-attachment: fixed;
+    color: #f1f5f9;
+  }
+
   .scan-glass-page-bg,
   .app-shell-bg.scan-glass-page-bg {
     background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
@@ -496,6 +503,117 @@ body {
 
   .scan-glass-shell-footer {
     border-color: var(--scan-glass-border);
+  }
+
+  /* App-wide glass overrides for all /app/* pages */
+  .scan-glass-shell .surface-panel,
+  .scan-glass-shell .surface-panel-dark,
+  .scan-glass-shell .panel,
+  .scan-glass-shell .premium-card,
+  .scan-glass-shell .feature-row {
+    border-color: var(--scan-glass-border);
+    background: var(--scan-glass-surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: var(--scan-glass-text);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+      0 8px 32px -8px rgba(2, 6, 23, 0.35);
+  }
+
+  .scan-glass-shell .page-header {
+    border-color: var(--scan-glass-border);
+  }
+
+  .scan-glass-shell .page-header-title,
+  .scan-glass-shell .app-section-title {
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell .app-table thead {
+    border-color: var(--scan-glass-border);
+    background: var(--scan-glass-surface-subtle);
+    color: var(--scan-glass-muted);
+  }
+
+  .scan-glass-shell .app-table tbody tr {
+    border-color: var(--scan-glass-border);
+  }
+
+  .scan-glass-shell .app-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .scan-glass-shell .app-table td {
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell .app-table td.muted {
+    color: var(--scan-glass-muted);
+  }
+
+  .scan-glass-shell .input-app,
+  .scan-glass-shell .btn-secondary,
+  .scan-glass-shell .btn-secondary-light {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--scan-glass-text);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .scan-glass-shell .input-app::placeholder {
+    color: rgba(148, 163, 184, 0.75);
+  }
+
+  .scan-glass-shell .input-app:focus {
+    border-color: rgba(56, 189, 248, 0.45);
+    --tw-ring-color: rgba(56, 189, 248, 0.15);
+  }
+
+  .scan-glass-shell .btn-secondary:hover,
+  .scan-glass-shell .btn-secondary-light:hover {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell .btn-primary {
+    background: var(--scan-glass-accent);
+    color: var(--scan-glass-accent-text, #0f172a);
+    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+  }
+
+  .scan-glass-shell [class~="text-brand-navy"],
+  .scan-glass-shell [class~="text-slate-900"] {
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell [class~="text-slate-500"],
+  .scan-glass-shell [class~="text-slate-600"],
+  .scan-glass-shell [class~="text-slate-700"],
+  .scan-glass-shell [class~="text-slate-800"] {
+    color: var(--scan-glass-muted);
+  }
+
+  .scan-glass-shell [class~="border-slate-200"],
+  .scan-glass-shell [class~="border-brand-border"] {
+    border-color: var(--scan-glass-border);
+  }
+
+  .scan-glass-shell [class~="bg-white"],
+  .scan-glass-shell [class~="bg-brand-surface"] {
+    background: var(--scan-glass-surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .scan-glass-shell [class~="bg-brand-goldPale"] {
+    background: rgba(56, 189, 248, 0.12);
+  }
+
+  .scan-glass-shell [class~="text-brand-gold"] {
+    color: var(--scan-glass-accent);
   }
 
   .scan-glass-kommand {

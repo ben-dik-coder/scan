@@ -20,7 +20,11 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+function isAppRoute(pathname: string) {
+  return pathname === "/app" || pathname.startsWith("/app/");
+}
 
 const NAV = [
   { href: "/app/oversikt", label: "Oversikt", icon: LayoutDashboard },
@@ -45,7 +49,18 @@ export function AppShell({
   const router = useRouter();
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const isGlassShell = pathname === "/app";
+  const isGlassShell = isAppRoute(pathname);
+  const isScanPage = pathname === "/app";
+
+  useEffect(() => {
+    if (!isGlassShell) return;
+    document.documentElement.classList.add("app-glass-theme");
+    document.body.classList.add("app-glass-theme");
+    return () => {
+      document.documentElement.classList.remove("app-glass-theme");
+      document.body.classList.remove("app-glass-theme");
+    };
+  }, [isGlassShell]);
 
   async function logout() {
     const { createClient } = await import("@/lib/supabase/client");
@@ -142,8 +157,8 @@ export function AppShell({
           />
           <aside
             className={cn(
-              "absolute bottom-3 left-3 top-3 flex w-[min(100vw-1.5rem,288px)] flex-col rounded-2xl glass-sidebar",
-              isGlassShell && "scan-glass-sidebar"
+              "absolute bottom-3 left-3 top-3 flex w-[min(100vw-1.5rem,288px)] flex-col rounded-2xl",
+              isGlassShell ? "scan-glass-sidebar" : "glass-sidebar"
             )}
           >
             <button
@@ -197,7 +212,8 @@ export function AppShell({
           <div
             className={cn(
               "relative z-10 w-full min-w-0 max-w-none",
-              isGlassShell
+              isGlassShell && "scan-glass-kommand",
+              isGlassShell && isScanPage
                 ? "px-0 py-0"
                 : "px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6"
             )}
