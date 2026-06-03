@@ -423,12 +423,12 @@ body {
     min-height: 100%;
     min-height: 100dvh;
     background: transparent !important;
-    color: #f1f5f9;
+    color: #ffffff;
   }
 
   .app-shell-bg.scan-glass-page-bg {
     background: transparent;
-    color: #f1f5f9;
+    color: #ffffff;
   }
 
   .scan-glass-shell .app-scroll,
@@ -445,17 +445,18 @@ body {
   }
 
   .scan-glass-shell-menu-btn {
-    @apply rounded-xl border border-white/15 bg-white/5 p-2 text-slate-200 shadow-none backdrop-blur-md transition hover:bg-white/10 hover:text-white;
+    @apply rounded-xl border border-white/20 bg-white/10 p-2 text-white shadow-none backdrop-blur-md transition hover:bg-white/15 hover:text-white;
   }
 
   /* App shell sidebar + nav (03-glass-kommand) */
   .scan-glass-shell {
-    --scan-glass-text: #f1f5f9;
-    --scan-glass-muted: #94a3b8;
+    --scan-glass-text: #ffffff;
+    --scan-glass-muted: #e2e8f0;
     --scan-glass-accent: #38bdf8;
-    --scan-glass-border: rgba(255, 255, 255, 0.15);
-    --scan-glass-surface: rgba(255, 255, 255, 0.08);
-    --scan-glass-chip: rgba(255, 255, 255, 0.06);
+    --scan-glass-text-shadow: 0 1px 3px rgba(2, 6, 23, 0.55);
+    --scan-glass-border: rgba(255, 255, 255, 0.25);
+    --scan-glass-surface: rgba(255, 255, 255, 0.1);
+    --scan-glass-chip: rgba(255, 255, 255, 0.08);
     --scan-glass-radius: 16px;
   }
 
@@ -583,7 +584,7 @@ body {
   }
 
   .scan-glass-shell .input-app::placeholder {
-    color: rgba(148, 163, 184, 0.75);
+    color: rgba(226, 232, 240, 0.85);
   }
 
   .scan-glass-shell .input-app:focus {
@@ -637,14 +638,15 @@ body {
   }
 
   .scan-glass-kommand {
-    --scan-glass-text: #f1f5f9;
-    --scan-glass-muted: #94a3b8;
+    --scan-glass-text: #ffffff;
+    --scan-glass-muted: #e2e8f0;
     --scan-glass-accent: #38bdf8;
     --scan-glass-accent-text: #0f172a;
-    --scan-glass-border: rgba(255, 255, 255, 0.15);
-    --scan-glass-surface: rgba(255, 255, 255, 0.08);
-    --scan-glass-surface-subtle: rgba(255, 255, 255, 0.05);
-    --scan-glass-chip: rgba(255, 255, 255, 0.06);
+    --scan-glass-text-shadow: 0 1px 3px rgba(2, 6, 23, 0.55);
+    --scan-glass-border: rgba(255, 255, 255, 0.25);
+    --scan-glass-surface: rgba(255, 255, 255, 0.1);
+    --scan-glass-surface-subtle: rgba(255, 255, 255, 0.07);
+    --scan-glass-chip: rgba(255, 255, 255, 0.08);
     --scan-glass-radius: 16px;
     color: var(--scan-glass-text);
   }
@@ -652,11 +654,12 @@ body {
   .scan-glass-kommand .scan-glass-title {
     @apply text-lg font-semibold;
     color: var(--scan-glass-text);
+    text-shadow: var(--scan-glass-text-shadow);
   }
 
   .scan-glass-kommand .scan-glass-subtitle,
   .scan-glass-kommand .scan-glass-muted {
-    @apply text-xs;
+    @apply text-xs font-medium;
     color: var(--scan-glass-muted);
   }
 
@@ -710,7 +713,7 @@ body {
   }
 
   .scan-glass-kommand .scan-input::placeholder {
-    color: rgba(148, 163, 184, 0.7);
+    color: rgba(226, 232, 240, 0.85);
   }
 
   .scan-glass-kommand .scan-input:focus {
@@ -796,6 +799,8 @@ body {
 
   .scan-glass-kommand .scan-glass-strong {
     color: var(--scan-glass-text);
+    font-weight: 600;
+    text-shadow: var(--scan-glass-text-shadow);
   }
 
   .scan-glass-kommand .scan-glass-notice {
@@ -938,12 +943,12 @@ body {
 
   .scan-glass-kommand .nylead-theme-compact-table {
     --cv-bg: transparent;
-    --cv-surface: rgba(255, 255, 255, 0.06);
-    --cv-text: #f1f5f9;
-    --cv-muted: #94a3b8;
-    --cv-border: rgba(255, 255, 255, 0.12);
+    --cv-surface: rgba(255, 255, 255, 0.08);
+    --cv-text: #ffffff;
+    --cv-muted: #e2e8f0;
+    --cv-border: rgba(255, 255, 255, 0.22);
     --cv-accent: #38bdf8;
-    --cv-link: #7dd3fc;
+    --cv-link: #bae6fd;
     --cv-radius: 8px;
   }
 
@@ -1022,6 +1027,41 @@ body {
     background: rgba(2, 6, 23, 0.55);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+  }
+
+  /* Sterkere kontrast for lys tekst på glass-bakgrunn */
+  .scan-glass-shell .page-header-title,
+  .scan-glass-shell .app-section-title,
+  .scan-glass-kommand .scan-glass-title,
+  .scan-glass-kommand .scan-glass-strong {
+    color: #ffffff;
+    text-shadow: var(--scan-glass-text-shadow);
+  }
+
+  .scan-glass-shell [class~="text-white"],
+  .scan-glass-kommand [class~="text-white"],
+  .scan-glass-shell [class~="text-slate-100"],
+  .scan-glass-kommand [class~="text-slate-100"],
+  .scan-glass-shell [class~="text-slate-200"],
+  .scan-glass-kommand [class~="text-slate-200"] {
+    color: #ffffff;
+  }
+
+  .scan-glass-shell [class~="text-slate-300"],
+  .scan-glass-kommand [class~="text-slate-300"],
+  .scan-glass-shell [class~="text-slate-400"],
+  .scan-glass-kommand [class~="text-slate-400"] {
+    color: #e2e8f0;
+  }
+
+  .scan-glass-shell .glass-nav-link,
+  .scan-glass-kommand .scan-tab {
+    color: #e2e8f0;
+  }
+
+  .scan-glass-shell .glass-nav-link svg,
+  .scan-glass-kommand .scan-tab svg {
+    color: #e2e8f0;
   }
 
   /* Company view theme #4: Kompakt tabell */
