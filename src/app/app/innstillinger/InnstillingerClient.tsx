@@ -93,6 +93,7 @@ export default function InnstillingerClient() {
       hasEmail: params.get("epost") === "1",
       genericEmailOnly: params.get("generisk") === "1",
       industryGroup: params.get("bransje") ?? "",
+      professionSearch: params.get("yrke") ?? "",
       websitePresence: (params.get("web") as FilterState["websitePresence"]) || "all",
       facebookPresence: (params.get("fb") as FilterState["facebookPresence"]) || "all",
       instagramPresence: (params.get("ig") as FilterState["instagramPresence"]) || "all",

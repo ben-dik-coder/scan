@@ -23,6 +23,10 @@ import {
   DEMO_TEMPLATES,
 } from "./data";
 import { matchesIndustryGroup } from "@/lib/constants/industries";
+import {
+  matchesProfessionSearch,
+  resolveProfessionQuery,
+} from "@/lib/constants/professions";
 import { kommuneBelongsToRegion } from "@/lib/constants/regions";
 import { computeLeadScore } from "@/lib/sales/lead-score";
 
@@ -241,6 +245,7 @@ export function filterDemoCompanies(
     hasEmail?: boolean;
     genericEmailOnly?: boolean;
     industryGroup?: string;
+    professionSearch?: string;
     minScore?: number;
   }
 ) {
@@ -271,6 +276,18 @@ export function filterDemoCompanies(
       })
     ) {
       return false;
+    }
+    if (filters.professionSearch?.trim()) {
+      const professionMatch = resolveProfessionQuery(filters.professionSearch);
+      if (
+        professionMatch &&
+        !matchesProfessionSearch(c.industry_code, {
+          name: c.name,
+          industryDescription: c.industry_description,
+        }, professionMatch)
+      ) {
+        return false;
+      }
     }
     if (filters.minScore && (c.user_lead?.score ?? 0) < filters.minScore) return false;
     return true;

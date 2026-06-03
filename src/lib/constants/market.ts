@@ -9,6 +9,7 @@ export const DEFAULT_MARKET_FILTERS = {
   hasEmail: false,
   genericEmailOnly: false,
   industryGroup: "",
+  professionSearch: "",
   websitePresence: "all" as const,
   facebookPresence: "all" as const,
   instagramPresence: "all" as const,

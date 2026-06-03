@@ -17,6 +17,7 @@ import {
 } from "@/lib/website-scan/scan-social-options";
 import { regionLabel } from "@/lib/constants/regions";
 import { industryGroupLabel } from "@/lib/constants/industries";
+import { professionSearchLabel } from "@/lib/constants/professions";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
@@ -208,6 +209,13 @@ export function AppPageClient(props: Props) {
     ) {
       next = { ...next, days: 0 };
     }
+    if (
+      next.professionSearch.trim() &&
+      next.professionSearch.trim() !== filters.professionSearch.trim() &&
+      next.days !== 0
+    ) {
+      next = { ...next, days: 0 };
+    }
 
     const params = new URLSearchParams(searchParams.toString());
     if (next.regionId) params.set("omrade", next.regionId);
@@ -219,6 +227,8 @@ export function AppPageClient(props: Props) {
     params.set("generisk", next.genericEmailOnly ? "1" : "0");
     if (next.industryGroup) params.set("bransje", next.industryGroup);
     else params.delete("bransje");
+    if (next.professionSearch.trim()) params.set("yrke", next.professionSearch.trim());
+    else params.delete("yrke");
     if (next.websitePresence !== "all") params.set("web", next.websitePresence);
     else params.delete("web");
     if (next.facebookPresence !== "all") params.set("fb", next.facebookPresence);
@@ -383,6 +393,10 @@ export function AppPageClient(props: Props) {
         ? regionLabel(filters.regionId)
         : "Hele Norge",
     filters.industryGroup ? industryGroupLabel(filters.industryGroup) : null,
+    filters.professionSearch.trim()
+      ? professionSearchLabel(filters.professionSearch.trim()) ??
+        `Yrke: ${filters.professionSearch.trim()}`
+      : null,
     filters.days === 0 ? "Alle firma" : `Siste ${filters.days} dager`,
   ]
     .filter(Boolean)

@@ -36,7 +36,8 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
     params.has("dager") ||
     params.has("epost") ||
     params.has("generisk") ||
-    params.has("bransje");
+    params.has("bransje") ||
+    params.has("yrke");
 
   if (brreg && !hasAnyFilter) {
     return { ...DEFAULT_MARKET_FILTERS, industryGroup: "" };
@@ -65,6 +66,7 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
         ? DEFAULT_MARKET_FILTERS.genericEmailOnly
         : false,
     industryGroup: params.get("bransje") ?? "",
+    professionSearch: params.get("yrke") ?? "",
     websitePresence:
       (params.get("web") as FilterState["websitePresence"]) || "all",
     facebookPresence:
@@ -92,6 +94,8 @@ function buildCompaniesQuery(filters: FilterState, page = 1): string {
   params.set("generisk", filters.genericEmailOnly ? "1" : "0");
   if (filters.industryGroup) params.set("bransje", filters.industryGroup);
   else params.delete("bransje");
+  if (filters.professionSearch.trim()) params.set("yrke", filters.professionSearch.trim());
+  else params.delete("yrke");
   if (filters.websitePresence !== "all") params.set("web", filters.websitePresence);
   else params.delete("web");
   if (filters.facebookPresence !== "all") params.set("fb", filters.facebookPresence);
@@ -115,6 +119,7 @@ function FirmaPageDemo() {
     hasEmail: filters.hasEmail,
     genericEmailOnly: filters.genericEmailOnly,
     industryGroup: filters.industryGroup || undefined,
+    professionSearch: filters.professionSearch.trim() || undefined,
   });
 
   const shuffled = useMemo(() => {
@@ -126,6 +131,7 @@ function FirmaPageDemo() {
         hasEmail: filters.hasEmail,
         genericEmailOnly: filters.genericEmailOnly,
         industryGroup: filters.industryGroup || undefined,
+        professionSearch: filters.professionSearch.trim() || undefined,
       },
       getDemoShuffleSessionId()
     );
@@ -272,6 +278,7 @@ function FirmaPageBrreg() {
     filters.hasEmail,
     filters.genericEmailOnly,
     filters.industryGroup,
+    filters.professionSearch,
     currentPage,
   ]);
 

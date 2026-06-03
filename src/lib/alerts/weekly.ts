@@ -4,6 +4,7 @@ import { Resend } from "resend";
 import type { FilterState } from "@/components/CompanyFilters";
 import { regionLabel } from "@/lib/constants/regions";
 import { industryGroupLabel } from "@/lib/constants/industries";
+import { professionSearchLabel } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion } from "@/lib/constants/regions";
 
 type AlertFilters = Partial<FilterState>;
@@ -19,6 +20,12 @@ function filterSummary(filters: AlertFilters): string {
   if (filters.regionId) parts.push(regionLabel(filters.regionId));
   if (filters.municipalityCode) parts.push(`kommune ${filters.municipalityCode}`);
   if (filters.industryGroup) parts.push(industryGroupLabel(filters.industryGroup));
+  if (filters.professionSearch?.trim()) {
+    parts.push(
+      professionSearchLabel(filters.professionSearch.trim()) ??
+        `yrke: ${filters.professionSearch.trim()}`
+    );
+  }
   if (filters.days === 0) parts.push("alle firma");
   else if (filters.days) parts.push(`siste ${filters.days} dager`);
   if (filters.hasEmail) parts.push("kun med e-post");
