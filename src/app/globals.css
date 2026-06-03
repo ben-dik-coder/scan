@@ -421,6 +421,83 @@ body {
     @apply rounded-xl border border-white/15 bg-white/5 p-2 text-slate-200 shadow-none backdrop-blur-md transition hover:bg-white/10 hover:text-white;
   }
 
+  /* App shell sidebar + nav (03-glass-kommand) */
+  .scan-glass-shell {
+    --scan-glass-text: #f1f5f9;
+    --scan-glass-muted: #94a3b8;
+    --scan-glass-accent: #38bdf8;
+    --scan-glass-border: rgba(255, 255, 255, 0.15);
+    --scan-glass-surface: rgba(255, 255, 255, 0.08);
+    --scan-glass-chip: rgba(255, 255, 255, 0.06);
+    --scan-glass-radius: 16px;
+  }
+
+  .scan-glass-shell .scan-glass-backdrop {
+    background: rgba(2, 6, 23, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .scan-glass-shell .scan-glass-sidebar {
+    border-color: var(--scan-glass-border);
+    background: var(--scan-glass-surface);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+      0 24px 48px -12px rgba(2, 6, 23, 0.65);
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell .glass-nav-link {
+    border: 1px solid var(--scan-glass-border);
+    border-radius: calc(var(--scan-glass-radius) - 4px);
+    background: var(--scan-glass-chip);
+    color: var(--scan-glass-muted);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .scan-glass-shell .glass-nav-link svg {
+    color: var(--scan-glass-muted);
+  }
+
+  .scan-glass-shell .glass-nav-link:hover {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--scan-glass-text);
+    @apply shadow-none ring-0;
+  }
+
+  .scan-glass-shell .glass-nav-link:hover svg {
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell .glass-nav-link-active {
+    border-color: rgba(56, 189, 248, 0.45);
+    background: rgba(56, 189, 248, 0.14);
+    color: var(--scan-glass-text);
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.12);
+    @apply ring-0;
+  }
+
+  .scan-glass-shell .glass-nav-link-active svg {
+    color: var(--scan-glass-accent);
+  }
+
+  .scan-glass-shell-drawer-close {
+    color: var(--scan-glass-muted);
+  }
+
+  .scan-glass-shell-drawer-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--scan-glass-text);
+  }
+
+  .scan-glass-shell-footer {
+    border-color: var(--scan-glass-border);
+  }
+
   .scan-glass-kommand {
     --scan-glass-text: #f1f5f9;
     --scan-glass-muted: #94a3b8;

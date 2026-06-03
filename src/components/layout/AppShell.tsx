@@ -45,7 +45,7 @@ export function AppShell({
   const router = useRouter();
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const isScanPage = pathname === "/app";
+  const isGlassShell = pathname === "/app";
 
   async function logout() {
     const { createClient } = await import("@/lib/supabase/client");
@@ -67,7 +67,12 @@ export function AppShell({
     <>
       {demo && (
         <div className="px-4 pb-1 pt-4">
-          <p className="flex items-center gap-1 text-xs font-semibold text-brand-gold">
+          <p
+            className={cn(
+              "flex items-center gap-1 text-xs font-semibold",
+              isGlassShell ? "text-sky-400" : "text-brand-gold"
+            )}
+          >
             <Sparkles className="h-3.5 w-3.5" />
             Demo
           </p>
@@ -103,7 +108,12 @@ export function AppShell({
         )}
       </nav>
 
-      <div className="border-t border-brand-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div
+        className={cn(
+          "border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+          isGlassShell ? "scan-glass-shell-footer" : "border-brand-border"
+        )}
+      >
         <button type="button" onClick={logout} className="glass-nav-link w-full">
           <LogOut className="h-4 w-4" />
           Logg ut
@@ -116,20 +126,35 @@ export function AppShell({
     <div
       className={cn(
         "app-shell-bg flex min-h-screen",
-        isScanPage ? "scan-glass-page-bg" : "text-brand-navy"
+        isGlassShell ? "scan-glass-page-bg scan-glass-shell" : "text-brand-navy"
       )}
     >
       {drawerOpen && (
         <div className="fixed inset-0 z-50">
           <div
-            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+            className={cn(
+              "absolute inset-0",
+              isGlassShell
+                ? "scan-glass-backdrop"
+                : "bg-slate-900/20 backdrop-blur-sm"
+            )}
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="absolute bottom-3 left-3 top-3 flex w-[min(100vw-1.5rem,288px)] flex-col rounded-2xl glass-sidebar">
+          <aside
+            className={cn(
+              "absolute bottom-3 left-3 top-3 flex w-[min(100vw-1.5rem,288px)] flex-col rounded-2xl glass-sidebar",
+              isGlassShell && "scan-glass-sidebar"
+            )}
+          >
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
-              className="absolute right-3 top-3 z-10 rounded-lg p-2 text-slate-500 hover:bg-brand-goldPale hover:text-brand-navy"
+              className={cn(
+                "absolute right-3 top-3 z-10 rounded-lg p-2 transition",
+                isGlassShell
+                  ? "scan-glass-shell-drawer-close"
+                  : "text-slate-500 hover:bg-brand-goldPale hover:text-brand-navy"
+              )}
               aria-label="Lukk meny"
             >
               <X className="h-5 w-5" />
@@ -143,14 +168,14 @@ export function AppShell({
         <header
           className={cn(
             "sticky top-0 z-30 flex h-14 items-center justify-between overflow-visible border-b px-4",
-            isScanPage
+            isGlassShell
               ? "scan-glass-shell-header"
               : "border-slate-200 bg-white shadow-sm"
           )}
         >
           <Link href="/app/oversikt" className="flex items-center">
             <SiteLogo
-              variant={isScanPage ? "dark" : "light"}
+              variant={isGlassShell ? "dark" : "light"}
               className="h-8 w-auto max-w-[11rem] object-contain object-left sm:h-9"
             />
           </Link>
@@ -158,7 +183,7 @@ export function AppShell({
             type="button"
             onClick={() => setDrawerOpen(true)}
             className={
-              isScanPage
+              isGlassShell
                 ? "scan-glass-shell-menu-btn"
                 : "rounded-xl border border-brand-border bg-white p-2 text-slate-600 shadow-sm"
             }
@@ -172,7 +197,7 @@ export function AppShell({
           <div
             className={cn(
               "relative z-10 w-full min-w-0 max-w-none",
-              isScanPage
+              isGlassShell
                 ? "px-0 py-0"
                 : "px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6"
             )}
