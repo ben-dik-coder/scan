@@ -3,6 +3,12 @@ import {
   getWebbyraNameOrFilters,
   matchesIndustryGroup,
 } from "@/lib/constants/industries";
+import {
+  getProfessionCodeOrFilters,
+  getProfessionNameOrFilters,
+  matchesProfessionSearch,
+  resolveProfessionQuery,
+} from "@/lib/constants/professions";
 import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
 import { computeLeadScore } from "@/lib/sales/lead-score";
 import { seededRank } from "@/lib/shuffle/seeded-shuffle";
@@ -23,6 +29,35 @@ async function getAllKommuneCodes(): Promise<string[]> {
     kommuneCodesCache = kommuner.map((k) => k.nummer).filter(Boolean);
   }
   return kommuneCodesCache;
+}
+
+function applyProfessionFilter(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
+  professionSearch?: string
+) {
+  const trimmed = professionSearch?.trim();
+  if (!trimmed) return query;
+
+  const match = resolveProfessionQuery(trimmed);
+  if (!match) return query;
+
+  const codeFilters = getProfessionCodeOrFilters(match);
+  if (codeFilters?.length) {
+    let next = query.or(codeFilters.join(","));
+    const nameFilters = getProfessionNameOrFilters(match);
+    if (nameFilters.length) {
+      next = next.or(nameFilters.join(","));
+    }
+    return next;
+  }
+
+  const nameFilters = getProfessionNameOrFilters(match);
+  if (nameFilters.length) {
+    return query.or(nameFilters.join(","));
+  }
+
+  return query;
 }
 
 function applyIndustryFilter(
@@ -123,6 +158,7 @@ export async function fetchCompaniesFromDb(
   }
 
   query = applyIndustryFilter(query, filters.industryGroup);
+  query = applyProfessionFilter(query, filters.professionSearch);
 
   query = query.order("registered_at", { ascending: false, nullsFirst: false });
 
@@ -138,6 +174,14 @@ export async function fetchCompaniesFromDb(
     rows = rows.filter((c) =>
       matchesIndustryGroup(c.industry_code, "webbyra", { name: c.name })
     );
+  }
+  if (filters.professionSearch?.trim()) {
+    const professionMatch = resolveProfessionQuery(filters.professionSearch);
+    if (professionMatch) {
+      rows = rows.filter((c) =>
+        matchesProfessionSearch(c.industry_code, { name: c.name }, professionMatch)
+      );
+    }
   }
   const companies = rows.map(toCompanyWithLead);
   sortCompanies(companies, filters.sortSeed);

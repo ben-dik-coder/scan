@@ -1,9 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { INDUSTRY_GROUPS } from "@/lib/constants/industries";
+import { professionSearchLabel } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion, REGIONS } from "@/lib/constants/regions";
 import { WEBBYRA_MARKET_PRESET } from "@/lib/constants/market";
-import { Calendar, Globe, Layout, Mail, MapPin, MapPinned, Scissors } from "lucide-react";
+import {
+  Briefcase,
+  Calendar,
+  Globe,
+  Layout,
+  Mail,
+  MapPin,
+  MapPinned,
+  Scissors,
+} from "lucide-react";
 
 export type WebsitePresenceFilter = "all" | "with" | "without" | "not_scanned";
 export type SocialPresenceFilter = "all" | "with" | "without";
@@ -15,6 +26,8 @@ export type FilterState = {
   hasEmail: boolean;
   genericEmailOnly: boolean;
   industryGroup: string;
+  /** Fritekst yrke, f.eks. «rørlegger» */
+  professionSearch: string;
   websitePresence: WebsitePresenceFilter;
   facebookPresence: SocialPresenceFilter;
   instagramPresence: SocialPresenceFilter;
@@ -27,6 +40,25 @@ type Props = {
 };
 
 export function CompanyFilters({ filters, municipalities, onChange }: Props) {
+  const [professionDraft, setProfessionDraft] = useState(filters.professionSearch);
+  const matchedProfession = professionSearchLabel(professionDraft);
+
+  useEffect(() => {
+    setProfessionDraft(filters.professionSearch);
+  }, [filters.professionSearch]);
+
+  useEffect(() => {
+    const trimmed = professionDraft.trim();
+    if (trimmed === filters.professionSearch.trim()) return;
+
+    const timer = window.setTimeout(() => {
+      onChange({ ...filters, professionSearch: trimmed });
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce kun på utkast
+  }, [professionDraft]);
+
   const kommunerInRegion = filters.regionId
     ? municipalities.filter((m) => kommuneBelongsToRegion(m.code, filters.regionId))
     : municipalities;
@@ -113,6 +145,31 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
             <option value={90}>Siste 90 dager</option>
             <option value={0}>Alle firma</option>
           </select>
+        </label>
+      </div>
+
+      <div className="border-t border-slate-100 pt-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="scan-label">
+            <Briefcase className="h-3.5 w-3.5 text-brand-gold" />
+            Søk yrke
+          </span>
+          <input
+            type="search"
+            value={professionDraft}
+            onChange={(e) => setProfessionDraft(e.target.value)}
+            placeholder="F.eks. rørlegger, frisør, elektriker…"
+            className="scan-input"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {professionDraft.trim().length >= 2 && (
+            <span className="text-[10px] text-slate-500">
+              {matchedProfession
+                ? `Finner: ${matchedProfession}`
+                : "Søker i navn og bransje — prøv et annet ord hvis du får lite treff"}
+            </span>
+          )}
         </label>
       </div>
 

@@ -10,6 +10,11 @@ import {
   type SearchEnheterParams,
 } from "./client";
 import {
+  getBrregNaeringskodeForProfession,
+  matchesProfessionSearch,
+  resolveProfessionQuery,
+} from "@/lib/constants/professions";
+import {
   getBrregNaeringskodeParam,
   matchesIndustryGroup,
 } from "@/lib/constants/industries";
@@ -62,6 +67,8 @@ export type BrregCompanyFilters = {
   hasEmail?: boolean;
   genericEmailOnly?: boolean;
   industryGroup?: string;
+  /** Fritekst yrke, f.eks. «rørlegger» */
+  professionSearch?: string;
   /** Maks antall sider à 100 firma (sikkerhetsgrense) */
   maxPages?: number;
   /** 1-basert side */
@@ -124,6 +131,18 @@ function matchesFilters(
     })
   ) {
     return false;
+  }
+  if (filters.professionSearch?.trim()) {
+    const professionMatch = resolveProfessionQuery(filters.professionSearch);
+    if (
+      professionMatch &&
+      !matchesProfessionSearch(company.industry_code, {
+        name: company.name,
+        industryDescription: company.industry_description,
+      }, professionMatch)
+    ) {
+      return false;
+    }
   }
   return true;
 }
@@ -199,7 +218,16 @@ export async function fetchCompaniesFromBrreg(
   const industryBrregCodes = filters.industryGroup
     ? getBrregNaeringskodeParam(filters.industryGroup)
     : undefined;
-  const industryAtBrreg = Boolean(industryBrregCodes);
+  const professionMatch = filters.professionSearch?.trim()
+    ? resolveProfessionQuery(filters.professionSearch)
+    : null;
+  const professionBrregCodes = professionMatch
+    ? getBrregNaeringskodeForProfession(professionMatch)
+    : undefined;
+  const brregNaeringskode = [industryBrregCodes, professionBrregCodes]
+    .filter(Boolean)
+    .join(",") || undefined;
+  const industryAtBrreg = Boolean(brregNaeringskode);
 
   /**
    * Med bransje henter vi alle i Brreg (f.eks. 81 frisører i Narvik).
@@ -230,7 +258,7 @@ export async function fetchCompaniesFromBrreg(
 
   const searchBase: Omit<SearchEnheterParams, "page"> = {
     ...geo,
-    naeringskode: industryBrregCodes,
+    naeringskode: brregNaeringskode,
     fromDate,
     toDate,
   };

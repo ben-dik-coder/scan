@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
   const hasEmail = searchParams.get("epost") !== "0";
   const genericEmailOnly = searchParams.get("generisk") === "1";
   const industryGroup = searchParams.get("bransje") ?? "";
+  const professionSearch = searchParams.get("yrke") ?? "";
   const { page, pageSize } = parsePaginationParams(
     parsePageParam(searchParams.get("page")),
     parsePageParam(searchParams.get("pageSize"))
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
     hasEmail,
     genericEmailOnly,
     industryGroup: industryGroup || undefined,
+    professionSearch: professionSearch || undefined,
   };
 
   try {
