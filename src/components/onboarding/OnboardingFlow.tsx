@@ -37,9 +37,12 @@ const STEPS: Step[] = [
   {
     id: "scan",
     title: "Finn nye firma",
-    body: "Under Skann filtrerer du markedet, velger bedrifter og kan sjekke nettside og e-post før du tar dem videre.",
+    body: "Start med «Selger nettsider» på Skann. Velg firma, kjør Google-sjekk (maks 10), og se hvem som mangler nettside. Slå på ukentlig varsel under E-post med samme filter.",
     icon: Building2,
-    links: [{ href: "/app", label: "Gå til Skann" }],
+    links: [
+      { href: "/app?modus=websites", label: "Åpne Skann" },
+      { href: "/app/innstillinger", label: "Ukentlig varsel" },
+    ],
   },
   {
     id: "queue",

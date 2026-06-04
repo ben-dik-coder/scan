@@ -15,6 +15,8 @@ import {
 } from "@/components/scan/ScanActiveFilterChips";
 import { ScanFilterSheet } from "@/components/scan/ScanFilterSheet";
 import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
+import { ScanLeadModes } from "@/components/scan/ScanLeadModes";
+import { ScanSavedAudiences } from "@/components/scan/ScanSavedAudiences";
 import {
   ScanWorkflowSteps,
   type WorkflowStep,
@@ -27,6 +29,13 @@ import {
 } from "@/lib/website-scan/scan-social-options";
 import { industryGroupLabel } from "@/lib/constants/industries";
 import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
+import { isDemoMode } from "@/lib/demo/config";
+import {
+  filtersForLeadMode,
+  persistScanAudienceFilters,
+  type ScanLeadMode,
+} from "@/lib/scan/lead-modes";
+import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
@@ -38,6 +47,7 @@ import {
   Globe2,
   LayoutGrid,
   List,
+  ListTodo,
   Mail,
   Radar,
   Search,
@@ -83,7 +93,6 @@ export function AppPageClient(props: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [saveListName, setSaveListName] = useState("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [localCompanies, setLocalCompanies] = useState(props.companies);
   const [listFilter, setListFilter] = useState<
@@ -95,7 +104,17 @@ export function AppPageClient(props: Props) {
   const [workflowStep, setWorkflowStep] = useState<WorkflowStep>(1);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listViewMode, setListViewMode] = useState<"table" | "cards">("table");
+  const [noWebsiteBanner, setNoWebsiteBanner] = useState(false);
+  const [queueAfterScan, setQueueAfterScan] = useState(false);
+  const [addingToQueue, setAddingToQueue] = useState(false);
   const emailSectionRef = useRef<HTMLDivElement>(null);
+  const wasScanningRef = useRef(false);
+
+  const activeLeadMode = useMemo((): ScanLeadMode | null => {
+    const m = searchParams.get("modus");
+    if (m === "websites" || m === "profession" || m === "all_new") return m;
+    return null;
+  }, [searchParams]);
 
   useEffect(() => {
     saveScanSocialOptions(socialOptions);
@@ -252,6 +271,23 @@ export function AppPageClient(props: Props) {
     return list.filter(matchesPresenceFilters);
   }, [companies, listFilter, websiteScans, filters.websitePresence, filters.facebookPresence, filters.instagramPresence]);
 
+  const queueScores = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of companies) {
+      map.set(
+        c.orgnr,
+        computeQueueScore(c, c.user_lead ?? null, websiteScans.get(c.orgnr) ?? null)
+      );
+    }
+    return map;
+  }, [companies, websiteScans]);
+
+  const rankedDisplayCompanies = useMemo(() => {
+    return [...displayCompanies].sort(
+      (a, b) => (queueScores.get(b.orgnr) ?? 0) - (queueScores.get(a.orgnr) ?? 0)
+    );
+  }, [displayCompanies, queueScores]);
+
   function applyFilters(
     next: FilterState,
     options?: {
@@ -293,6 +329,7 @@ export function AppPageClient(props: Props) {
     if (next.instagramPresence !== "all") params.set("ig", next.instagramPresence);
     else params.delete("ig");
     params.delete("page");
+    persistScanAudienceFilters(next);
     setSelected(new Set());
     if (options?.preserveListFilter && options.listFilter) {
       setListFilter(options.listFilter);
@@ -302,7 +339,32 @@ export function AppPageClient(props: Props) {
     router.push(`/app?${params.toString()}`);
   }
 
-  const selectable = useMemo(() => displayCompanies, [displayCompanies]);
+  function applyLeadMode(mode: ScanLeadMode) {
+    const next = filtersForLeadMode(mode, filters);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("modus", mode);
+    params.delete("page");
+    persistScanAudienceFilters(next);
+    if (next.regionId) params.set("omrade", next.regionId);
+    else params.delete("omrade");
+    if (next.municipalityCode) params.set("kommune", next.municipalityCode);
+    else params.delete("kommune");
+    params.set("dager", String(next.days));
+    params.set("epost", next.hasEmail ? "1" : "0");
+    params.set("generisk", next.genericEmailOnly ? "1" : "0");
+    if (next.industryGroup) params.set("bransje", next.industryGroup);
+    else params.delete("bransje");
+    if (next.professionSearch.trim()) params.set("yrke", next.professionSearch.trim());
+    else params.delete("yrke");
+    params.delete("web");
+    params.delete("fb");
+    params.delete("ig");
+    setListFilter("all");
+    setSelected(new Set());
+    router.push(`/app?${params.toString()}`);
+  }
+
+  const selectable = useMemo(() => rankedDisplayCompanies, [rankedDisplayCompanies]);
 
   const allSelected =
     selectable.length > 0 && selectable.every((c) => selected.has(c.orgnr));
@@ -325,8 +387,42 @@ export function AppPageClient(props: Props) {
     setSelected(new Set(noWebsiteOrgnrs));
   }
 
+  function selectNoWebsiteWithEmail() {
+    const orgnrs = companies
+      .filter((c) => isLeadWithoutOwnSite(c.orgnr) && c.has_email)
+      .map((c) => c.orgnr);
+    setSelected(new Set(orgnrs));
+  }
+
   function selectAllWithEmail() {
-    setSelected(new Set(companies.filter((c) => c.has_email).map((c) => c.orgnr)));
+    setSelected(
+      new Set(rankedDisplayCompanies.filter((c) => c.has_email).map((c) => c.orgnr))
+    );
+  }
+
+  async function addLeadsToQueue(orgnrs: string[]) {
+    if (orgnrs.length === 0) return;
+    setAddingToQueue(true);
+    try {
+      if (isDemoMode()) {
+        for (const orgnr of orgnrs) {
+          demo.setLeadStatus(orgnr, "ny");
+        }
+      } else {
+        await Promise.all(
+          orgnrs.map((orgnr) =>
+            fetch("/api/leads/status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orgnr, status: "ny" }),
+            })
+          )
+        );
+      }
+      router.push("/app/ko");
+    } finally {
+      setAddingToQueue(false);
+    }
   }
 
   async function updateStatus(orgnr: string, status: string) {
@@ -379,18 +475,34 @@ export function AppPageClient(props: Props) {
     }
   }
 
-  async function saveList() {
-    if (!saveListName.trim()) return;
-    demo.saveListDemo(saveListName, {
+  async function saveAudience(name: string) {
+    const payload = {
       regionId: filters.regionId,
       municipalityCode: filters.municipalityCode,
       days: filters.days,
       hasEmail: filters.hasEmail,
       genericEmailOnly: filters.genericEmailOnly,
       industryGroup: filters.industryGroup,
-    });
-    setSaveMessage("Liste lagret!");
-    setSaveListName("");
+      professionSearch: filters.professionSearch,
+      websitePresence: filters.websitePresence,
+      facebookPresence: filters.facebookPresence,
+      instagramPresence: filters.instagramPresence,
+    };
+    if (isDemoMode()) {
+      demo.saveListDemo(name, payload);
+    } else {
+      const res = await fetch("/api/saved-lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, filters: payload }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Kunne ikke lagre");
+      }
+    }
+    setSaveMessage("Målgruppe lagret!");
+    persistScanAudienceFilters(filters);
   }
 
   const selectedCompanies = companies.filter((c) => selected.has(c.orgnr));
@@ -410,6 +522,10 @@ export function AppPageClient(props: Props) {
     }
     if ("cachedOnly" in result && result.cachedOnly) {
       setScanSelectionMessage("Alle valgte er allerede sjekket — ingen nytt Google-søk.");
+      if (noWebsiteCount > 0) {
+        setListFilter("no_website");
+        setNoWebsiteBanner(true);
+      }
       return;
     }
     const parts: string[] = [];
@@ -427,6 +543,49 @@ export function AppPageClient(props: Props) {
       setScanSelectionMessage(msg.charAt(0).toUpperCase() + msg.slice(1));
     }
   }
+
+  function checkAndAddToQueue() {
+    const ranked = [...companies]
+      .filter((c) => c.has_email)
+      .sort((a, b) => (queueScores.get(b.orgnr) ?? 0) - (queueScores.get(a.orgnr) ?? 0))
+      .slice(0, MAX_WEBSITE_SCAN_BATCH);
+    if (ranked.length === 0) {
+      setScanSelectionMessage("Ingen firma med e-post å sjekke.");
+      return;
+    }
+    setQueueAfterScan(true);
+    setSelected(new Set(ranked.map((c) => c.orgnr)));
+    setWorkflowStep(2);
+    setScanSelectionMessage(null);
+    scanSelectedWithGoogle();
+  }
+
+  useEffect(() => {
+    if (wasScanningRef.current && !scanning && scanComplete && noWebsiteCount > 0) {
+      setListFilter("no_website");
+      setNoWebsiteBanner(true);
+    }
+    wasScanningRef.current = scanning;
+  }, [scanning, scanComplete, noWebsiteCount]);
+
+  useEffect(() => {
+    if (!queueAfterScan || scanning || !scanComplete) return;
+    const orgnrs = companies
+      .filter(
+        (c) =>
+          selected.has(c.orgnr) && isLeadWithoutOwnSite(c.orgnr) && c.has_email
+      )
+      .map((c) => c.orgnr);
+    setQueueAfterScan(false);
+    if (orgnrs.length > 0) {
+      void addLeadsToQueue(orgnrs);
+    } else {
+      setScanSelectionMessage(
+        "Ingen uten nettside med e-post i valget — prøv andre firma."
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run when scan batch completes
+  }, [queueAfterScan, scanning, scanComplete, companies, selected]);
 
   const listTabs = [
     { id: "all" as const, label: "Alle", shortLabel: "Alle", count: companies.length, icon: List },
@@ -505,6 +664,8 @@ export function AppPageClient(props: Props) {
           selectedCount={selected.size}
           onStepClick={handleWorkflowStepClick}
         />
+
+        <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
 
         <ScanActiveFilterChips
           filters={filters}
@@ -603,27 +764,39 @@ export function AppPageClient(props: Props) {
                     Instagram
                   </label>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWorkflowStep(2);
-                    scanSelectedWithGoogle();
-                  }}
-                  disabled={scanning || selected.size === 0}
-                  className={cn(
-                    "inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-semibold transition",
-                    selected.size > 0 && !scanning
-                      ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
-                      : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
-                  )}
-                >
-                  <Search className="h-3.5 w-3.5" />
-                  {scanning
-                    ? "Søker…"
-                    : selected.size > 0
-                      ? `Start sjekk (${scanQueueCount})`
-                      : "Velg firma først"}
-                </button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWorkflowStep(2);
+                      scanSelectedWithGoogle();
+                    }}
+                    disabled={scanning || selected.size === 0}
+                    className={cn(
+                      "inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-semibold transition",
+                      selected.size > 0 && !scanning
+                        ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
+                        : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
+                    )}
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    {scanning
+                      ? "Søker…"
+                      : selected.size > 0
+                        ? `Start sjekk (${scanQueueCount})`
+                        : "Velg firma først"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={checkAndAddToQueue}
+                    disabled={scanning || addingToQueue || withEmailCount === 0}
+                    className="scan-btn-ghost inline-flex min-h-[40px] items-center gap-1.5 px-3 text-xs font-semibold disabled:opacity-40"
+                    title="Sjekker topp 10 med e-post og legger uten nettside i arbeidskø"
+                  >
+                    <ListTodo className="h-3.5 w-3.5" />
+                    {addingToQueue ? "Legger i kø…" : "Sjekk og legg i kø"}
+                  </button>
+                </div>
               </div>
               {scanSelectionMessage && (
                 <p className="mt-1.5 text-xs font-medium text-amber-200">
@@ -725,6 +898,16 @@ export function AppPageClient(props: Props) {
             })}
           </div>
 
+          {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
+            <div
+              className="mt-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100"
+              role="status"
+            >
+              <strong>{noWebsiteCount} firma uten nettside</strong> — klar for kontakt.
+              Velg og send e-post, eller bruk «Sjekk og legg i kø».
+            </div>
+          )}
+
           <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <p className="scan-glass-muted">
             {pagination ? (
@@ -754,15 +937,17 @@ export function AppPageClient(props: Props) {
                 {listFilter !== "all" && (
                   <>
                     {" "}
-                    · <strong className="scan-glass-strong">{displayCompanies.length}</strong> i
+                    · <strong className="scan-glass-strong">{rankedDisplayCompanies.length}</strong> i
                     valgt fane
                   </>
                 )}
+                {" "}
+                · sortert etter score
               </>
             ) : (
               <>
-                Viser <strong className="scan-glass-strong">{displayCompanies.length}</strong> av{" "}
-                {companies.length}
+                Viser <strong className="scan-glass-strong">{rankedDisplayCompanies.length}</strong> av{" "}
+                {companies.length} · sortert etter score
               </>
             )}
             </p>
@@ -829,20 +1014,29 @@ export function AppPageClient(props: Props) {
               </button>
             )}
             {scanComplete && noWebsiteCount > 0 && (
-              <button
-                type="button"
-                onClick={selectNoWebsite}
-                className="scan-btn-ghost"
-              >
-                Uten nettside ({noWebsiteCount})
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={selectNoWebsite}
+                  className="scan-btn-ghost"
+                >
+                  Uten nettside ({noWebsiteCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={selectNoWebsiteWithEmail}
+                  className="scan-btn-ghost"
+                >
+                  Uten nettside + e-post
+                </button>
+              </>
             )}
           </div>
             </div>
 
             <div className="scan-glass-divider border-t p-2">
               <CompanyTable
-                companies={displayCompanies}
+                companies={rankedDisplayCompanies}
                 selected={selected}
                 onToggle={toggle}
                 onToggleAll={toggleAll}
@@ -852,6 +1046,7 @@ export function AppPageClient(props: Props) {
                 websiteScans={websiteScans}
                 scanningOrgnrs={scanning ? scanningOrgnrs : undefined}
                 viewMode={listViewMode}
+                queueScores={queueScores}
               />
 
           {pagination && props.onPageChange && (
@@ -925,23 +1120,11 @@ export function AppPageClient(props: Props) {
         />
       </div>
 
-      <details className="scan-surface-pad w-full max-w-none text-sm">
-        <summary className="scan-glass-strong cursor-pointer font-medium">
-          Lagre søk (valgfritt)
-        </summary>
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <input
-            value={saveListName}
-            onChange={(e) => setSaveListName(e.target.value)}
-            placeholder="Navn på liste"
-            className="scan-input flex-1"
-          />
-          <button type="button" onClick={saveList} className="scan-btn-primary px-4 py-2.5">
-            Lagre
-          </button>
-        </div>
-        {saveMessage && <p className="mt-2 text-emerald-300">{saveMessage}</p>}
-      </details>
+      <ScanSavedAudiences
+        onApply={(next) => applyFilters(next)}
+        onSaveCurrent={saveAudience}
+        saveMessage={saveMessage}
+      />
     </div>
   );
 }

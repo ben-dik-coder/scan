@@ -11,6 +11,7 @@ import {
   formatWeeklyAlertSummary,
   WeeklyAlertFilters,
 } from "@/components/settings/WeeklyAlertFilters";
+import { loadScanAudienceFilters } from "@/lib/scan/lead-modes";
 import {
   Bell,
   BookOpen,
@@ -204,11 +205,28 @@ export default function InnstillingerClient({
           <span className="scan-glass-strong">Slå på ukentlig varsel</span>
         </label>
         {weeklyAlertEnabled && (
-          <WeeklyAlertFilters
-            filters={weeklyAlertFilters}
-            municipalities={municipalities}
-            onChange={setWeeklyAlertFilters}
-          />
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                const fromScan = loadScanAudienceFilters();
+                if (fromScan && Object.keys(fromScan).length > 0) {
+                  setWeeklyAlertFilters(fromScan);
+                  setSaveMsg("Filter fra Skann er lagt inn — husk å lagre.");
+                } else {
+                  setSaveMsg("Ingen lagret filter fra Skann ennå — velg filter på Skann først.");
+                }
+              }}
+              className="scan-btn-ghost text-xs"
+            >
+              Bruk filter fra Skann
+            </button>
+            <WeeklyAlertFilters
+              filters={weeklyAlertFilters}
+              municipalities={municipalities}
+              onChange={setWeeklyAlertFilters}
+            />
+          </>
         )}
         {!weeklyAlertEnabled && Object.keys(weeklyAlertFilters).length > 0 && (
           <p className="scan-glass-muted text-[11px]">

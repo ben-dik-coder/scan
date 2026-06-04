@@ -30,6 +30,7 @@ function FacebookIcon({ className }: { className?: string }) {
 }
 
 type ColumnId =
+  | "score"
   | "orgnr"
   | "email"
   | "phone"
@@ -40,6 +41,7 @@ type ColumnId =
   | "status";
 
 const COLUMN_LABELS: Record<ColumnId, string> = {
+  score: "Score",
   orgnr: "Org.nr",
   email: "E-post",
   phone: "Tlf",
@@ -77,6 +79,8 @@ type Props = {
   websiteScans?: Map<string, WebsiteScanResult>;
   scanningOrgnrs?: Set<string>;
   viewMode?: "table" | "cards";
+  /** Sortert liste — vis score-kolonne når satt */
+  queueScores?: Map<string, number>;
 };
 
 function loadVisibleColumns(): Set<ColumnId> {
@@ -581,6 +585,7 @@ export function CompanyTable({
   websiteScans,
   scanningOrgnrs,
   viewMode = "table",
+  queueScores,
 }: Props) {
   const [detailOrgnr, setDetailOrgnr] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(loadVisibleColumns);
@@ -609,7 +614,7 @@ export function CompanyTable({
         title="Ingen firma funnet"
         description={
           liveBrreg
-            ? "Prøv lengre periode, fjern «kun post@ / info@», eller velg en annen kommune."
+            ? "Prøv lengre periode, annet yrke/område, eller kjør Google-sjekk på firma med e-post."
             : "Prøv et annet område eller kjør sync fra admin."
         }
       />
@@ -718,6 +723,7 @@ export function CompanyTable({
                   />
                 </th>
                 <th>Firma</th>
+                {queueScores && <th className="w-14">Score</th>}
                 {showCol("orgnr") && <th>Org.nr</th>}
                 {showCol("email") && <th>E-post</th>}
                 {showCol("phone") && <th>Tlf</th>}
@@ -734,6 +740,7 @@ export function CompanyTable({
                 const status = c.user_lead?.status ?? "ny";
                 const isScanning = scanningOrgnrs?.has(c.orgnr);
                 const isSelected = selected.has(c.orgnr);
+                const score = queueScores?.get(c.orgnr);
 
                 return (
                   <tr key={c.orgnr} className={cn(isSelected && "is-selected")}>
@@ -757,6 +764,27 @@ export function CompanyTable({
                         </p>
                       )}
                     </td>
+                    {queueScores && (
+                      <td className="tabular-nums">
+                        {score != null ? (
+                          <span
+                            className={cn(
+                              "inline-flex min-w-[2rem] justify-center rounded px-1.5 py-0.5 text-[11px] font-bold",
+                              score >= 80
+                                ? "bg-emerald-500/20 text-emerald-200"
+                                : score >= 50
+                                  ? "bg-amber-500/20 text-amber-100"
+                                  : "bg-white/10 text-slate-300"
+                            )}
+                            title="Anbefalt prioritet"
+                          >
+                            {score}
+                          </span>
+                        ) : (
+                          <span className="cv-muted text-[11px]">—</span>
+                        )}
+                      </td>
+                    )}
                     {showCol("orgnr") && (
                       <td className="cv-mono whitespace-nowrap">{c.orgnr}</td>
                     )}
