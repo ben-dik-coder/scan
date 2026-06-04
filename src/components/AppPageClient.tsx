@@ -35,6 +35,7 @@ import {
   persistScanAudienceFilters,
   type ScanLeadMode,
 } from "@/lib/scan/lead-modes";
+import { buildLeadGoogleSearchQuery } from "@/lib/scan/google-search-query";
 import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
@@ -509,8 +510,7 @@ export function AppPageClient(props: Props) {
 
   const googleSearchQuery = useMemo(() => {
     if (selectedCompanies.length !== 1) return "";
-    const c = selectedCompanies[0];
-    return [c.name, c.municipality_name].filter(Boolean).join(" ").trim();
+    return buildLeadGoogleSearchQuery(selectedCompanies[0]);
   }, [selectedCompanies]);
 
   function scanSelectedWithGoogle() {

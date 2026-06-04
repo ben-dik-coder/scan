@@ -10,6 +10,7 @@ import {
 } from "@/lib/website-scan/resolve-company-email";
 import { hasUncertainWebsiteHits, displayNameDiffersFromLegal } from "@/lib/website-scan/parse-results";
 import { StatusPill, EmptyState } from "@/components/ui/primitives";
+import { ScanGoogleSearchPopup } from "@/components/scan/ScanGoogleSearchPopup";
 import { cn, formatRegisteredDate } from "@/lib/utils";
 import { Globe, Globe2, HelpCircle, X } from "lucide-react";
 
@@ -81,6 +82,8 @@ type Props = {
   viewMode?: "table" | "cards";
   /** Sortert liste — vis score-kolonne når satt */
   queueScores?: Map<string, number>;
+  /** Valgfri callback når bruker åpner Google-søk fra e-post-kolonnen */
+  onGoogleSearch?: (company: CompanyWithLead) => void;
 };
 
 function loadVisibleColumns(): Set<ColumnId> {
@@ -211,6 +214,37 @@ function EmailCell({ resolved }: { resolved: ResolvedCompanyEmail }) {
   );
 }
 
+/** Klikk på navn → Google-iframe-popup (add-on, endrer ikke andre innstillinger). */
+function CompanyNameButton({
+  company,
+  onGoogleSearch,
+  className,
+  id,
+}: {
+  company: CompanyWithLead;
+  onGoogleSearch: (company: CompanyWithLead) => void;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <button
+      type="button"
+      id={id}
+      onClick={(e) => {
+        e.stopPropagation();
+        onGoogleSearch(company);
+      }}
+      className={cn(
+        "cv-firma max-w-full truncate text-left font-semibold hover:text-sky-200 hover:underline",
+        className
+      )}
+      title={`Søk «${company.name}» på Google`}
+    >
+      {company.name}
+    </button>
+  );
+}
+
 function SocialCell({
   scanning,
   url,
@@ -272,11 +306,13 @@ function CompanyDetailBody({
   scan,
   isScanning,
   onStatusChange,
+  onGoogleSearch,
 }: {
   company: CompanyWithLead;
   scan?: WebsiteScanResult;
   isScanning?: boolean;
   onStatusChange?: (orgnr: string, status: string) => void;
+  onGoogleSearch: (company: CompanyWithLead) => void;
 }) {
   const status = c.user_lead?.status ?? "ny";
   const resolved = resolveCompanyEmail(c, scan);
@@ -285,9 +321,11 @@ function CompanyDetailBody({
   return (
     <dl className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
       <DetailRow label="Firma">
-        <p className="cv-firma font-semibold" id="company-detail-title">
-          {c.name}
-        </p>
+        <CompanyNameButton
+          company={c}
+          onGoogleSearch={onGoogleSearch}
+          id="company-detail-title"
+        />
         {(c.municipality_name || c.registered_at) && (
           <p className="cv-meta mt-0.5 text-[12px]">
             {c.municipality_name ?? "—"}
@@ -392,12 +430,14 @@ function CompanyMobileDetailSheet({
   isScanning,
   onClose,
   onStatusChange,
+  onGoogleSearch,
 }: {
   company: CompanyWithLead;
   scan?: WebsiteScanResult;
   isScanning?: boolean;
   onClose: () => void;
   onStatusChange?: (orgnr: string, status: string) => void;
+  onGoogleSearch: (company: CompanyWithLead) => void;
 }) {
   const handleClose = useCallback(() => onClose(), [onClose]);
 
@@ -444,6 +484,7 @@ function CompanyMobileDetailSheet({
           scan={scan}
           isScanning={isScanning}
           onStatusChange={onStatusChange}
+          onGoogleSearch={onGoogleSearch}
         />
       </div>
     </div>
@@ -458,6 +499,7 @@ function CompanyMobileCard({
   onToggle,
   onOpenDetail,
   onStatusChange,
+  onGoogleSearch,
 }: {
   company: CompanyWithLead;
   scan?: WebsiteScanResult;
@@ -466,6 +508,7 @@ function CompanyMobileCard({
   onToggle: (orgnr: string) => void;
   onOpenDetail: (orgnr: string) => void;
   onStatusChange?: (orgnr: string, status: string) => void;
+  onGoogleSearch: (company: CompanyWithLead) => void;
 }) {
   const status = c.user_lead?.status ?? "ny";
   const resolved = resolveCompanyEmail(c, scan);
@@ -486,71 +529,60 @@ function CompanyMobileCard({
         className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-sky-600"
       />
       <div className="min-w-0 flex-1">
-        <div
-          role="button"
-          tabIndex={0}
-          className="w-full min-w-0 cursor-pointer rounded-md text-left outline-none ring-sky-500 focus-visible:ring-2"
-          onClick={() => onOpenDetail(c.orgnr)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpenDetail(c.orgnr);
-            }
-          }}
-          aria-label={`Vis detaljer for ${c.name}`}
-        >
-          <p className="cv-firma truncate text-[13px]" title={c.name}>
-            {c.name}
-          </p>
-          {(c.municipality_name || c.registered_at) && (
-            <p className="cv-meta truncate text-[11px]">
-              {c.municipality_name ?? "—"}
-              {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
-            </p>
-          )}
-          <p className="cv-mono mt-0.5 text-[11px]">{c.orgnr}</p>
-          <div className="mt-1 min-w-0 text-[12px]" onClick={(e) => e.stopPropagation()}>
-            {resolved ? (
-              <EmailCell resolved={resolved} />
-            ) : phone ? (
-              <a
-                href={`tel:${phone}`}
-                className="cv-link"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {phone}
-              </a>
-            ) : (
-              <span className="cv-muted">Ingen kontakt</span>
-            )}
-          </div>
-          <div
-            className="mt-1 flex flex-wrap items-center gap-1 text-[12px]"
-            onClick={(e) => e.stopPropagation()}
+        <div className="flex items-start justify-between gap-1">
+          <CompanyNameButton
+            company={c}
+            onGoogleSearch={onGoogleSearch}
+            className="min-w-0 flex-1 text-[13px]"
+          />
+          <button
+            type="button"
+            onClick={() => onOpenDetail(c.orgnr)}
+            className="shrink-0 text-[10px] font-semibold text-sky-300 hover:text-sky-200"
           >
-            <WebsiteCell scan={scan} scanning={isScanning} companyName={c.name} />
-            {scan && !isScanning && (
-              <>
-                {scan.hasWebsite && <PresenceBadge kind="ok" label="Web" />}
-                {!scan.hasWebsite &&
-                  scan.websiteKind === "none" &&
-                  scan.confidence !== "low" && <PresenceBadge kind="warn" label="Uten" />}
-              </>
-            )}
-            {scan?.facebookUrl && !isScanning && (
-              <a
-                href={scan.facebookUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 text-blue-700"
-                title="Facebook"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <FacebookIcon className="h-3 w-3 shrink-0" />
-                <span className="text-[11px]">FB</span>
-              </a>
-            )}
-          </div>
+            Info
+          </button>
+        </div>
+        {(c.municipality_name || c.registered_at) && (
+          <p className="cv-meta truncate text-[11px]">
+            {c.municipality_name ?? "—"}
+            {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
+          </p>
+        )}
+        <p className="cv-mono mt-0.5 text-[11px]">{c.orgnr}</p>
+        <div className="mt-1 min-w-0 text-[12px]">
+          {resolved ? (
+            <EmailCell resolved={resolved} />
+          ) : phone ? (
+            <a href={`tel:${phone}`} className="cv-link truncate">
+              {phone}
+            </a>
+          ) : (
+            <span className="cv-muted">Ingen kontakt</span>
+          )}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1 text-[12px]">
+          <WebsiteCell scan={scan} scanning={isScanning} companyName={c.name} />
+          {scan && !isScanning && (
+            <>
+              {scan.hasWebsite && <PresenceBadge kind="ok" label="Web" />}
+              {!scan.hasWebsite &&
+                scan.websiteKind === "none" &&
+                scan.confidence !== "low" && <PresenceBadge kind="warn" label="Uten" />}
+            </>
+          )}
+          {scan?.facebookUrl && !isScanning && (
+            <a
+              href={scan.facebookUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 text-blue-700"
+              title="Facebook"
+            >
+              <FacebookIcon className="h-3 w-3 shrink-0" />
+              <span className="text-[11px]">FB</span>
+            </a>
+          )}
         </div>
         <div className="mt-1.5">
           {onStatusChange ? (
@@ -586,14 +618,21 @@ export function CompanyTable({
   scanningOrgnrs,
   viewMode = "table",
   queueScores,
+  onGoogleSearch,
 }: Props) {
   const [detailOrgnr, setDetailOrgnr] = useState<string | null>(null);
+  const [googleSearchCompany, setGoogleSearchCompany] = useState<CompanyWithLead | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(loadVisibleColumns);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const detailCompany =
     detailOrgnr != null ? companies.find((c) => c.orgnr === detailOrgnr) : undefined;
 
   const showCol = (id: ColumnId) => visibleColumns.has(id);
+
+  function openGoogleSearch(company: CompanyWithLead) {
+    setGoogleSearchCompany(company);
+    onGoogleSearch?.(company);
+  }
 
   function toggleColumn(id: ColumnId) {
     setVisibleColumns((prev) => {
@@ -648,6 +687,7 @@ export function CompanyTable({
             onToggle={onToggle}
             onOpenDetail={setDetailOrgnr}
             onStatusChange={onStatusChange}
+            onGoogleSearch={openGoogleSearch}
           />
         ))}
       </div>
@@ -702,8 +742,14 @@ export function CompanyTable({
           isScanning={scanningOrgnrs?.has(detailCompany.orgnr)}
           onClose={() => setDetailOrgnr(null)}
           onStatusChange={onStatusChange}
+          onGoogleSearch={openGoogleSearch}
         />
       )}
+
+      <ScanGoogleSearchPopup
+        company={googleSearchCompany}
+        onClose={() => setGoogleSearchCompany(null)}
+      />
 
       {!useCardLayout && (
         <div className="nylead-theme-compact-table hidden w-full overflow-x-auto md:block">
@@ -754,9 +800,11 @@ export function CompanyTable({
                       />
                     </td>
                     <td>
-                      <p className="cv-firma max-w-[14rem] truncate" title={c.name}>
-                        {c.name}
-                      </p>
+                      <CompanyNameButton
+                        company={c}
+                        onGoogleSearch={openGoogleSearch}
+                        className="max-w-[14rem]"
+                      />
                       {(c.municipality_name || c.registered_at) && (
                         <p className="cv-meta max-w-[14rem] truncate">
                           {c.municipality_name ?? "—"}

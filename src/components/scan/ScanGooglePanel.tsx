@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Search, X } from "lucide-react";
+import { buildGoogleSearchUrl } from "@/lib/scan/google-search-query";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "nylead-scan-google-open";
@@ -9,9 +10,11 @@ const STORAGE_KEY = "nylead-scan-google-open";
 type Props = {
   /** Forhåndsutfylt søk, f.eks. firmanavn + kommune */
   searchQuery: string;
+  /** Øk tall for å åpne panelet (f.eks. ved klikk på firmanavn) */
+  requestOpen?: number;
 };
 
-export function ScanGooglePanel({ searchQuery }: Props) {
+export function ScanGooglePanel({ searchQuery, requestOpen = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(searchQuery);
 
@@ -26,6 +29,16 @@ export function ScanGooglePanel({ searchQuery }: Props) {
   useEffect(() => {
     setQuery(searchQuery);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (!requestOpen || !searchQuery.trim()) return;
+    setOpen(true);
+    try {
+      localStorage.setItem(STORAGE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }, [requestOpen, searchQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -49,12 +62,8 @@ export function ScanGooglePanel({ searchQuery }: Props) {
   }
 
   const trimmed = query.trim();
-  const googleUrl = useMemo(() => {
-    const q = trimmed || "nye firma Norge";
-    return `https://www.google.com/search?q=${encodeURIComponent(q)}&igu=1`;
-  }, [trimmed]);
-
-  const externalUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmed || "nye firma Norge")}`;
+  const googleUrl = useMemo(() => buildGoogleSearchUrl(trimmed, true), [trimmed]);
+  const externalUrl = buildGoogleSearchUrl(trimmed, false);
 
   return (
     <div className="scan-google-panel">
