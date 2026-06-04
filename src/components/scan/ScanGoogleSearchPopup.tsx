@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, Search, X } from "lucide-react";
 import {
   buildGoogleSearchUrl,
@@ -43,11 +44,11 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
 
   if (!open || !company) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center p-3 sm:items-center">
+  const popup = (
+    <div className="fixed inset-0 z-[120] flex items-end justify-center p-3 sm:items-center sm:p-4">
       <button
         type="button"
-        className="scan-glass-backdrop absolute inset-0"
+        className="absolute inset-0 z-0 bg-slate-950/65 backdrop-blur-sm"
         aria-label="Lukk Google-søk"
         onClick={onClose}
       />
@@ -55,8 +56,9 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label={`Google-søk for ${company.name}`}
+        onClick={(e) => e.stopPropagation()}
         className={cn(
-          "scan-google-panel-body scan-surface relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-white/15 shadow-2xl",
+          "scan-google-panel-body relative z-[1] w-full max-w-lg overflow-hidden rounded-2xl border border-white/25 bg-slate-900/95 text-white shadow-2xl backdrop-blur-xl",
           "max-h-[min(88dvh,560px)]"
         )}
       >
@@ -69,7 +71,7 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="scan-glass-mobile-sheet-close shrink-0 rounded-lg p-2"
+            className="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white"
             aria-label="Lukk"
           >
             <X className="h-4 w-4" />
@@ -111,4 +113,7 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(popup, document.body);
 }
