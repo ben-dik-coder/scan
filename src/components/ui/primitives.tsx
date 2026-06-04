@@ -154,7 +154,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "surface-panel relative overflow-hidden p-5",
+        "app-stat-card surface-panel relative overflow-hidden p-5",
         highlight && "border-brand-gold/35 bg-brand-goldPale ring-1 ring-brand-gold/15"
       )}
     >

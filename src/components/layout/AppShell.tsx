@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { cn } from "@/lib/utils";
 import { isDemoMode } from "@/lib/demo/config";
 import {
   Building2,
   CreditCard,
+  FileText,
   GitBranch,
   LayoutDashboard,
   ListTodo,
@@ -19,6 +21,7 @@ import {
   Sparkles,
   Workflow,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -26,16 +29,41 @@ function isAppRoute(pathname: string) {
   return pathname === "/app" || pathname.startsWith("/app/");
 }
 
-const NAV = [
-  { href: "/app/oversikt", label: "Oversikt", icon: LayoutDashboard },
-  { href: "/app/ko", label: "Arbeidskø", icon: ListTodo },
-  { href: "/app", label: "Skann", icon: Building2 },
-  { href: "/app/pipeline", label: "Pipeline", icon: GitBranch },
-  { href: "/app/maler", label: "Maler", icon: Mail },
-  { href: "/app/sekvenser", label: "Sekvenser", icon: Workflow },
-  { href: "/app/kampanjer", label: "Kampanjer", icon: Send },
-  { href: "/app/innstillinger", label: "E-post", icon: Mail },
-  { href: "/app/abonnement", label: "Abonnement", icon: CreditCard },
+type NavItem = { href: string; label: string; icon: LucideIcon };
+
+const NAV_OVERVIEW: NavItem = {
+  href: "/app/oversikt",
+  label: "Oversikt",
+  icon: LayoutDashboard,
+};
+
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Prospektering",
+    items: [
+      { href: "/app", label: "Skann", icon: Building2 },
+      { href: "/app/ko", label: "Arbeidskø", icon: ListTodo },
+    ],
+  },
+  {
+    title: "Oppfølging",
+    items: [
+      { href: "/app/pipeline", label: "Pipeline", icon: GitBranch },
+      { href: "/app/kampanjer", label: "Kampanjer", icon: Send },
+      { href: "/app/sekvenser", label: "Sekvenser", icon: Workflow },
+    ],
+  },
+  {
+    title: "Innhold",
+    items: [{ href: "/app/maler", label: "Maler", icon: FileText }],
+  },
+  {
+    title: "Innstillinger",
+    items: [
+      { href: "/app/innstillinger", label: "E-post", icon: Mail },
+      { href: "/app/abonnement", label: "Abonnement", icon: CreditCard },
+    ],
+  },
 ];
 
 export function AppShell({
@@ -62,6 +90,15 @@ export function AppShell({
     };
   }, [isGlassShell]);
 
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [drawerOpen]);
+
   async function logout() {
     const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
@@ -77,6 +114,24 @@ export function AppShell({
 
   const navLinkClass = (href: string) =>
     cn("glass-nav-link", isActive(href) && "glass-nav-link-active");
+
+  const groupLabelClass = cn(
+    "app-nav-group-label px-3 pb-0.5 pt-2 text-[0.65rem] font-semibold uppercase tracking-wider first:pt-0",
+    isGlassShell ? "text-slate-400" : "text-slate-500"
+  );
+
+  function NavLink({ href, label, icon: Icon }: NavItem) {
+    return (
+      <Link
+        href={href}
+        onClick={() => setDrawerOpen(false)}
+        className={navLinkClass(href)}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        {label}
+      </Link>
+    );
+  }
 
   const sidebarContent = (
     <>
@@ -96,20 +151,20 @@ export function AppShell({
 
       <nav
         className={cn(
-          "flex-1 space-y-1 overflow-y-auto px-3",
+          "flex-1 space-y-3 overflow-y-auto px-3",
           demo ? "pt-2" : "pt-4"
         )}
       >
-        {NAV.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            onClick={() => setDrawerOpen(false)}
-            className={navLinkClass(href)}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {label}
-          </Link>
+        <div className="space-y-1">
+          <NavLink {...NAV_OVERVIEW} />
+        </div>
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title} className="space-y-1">
+            <p className={groupLabelClass}>{group.title}</p>
+            {group.items.map((item) => (
+              <NavLink key={item.href} {...item} />
+            ))}
+          </div>
         ))}
         {isAdmin && (
           <Link
@@ -138,27 +193,39 @@ export function AppShell({
   );
 
   return (
+    <OnboardingProvider>
     <div
       className={cn(
         "app-shell-bg flex min-h-screen",
         isGlassShell ? "scan-glass-page-bg scan-glass-shell" : "text-brand-navy"
       )}
+      style={
+        isGlassShell
+          ? { backgroundColor: "#1e3a5f", color: "#f8fafc", minHeight: "100vh" }
+          : undefined
+      }
     >
       {drawerOpen && (
-        <div className="fixed inset-0 z-50">
+        <div
+          className="scan-mobile-drawer-overlay fixed inset-0 z-[100] isolate"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigasjonsmeny"
+        >
           <div
             className={cn(
               "absolute inset-0",
               isGlassShell
-                ? "scan-glass-backdrop"
-                : "bg-slate-900/20 backdrop-blur-sm"
+                ? "scan-glass-backdrop scan-glass-drawer-backdrop"
+                : "bg-slate-900/40 backdrop-blur-sm"
             )}
             onClick={() => setDrawerOpen(false)}
+            aria-hidden
           />
           <aside
             className={cn(
-              "absolute bottom-3 left-3 top-3 flex w-[min(100vw-1.5rem,288px)] flex-col rounded-2xl",
-              isGlassShell ? "scan-glass-sidebar" : "glass-sidebar"
+              "absolute bottom-3 left-3 top-3 z-[1] flex w-[min(100vw-1.5rem,288px)] flex-col overflow-hidden rounded-2xl",
+              isGlassShell ? "scan-glass-mobile-drawer" : "glass-sidebar"
             )}
           >
             <button
@@ -188,7 +255,7 @@ export function AppShell({
               : "border-slate-200 bg-white shadow-sm"
           )}
         >
-          <Link href="/app/oversikt" className="flex items-center">
+          <Link href="/app/oversikt" className="app-shell-logo-link flex items-center">
             <SiteLogo
               variant={isGlassShell ? "dark" : "light"}
               className="h-8 w-auto max-w-[11rem] object-contain object-left sm:h-9"
@@ -223,5 +290,6 @@ export function AppShell({
         </main>
       </div>
     </div>
+    </OnboardingProvider>
   );
 }

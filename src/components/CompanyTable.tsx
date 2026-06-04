@@ -29,6 +29,43 @@ function FacebookIcon({ className }: { className?: string }) {
   );
 }
 
+type ColumnId =
+  | "orgnr"
+  | "email"
+  | "phone"
+  | "website"
+  | "facebook"
+  | "instagram"
+  | "ceo"
+  | "status";
+
+const COLUMN_LABELS: Record<ColumnId, string> = {
+  orgnr: "Org.nr",
+  email: "E-post",
+  phone: "Tlf",
+  website: "Nettside",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  ceo: "Daglig leder",
+  status: "Status",
+};
+
+const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
+  "orgnr",
+  "email",
+  "website",
+  "status",
+];
+
+const OPTIONAL_COLUMNS: ColumnId[] = [
+  "phone",
+  "facebook",
+  "instagram",
+  "ceo",
+];
+
+const COLUMN_STORAGE_KEY = "nylead-scan-visible-columns";
+
 type Props = {
   companies: CompanyWithLead[];
   selected: Set<string>;
@@ -39,7 +76,20 @@ type Props = {
   liveBrreg?: boolean;
   websiteScans?: Map<string, WebsiteScanResult>;
   scanningOrgnrs?: Set<string>;
+  viewMode?: "table" | "cards";
 };
+
+function loadVisibleColumns(): Set<ColumnId> {
+  if (typeof window === "undefined") return new Set(DEFAULT_VISIBLE_COLUMNS);
+  try {
+    const raw = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!raw) return new Set(DEFAULT_VISIBLE_COLUMNS);
+    const parsed = JSON.parse(raw) as ColumnId[];
+    return new Set(parsed.filter((id) => id in COLUMN_LABELS));
+  } catch {
+    return new Set(DEFAULT_VISIBLE_COLUMNS);
+  }
+}
 
 function PresenceBadge({
   kind,
@@ -361,7 +411,7 @@ function CompanyMobileDetailSheet({
   }, [handleClose]);
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         className="scan-glass-backdrop absolute inset-0"
@@ -530,10 +580,28 @@ export function CompanyTable({
   liveBrreg = false,
   websiteScans,
   scanningOrgnrs,
+  viewMode = "table",
 }: Props) {
   const [detailOrgnr, setDetailOrgnr] = useState<string | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(loadVisibleColumns);
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const detailCompany =
     detailOrgnr != null ? companies.find((c) => c.orgnr === detailOrgnr) : undefined;
+
+  const showCol = (id: ColumnId) => visibleColumns.has(id);
+
+  function toggleColumn(id: ColumnId) {
+    setVisibleColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) return prev;
+      localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  const useCardLayout = viewMode === "cards";
 
   if (companies.length === 0) {
     return (
@@ -548,19 +616,23 @@ export function CompanyTable({
     );
   }
 
-  return (
+  const cardList = (
     <>
-      <div className="nylead-theme-compact-table md:hidden">
-        <div className="flex items-center gap-2 border-b border-[var(--cv-border)] bg-[var(--cv-surface)] px-3 py-1.5">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={onToggleAll}
-            aria-label="Velg alle"
-            className="h-3.5 w-3.5 rounded accent-sky-600"
-          />
-          <span className="text-[11px] font-semibold text-[var(--cv-muted)]">Velg alle</span>
-        </div>
+      <div className="flex items-center gap-2 border-b border-[var(--cv-border)] bg-[var(--cv-surface)] px-3 py-1.5">
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={onToggleAll}
+          aria-label="Velg alle"
+          className="h-3.5 w-3.5 rounded accent-sky-600"
+        />
+        <span className="text-[11px] font-semibold text-[var(--cv-muted)]">Velg alle</span>
+      </div>
+      <div
+        className={cn(
+          useCardLayout && "grid gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3"
+        )}
+      >
         {companies.map((c) => (
           <CompanyMobileCard
             key={c.orgnr}
@@ -574,6 +646,49 @@ export function CompanyTable({
           />
         ))}
       </div>
+    </>
+  );
+
+  return (
+    <>
+      {!useCardLayout && (
+        <div className="nylead-theme-compact-table mb-2 flex justify-end px-2">
+          <details
+            className="relative text-[11px]"
+            open={columnsOpen}
+            onToggle={(e) => setColumnsOpen((e.target as HTMLDetailsElement).open)}
+          >
+            <summary className="scan-btn-ghost cursor-pointer list-none px-2 py-1 [&::-webkit-details-marker]:hidden">
+              Kolonner
+            </summary>
+            <div className="absolute right-0 z-10 mt-1 min-w-[10rem] rounded-xl border border-white/15 bg-slate-900/95 p-2 shadow-lg">
+              {OPTIONAL_COLUMNS.map((id) => (
+                <label
+                  key={id}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/8"
+                >
+                  <input
+                    type="checkbox"
+                    checked={showCol(id)}
+                    onChange={() => toggleColumn(id)}
+                    className="rounded accent-sky-600"
+                  />
+                  {COLUMN_LABELS[id]}
+                </label>
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "nylead-theme-compact-table",
+          useCardLayout ? "block" : "md:hidden"
+        )}
+      >
+        {cardList}
+      </div>
 
       {detailCompany && (
         <CompanyMobileDetailSheet
@@ -585,163 +700,195 @@ export function CompanyTable({
         />
       )}
 
-      <div className="nylead-theme-compact-table hidden w-full overflow-x-auto md:block">
-      <table className="nylead-compact-table w-full min-w-[880px]">
-        <thead>
-          <tr>
-            <th className="w-8">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={onToggleAll}
-                aria-label="Velg alle"
-                className="h-3.5 w-3.5 rounded accent-sky-600"
-              />
-            </th>
-            <th>Firma</th>
-            <th>Org.nr</th>
-            <th>E-post</th>
-            <th>Tlf</th>
-            <th>Nettside</th>
-            <th>Facebook</th>
-            <th>Instagram</th>
-            <th>Daglig leder</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {companies.map((c) => {
-            const scan = websiteScans?.get(c.orgnr);
-            const status = c.user_lead?.status ?? "ny";
-            const isScanning = scanningOrgnrs?.has(c.orgnr);
-            const isSelected = selected.has(c.orgnr);
-
-            return (
-              <tr key={c.orgnr} className={cn(isSelected && "is-selected")}>
-                <td>
+      {!useCardLayout && (
+        <div className="nylead-theme-compact-table hidden w-full overflow-x-auto md:block">
+          <table
+            className="nylead-compact-table w-full"
+            style={{ minWidth: `${320 + visibleColumns.size * 88}px` }}
+          >
+            <thead>
+              <tr>
+                <th className="w-8">
                   <input
                     type="checkbox"
-                    checked={isSelected}
-                    onChange={() => onToggle(c.orgnr)}
-                    aria-label={`Velg ${c.name}`}
+                    checked={allSelected}
+                    onChange={onToggleAll}
+                    aria-label="Velg alle"
                     className="h-3.5 w-3.5 rounded accent-sky-600"
                   />
-                </td>
-                <td>
-                  <p className="cv-firma max-w-[14rem] truncate" title={c.name}>
-                    {c.name}
-                  </p>
-                  {(c.municipality_name || c.registered_at) && (
-                    <p className="cv-meta max-w-[14rem] truncate">
-                      {c.municipality_name ?? "—"}
-                      {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
-                    </p>
-                  )}
-                </td>
-                <td className="cv-mono whitespace-nowrap">{c.orgnr}</td>
-                <td className="max-w-[12rem]">
-                  {(() => {
-                    const resolved = resolveCompanyEmail(c, scan);
-                    return resolved ? (
-                      <EmailCell resolved={resolved} />
-                    ) : (
-                      <span className="cv-muted">—</span>
-                    );
-                  })()}
-                </td>
-                <td className="whitespace-nowrap">
-                  {c.phone ?? c.mobile ? (
-                    <a href={`tel:${c.phone ?? c.mobile}`} className="cv-link">
-                      {c.phone ?? c.mobile}
-                    </a>
-                  ) : (
-                    <span className="cv-muted">—</span>
-                  )}
-                </td>
-                <td className="max-w-[11rem]">
-                  <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
-                    <WebsiteCell scan={scan} scanning={isScanning} companyName={c.name} />
-                    {scan && !isScanning && (
-                      <>
-                        {scan.hasWebsite && (
-                          <PresenceBadge kind="ok" label="Web" />
-                        )}
-                        {!scan.hasWebsite &&
-                          scan.websiteKind === "none" &&
-                          scan.confidence !== "low" && (
-                            <PresenceBadge kind="warn" label="Uten" />
-                          )}
-                      </>
-                    )}
-                  </div>
-                </td>
-                <td className="max-w-[7rem]">
-                  <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
-                    <SocialCell
-                      scanning={!!isScanning}
-                      url={scan?.facebookUrl}
-                      confidence={scan?.facebookConfidence}
-                      scanned={Boolean(scan?.socialScan?.includeFacebook)}
-                      icon={<FacebookIcon className="h-3 w-3 shrink-0 text-blue-700" />}
-                      label={scan?.facebookProfile?.name ?? "FB"}
-                    />
-                    {scan?.facebookUrl && !isScanning && (
-                      <PresenceBadge kind="info" label="FB" />
-                    )}
-                    {scan?.socialScan?.includeFacebook &&
-                      !scan.facebookUrl &&
-                      !isScanning && <PresenceBadge kind="muted" label="Nei" />}
-                  </div>
-                </td>
-                <td className="max-w-[7rem]">
-                  <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
-                    <SocialCell
-                      scanning={!!isScanning}
-                      url={scan?.instagramUrl}
-                      confidence={scan?.instagramConfidence}
-                      scanned={Boolean(scan?.socialScan?.includeInstagram)}
-                      icon={<InstagramIcon className="h-3 w-3 shrink-0 text-pink-700" />}
-                      label={
-                        scan?.instagramProfile?.username ??
-                        scan?.instagramProfile?.name ??
-                        "IG"
-                      }
-                      viaFb={scan?.instagramFromFacebook}
-                    />
-                    {scan?.instagramUrl && !isScanning && (
-                      <PresenceBadge kind="info" label="IG" />
-                    )}
-                    {scan?.socialScan?.includeInstagram &&
-                      !scan.instagramUrl &&
-                      !isScanning && <PresenceBadge kind="muted" label="Nei" />}
-                  </div>
-                </td>
-                <td className="max-w-[8rem] truncate text-xs text-slate-700" title={c.daglig_leder ?? undefined}>
-                  {c.daglig_leder ?? <span className="cv-muted">—</span>}
-                </td>
-                <td>
-                  {onStatusChange ? (
-                    <select
-                      value={status}
-                      onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
-                      className="cv-status-select"
-                    >
-                      {LEAD_STATUSES.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <StatusPill status={status} label={statusLabel(status)} />
-                  )}
-                </td>
+                </th>
+                <th>Firma</th>
+                {showCol("orgnr") && <th>Org.nr</th>}
+                {showCol("email") && <th>E-post</th>}
+                {showCol("phone") && <th>Tlf</th>}
+                {showCol("website") && <th>Nettside</th>}
+                {showCol("facebook") && <th>Facebook</th>}
+                {showCol("instagram") && <th>Instagram</th>}
+                {showCol("ceo") && <th>Daglig leder</th>}
+                {showCol("status") && <th>Status</th>}
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+            <tbody>
+              {companies.map((c) => {
+                const scan = websiteScans?.get(c.orgnr);
+                const status = c.user_lead?.status ?? "ny";
+                const isScanning = scanningOrgnrs?.has(c.orgnr);
+                const isSelected = selected.has(c.orgnr);
+
+                return (
+                  <tr key={c.orgnr} className={cn(isSelected && "is-selected")}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggle(c.orgnr)}
+                        aria-label={`Velg ${c.name}`}
+                        className="h-3.5 w-3.5 rounded accent-sky-600"
+                      />
+                    </td>
+                    <td>
+                      <p className="cv-firma max-w-[14rem] truncate" title={c.name}>
+                        {c.name}
+                      </p>
+                      {(c.municipality_name || c.registered_at) && (
+                        <p className="cv-meta max-w-[14rem] truncate">
+                          {c.municipality_name ?? "—"}
+                          {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
+                        </p>
+                      )}
+                    </td>
+                    {showCol("orgnr") && (
+                      <td className="cv-mono whitespace-nowrap">{c.orgnr}</td>
+                    )}
+                    {showCol("email") && (
+                      <td className="max-w-[12rem]">
+                        {(() => {
+                          const resolved = resolveCompanyEmail(c, scan);
+                          return resolved ? (
+                            <EmailCell resolved={resolved} />
+                          ) : (
+                            <span className="cv-muted">—</span>
+                          );
+                        })()}
+                      </td>
+                    )}
+                    {showCol("phone") && (
+                      <td className="whitespace-nowrap">
+                        {c.phone ?? c.mobile ? (
+                          <a href={`tel:${c.phone ?? c.mobile}`} className="cv-link">
+                            {c.phone ?? c.mobile}
+                          </a>
+                        ) : (
+                          <span className="cv-muted">—</span>
+                        )}
+                      </td>
+                    )}
+                    {showCol("website") && (
+                      <td className="max-w-[11rem]">
+                        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                          <WebsiteCell
+                            scan={scan}
+                            scanning={isScanning}
+                            companyName={c.name}
+                          />
+                          {scan && !isScanning && (
+                            <>
+                              {scan.hasWebsite && (
+                                <PresenceBadge kind="ok" label="Web" />
+                              )}
+                              {!scan.hasWebsite &&
+                                scan.websiteKind === "none" &&
+                                scan.confidence !== "low" && (
+                                  <PresenceBadge kind="warn" label="Uten" />
+                                )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {showCol("facebook") && (
+                      <td className="max-w-[7rem]">
+                        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                          <SocialCell
+                            scanning={!!isScanning}
+                            url={scan?.facebookUrl}
+                            confidence={scan?.facebookConfidence}
+                            scanned={Boolean(scan?.socialScan?.includeFacebook)}
+                            icon={
+                              <FacebookIcon className="h-3 w-3 shrink-0 text-blue-700" />
+                            }
+                            label={scan?.facebookProfile?.name ?? "FB"}
+                          />
+                          {scan?.facebookUrl && !isScanning && (
+                            <PresenceBadge kind="info" label="FB" />
+                          )}
+                          {scan?.socialScan?.includeFacebook &&
+                            !scan.facebookUrl &&
+                            !isScanning && <PresenceBadge kind="muted" label="Nei" />}
+                        </div>
+                      </td>
+                    )}
+                    {showCol("instagram") && (
+                      <td className="max-w-[7rem]">
+                        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                          <SocialCell
+                            scanning={!!isScanning}
+                            url={scan?.instagramUrl}
+                            confidence={scan?.instagramConfidence}
+                            scanned={Boolean(scan?.socialScan?.includeInstagram)}
+                            icon={
+                              <InstagramIcon className="h-3 w-3 shrink-0 text-pink-700" />
+                            }
+                            label={
+                              scan?.instagramProfile?.username ??
+                              scan?.instagramProfile?.name ??
+                              "IG"
+                            }
+                            viaFb={scan?.instagramFromFacebook}
+                          />
+                          {scan?.instagramUrl && !isScanning && (
+                            <PresenceBadge kind="info" label="IG" />
+                          )}
+                          {scan?.socialScan?.includeInstagram &&
+                            !scan.instagramUrl &&
+                            !isScanning && <PresenceBadge kind="muted" label="Nei" />}
+                        </div>
+                      </td>
+                    )}
+                    {showCol("ceo") && (
+                      <td
+                        className="max-w-[8rem] truncate text-xs"
+                        title={c.daglig_leder ?? undefined}
+                      >
+                        {c.daglig_leder ?? <span className="cv-muted">—</span>}
+                      </td>
+                    )}
+                    {showCol("status") && (
+                      <td>
+                        {onStatusChange ? (
+                          <select
+                            value={status}
+                            onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+                            className="cv-status-select"
+                          >
+                            {LEAD_STATUSES.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <StatusPill status={status} label={statusLabel(status)} />
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

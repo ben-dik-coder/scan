@@ -34,7 +34,8 @@ export function SiteLogo({
       width={793}
       height={286}
       priority={priority}
-      className={cn("h-9 w-auto sm:h-10", className)}
+      className={cn("app-shell-logo-img h-9 w-auto sm:h-10", className)}
+      style={{ height: "2.25rem", width: "auto", maxWidth: "11rem" }}
     />
   );
 }

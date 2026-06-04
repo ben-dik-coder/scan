@@ -61,7 +61,7 @@ function QueueCard({
   const isContacted = item.status === "kontaktet";
 
   return (
-    <li className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <li className="ko-queue-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           {rank != null && (
@@ -87,21 +87,15 @@ function QueueCard({
 
       <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
         {item.hasWebsite === false && (
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-900">
-            Uten nettside
-          </span>
+          <span className="ko-queue-badge ko-queue-badge--amber">Uten nettside</span>
         )}
         {item.phone && (
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800">
-            Har tlf
-          </span>
+          <span className="ko-queue-badge ko-queue-badge--emerald">Har tlf</span>
         )}
         {item.email && (
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">
-            Har e-post
-          </span>
+          <span className="ko-queue-badge ko-queue-badge--email">Har e-post</span>
         )}
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-600">
+        <span className="ko-queue-badge ko-queue-badge--status">
           {statusLabel(item.status)}
         </span>
       </div>

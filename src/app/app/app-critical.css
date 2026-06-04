@@ -1,0 +1,175 @@
+/**
+ * Kritisk app-CSS (ren CSS, ikke Tailwind) — brukes når hovedstil laster sent.
+ * Gjelder .scan-glass-shell under /app/*
+ */
+
+html.app-glass-theme {
+  background-color: #1e3a5f;
+  color: #f8fafc;
+}
+
+html.app-glass-theme body {
+  background: transparent !important;
+  color: #f8fafc;
+}
+
+.scan-glass-shell {
+  color: #f8fafc;
+  min-height: 100vh;
+}
+
+.scan-glass-shell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 3.5rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.scan-glass-shell .page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .scan-glass-shell .page-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.scan-glass-shell .page-header-title {
+  color: #f8fafc;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.scan-glass-shell .page-header .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.scan-glass-shell .app-section-title {
+  color: #f8fafc;
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+}
+
+.scan-glass-shell .app-overview-stats {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .scan-glass-shell .app-overview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .scan-glass-shell .app-overview-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.scan-glass-shell .app-overview-pipeline {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .scan-glass-shell .app-overview-pipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .scan-glass-shell .app-overview-pipeline {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.scan-glass-shell .app-stat-card,
+.scan-glass-shell .surface-panel,
+.scan-glass-shell .panel {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1.25rem;
+  color: #f8fafc;
+}
+
+.scan-glass-shell .app-stat-card .text-slate-500,
+.scan-glass-shell .panel .text-slate-500,
+.scan-glass-shell .panel .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+.scan-glass-shell .app-stat-card .text-brand-navy,
+.scan-glass-shell .panel .text-brand-navy {
+  color: #f8fafc !important;
+}
+
+.scan-glass-shell .app-stat-card svg,
+.scan-glass-shell .text-brand-gold {
+  color: #38bdf8 !important;
+}
+
+.scan-glass-shell .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  border: none;
+  background: #38bdf8;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.scan-glass-shell .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scan-glass-shell .app-overview-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .scan-glass-shell .app-overview-actions {
+    flex-direction: row;
+    width: auto;
+  }
+}

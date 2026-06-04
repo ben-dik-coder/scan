@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   CompanyFilters,
@@ -9,20 +9,39 @@ import {
 import { CompanyTable } from "@/components/CompanyTable";
 import { SendCampaignForm } from "@/components/SendCampaignForm";
 import { WebsiteScanStatus } from "@/components/WebsiteScanStatus";
+import {
+  ScanActiveFilterChips,
+  countActiveMarketFilters,
+} from "@/components/scan/ScanActiveFilterChips";
+import { ScanFilterSheet } from "@/components/scan/ScanFilterSheet";
+import {
+  ScanWorkflowSteps,
+  type WorkflowStep,
+} from "@/components/scan/ScanWorkflowSteps";
 import { useAutoWebsiteScan } from "@/hooks/useAutoWebsiteScan";
 import {
   loadScanSocialOptions,
   saveScanSocialOptions,
   type ScanSocialOptions,
 } from "@/lib/website-scan/scan-social-options";
-import { regionLabel } from "@/lib/constants/regions";
 import { industryGroupLabel } from "@/lib/constants/industries";
-import { professionSearchLabel } from "@/lib/constants/professions";
+import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
-import { Building2, Download, Globe, Globe2, List, Mail, Radar, Search } from "lucide-react";
+import {
+  Building2,
+  Download,
+  Globe,
+  Globe2,
+  LayoutGrid,
+  List,
+  Mail,
+  Radar,
+  Search,
+  Table2,
+} from "lucide-react";
 
 type SequenceOption = {
   id: string;
@@ -72,6 +91,10 @@ export function AppPageClient(props: Props) {
   const [socialOptions, setSocialOptions] = useState<ScanSocialOptions>(() =>
     loadScanSocialOptions()
   );
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>(1);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [listViewMode, setListViewMode] = useState<"table" | "cards">("table");
+  const emailSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     saveScanSocialOptions(socialOptions);
@@ -159,7 +182,34 @@ export function AppPageClient(props: Props) {
   useEffect(() => {
     setSelected(new Set());
     setListFilter("all");
+    setWorkflowStep(1);
   }, [companyListKey]);
+
+  useEffect(() => {
+    if (selected.size === 0) {
+      setWorkflowStep(1);
+    } else if (scanning) {
+      setWorkflowStep(2);
+    }
+  }, [selected.size, scanning]);
+
+  const activeFilterCount = countActiveMarketFilters(
+    filters,
+    props.municipalities
+  );
+
+  const scanQueueCount = Math.min(selected.size, MAX_WEBSITE_SCAN_BATCH);
+  const scanQueueRemaining = Math.max(0, MAX_WEBSITE_SCAN_BATCH - scanQueueCount);
+
+  function scrollToEmail() {
+    setWorkflowStep(3);
+    emailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function handleWorkflowStepClick(step: WorkflowStep) {
+    setWorkflowStep(step);
+    if (step === 3) scrollToEmail();
+  }
 
   const matchesPresenceFilters = (c: CompanyWithLead) => {
     const scan = websiteScans.get(c.orgnr);
@@ -201,7 +251,13 @@ export function AppPageClient(props: Props) {
     return list.filter(matchesPresenceFilters);
   }, [companies, listFilter, websiteScans, filters.websitePresence, filters.facebookPresence, filters.instagramPresence]);
 
-  function applyFilters(next: FilterState) {
+  function applyFilters(
+    next: FilterState,
+    options?: {
+      preserveListFilter?: boolean;
+      listFilter?: typeof listFilter;
+    }
+  ) {
     if (
       next.industryGroup &&
       next.industryGroup !== filters.industryGroup &&
@@ -237,7 +293,11 @@ export function AppPageClient(props: Props) {
     else params.delete("ig");
     params.delete("page");
     setSelected(new Set());
-    setListFilter("all");
+    if (options?.preserveListFilter && options.listFilter) {
+      setListFilter(options.listFilter);
+    } else if (!options?.preserveListFilter) {
+      setListFilter("all");
+    }
     router.push(`/app?${params.toString()}`);
   }
 
@@ -386,22 +446,6 @@ export function AppPageClient(props: Props) {
     },
   ];
 
-  const filterSummary = [
-    filters.municipalityCode
-      ? null
-      : filters.regionId
-        ? regionLabel(filters.regionId)
-        : "Hele Norge",
-    filters.industryGroup ? industryGroupLabel(filters.industryGroup) : null,
-    filters.professionSearch.trim()
-      ? professionSearchLabel(filters.professionSearch.trim()) ??
-        `Yrke: ${filters.professionSearch.trim()}`
-      : null,
-    filters.days === 0 ? "Alle firma" : `Siste ${filters.days} dager`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
   const pagination = props.pagination;
   const pageStart =
     pagination && companies.length > 0
@@ -449,82 +493,127 @@ export function AppPageClient(props: Props) {
           </details>
         </header>
 
-        <div className="scan-glass-divider border-t p-2.5 lg:p-3">
-          <CompanyFilters
-            filters={filters}
-            municipalities={props.municipalities}
-            onChange={applyFilters}
-          />
-          {filterSummary && (
-            <p className="scan-glass-muted mt-1">{filterSummary}</p>
-          )}
+        <ScanWorkflowSteps
+          activeStep={workflowStep}
+          selectedCount={selected.size}
+          onStepClick={handleWorkflowStepClick}
+        />
 
-          <div className="scan-glass-divider mt-2 flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className="scan-glass-muted shrink-0 text-xs font-semibold uppercase tracking-wide">
-                Google-sjekk
-              </span>
-              <label className="scan-chip cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={socialOptions.includeFacebook}
-                  onChange={(e) =>
-                    setSocialOptions((prev) => ({
-                      ...prev,
-                      includeFacebook: e.target.checked,
-                    }))
-                  }
-                  className="h-3 w-3 rounded accent-sky-600"
-                />
-                Facebook
-              </label>
-              <label className="scan-chip cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={socialOptions.includeInstagram}
-                  onChange={(e) =>
-                    setSocialOptions((prev) => ({
-                      ...prev,
-                      includeInstagram: e.target.checked,
-                    }))
-                  }
-                  className="h-3 w-3 rounded accent-sky-600"
-                />
-                Instagram
-              </label>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
+        <ScanActiveFilterChips
+          filters={filters}
+          municipalities={props.municipalities}
+          onChange={applyFilters}
+        />
+
+        <div className="scan-glass-divider flex flex-col border-t lg:flex-row lg:gap-0">
+          <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/10 p-3 lg:block lg:w-[17.5rem] xl:w-[19rem]">
+            <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
+              Finn marked
+            </p>
+            <CompanyFilters
+              layout="sidebar"
+              filters={filters}
+              municipalities={props.municipalities}
+              onChange={applyFilters}
+            />
+          </aside>
+
+          <div className="scan-main-panel min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-2.5 py-2 lg:px-3">
+              <ScanFilterSheet
+                open={filterSheetOpen}
+                onOpen={() => setFilterSheetOpen(true)}
+                onClose={() => setFilterSheetOpen(false)}
+                filters={filters}
+                municipalities={props.municipalities}
+                onChange={(next) => {
+                  applyFilters(next);
+                  setFilterSheetOpen(false);
+                }}
+                activeFilterCount={activeFilterCount}
+              />
               {selected.size > 0 && (
-                <span className="scan-glass-accent-text text-xs font-semibold">
-                  {selected.size} valgt
-                </span>
+                <div className="scan-queue-badge rounded-xl border border-sky-400/30 bg-sky-400/10 px-2.5 py-1.5 text-[11px]">
+                  <span className="scan-glass-strong font-semibold">
+                    {scanQueueCount} av {MAX_WEBSITE_SCAN_BATCH} i kø
+                  </span>
+                  {scanQueueRemaining > 0 && selected.size > MAX_WEBSITE_SCAN_BATCH && (
+                    <span className="scan-glass-muted ml-1">
+                      · {selected.size - MAX_WEBSITE_SCAN_BATCH} venter til neste runde
+                    </span>
+                  )}
+                </div>
               )}
-              <button
-                type="button"
-                onClick={scanSelectedWithGoogle}
-                disabled={scanning || selected.size === 0}
-                className={cn(
-                  "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-2xl px-3 text-xs font-semibold transition",
-                  selected.size > 0 && !scanning
-                    ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
-                    : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
-                )}
-              >
-                <Search className="h-3.5 w-3.5" />
-                {scanning
-                  ? "Søker…"
-                  : selected.size > 0
-                    ? `Start sjekk (${Math.min(selected.size, 10)})`
-                    : "Velg firma først"}
-              </button>
             </div>
-          </div>
-          {scanSelectionMessage && (
-            <p className="mt-1.5 text-xs font-medium text-amber-200">{scanSelectionMessage}</p>
-          )}
-        </div>
 
-        {props.dataSource === "brreg" &&
+            <div
+              id="scan-step-google"
+              className="scan-step-panel scan-glass-divider border-b p-2.5 lg:p-3"
+            >
+              <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
+                Steg 2 — Google-sjekk
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <label className="scan-chip cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={socialOptions.includeFacebook}
+                      onChange={(e) =>
+                        setSocialOptions((prev) => ({
+                          ...prev,
+                          includeFacebook: e.target.checked,
+                        }))
+                      }
+                      className="h-3 w-3 rounded accent-sky-600"
+                    />
+                    Facebook
+                  </label>
+                  <label className="scan-chip cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={socialOptions.includeInstagram}
+                      onChange={(e) =>
+                        setSocialOptions((prev) => ({
+                          ...prev,
+                          includeInstagram: e.target.checked,
+                        }))
+                      }
+                      className="h-3 w-3 rounded accent-sky-600"
+                    />
+                    Instagram
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkflowStep(2);
+                    scanSelectedWithGoogle();
+                  }}
+                  disabled={scanning || selected.size === 0}
+                  className={cn(
+                    "inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-semibold transition",
+                    selected.size > 0 && !scanning
+                      ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
+                      : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
+                  )}
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  {scanning
+                    ? "Søker…"
+                    : selected.size > 0
+                      ? `Start sjekk (${scanQueueCount})`
+                      : "Velg firma først"}
+                </button>
+              </div>
+              {scanSelectionMessage && (
+                <p className="mt-1.5 text-xs font-medium text-amber-200">
+                  {scanSelectionMessage}
+                </p>
+              )}
+            </div>
+
+            {props.dataSource === "brreg" &&
           ((props.companiesSource === "db" &&
             props.dbCompanyCount != null &&
             props.dbCompanyCount > props.total + 2 &&
@@ -532,7 +621,7 @@ export function AppPageClient(props: Props) {
             (props.brregTotal != null &&
               props.brregTotal > props.total + 2 &&
               props.companiesSource !== "db")) && (
-            <div className="scan-glass-notice flex gap-2 lg:px-3">
+            <div className="scan-glass-notice mx-2.5 my-2 flex gap-2 lg:mx-3">
               <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
               <p>
                 {props.companiesSource === "db" ? (
@@ -561,7 +650,7 @@ export function AppPageClient(props: Props) {
             </div>
           )}
 
-        <WebsiteScanStatus
+            <WebsiteScanStatus
           embedded
           scanning={scanning}
           scanComplete={scanComplete}
@@ -582,9 +671,9 @@ export function AppPageClient(props: Props) {
           notScannedCount={notScannedCount}
           onRescan={rescan}
           scanResults={websiteScans}
-        />
+            />
 
-        <div className="scan-glass-divider border-t px-2.5 py-2 lg:px-3">
+            <div className="scan-glass-divider border-t px-2.5 py-2 lg:px-3">
           <div className="-mx-0.5 flex flex-wrap gap-1 px-0.5">
             {listTabs.map((tab) => {
               const TabIcon = tab.icon;
@@ -592,7 +681,16 @@ export function AppPageClient(props: Props) {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setListFilter(tab.id)}
+                  onClick={() => {
+                    if (filters.websitePresence !== "all") {
+                      applyFilters(
+                        { ...filters, websitePresence: "all" },
+                        { preserveListFilter: true, listFilter: tab.id }
+                      );
+                    } else {
+                      setListFilter(tab.id);
+                    }
+                  }}
                   className={cn(
                     "scan-tab",
                     listFilter === tab.id && "scan-tab-active"
@@ -648,36 +746,35 @@ export function AppPageClient(props: Props) {
               </>
             )}
             </p>
+          </div>
 
-            {pagination && props.onPageChange && (
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="scan-glass-muted">
-                  Side <strong className="scan-glass-strong">{pagination.page}</strong>
-                  {showExactTotal ? (
-                    <>
-                      {" "}
-                      / <strong className="scan-glass-strong">{pagination.totalPages}</strong>
-                    </>
-                  ) : null}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => props.onPageChange?.(pagination.page - 1)}
-                  disabled={!pagination.hasPrev}
-                  className="scan-btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Forrige
-                </button>
-                <button
-                  type="button"
-                  onClick={() => props.onPageChange?.(pagination.page + 1)}
-                  disabled={!pagination.hasNext}
-                  className="scan-btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Neste
-                </button>
-              </div>
-            )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <div className="hidden items-center gap-0.5 rounded-xl border border-white/15 p-0.5 md:flex">
+              <button
+                type="button"
+                onClick={() => setListViewMode("table")}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium",
+                  listViewMode === "table" && "bg-white/12 text-white"
+                )}
+                aria-pressed={listViewMode === "table"}
+              >
+                <Table2 className="h-3 w-3" />
+                Tabell
+              </button>
+              <button
+                type="button"
+                onClick={() => setListViewMode("cards")}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium",
+                  listViewMode === "cards" && "bg-white/12 text-white"
+                )}
+                aria-pressed={listViewMode === "cards"}
+              >
+                <LayoutGrid className="h-3 w-3" />
+                Kort
+              </button>
+            </div>
           </div>
 
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -721,20 +818,21 @@ export function AppPageClient(props: Props) {
               </button>
             )}
           </div>
-        </div>
+            </div>
 
-        <div className="scan-glass-divider border-t p-2">
-          <CompanyTable
-            companies={displayCompanies}
-            selected={selected}
-            onToggle={toggle}
-            onToggleAll={toggleAll}
-            allSelected={allSelected}
-            onStatusChange={updateStatus}
-            liveBrreg={props.dataSource === "brreg"}
-            websiteScans={websiteScans}
-            scanningOrgnrs={scanning ? scanningOrgnrs : undefined}
-          />
+            <div className="scan-glass-divider border-t p-2">
+              <CompanyTable
+                companies={displayCompanies}
+                selected={selected}
+                onToggle={toggle}
+                onToggleAll={toggleAll}
+                allSelected={allSelected}
+                onStatusChange={updateStatus}
+                liveBrreg={props.dataSource === "brreg"}
+                websiteScans={websiteScans}
+                scanningOrgnrs={scanning ? scanningOrgnrs : undefined}
+                viewMode={listViewMode}
+              />
 
           {pagination && props.onPageChange && (
             <div className="scan-glass-divider mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
@@ -766,29 +864,37 @@ export function AppPageClient(props: Props) {
                 </button>
               </div>
             </div>
-          )}
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
       {selected.size > 0 && (
-        <div className="scan-glass-floating-bar fixed inset-x-3 bottom-4 z-20 flex items-center justify-between gap-2 border px-3 py-2 sm:inset-x-auto sm:right-6 sm:max-w-md">
-          <span className="text-xs font-semibold">
+        <div className="scan-glass-floating-bar fixed inset-x-3 bottom-4 z-20 flex items-center justify-between gap-2 border px-3 py-2 sm:inset-x-auto sm:right-6 sm:max-w-lg">
+          <span className="text-xs font-semibold text-white">
             {selected.size} valgt
+            {scanQueueCount < selected.size && (
+              <span className="scan-glass-muted font-normal">
+                {" "}
+                · {scanQueueCount} i neste sjekk
+              </span>
+            )}
           </span>
-          {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={scanSelectedWithGoogle}
-              disabled={scanning}
-              className="scan-btn-primary min-h-[36px] px-3 disabled:opacity-50"
-            >
-              Google-sjekk
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={scrollToEmail}
+            className="scan-btn-primary min-h-[36px] px-3"
+          >
+            Gå til e-post
+          </button>
         </div>
       )}
 
-      <div className="scan-surface-pad w-full max-w-none">
+      <div ref={emailSectionRef} className="scan-surface-pad w-full max-w-none scroll-mt-4">
+        <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
+          Steg 3 — Send e-post
+        </p>
         <SendCampaignForm
           selectedCompanies={selectedCompanies}
           templates={props.templates}
@@ -799,7 +905,7 @@ export function AppPageClient(props: Props) {
         />
       </div>
 
-      <details className="scan-surface-pad w-full max-w-none text-sm lg:hidden">
+      <details className="scan-surface-pad w-full max-w-none text-sm">
         <summary className="scan-glass-strong cursor-pointer font-medium">
           Lagre søk (valgfritt)
         </summary>

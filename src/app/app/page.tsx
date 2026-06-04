@@ -15,7 +15,8 @@ import {
   buildDemoShuffleSeed,
   seededShuffle,
 } from "@/lib/shuffle/seeded-shuffle";
-import { Loader2, RefreshCw } from "lucide-react";
+import { ScanFetchLoading } from "@/components/scan/ScanFetchLoading";
+import { RefreshCw } from "lucide-react";
 
 function parseDaysParam(params: URLSearchParams): number {
   const d = params.get("dager");
@@ -317,50 +318,27 @@ function FirmaPageBrreg() {
   }, []);
 
   if (loading && companies.length === 0) {
+    const loadSubtitle = filters.municipalityCode
+      ? `Kommune ${filters.municipalityCode} · ${periodLabel(filters.days)}`
+      : filters.regionId
+        ? `${regionLabel(filters.regionId)} · ${periodLabel(filters.days)}`
+        : `Hele Norge · ${periodLabel(filters.days)}`;
+
     return (
-      <div className="scan-glass-kommand px-2 sm:px-3">
-        <div className="scan-surface-full overflow-hidden ring-2 ring-sky-400/25">
-          <div className="scan-glass-scan-status is-scanning flex items-start gap-2.5 px-2.5 py-2.5">
-            <div className="scan-glass-status-icon is-scanning flex h-7 w-7 shrink-0 items-center justify-center">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="scan-glass-strong text-xs font-semibold">
-                Henter firma fra registeret…
-              </p>
-              <p className="scan-glass-muted text-[11px]">
-              {filters.municipalityCode
-                ? `Kommune ${filters.municipalityCode} · ${periodLabel(filters.days)}`
-                : filters.regionId
-                  ? `${regionLabel(filters.regionId)} · ${periodLabel(filters.days)}`
-                  : `Hele Norge · ${periodLabel(filters.days)}`}
-            </p>
-            {filters.days === 0 && (
-              <p className="mt-1 text-[11px] text-amber-200">
-                {filters.municipalityCode || filters.regionId
-                  ? "«Alle firma» kan ta litt tid — mange sider fra Brønnøysund"
-                  : "Tips: velg område eller kommune — ellers blir det veldig mange firma"}
-              </p>
-            )}
-            {slowLoad && (
-              <p className="scan-glass-muted mt-1 text-[11px]">
-                Tar litt tid… Brønnøysund har mange firma å sjekke.
-              </p>
-            )}
-            {slowLoad && (
-              <button
-                type="button"
-                onClick={loadCompanies}
-                className="scan-btn-ghost mt-1.5 inline-flex gap-1.5"
-              >
-                <RefreshCw className="h-3 w-3" />
-                Prøv igjen
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-      </div>
+      <>
+        <ScanFetchLoading
+          subtitle={loadSubtitle}
+          slowLoad={slowLoad}
+          onRetry={slowLoad ? loadCompanies : undefined}
+        />
+        {filters.days === 0 && (
+          <p className="scan-glass-kommand px-3 text-[11px] text-amber-200">
+            {filters.municipalityCode || filters.regionId
+              ? "«Alle firma» kan ta litt tid — mange sider fra Brønnøysund"
+              : "Tips: velg område eller kommune — ellers blir det veldig mange firma"}
+          </p>
+        )}
+      </>
     );
   }
 
@@ -471,7 +449,11 @@ function FirmaPageInner() {
 
 export default function FirmaPage() {
   return (
-    <Suspense fallback={<p className="scan-glass-kommand scan-glass-muted px-3 py-4 text-sm">Laster firma…</p>}>
+    <Suspense
+      fallback={
+        <ScanFetchLoading subtitle="Forbereder søk…" title="Laster Skann…" />
+      }
+    >
       <FirmaPageInner />
     </Suspense>
   );

@@ -8,7 +8,7 @@ import { WEBBYRA_MARKET_PRESET } from "@/lib/constants/market";
 import {
   Briefcase,
   Calendar,
-  Globe,
+  ChevronDown,
   Layout,
   Mail,
   MapPin,
@@ -37,11 +37,24 @@ type Props = {
   filters: FilterState;
   municipalities: Array<{ code: string; name: string; count: number }>;
   onChange: (filters: FilterState) => void;
+  /** sidebar = vertikal panel (desktop), stack = inne i hovedflate */
+  layout?: "stack" | "sidebar";
 };
 
-export function CompanyFilters({ filters, municipalities, onChange }: Props) {
+export function CompanyFilters({
+  filters,
+  municipalities,
+  onChange,
+  layout = "stack",
+}: Props) {
   const [professionDraft, setProfessionDraft] = useState(filters.professionSearch);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const matchedProfession = professionSearchLabel(professionDraft);
+
+  const isSidebar = layout === "sidebar";
+  const gridClass = isSidebar
+    ? "flex flex-col gap-2"
+    : "grid gap-2 sm:grid-cols-2 lg:grid-cols-4";
 
   useEffect(() => {
     setProfessionDraft(filters.professionSearch);
@@ -63,9 +76,12 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
     ? municipalities.filter((m) => kommuneBelongsToRegion(m.code, filters.regionId))
     : municipalities;
 
+  const hasAdvancedSocial =
+    filters.facebookPresence !== "all" || filters.instagramPresence !== "all";
+
   return (
     <div className="space-y-2">
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={gridClass}>
         <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <MapPin className="h-3.5 w-3.5 text-brand-gold" />
@@ -148,7 +164,7 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="scan-glass-divider border-t pt-2">
+      <div className={isSidebar ? "pt-1" : "scan-glass-divider border-t pt-2"}>
         <label className="flex flex-col gap-0.5">
           <span className="scan-label">
             <Briefcase className="h-3.5 w-3.5 text-brand-gold" />
@@ -173,7 +189,13 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2">
+      <div
+        className={
+          isSidebar
+            ? "flex flex-col gap-1.5 pt-1"
+            : "scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2"
+        }
+      >
         <span className="scan-glass-muted w-full text-[10px] font-semibold uppercase tracking-wide">
           Bransje-presets
         </span>
@@ -203,7 +225,13 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </button>
       </div>
 
-      <div className="scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2">
+      <div
+        className={
+          isSidebar
+            ? "flex flex-wrap gap-1.5 pt-1"
+            : "scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2"
+        }
+      >
         <label
           className={`scan-chip cursor-pointer ${filters.hasEmail ? "scan-chip-active" : ""}`}
         >
@@ -237,66 +265,62 @@ export function CompanyFilters({ filters, municipalities, onChange }: Props) {
         </label>
       </div>
 
-      <div className="scan-glass-divider flex flex-wrap gap-1.5 border-t pt-2">
-        <span className="scan-glass-muted w-full text-[10px] font-semibold uppercase tracking-wide">
-          Etter Google-sjekk
-        </span>
-        <label className="flex flex-col gap-0.5 min-w-[7rem]">
-          <span className="scan-label">
-            <Globe className="h-3.5 w-3.5 text-brand-gold" />
-            Nettside
-          </span>
-          <select
-            value={filters.websitePresence}
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                websitePresence: e.target.value as WebsitePresenceFilter,
-              })
-            }
-            className="scan-input"
-          >
-            <option value="all">Alle</option>
-            <option value="with">Kun med nettside</option>
-            <option value="without">Kun uten nettside</option>
-            <option value="not_scanned">Ikke sjekket</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5 min-w-[7rem]">
-          <span className="scan-label">Facebook</span>
-          <select
-            value={filters.facebookPresence}
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                facebookPresence: e.target.value as SocialPresenceFilter,
-              })
-            }
-            className="scan-input"
-          >
-            <option value="all">Alle</option>
-            <option value="with">Kun med Facebook</option>
-            <option value="without">Kun uten Facebook</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5 min-w-[7rem]">
-          <span className="scan-label">Instagram</span>
-          <select
-            value={filters.instagramPresence}
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                instagramPresence: e.target.value as SocialPresenceFilter,
-              })
-            }
-            className="scan-input"
-          >
-            <option value="all">Alle</option>
-            <option value="with">Kun med Instagram</option>
-            <option value="without">Kun uten Instagram</option>
-          </select>
-        </label>
-      </div>
+      <details
+        className={isSidebar ? "pt-1" : "scan-glass-divider border-t pt-2"}
+        open={advancedOpen}
+        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="scan-glass-muted flex cursor-pointer list-none items-center gap-1 text-[10px] font-semibold uppercase tracking-wide [&::-webkit-details-marker]:hidden">
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition ${advancedOpen ? "rotate-180" : ""}`}
+          />
+          Avansert etter Google-sjekk
+          {hasAdvancedSocial && (
+            <span className="rounded-full bg-sky-400/20 px-1.5 text-[9px] font-bold normal-case text-sky-200">
+              aktiv
+            </span>
+          )}
+        </summary>
+        <p className="scan-glass-muted mt-1 text-[10px] leading-snug">
+          Nettside-status velger du med fanene under listen (Alle / Uten web / Med web).
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <label className="flex min-w-[7rem] flex-col gap-0.5">
+            <span className="scan-label">Facebook</span>
+            <select
+              value={filters.facebookPresence}
+              onChange={(e) =>
+                onChange({
+                  ...filters,
+                  facebookPresence: e.target.value as SocialPresenceFilter,
+                })
+              }
+              className="scan-input"
+            >
+              <option value="all">Alle</option>
+              <option value="with">Kun med Facebook</option>
+              <option value="without">Kun uten Facebook</option>
+            </select>
+          </label>
+          <label className="flex min-w-[7rem] flex-col gap-0.5">
+            <span className="scan-label">Instagram</span>
+            <select
+              value={filters.instagramPresence}
+              onChange={(e) =>
+                onChange({
+                  ...filters,
+                  instagramPresence: e.target.value as SocialPresenceFilter,
+                })
+              }
+              className="scan-input"
+            >
+              <option value="all">Alle</option>
+              <option value="with">Kun med Instagram</option>
+              <option value="without">Kun uten Instagram</option>
+            </select>
+          </label>
+        </div>
+      </details>
     </div>
   );
 }
