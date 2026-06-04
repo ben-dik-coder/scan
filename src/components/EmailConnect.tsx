@@ -112,7 +112,13 @@ export function EmailConnect({ light = true, compact = false }: Props) {
 
   if (loading) {
     return (
-      <div className={cn(boxClass, "flex items-center gap-2 text-sm text-slate-500")}>
+      <div
+        className={cn(
+          boxClass,
+          "flex items-center gap-2 text-sm",
+          light ? "text-slate-500" : "scan-glass-muted"
+        )}
+      >
         <Loader2 className="h-4 w-4 animate-spin" />
         Sjekker e-postkobling…
       </div>
@@ -194,7 +200,13 @@ export function EmailConnect({ light = true, compact = false }: Props) {
             </button>
 
             {smtpOpen && (
-              <form onSubmit={saveSmtp} className="space-y-2 border-t border-slate-200/80 px-3 py-3">
+              <form
+                onSubmit={saveSmtp}
+                className={cn(
+                  "space-y-2 border-t px-3 py-3",
+                  light ? "border-slate-200/80" : "border-white/10"
+                )}
+              >
                 <p className={cn("text-[11px] leading-relaxed", light ? "text-slate-500" : "text-white/40")}>
                   Du lager et app-passord på{" "}
                   <a
@@ -216,9 +228,7 @@ export function EmailConnect({ light = true, compact = false }: Props) {
                   onChange={(e) => setSmtpEmail(e.target.value)}
                   className={cn(
                     "w-full rounded-md border px-2.5 py-2 text-xs",
-                    light
-                      ? "border-slate-200 bg-white text-slate-900"
-                      : "border-white/15 bg-white/5 text-white"
+                    light ? "border-slate-200 bg-white text-slate-900" : "scan-input text-sm"
                   )}
                 />
                 <input
@@ -230,13 +240,13 @@ export function EmailConnect({ light = true, compact = false }: Props) {
                   onChange={(e) => setSmtpPassword(e.target.value)}
                   className={cn(
                     "w-full rounded-md border px-2.5 py-2 text-xs",
-                    light
-                      ? "border-slate-200 bg-white text-slate-900"
-                      : "border-white/15 bg-white/5 text-white"
+                    light ? "border-slate-200 bg-white text-slate-900" : "scan-input text-sm"
                   )}
                 />
                 {smtpError && (
-                  <p className="text-[11px] text-red-600">{smtpError}</p>
+                  <p className={cn("text-[11px]", light ? "text-red-600" : "text-red-300")}>
+                    {smtpError}
+                  </p>
                 )}
                 <button
                   type="submit"

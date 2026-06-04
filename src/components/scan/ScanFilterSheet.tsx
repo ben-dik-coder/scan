@@ -46,7 +46,7 @@ export function ScanFilterSheet({
         className="scan-filter-trigger lg:hidden inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold"
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />
-        Filter
+        Flere filter
         {activeFilterCount > 0 && (
           <span className="rounded-full bg-sky-400/25 px-1.5 py-0.5 text-[10px] font-bold text-sky-100">
             {activeFilterCount}
@@ -55,7 +55,7 @@ export function ScanFilterSheet({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="scan-filter-sheet-overlay fixed inset-0 z-[110] lg:hidden">
           <button
             type="button"
             className="scan-glass-backdrop absolute inset-0"

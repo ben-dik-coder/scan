@@ -5,7 +5,21 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { EmailConnect } from "@/components/EmailConnect";
 import type { FilterState } from "@/components/CompanyFilters";
-import { Settings, Bell, Webhook, BookOpen } from "lucide-react";
+import { PageHeader } from "@/components/ui/primitives";
+import { useOnboarding } from "@/components/onboarding/OnboardingProvider";
+import {
+  formatWeeklyAlertSummary,
+  WeeklyAlertFilters,
+} from "@/components/settings/WeeklyAlertFilters";
+import {
+  Bell,
+  BookOpen,
+  CreditCard,
+  Mail,
+  Sparkles,
+  User,
+  Webhook,
+} from "lucide-react";
 
 const EMAIL_ERROR_MESSAGES: Record<string, string> = {
   google_not_configured:
@@ -15,14 +29,42 @@ const EMAIL_ERROR_MESSAGES: Record<string, string> = {
   upgrade_email: "Du trenger aktivt NyLead-abonnement for å koble e-post. Gå til Abonnement.",
 };
 
-export default function InnstillingerClient() {
+function SettingsCard({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="app-settings-card scan-surface space-y-3 p-4 sm:p-5">
+      <h2 className="scan-glass-strong flex items-center gap-2 text-sm font-semibold">
+        <Icon className="h-4 w-4 text-sky-400" aria-hidden />
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+export default function InnstillingerClient({
+  userEmail,
+}: {
+  userEmail: string | null;
+}) {
   const searchParams = useSearchParams();
+  const { canRestart, openOnboarding } = useOnboarding();
   const [banner, setBanner] = useState<{ text: string; kind: "success" | "error" } | null>(
     null
   );
   const [webhookUrl, setWebhookUrl] = useState("");
   const [weeklyAlertEnabled, setWeeklyAlertEnabled] = useState(false);
   const [weeklyAlertFilters, setWeeklyAlertFilters] = useState<Partial<FilterState>>({});
+  const [municipalities, setMunicipalities] = useState<
+    Array<{ code: string; name: string; count: number }>
+  >([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
@@ -59,6 +101,14 @@ export default function InnstillingerClient() {
         setWeeklyAlertFilters(data.weeklyAlertFilters ?? {});
       })
       .catch(() => {});
+
+    fetch("/api/kommuner")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.municipalities?.length) setMunicipalities(data.municipalities);
+      })
+      .catch(() => {});
+
   }, []);
 
   async function saveSettings() {
@@ -84,138 +134,130 @@ export default function InnstillingerClient() {
     }
   }
 
-  function useCurrentScanFilters() {
-    const params = new URLSearchParams(window.location.search);
-    setWeeklyAlertFilters({
-      regionId: params.get("omrade") ?? "",
-      municipalityCode: params.get("kommune") ?? "",
-      days: Number(params.get("dager") ?? 30),
-      hasEmail: params.get("epost") === "1",
-      genericEmailOnly: params.get("generisk") === "1",
-      industryGroup: params.get("bransje") ?? "",
-      professionSearch: params.get("yrke") ?? "",
-      websitePresence: (params.get("web") as FilterState["websitePresence"]) || "all",
-      facebookPresence: (params.get("fb") as FilterState["facebookPresence"]) || "all",
-      instagramPresence: (params.get("ig") as FilterState["instagramPresence"]) || "all",
-    });
-    setSaveMsg("Filter fra siste skann er lagt inn — husk å lagre.");
-  }
-
   return (
-    <div className="space-y-8">
-      <header>
-        <div className="flex items-center gap-2 text-brand-gold">
-          <Settings className="h-5 w-5" />
-          <span className="text-xs font-semibold uppercase tracking-wide">Innstillinger</span>
-        </div>
-        <h1 className="mt-2 font-display text-2xl font-bold text-slate-900">E-post og konto</h1>
-        <p className="mt-2 max-w-lg text-sm text-slate-600">
-          Koble din e-post én gang. Kampanjer sendes fra din egen innboks — kunden svarer direkte
-          til deg.
+    <div className="scan-glass-kommand space-y-4 pb-8">
+      <PageHeader
+        title="E-post og konto"
+        description="Koble e-post, varsler og integrasjoner. Kampanjer sendes fra din egen innboks."
+      />
+
+      {userEmail && (
+        <p className="scan-glass-muted flex items-center gap-2 text-xs">
+          <User className="h-3.5 w-3.5 shrink-0 text-sky-400" aria-hidden />
+          Innlogget som <span className="scan-glass-strong font-medium">{userEmail}</span>
         </p>
-        <p className="mt-2 max-w-lg text-xs text-slate-500">
-          <strong>Gmail:</strong> ett klikk. <strong>Hotmail/Outlook:</strong> prøv app-passord
-          først — hvis Microsoft sier basic auth er slått av, bruk <strong>Outlook (OAuth)</strong>.
-        </p>
-      </header>
+      )}
 
       {banner && (
         <p
           className={
             banner.kind === "success"
-              ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
-              : "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              ? "rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-100"
+              : "rounded-xl border border-amber-400/35 bg-amber-500/15 px-4 py-3 text-sm text-amber-100"
           }
+          role="status"
         >
           {banner.text}
         </p>
       )}
 
-      <EmailConnect light />
+      <div className="flex flex-wrap gap-2">
+        {canRestart && (
+          <button
+            type="button"
+            onClick={openOnboarding}
+            className="scan-btn-ghost inline-flex items-center gap-1.5 text-xs"
+          >
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            Kom i gang
+          </button>
+        )}
+        <Link
+          href="/app/abonnement"
+          className="scan-btn-ghost inline-flex items-center gap-1.5 text-xs"
+        >
+          <CreditCard className="h-3.5 w-3.5" aria-hidden />
+          Abonnement
+        </Link>
+      </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-          <Bell className="h-4 w-4 text-brand-gold" />
-          Ukentlig e-postvarsel
-        </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Hver mandag får du en e-post: «X nye firma i ditt filter» — basert på filteret under.
+      <SettingsCard title="E-post" icon={Mail}>
+        <p className="scan-glass-muted text-xs leading-relaxed">
+          <strong className="scan-glass-strong">Gmail:</strong> ett klikk.{" "}
+          <strong className="scan-glass-strong">Hotmail/Outlook:</strong> prøv app-passord først
+          — fungerer det ikke, bruk Outlook (OAuth).
         </p>
-        <label className="mt-4 flex items-center gap-3 text-sm">
+        <EmailConnect light={false} />
+      </SettingsCard>
+
+      <SettingsCard title="Varsler" icon={Bell}>
+        <p className="scan-glass-muted text-sm">
+          Hver mandag får du en e-post med nye firma som matcher filteret under.
+        </p>
+        <label className="app-settings-checkbox flex cursor-pointer items-center gap-3 text-sm">
           <input
             type="checkbox"
             checked={weeklyAlertEnabled}
             onChange={(e) => setWeeklyAlertEnabled(e.target.checked)}
-            className="h-4 w-4 rounded"
+            className="h-4 w-4 rounded accent-sky-500"
           />
-          Slå på ukentlig varsel
+          <span className="scan-glass-strong">Slå på ukentlig varsel</span>
         </label>
-        <button
-          type="button"
-          onClick={useCurrentScanFilters}
-          className="mt-3 text-xs font-semibold text-sky-700 underline"
-        >
-          Bruk filter fra markedsanalyse (åpne /app først)
-        </button>
-        {Object.keys(weeklyAlertFilters).length > 0 && (
-          <p className="mt-2 text-xs text-slate-500">
-            Lagret filter:{" "}
-            {[
-              weeklyAlertFilters.regionId && `område ${weeklyAlertFilters.regionId}`,
-              weeklyAlertFilters.municipalityCode &&
-                `kommune ${weeklyAlertFilters.municipalityCode}`,
-              weeklyAlertFilters.days != null &&
-                (weeklyAlertFilters.days === 0
-                  ? "alle firma"
-                  : `siste ${weeklyAlertFilters.days} d`),
-            ]
-              .filter(Boolean)
-              .join(" · ") || "standard"}
+        {weeklyAlertEnabled && (
+          <WeeklyAlertFilters
+            filters={weeklyAlertFilters}
+            municipalities={municipalities}
+            onChange={setWeeklyAlertFilters}
+          />
+        )}
+        {!weeklyAlertEnabled && Object.keys(weeklyAlertFilters).length > 0 && (
+          <p className="scan-glass-muted text-[11px]">
+            Lagret filter (aktiveres når varsel er på):{" "}
+            {formatWeeklyAlertSummary(weeklyAlertFilters)}
           </p>
         )}
-      </section>
+      </SettingsCard>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-          <Webhook className="h-4 w-4 text-brand-gold" />
-          Webhook ved CSV-eksport
-        </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Når du eksporterer valgte firma til CSV, kan vi sende JSON til denne URL-en (Zapier,
-          Make, eget system).
+      <SettingsCard title="Integrasjoner" icon={Webhook}>
+        <p className="scan-glass-muted text-sm">
+          Ved CSV-eksport kan JSON sendes til Zapier, Make eller eget system.
         </p>
         <input
           value={webhookUrl}
           onChange={(e) => setWebhookUrl(e.target.value)}
           placeholder="https://hooks.example.com/nylead"
-          className="scan-input mt-3 w-full"
+          className="scan-input w-full"
+          autoComplete="off"
         />
-      </section>
+      </SettingsCard>
 
-      <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          <BookOpen className="h-4 w-4" />
-          Leveringsguide
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
+      <SettingsCard title="Hjelp" icon={BookOpen}>
+        <p className="scan-glass-muted text-sm">
           Tips om SPF, sendinggrenser og søppelpost.{" "}
-          <Link href="/app/leveringsguide" className="font-semibold text-sky-700 underline">
-            Les guiden
+          <Link
+            href="/app/leveringsguide"
+            className="font-semibold text-sky-300 underline hover:text-sky-200"
+          >
+            Les leveringsguiden
           </Link>
         </p>
-      </section>
+      </SettingsCard>
 
-      <button
-        type="button"
-        onClick={saveSettings}
-        disabled={saving}
-        className="btn-primary px-6 disabled:opacity-50"
-      >
-        {saving ? "Lagrer…" : "Lagre innstillinger"}
-      </button>
-      {saveMsg && (
-        <p className="text-sm text-slate-600">{saveMsg}</p>
-      )}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button
+          type="button"
+          onClick={saveSettings}
+          disabled={saving}
+          className="scan-btn-primary min-h-[44px] px-6 disabled:opacity-50"
+        >
+          {saving ? "Lagrer…" : "Lagre innstillinger"}
+        </button>
+        {saveMsg && (
+          <p className="scan-glass-muted text-sm" role="status">
+            {saveMsg}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

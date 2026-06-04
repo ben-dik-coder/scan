@@ -37,8 +37,8 @@ type Props = {
   filters: FilterState;
   municipalities: Array<{ code: string; name: string; count: number }>;
   onChange: (filters: FilterState) => void;
-  /** sidebar = vertikal panel (desktop), stack = inne i hovedflate */
-  layout?: "stack" | "sidebar";
+  /** sidebar = desktop-panel, mobile-bar = alltid synlig på mobil, stack = full rad */
+  layout?: "stack" | "sidebar" | "mobile-bar";
 };
 
 export function CompanyFilters({
@@ -52,9 +52,12 @@ export function CompanyFilters({
   const matchedProfession = professionSearchLabel(professionDraft);
 
   const isSidebar = layout === "sidebar";
+  const isMobileBar = layout === "mobile-bar";
   const gridClass = isSidebar
     ? "flex flex-col gap-2"
-    : "grid gap-2 sm:grid-cols-2 lg:grid-cols-4";
+    : isMobileBar
+      ? "grid gap-2 sm:grid-cols-2"
+      : "grid gap-2 sm:grid-cols-2 lg:grid-cols-4";
 
   useEffect(() => {
     setProfessionDraft(filters.professionSearch);
@@ -76,57 +79,99 @@ export function CompanyFilters({
     ? municipalities.filter((m) => kommuneBelongsToRegion(m.code, filters.regionId))
     : municipalities;
 
+  const regionField = (
+    <label className="flex flex-col gap-0.5">
+      <span className="scan-label">
+        <MapPin className="h-3.5 w-3.5 text-brand-gold" />
+        Område
+      </span>
+      <select
+        value={filters.regionId}
+        onChange={(e) =>
+          onChange({
+            ...filters,
+            regionId: e.target.value,
+            municipalityCode: "",
+          })
+        }
+        className="scan-input"
+      >
+        {REGIONS.map((r) => (
+          <option key={r.id || "alle"} value={r.id}>
+            {r.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const municipalityField = (
+    <label className="flex flex-col gap-0.5">
+      <span className="scan-label">
+        <MapPinned className="h-3.5 w-3.5 text-brand-gold" />
+        Kommune
+      </span>
+      <select
+        value={filters.municipalityCode}
+        onChange={(e) => onChange({ ...filters, municipalityCode: e.target.value })}
+        className="scan-input"
+      >
+        <option value="">
+          {filters.regionId ? "Alle i området" : "Alle kommuner"}
+        </option>
+        {kommunerInRegion.map((m) => (
+          <option key={m.code} value={m.code}>
+            {m.name}
+            {m.count > 0 ? ` (${m.count})` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const professionField = (
+    <label className={`flex flex-col gap-0.5 ${isMobileBar ? "sm:col-span-2" : ""}`}>
+      <span className="scan-label">
+        <Briefcase className="h-3.5 w-3.5 text-brand-gold" />
+        Søk yrke
+      </span>
+      <input
+        type="search"
+        value={professionDraft}
+        onChange={(e) => setProfessionDraft(e.target.value)}
+        placeholder="F.eks. rørlegger, frisør, elektriker…"
+        className="scan-input"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {professionDraft.trim().length >= 2 && (
+        <span className="scan-glass-muted text-[10px]">
+          {matchedProfession
+            ? `Finner: ${matchedProfession}`
+            : "Søker i navn og bransje — prøv et annet ord hvis du får lite treff"}
+        </span>
+      )}
+    </label>
+  );
+
+  if (isMobileBar) {
+    return (
+      <div className={gridClass}>
+        {regionField}
+        {municipalityField}
+        {professionField}
+      </div>
+    );
+  }
+
   const hasAdvancedSocial =
     filters.facebookPresence !== "all" || filters.instagramPresence !== "all";
 
   return (
     <div className="space-y-2">
       <div className={gridClass}>
-        <label className="flex flex-col gap-0.5">
-          <span className="scan-label">
-            <MapPin className="h-3.5 w-3.5 text-brand-gold" />
-            Område
-          </span>
-          <select
-            value={filters.regionId}
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                regionId: e.target.value,
-                municipalityCode: "",
-              })
-            }
-            className="scan-input"
-          >
-            {REGIONS.map((r) => (
-              <option key={r.id || "alle"} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-0.5">
-          <span className="scan-label">
-            <MapPinned className="h-3.5 w-3.5 text-brand-gold" />
-            Kommune
-          </span>
-          <select
-            value={filters.municipalityCode}
-            onChange={(e) => onChange({ ...filters, municipalityCode: e.target.value })}
-            className="scan-input"
-          >
-            <option value="">
-              {filters.regionId ? "Alle i området" : "Alle kommuner"}
-            </option>
-            {kommunerInRegion.map((m) => (
-              <option key={m.code} value={m.code}>
-                {m.name}
-                {m.count > 0 ? ` (${m.count})` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        {regionField}
+        {municipalityField}
 
         <label className="flex flex-col gap-0.5">
           <span className="scan-label">
@@ -165,28 +210,7 @@ export function CompanyFilters({
       </div>
 
       <div className={isSidebar ? "pt-1" : "scan-glass-divider border-t pt-2"}>
-        <label className="flex flex-col gap-0.5">
-          <span className="scan-label">
-            <Briefcase className="h-3.5 w-3.5 text-brand-gold" />
-            Søk yrke
-          </span>
-          <input
-            type="search"
-            value={professionDraft}
-            onChange={(e) => setProfessionDraft(e.target.value)}
-            placeholder="F.eks. rørlegger, frisør, elektriker…"
-            className="scan-input"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          {professionDraft.trim().length >= 2 && (
-            <span className="scan-glass-muted text-[10px]">
-              {matchedProfession
-                ? `Finner: ${matchedProfession}`
-                : "Søker i navn og bransje — prøv et annet ord hvis du får lite treff"}
-            </span>
-          )}
-        </label>
+        {professionField}
       </div>
 
       <div

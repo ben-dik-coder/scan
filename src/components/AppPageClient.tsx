@@ -14,6 +14,7 @@ import {
   countActiveMarketFilters,
 } from "@/components/scan/ScanActiveFilterChips";
 import { ScanFilterSheet } from "@/components/scan/ScanFilterSheet";
+import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
 import {
   ScanWorkflowSteps,
   type WorkflowStep,
@@ -394,6 +395,12 @@ export function AppPageClient(props: Props) {
 
   const selectedCompanies = companies.filter((c) => selected.has(c.orgnr));
 
+  const googleSearchQuery = useMemo(() => {
+    if (selectedCompanies.length !== 1) return "";
+    const c = selectedCompanies[0];
+    return [c.name, c.municipality_name].filter(Boolean).join(" ").trim();
+  }, [selectedCompanies]);
+
   function scanSelectedWithGoogle() {
     setScanSelectionMessage(null);
     const result = scanCompanies(selectedCompanies, { preserveOrder: true });
@@ -505,6 +512,18 @@ export function AppPageClient(props: Props) {
           onChange={applyFilters}
         />
 
+        <div className="scan-mobile-market-filters scan-glass-divider border-t px-2.5 py-2.5 lg:hidden">
+          <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
+            Område og yrke
+          </p>
+          <CompanyFilters
+            layout="mobile-bar"
+            filters={filters}
+            municipalities={props.municipalities}
+            onChange={applyFilters}
+          />
+        </div>
+
         <div className="scan-glass-divider flex flex-col border-t lg:flex-row lg:gap-0">
           <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/10 p-3 lg:block lg:w-[17.5rem] xl:w-[19rem]">
             <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
@@ -611,6 +630,7 @@ export function AppPageClient(props: Props) {
                   {scanSelectionMessage}
                 </p>
               )}
+              <ScanGooglePanel searchQuery={googleSearchQuery} />
             </div>
 
             {props.dataSource === "brreg" &&

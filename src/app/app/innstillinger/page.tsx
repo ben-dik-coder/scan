@@ -1,14 +1,19 @@
 import { Suspense } from "react";
+import { getSessionUser } from "@/lib/auth";
 import InnstillingerClient from "./InnstillingerClient";
 
-export default function InnstillingerPage() {
+export default async function InnstillingerPage() {
+  const user = await getSessionUser();
+
   return (
     <Suspense
       fallback={
-        <p className="text-sm text-slate-600">Laster innstillinger…</p>
+        <div className="scan-glass-kommand px-3 py-6">
+          <p className="scan-glass-muted text-sm">Laster innstillinger…</p>
+        </div>
       }
     >
-      <InnstillingerClient />
+      <InnstillingerClient userEmail={user?.email ?? null} />
     </Suspense>
   );
 }
