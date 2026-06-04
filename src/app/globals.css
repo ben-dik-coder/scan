@@ -1193,26 +1193,45 @@ body {
     background: rgba(255, 255, 255, 0.03);
   }
 
-  /* Arbeidskø: badges og kort må beholde mørk tekst (ikke glass-overstyring) */
+  /* Arbeidskø: kort litt mørkere enn sidebakgrunn (#1e3a5f) */
   .scan-glass-shell .ko-queue-card {
-    background: rgba(255, 255, 255, 0.94) !important;
-    border-color: rgba(148, 163, 184, 0.35) !important;
-    color: #0f172a;
+    background: rgba(11, 22, 42, 0.88) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f8fafc;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .scan-glass-shell .ko-queue-card [class~="text-slate-900"] {
-    color: #0f172a !important;
+    color: #f8fafc !important;
   }
 
   .scan-glass-shell .ko-queue-card [class~="text-slate-500"],
-  .scan-glass-shell .ko-queue-card [class~="text-slate-600"],
-  .scan-glass-shell .ko-queue-card [class~="text-slate-700"],
-  .scan-glass-shell .ko-queue-card [class~="text-slate-800"] {
-    color: #475569 !important;
+  .scan-glass-shell .ko-queue-card [class~="text-slate-600"] {
+    color: #94a3b8 !important;
   }
 
+  .scan-glass-shell .ko-queue-card [class~="text-slate-700"],
   .scan-glass-shell .ko-queue-card [class~="text-slate-800"] {
-    color: #1e293b !important;
+    color: #cbd5e1 !important;
+  }
+
+  .scan-glass-shell .ko-queue-card [class~="border-slate-200"] {
+    border-color: rgba(255, 255, 255, 0.14) !important;
+  }
+
+  .scan-glass-shell .ko-queue-card [class~="hover:bg-slate-50"]:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .scan-glass-shell .ko-queue-card [class~="bg-sky-100"] {
+    background: rgba(56, 189, 248, 0.18) !important;
+    color: #7dd3fc !important;
+  }
+
+  .scan-glass-shell .ko-queue-section-toggle {
+    background: rgba(11, 22, 42, 0.72) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #e2e8f0 !important;
   }
 
   .scan-glass-shell .ko-queue-badge {
@@ -1225,23 +1244,23 @@ body {
   }
 
   .scan-glass-shell .ko-queue-badge--amber {
-    background: #fde68a !important;
-    color: #78350f !important;
+    background: rgba(251, 191, 36, 0.2) !important;
+    color: #fcd34d !important;
   }
 
   .scan-glass-shell .ko-queue-badge--emerald {
-    background: #a7f3d0 !important;
-    color: #065f46 !important;
+    background: rgba(52, 211, 153, 0.2) !important;
+    color: #6ee7b7 !important;
   }
 
   .scan-glass-shell .ko-queue-badge--email {
-    background: #bfdbfe !important;
-    color: #1e3a8a !important;
+    background: rgba(56, 189, 248, 0.2) !important;
+    color: #7dd3fc !important;
   }
 
   .scan-glass-shell .ko-queue-badge--status {
-    background: #e2e8f0 !important;
-    color: #0f172a !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: #cbd5e1 !important;
   }
 
   /* Sterkere kontrast for lys tekst på glass-bakgrunn */

@@ -61,26 +61,26 @@ function QueueCard({
   const isContacted = item.status === "kontaktet";
 
   return (
-    <li className="ko-queue-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <li className="ko-queue-card rounded-xl border border-white/10 bg-slate-950/45 p-4 shadow-sm backdrop-blur-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           {rank != null && (
             <p className="text-xs font-semibold text-slate-400">#{rank}</p>
           )}
-          <h2 className="font-semibold text-slate-900">{item.name}</h2>
-          <p className="text-xs text-slate-500">
+          <h2 className="font-semibold text-slate-100">{item.name}</h2>
+          <p className="text-xs text-slate-400">
             {item.municipalityName ?? "—"}
             {item.registeredAt && ` · ${formatRegisteredDate(item.registeredAt)}`}
             {item.daysSinceRegistration != null &&
               ` · ${item.daysSinceRegistration} d siden`}
           </p>
           {item.dagligLeder && (
-            <p className="mt-0.5 text-xs text-slate-600">
+            <p className="mt-0.5 text-xs text-slate-300">
               Daglig leder: {item.dagligLeder}
             </p>
           )}
         </div>
-        <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-bold text-sky-800">
+        <span className="rounded-full bg-sky-500/20 px-2.5 py-0.5 text-xs font-bold text-sky-200">
           {item.queueScore} poeng
         </span>
       </div>
@@ -104,7 +104,7 @@ function QueueCard({
         {item.email && (
           <a
             href={`mailto:${item.email}`}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/8"
           >
             <Mail className="h-3.5 w-3.5" />
             E-post
@@ -113,7 +113,7 @@ function QueueCard({
         {item.phone && (
           <a
             href={`tel:${item.phone}`}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/8"
           >
             <Phone className="h-3.5 w-3.5" />
             Ring
@@ -134,7 +134,7 @@ function QueueCard({
           type="button"
           onClick={() => onRemoveFromQueue(item.orgnr)}
           disabled={isBusy}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/8 disabled:opacity-50"
         >
           <UserMinus className="h-3.5 w-3.5" />
           {actionOrgnr === item.orgnr ? "Lagrer…" : "Fjern fra kø"}
@@ -143,7 +143,7 @@ function QueueCard({
           type="button"
           onClick={() => onRequestDelete(item)}
           disabled={isBusy}
-          className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-50"
         >
           <Trash2 className="h-3.5 w-3.5" />
           Slett
@@ -320,21 +320,21 @@ export function KoClient() {
   const hasAnyItems = nyItems.length > 0 || contactedItems.length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="scan-glass-kommand space-y-6">
       <header>
         <div className="flex items-center gap-2 text-brand-gold">
           <ListTodo className="h-5 w-5" />
           <span className="text-xs font-semibold uppercase tracking-wide">Arbeidskø</span>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold text-slate-900">
+        <h1 className="scan-glass-strong mt-2 font-display text-2xl font-bold">
           Ring / send i dag
         </h1>
-        <p className="mt-2 max-w-xl text-sm text-slate-600">
+        <p className="scan-glass-muted mt-2 max-w-xl text-sm">
           Alle firma i køen, rangert etter score, hvor nye de er, telefon og nettside-sjekk.
           Start her hver morgen.
         </p>
         {!loading && hasAnyItems && (
-          <p className="mt-2 text-sm font-semibold text-slate-800">
+          <p className="scan-glass-strong mt-2 text-sm font-semibold">
             {nyItems.length} firma å ringe
             {contactedItems.length > 0 &&
               ` · ${contactedItems.length} kontaktet i dag`}
@@ -344,7 +344,7 @@ export function KoClient() {
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 hover:underline"
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-sky-300 hover:text-sky-200 hover:underline"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           Oppdater
@@ -358,20 +358,20 @@ export function KoClient() {
       )}
 
       {showInitialLoading ? (
-        <p className="text-sm text-slate-500">Laster arbeidskø…</p>
+        <p className="scan-glass-muted text-sm">Laster arbeidskø…</p>
       ) : !loading && !hasAnyItems ? (
-        <p className="text-sm text-slate-500">
+        <p className="scan-glass-muted text-sm">
           Ingen leads i køen akkurat nå.{" "}
-          <Link href="/app" className="font-semibold text-sky-700 underline">
+          <Link href="/app" className="font-semibold text-sky-300 underline hover:text-sky-200">
             Skann markedet
           </Link>
         </p>
       ) : (
         <div className="space-y-6">
           {nyItems.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <p className="scan-glass-muted text-sm">
               Ingen nye firma å ringe nå. Se kontaktede under, eller{" "}
-              <Link href="/app" className="font-semibold text-sky-700 underline">
+              <Link href="/app" className="font-semibold text-sky-300 underline hover:text-sky-200">
                 skann markedet
               </Link>
               .
@@ -398,7 +398,7 @@ export function KoClient() {
               <button
                 type="button"
                 onClick={() => setContactedOpen((o) => !o)}
-                className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-sm font-semibold text-slate-800"
+                className="ko-queue-section-toggle flex w-full items-center gap-2 rounded-lg border border-white/10 bg-slate-950/40 px-4 py-2.5 text-left text-sm font-semibold text-slate-200"
               >
                 <ChevronDown
                   className={cn(
