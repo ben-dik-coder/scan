@@ -6,6 +6,7 @@ import { regionLabel } from "@/lib/constants/regions";
 import { industryGroupLabel } from "@/lib/constants/industries";
 import { professionSearchLabel } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion } from "@/lib/constants/regions";
+import { buildScanDeepLink } from "@/lib/alerts/scan-deep-link";
 
 type AlertFilters = Partial<FilterState>;
 
@@ -89,14 +90,15 @@ export async function runWeeklyAlerts(): Promise<{
 
   if (error) throw new Error(error.message);
 
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  /** Minst 4 dager mellom varsler (cron mandag + torsdag). */
+  const defaultSince = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
   let sent = 0;
   let skipped = 0;
   const errors: string[] = [];
 
   for (const row of settings ?? []) {
     const filters = (row.weekly_alert_filters ?? {}) as AlertFilters;
-    const sinceIso = row.weekly_alert_last_sent_at ?? weekAgo;
+    const sinceIso = row.weekly_alert_last_sent_at ?? defaultSince;
 
     try {
       const count = await countNewCompanies(filters, sinceIso);
@@ -116,15 +118,23 @@ export async function runWeeklyAlerts(): Promise<{
       }
 
       const summary = filterSummary(filters);
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://nylead.no";
+      const scanUrl = buildScanDeepLink(filters, {
+        modus: "websites",
+        web: "without",
+      });
+      const queueUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://nylead.no").replace(/\/$/, "")}/app/ko`;
       const subject = `${count} nye firma i ditt filter — NyLead`;
       const html = `
         <div style="font-family:sans-serif;line-height:1.6;max-width:520px">
-          <h2 style="margin:0 0 12px">Ukentlig oppdatering</h2>
-          <p>Det er <strong>${count}</strong> nye firma som matcher filteret ditt:</p>
+          <h2 style="margin:0 0 12px">Nye leads i målgruppen din</h2>
+          <p>Det er <strong>${count}</strong> nye firma siden forrige varsel:</p>
           <p style="color:#555">${summary}</p>
-          <p><a href="${appUrl}/app">Åpne markedsanalyse</a> · <a href="${appUrl}/app/ko">Daglig arbeidskø</a></p>
-          <p style="font-size:12px;color:#888">Du kan slå av varselet under Innstillinger.</p>
+          <p>
+            <a href="${scanUrl}"><strong>Åpne Skann</strong></a>
+            (kjør Google-sjekk og se uten nettside)
+            · <a href="${queueUrl}">Arbeidskø</a>
+          </p>
+          <p style="font-size:12px;color:#888">Du får varsel ca. 2 ganger i uken. Slå av under Innstillinger.</p>
         </div>
       `;
 

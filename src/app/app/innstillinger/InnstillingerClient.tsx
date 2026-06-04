@@ -193,7 +193,8 @@ export default function InnstillingerClient({
 
       <SettingsCard title="Varsler" icon={Bell}>
         <p className="scan-glass-muted text-sm">
-          Hver mandag får du en e-post med nye firma som matcher filteret under.
+          Ca. 2 ganger i uken (mandag og torsdag) får du e-post når nye firma matcher filteret.
+          Lenken åpner Skann med «uten nettside».
         </p>
         <label className="app-settings-checkbox flex cursor-pointer items-center gap-3 text-sm">
           <input
@@ -202,7 +203,7 @@ export default function InnstillingerClient({
             onChange={(e) => setWeeklyAlertEnabled(e.target.checked)}
             className="h-4 w-4 rounded accent-sky-500"
           />
-          <span className="scan-glass-strong">Slå på ukentlig varsel</span>
+          <span className="scan-glass-strong">Slå på e-postvarsel</span>
         </label>
         {weeklyAlertEnabled && (
           <>
@@ -238,15 +239,33 @@ export default function InnstillingerClient({
 
       <SettingsCard title="Integrasjoner" icon={Webhook}>
         <p className="scan-glass-muted text-sm">
-          Ved CSV-eksport kan JSON sendes til Zapier, Make eller eget system.
+          JSON sendes til Zapier, Make eller CRM når du <strong className="scan-glass-strong">legger et lead i arbeidskø</strong>{" "}
+          (status «ny»), og ved CSV-eksport hvis du huker av der.
         </p>
         <input
           value={webhookUrl}
           onChange={(e) => setWebhookUrl(e.target.value)}
-          placeholder="https://hooks.example.com/nylead"
+          placeholder="https://hooks.zapier.com/hooks/catch/…"
           className="scan-input w-full"
           autoComplete="off"
         />
+        <details className="scan-glass-muted text-[11px] leading-snug">
+          <summary className="cursor-pointer font-semibold text-sky-300 hover:text-sky-200">
+            Slik kobler du Zapier
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-4">
+            <li>Zapier → Webhooks by Zapier → Catch Hook</li>
+            <li>Lim URL inn over og lagre</li>
+            <li>Legg et firma i arbeidskø i NyLead (test)</li>
+            <li>Zapier → action (HubSpot, Pipedrive, Google Sheets…)</li>
+          </ol>
+          <p className="mt-2">
+            JSON-felt: <code className="text-sky-200">event</code> ={" "}
+            <code className="text-sky-200">lead.queued</code>, pluss{" "}
+            <code className="text-sky-200">lead.name</code>,{" "}
+            <code className="text-sky-200">lead.email</code> osv.
+          </p>
+        </details>
       </SettingsCard>
 
       <SettingsCard title="Hjelp" icon={BookOpen}>

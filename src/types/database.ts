@@ -76,6 +76,7 @@ export type UserSettings = {
   weekly_alert_enabled: boolean;
   weekly_alert_filters: Record<string, unknown>;
   weekly_alert_last_sent_at: string | null;
+  trial_nudges_sent?: Record<string, boolean>;
   created_at: string;
   updated_at: string;
 };

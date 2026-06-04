@@ -17,6 +17,7 @@ import { ScanFilterSheet } from "@/components/scan/ScanFilterSheet";
 import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
 import { ScanLeadModes } from "@/components/scan/ScanLeadModes";
 import { ScanSavedAudiences } from "@/components/scan/ScanSavedAudiences";
+import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
 import {
   ScanWorkflowSteps,
   type WorkflowStep,
@@ -120,6 +121,13 @@ export function AppPageClient(props: Props) {
   useEffect(() => {
     saveScanSocialOptions(socialOptions);
   }, [socialOptions]);
+
+  useEffect(() => {
+    const web = searchParams.get("web");
+    if (web === "without") setListFilter("no_website");
+    else if (web === "with") setListFilter("with_website");
+    else if (web === "not_scanned") setListFilter("not_scanned");
+  }, [searchParams]);
 
   const filters = props.initialFilters;
   const companies =
@@ -626,6 +634,10 @@ export function AppPageClient(props: Props) {
   return (
     <div className="scan-glass-kommand w-full max-w-none space-y-2 pb-6 lg:space-y-2.5">
       <section className="scan-surface-full overflow-hidden">
+        <TrialNudgeBanner
+          noWebsiteCount={noWebsiteCount}
+          withEmailCount={withEmailCount}
+        />
         <header className="scan-glass-header p-2.5 lg:p-3">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
             <div className="min-w-0">

@@ -6,7 +6,11 @@
     },
     {
       "path": "/api/cron/weekly-alerts",
-      "schedule": "0 7 * * 1"
+      "schedule": "0 7 * * 1,4"
+    },
+    {
+      "path": "/api/cron/trial-nudges",
+      "schedule": "0 8 * * *"
     }
   ]
 }

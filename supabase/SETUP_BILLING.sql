@@ -179,6 +179,7 @@ create table if not exists public.user_settings (
   weekly_alert_enabled boolean not null default false,
   weekly_alert_filters jsonb not null default '{}'::jsonb,
   weekly_alert_last_sent_at timestamptz,
+  trial_nudges_sent jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

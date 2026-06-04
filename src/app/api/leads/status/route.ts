@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { upsertUserLead } from "@/lib/sales/activities";
+import { notifyLeadQueued } from "@/lib/webhooks/dispatch";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
@@ -38,7 +40,25 @@ export async function POST(request: Request) {
     updates.last_contacted_at = new Date().toISOString();
   }
 
+  let shouldNotifyQueue = false;
+  if (status === "ny") {
+    const supabase = createServiceClient();
+    const { data: existing } = await supabase
+      .from("user_leads")
+      .select("status")
+      .eq("user_id", user.id)
+      .eq("orgnr", orgnr)
+      .maybeSingle();
+    shouldNotifyQueue = !existing || existing.status !== "ny";
+  }
+
   await upsertUserLead(user.id, orgnr, updates);
+
+  if (shouldNotifyQueue) {
+    void notifyLeadQueued(user.id, orgnr).catch((err) => {
+      console.warn("[webhook] lead.queued failed:", err);
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
