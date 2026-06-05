@@ -510,7 +510,7 @@ body {
   /* Fixed pseudo-element: background-attachment:fixed is broken on iOS/mobile Safari */
   html.app-glass-theme {
     min-height: 100%;
-    background-color: #1e3a5f;
+    background-color: #234a73;
   }
 
   html.app-glass-theme::before {
@@ -518,7 +518,7 @@ body {
     position: fixed;
     inset: 0;
     z-index: -1;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%);
+    background: linear-gradient(135deg, #17345a 0%, #234a73 48%, #0f6f96 100%);
     pointer-events: none;
   }
 
@@ -557,9 +557,9 @@ body {
     --scan-glass-muted: #e2e8f0;
     --scan-glass-accent: #38bdf8;
     --scan-glass-text-shadow: 0 1px 3px rgba(2, 6, 23, 0.55);
-    --scan-glass-border: rgba(255, 255, 255, 0.25);
-    --scan-glass-surface: rgba(255, 255, 255, 0.1);
-    --scan-glass-chip: rgba(255, 255, 255, 0.08);
+    --scan-glass-border: rgba(255, 255, 255, 0.3);
+    --scan-glass-surface: rgba(255, 255, 255, 0.13);
+    --scan-glass-chip: rgba(255, 255, 255, 0.11);
     --scan-glass-radius: 16px;
   }
 
@@ -780,10 +780,10 @@ body {
     --scan-glass-accent: #38bdf8;
     --scan-glass-accent-text: #0f172a;
     --scan-glass-text-shadow: 0 1px 3px rgba(2, 6, 23, 0.55);
-    --scan-glass-border: rgba(255, 255, 255, 0.25);
-    --scan-glass-surface: rgba(255, 255, 255, 0.1);
-    --scan-glass-surface-subtle: rgba(255, 255, 255, 0.07);
-    --scan-glass-chip: rgba(255, 255, 255, 0.08);
+    --scan-glass-border: rgba(255, 255, 255, 0.3);
+    --scan-glass-surface: rgba(255, 255, 255, 0.13);
+    --scan-glass-surface-subtle: rgba(255, 255, 255, 0.1);
+    --scan-glass-chip: rgba(255, 255, 255, 0.11);
     --scan-glass-radius: 16px;
     color: var(--scan-glass-text);
   }
@@ -808,6 +808,14 @@ body {
     background: var(--scan-glass-surface-subtle);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+  }
+
+  .scan-glass-kommand .scan-guided-action {
+    border-color: rgba(56, 189, 248, 0.34);
+    background:
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 42%),
+      rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 40px -28px rgba(14, 165, 233, 0.7);
   }
 
   .scan-glass-kommand .scan-surface,
@@ -924,6 +932,7 @@ body {
     border-radius: calc(var(--scan-glass-radius) - 4px);
     background: var(--scan-glass-accent);
     color: var(--scan-glass-accent-text);
+    box-shadow: 0 8px 24px rgba(14, 165, 233, 0.28);
   }
 
   .scan-glass-kommand .scan-btn-primary:hover {

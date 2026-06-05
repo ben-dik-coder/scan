@@ -42,7 +42,7 @@ export function ScanLeadModes({ activeMode, onSelect }: Props) {
                 <span className="scan-glass-strong text-xs font-semibold">
                   {meta.title}
                 </span>
-                {id === "websites" && (
+                {id === "all_new" && (
                   <span className="rounded-full bg-sky-400/25 px-1.5 py-0.5 text-[9px] font-bold text-sky-100">
                     Anbefalt
                   </span>

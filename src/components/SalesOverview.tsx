@@ -21,14 +21,23 @@ export function SalesOverview({ stats }: { stats: SalesDashboardStats }) {
         title="Oversikt"
         description="Kommandosenter — se fremdrift og hva du bør gjøre nå"
         action={
-          <button
-            type="button"
-            onClick={openOnboarding}
-            className="btn-secondary inline-flex w-full items-center justify-center gap-1.5 text-xs sm:w-auto sm:px-4 sm:py-2.5 sm:text-sm"
-          >
-            <Sparkles className="h-4 w-4" />
-            Kom i gang
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Link
+              href="/app/ko"
+              className="btn-primary inline-flex w-full items-center justify-center gap-1.5 text-xs sm:w-auto sm:px-4 sm:py-2.5 sm:text-sm"
+            >
+              Jobb i køen
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <button
+              type="button"
+              onClick={openOnboarding}
+              className="btn-secondary inline-flex w-full items-center justify-center gap-1.5 text-xs sm:w-auto sm:px-4 sm:py-2.5 sm:text-sm"
+            >
+              <Sparkles className="h-4 w-4" />
+              Kom i gang
+            </button>
+          </div>
         }
       />
 

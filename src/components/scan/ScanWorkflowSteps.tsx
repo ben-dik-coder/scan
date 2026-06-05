@@ -12,9 +12,9 @@ type Props = {
 };
 
 const STEPS = [
-  { id: 1 as const, label: "Velg firma", short: "Velg", icon: Users },
-  { id: 2 as const, label: "Google-sjekk", short: "Sjekk", icon: Search },
-  { id: 3 as const, label: "Legg i kø", short: "Kø", icon: ListTodo },
+  { id: 1 as const, label: "Velg leads", short: "Velg", icon: Users },
+  { id: 2 as const, label: "Hent kontakt", short: "Kontakt", icon: Search },
+  { id: 3 as const, label: "Jobb i kø", short: "Kø", icon: ListTodo },
 ];
 
 export function ScanWorkflowSteps({ activeStep, selectedCount, onStepClick }: Props) {
@@ -63,8 +63,8 @@ export function ScanWorkflowSteps({ activeStep, selectedCount, onStepClick }: Pr
               </span>
               <span className="scan-glass-muted block text-[10px]">
                 {step.id === 1 && "Huk av i listen"}
-                {step.id === 2 && "Maks 10 om gangen"}
-                {step.id === 3 && "Til arbeidskøen"}
+                {step.id === 2 && "Tlf, e-post og nett"}
+                {step.id === 3 && "Ring eller send"}
               </span>
             </span>
             {index < STEPS.length - 1 && (

@@ -45,13 +45,14 @@ import type { LeadStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 import {
   Building2,
+  CheckCircle2,
   Download,
   Globe,
   Globe2,
   LayoutGrid,
   List,
   ListTodo,
-  Mail,
+  PhoneCall,
   Radar,
   Search,
   Table2,
@@ -211,6 +212,22 @@ export function AppPageClient(props: Props) {
   const withEmailCount = useMemo(
     () => companies.filter((c) => c.has_email).length,
     [companies]
+  );
+
+  const withContactCount = useMemo(
+    () =>
+      companies.filter((c) => {
+        const scan = websiteScans.get(c.orgnr);
+        return Boolean(
+          c.has_email ||
+            c.email ||
+            c.phone ||
+            c.mobile ||
+            scan?.enrichedPhone ||
+            scan?.enrichedEmail
+        );
+      }).length,
+    [companies, websiteScans]
   );
 
   const companyListKey = useMemo(
@@ -707,9 +724,9 @@ export function AppPageClient(props: Props) {
         <header className="scan-glass-header p-2.5 lg:p-3">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
             <div className="min-w-0">
-              <h1 className="scan-glass-title">Skann markedet</h1>
+              <h1 className="scan-glass-title">Finn klare leads</h1>
               <p className="scan-glass-subtitle">
-                Velg firma → sjekk → legg i arbeidskø
+                Velg marked → hent kontakt → ring eller send
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -722,8 +739,8 @@ export function AppPageClient(props: Props) {
                   : `${companies.length} firma`}
               </span>
               <span className="scan-chip">
-                <Mail className="h-3 w-3 text-brand-gold" />
-                {withEmailCount} med e-post
+                <PhoneCall className="h-3 w-3 text-brand-gold" />
+                {withContactCount} med kontakt
               </span>
             </div>
           </div>
@@ -744,6 +761,51 @@ export function AppPageClient(props: Props) {
           selectedCount={selected.size}
           onStepClick={handleWorkflowStepClick}
         />
+
+        <div className="scan-guided-action mx-2.5 mb-2 rounded-2xl border px-3 py-3 lg:mx-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+                Dagens oppgave
+              </p>
+              <h2 className="mt-1 text-base font-semibold text-white">
+                Finn firma med kontaktinfo, sjekk dem, legg de beste i køen.
+              </h2>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium text-slate-200">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-1">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-300" />
+                  {withContactCount} med kontakt
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-1">
+                  <CheckCircle2 className="h-3 w-3 text-sky-300" />
+                  {noWebsiteCount} uten nettside
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-1">
+                  <CheckCircle2 className="h-3 w-3 text-violet-300" />
+                  {selected.size} valgt
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={selectAllWithEmail}
+                disabled={withEmailCount === 0}
+                className="scan-btn-ghost min-h-[40px] text-xs font-semibold disabled:opacity-40"
+              >
+                Velg med e-post
+              </button>
+              <button
+                type="button"
+                onClick={checkAndAddToQueue}
+                disabled={scanning || addingToQueue || withEmailCount === 0}
+                className="scan-btn-primary min-h-[40px] px-4 text-xs font-semibold disabled:opacity-40"
+              >
+                {addingToQueue ? "Legger i kø…" : "Sjekk topp 10 og legg i kø"}
+              </button>
+            </div>
+          </div>
+        </div>
 
         <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
 

@@ -8,16 +8,16 @@ export const SCAN_LEAD_MODE_LABELS: Record<
   { title: string; description: string }
 > = {
   websites: {
-    title: "Selger nettsider",
-    description: "Nye firma i ditt område — sjekk hvem som mangler nettside",
+    title: "Trenger nettside",
+    description: "Sterkt for web/design — finn firma uten ordentlig nettside",
   },
   profession: {
-    title: "Yrke i mitt område",
-    description: "Velg yrke under — vi henter matchende firma",
+    title: "Bransje i mitt område",
+    description: "Regnskap, IT, markedsføring eller andre lokale B2B-leads",
   },
   all_new: {
     title: "Alle nye firma",
-    description: "Siste 30 dager i valgt område",
+    description: "Nye firma siste 30 dager — med kontakt når vi finner det",
   },
 };
 
