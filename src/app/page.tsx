@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { HeroAudienceChips } from "@/components/marketing/HeroAudienceChips";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
+import { LandingSourcesSection } from "@/components/marketing/LandingSourcesSection";
+import { HeroValueStrip } from "@/components/marketing/HeroValueStrip";
 import {
   ComparisonSection,
   FaqSection,
@@ -17,10 +20,7 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Container } from "@/components/ui/Container";
 import { FEATURES, FEATURES_SECTION, HERO, TRUST } from "@/content/landing";
-import { WEBBYRA_MARKET_PRESET } from "@/lib/constants/market";
 import { site } from "@/lib/site";
-
-const WEBBYRA_DEMO_HREF = `/app?bransje=${WEBBYRA_MARKET_PRESET.industryGroup}&dager=${WEBBYRA_MARKET_PRESET.days}`;
 
 export default function HomePage() {
   return (
@@ -44,25 +44,29 @@ export default function HomePage() {
                 <span className="block text-brand-gold">{HERO.titleLine2}</span>
               </h1>
 
-              <p className="mt-5 max-w-lg font-sans text-base font-medium leading-relaxed text-slate-600 sm:mt-8 sm:text-lg">
+              <HeroValueStrip className="mt-6 sm:mt-8" />
+
+              <p className="mt-5 max-w-lg font-sans text-base font-medium leading-relaxed text-slate-600 sm:mt-6 sm:text-lg">
                 {HERO.tagline}
               </p>
 
-              <p className="mt-4 max-w-xl font-sans text-sm leading-relaxed text-slate-500 sm:text-base">
-                {HERO.intro}
-              </p>
+              <HeroAudienceChips className="mt-4" />
 
-              <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap">
+              <div className="mt-8 flex flex-col gap-3 sm:mt-10">
                 <Link href="/app" className="btn-primary w-full sm:w-auto">
                   {HERO.ctaPrimary}
                   <ArrowRight className="h-4 w-4 stroke-[2.5]" />
                 </Link>
-                <Link href={WEBBYRA_DEMO_HREF} className="btn-secondary w-full sm:w-auto">
-                  {HERO.ctaSecondary}
-                </Link>
-                <Link href="/registrer" className="btn-secondary w-full sm:w-auto">
-                  {HERO.ctaTertiary}
-                </Link>
+                <p className="text-center sm:text-left">
+                  <Link
+                    href="/registrer"
+                    className="font-sans text-sm font-semibold text-slate-500 underline-offset-2 hover:text-brand-navy hover:underline"
+                  >
+                    {HERO.ctaSecondary}
+                  </Link>
+                  <span className="mx-2 text-slate-300">·</span>
+                  <span className="font-sans text-sm text-slate-400">{HERO.trustLine}</span>
+                </p>
               </div>
 
               <div className="mt-10 grid grid-cols-3 gap-3 border-t border-brand-border pt-8 sm:mt-14 sm:flex sm:flex-wrap sm:gap-x-10 sm:gap-y-5">
@@ -85,6 +89,8 @@ export default function HomePage() {
           </div>
         </Container>
       </section>
+
+      <LandingSourcesSection />
 
       <section className="overflow-hidden border-y border-brand-border bg-white py-4">
         <div className="flex animate-marquee whitespace-nowrap">

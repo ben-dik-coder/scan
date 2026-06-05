@@ -1,15 +1,15 @@
 export const site = {
   name: "NyLead",
   tagline:
-    "For deg som selger nettsider og design. Finn firma med tlf og e-post fra Brreg, sjekk nettside med Google — send tilbud fra din egen innboks.",
-  heroTitle: "Finn firma som trenger nettside",
+    "For deg som selger til nye firma i Norge. Finn kontaktinfo fra Brreg, Timma og Gulesider — ring eller send fra din egen innboks.",
+  heroTitle: "Nye firma. Kontaktinfo. Klar til å ta.",
   description:
-    "NyLead henter nye firma fra Brønnøysund, sjekker om de har nettside, og lar deg sende tilbud fra din egen e-post — uten Excel og manuell kopiering.",
-  audience: "For deg som selger nettsider i Norge",
+    "NyLead henter nye firma fra Brønnøysund, fyller inn tlf og e-post fra flere kilder, og lar deg filtrere, prioritere og sende fra din egen e-post.",
+  audience: "For deg som selger til nye firma i Norge",
   stats: [
     { value: "2 000+", label: "Nye firma per uke i Norge" },
-    { value: "30%", label: "Har e-post i Brreg" },
-    { value: "250", label: "Firma du kan kontakte per måned" },
+    { value: "10", label: "Google-sjekk om gangen" },
+    { value: "1 tabell", label: "Brreg + nett + kontakt" },
   ],
 };
 

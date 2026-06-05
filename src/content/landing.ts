@@ -2,12 +2,16 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Building2,
+  Calculator,
   Globe,
   Layers,
   Mail,
   MapPin,
+  Megaphone,
   MousePointerClick,
+  Phone,
   Send,
+  Server,
   Shield,
   Sparkles,
   Target,
@@ -15,26 +19,97 @@ import {
 
 /** Forside — hero */
 export const HERO = {
-  eyebrow: "For deg som selger nettsider i Norge",
-  titleLine1: "Finn firma som trenger deg.",
-  titleLine2: "Send tilbud fra din egen innboks.",
+  eyebrow: "For deg som selger til nye firma i Norge",
+  titleLine1: "Nye firma. Kontaktinfo. Klar til å ta.",
+  titleLine2: "Alt i én tabell — ring eller send fra din e-post.",
   tagline:
-    "Slutt å bruke kvelden på Proff og manuelle Google-søk. NyLead henter nye firma fra Brreg, kjører Google-sjekk på dem (opptil 10 om gangen), og viser med én gang om de har egen nettside, bare booking, eller ingenting.",
-  intro:
-    "Filtrer enkelt til firma uten nettside — eller med. Facebook og Instagram vises i samme oversikt når vi finner det. Resten er opp til deg: ring, send, følg opp fra din egen innboks.",
+    "NyLead henter nye firma fra Brreg, fyller inn tlf og e-post — også fra Timma, Gulesider og sosiale medier — og lar deg filtrere, prioritere og sende fra Gmail eller Outlook.",
   ctaPrimary: "Se nye firma i mitt område",
-  ctaSecondary: "Hvem selger nettsider i Brreg",
-  ctaTertiary: "Opprett konto",
+  ctaSecondary: "Opprett gratis konto",
+  trustLine: "499 kr/mnd · Ingen kredittkort for å se innsiden",
 };
 
-/** @deprecated Bruk HERO.intro — behold for bakoverkompatibilitet */
-export const HERO_INTRO = HERO.intro;
+export type HeroStep = {
+  step: number;
+  icon: LucideIcon;
+  label: string;
+  detail: string;
+};
+
+export const HERO_STEPS: HeroStep[] = [
+  {
+    step: 1,
+    icon: Building2,
+    label: "Skann",
+    detail: "Nye firma i ditt område",
+  },
+  {
+    step: 2,
+    icon: Phone,
+    label: "Filtrer",
+    detail: "Tlf og e-post — også utenfor Brreg",
+  },
+  {
+    step: 3,
+    icon: Send,
+    label: "Send",
+    detail: "Fra din egen innboks",
+  },
+];
+
+export const HERO_AUDIENCES = [
+  "Nettside",
+  "Regnskap",
+  "Markedsføring",
+  "IT",
+  "Lokalt B2B",
+] as const;
+
+export type HeroCallout = {
+  text: string;
+  variant: "emerald" | "sky" | "violet" | "slate";
+  className: string;
+};
+
+export const HERO_CALLOUTS: HeroCallout[] = [
+  {
+    text: "Tlf funnet automatisk",
+    variant: "emerald",
+    className: "top-[38%] left-[2%] sm:left-[4%]",
+  },
+  {
+    text: "E-post fra flere kilder",
+    variant: "sky",
+    className: "top-[28%] left-[18%] sm:left-[22%]",
+  },
+  {
+    text: "Sosiale medier med",
+    variant: "violet",
+    className: "top-[42%] right-[2%] sm:right-[6%]",
+  },
+  {
+    text: "Filtrer med/uten nettside",
+    variant: "slate",
+    className: "bottom-[18%] left-[30%] sm:left-[34%]",
+  },
+];
+
+/** Infografikk rett under hero — bilde i public/images/sec/ */
+export const SOURCES_SECTION_IMAGE = "/images/sec/sec.png";
+
+export const SOURCES_SECTION = {
+  eyebrow: "Mange kilder — én oversikt",
+  title: "Vi henter. Du får alt samlet.",
+  subtitle:
+    "Google, Facebook, Instagram, Timma, Fixit, Gulesider og nettsider — vi samler kontakt, nettside og sosiale medier i samme firma-rad. Du slipper å hoppe mellom ti faner.",
+  caption: "Fra rådata til klar lead — uten ekstra verktøy.",
+};
 
 export const PLATFORM_INTRO = {
   eyebrow: "Hva du får",
   title: "Fra nytt firma i Brreg til sendt mail — på ett sted",
   subtitle:
-    "Ikke enda et verktøy du må eksportere til Excel. Du skanner markedet, kjører Google-sjekk, filtrerer til de uten nettside (eller med), og sender fra Gmail eller Outlook som vanlig.",
+    "Ikke enda et verktøy du må eksportere til Excel. Du skanner markedet, får kontaktinfo ferdig, filtrerer hvem du vil ta — og sender fra Gmail eller Outlook som vanlig.",
 };
 
 export type PlatformPillar = {
@@ -54,7 +129,7 @@ export const PLATFORM_PILLARS: PlatformPillar[] = [
     bullets: [
       "Filtrer på kommune, fylke og hvor nye registreringer er",
       "Se bare firma med e-post eller telefon — spar tid med en gang",
-      "Forhåndsfilter for webbyrå: hvem Brreg faktisk sier selger nettsider",
+      "Bransje- og webbyrå-filter når du vil snevre inn",
       "Over 1 million norske firma — samme kilde som myndighetene bruker",
       "Eksporter til CSV når du vil jobbe videre et annet sted",
     ],
@@ -62,14 +137,14 @@ export const PLATFORM_PILLARS: PlatformPillar[] = [
   {
     id: "kvalifiser",
     icon: Globe,
-    title: "Google-sjekk — se hvem som mangler nettside",
-    lead: "Velg opptil 10 firma om gangen. Vi søker på Google for deg og viser svaret rett i listen — med filter for de uten egen side.",
+    title: "Kontakt og Google-sjekk — ferdig i listen",
+    lead: "Velg opptil 10 firma om gangen. Vi henter tlf og e-post fra Timma, Gulesider og sosiale medier — og sjekker nettside på Google.",
     bullets: [
-      "Egen nettside, ingen tydelig side, eller bare Timma/Fixit — med én gang",
-      "Filter: vis bare firma uten nettside (gull for webbyrå)",
+      "Tlf og e-post også når Brreg mangler — fra booking og katalog",
+      "Egen nettside, booking eller ingenting — med én gang",
+      "Filter: med eller uten nettside (sterkt for webbyrå, valgfritt for andre)",
       "Facebook og Instagram i samme oversikt når vi finner det",
-      "Arbeidskø som rangerer hvem du bør ringe eller sende til først",
-      "Lagrede skanninger — du sjekker ikke samme firma to ganger",
+      "Delt skann — du betaler ikke to ganger for samme firma",
     ],
   },
   {
@@ -80,7 +155,7 @@ export const PLATFORM_PILLARS: PlatformPillar[] = [
     bullets: [
       "Velg 20, 50 eller 100 firma og send én felles melding",
       "Koble Gmail, Outlook eller SMTP — det er din adresse som står på",
-      "Maler du kan gjenbruke: «Gratulerer med oppstart — trenger dere nettside?»",
+      "Maler du kan gjenbruke: «Gratulerer med oppstart — kan vi hjelpe?»",
       "Oppfølging på dag 3 og 7 hvis du vil det",
       "Pipeline så du ser hvem som er ny, kontaktet, svarte eller booket møte",
     ],
@@ -104,7 +179,7 @@ export const FEATURES_SECTION = {
   eyebrow: "Under panseret",
   title: "Det du faktisk bruker i uka",
   subtitle:
-    "Google-sjekk, filter og utsending — det du faktisk bruker når du skal selge nettsider.",
+    "Kontakt, filter og utsending — det du faktisk bruker når du skal nå nye firma.",
 };
 
 export const FEATURES = [
@@ -123,7 +198,7 @@ export const FEATURES = [
   {
     icon: Globe,
     title: "Google-sjekk på listen din",
-    text: "Velg opptil 10 firma om gangen. Vi søker på Google og viser om de har egen nettside, bare booking (Timma/Fixit), eller ingenting. Facebook og Instagram med i samme oversikt — og du kan filtrere til «kun uten nettside».",
+    text: "Velg opptil 10 firma om gangen. Vi henter tlf/e-post fra Timma, Gulesider og sosiale medier, sjekker nettside på Google, og viser alt i samme liste — med filter for med eller uten nettside.",
     featured: true,
   },
   {
@@ -154,22 +229,37 @@ export const FEATURES = [
 
 export const USE_CASES = {
   eyebrow: "Hvem bruker det",
-  title: "Laget for folk som selger nettsider — ikke generelt «B2B-salg»",
+  title: "For alle som vil nå nye firma før konkurrentene",
   items: [
     {
+      icon: Calculator,
+      title: "Regnskap og rådgivning",
+      text: "Nye AS trenger regnskapsfører. Finn dem i ditt fylke med tlf og e-post ferdig — ring eller send før noen andre.",
+    },
+    {
+      icon: Megaphone,
+      title: "Markedsføring og SEO",
+      text: "Nye firma trenger synlighet. Skann, prioriter med arbeidskø, og send fra din egen innboks.",
+    },
+    {
+      icon: Server,
+      title: "IT og drift",
+      text: "Nyoppstartede mangler ofte systemer og support. Få kontaktinfo og daglig leder i samme oversikt.",
+    },
+    {
+      icon: BarChart3,
+      title: "Lokalt B2B",
+      text: "Velg kommune eller fylke, filtrer på kontaktinfo, og få en liste du faktisk kan ringe på denne uka.",
+    },
+    {
       icon: Sparkles,
-      title: "Webbyrå og studio",
-      text: "Nye AS i ditt fylke denne uka. Google-sjekk viser hvem som mangler ordentlig side — filtrer til «uten nettside» og send tilbud før noen andre ringer.",
+      title: "Webbyrå og design",
+      text: "Google-sjekk viser hvem som mangler ordentlig side. Filtrer til «uten nettside» — eller bruk webbyrå-filter i Brreg.",
     },
     {
       icon: Target,
       title: "Frilanser",
-      text: "Du trenger ikke dyrt Proff-abonnement og tre timer research per kveld. Skann, velg 20 firma, send — ferdig for uka.",
-    },
-    {
-      icon: BarChart3,
-      title: "Lokalt fokus",
-      text: "Narvik, Tromsø, hele fylket — kombiner med «uten nettside» og få en liste du faktisk kan ringe på.",
+      text: "Du trenger ikke dyrt Proff-abonnement og timer med research. Skann, velg 20 firma, send — ferdig for uka.",
     },
   ],
 };
@@ -191,8 +281,8 @@ export const COMPARISON = {
       text: "Brønnøysundregistrene — ikke et utenlandsk register du må oversette.",
     },
     {
-      title: "Google-sjekk innebygd",
-      text: "Ikke manuelt Google-søk per firma. Sjekk opptil 10 om gangen, filtrer med eller uten nettside, og se Facebook og Instagram i samme liste.",
+      title: "Kontakt og Google innebygd",
+      text: "Ikke manuelt Proff + Google per firma. Tlf og e-post fra flere kilder, nettside-sjekk på 10 om gangen, og Facebook/Instagram i samme liste.",
     },
     {
       title: "Én regning",
@@ -223,7 +313,11 @@ export const FAQ_SECTION = {
 export const FAQ_ITEMS = [
   {
     q: "Hva er NyLead — og hvem passer det for?",
-    a: "For deg som selger nettsider, design eller digitale tjenester til norske firma. Du finner nye registreringer i Brreg, ser om de har nettside, og sender tilbud fra din egen e-post.",
+    a: "For alle som selger til nye firma i Norge — regnskap, markedsføring, IT, lokale tjenester, webbyrå og mer. Du finner nye registreringer i Brreg, får kontaktinfo ferdig, og ringer eller sender fra din egen e-post.",
+  },
+  {
+    q: "Hvor kommer telefonnummer fra hvis Brreg mangler?",
+    a: "Vi henter fra offentlige sider Google allerede fant — Timma, Fixit, Gulesider, 1881, egen nettside og sosiale medier (Facebook/Instagram via profil-data). Alt lagres delt, så du slipper å sjekke samme firma to ganger.",
   },
   {
     q: "Hvor kommer firmadataene fra?",
@@ -260,11 +354,11 @@ export const FAQ_ITEMS = [
 ];
 
 export const TRUST = [
-  "Brønnøysundregistrene",
-  "Norsk webbyrå-verktøy",
-  "Send fra din e-post",
-  "Google-sjekk — 10 om gangen",
-  "Pipeline og oppfølging",
+  "Nye firma fra Brreg hver uke",
+  "Tlf fra Timma, Fixit og Gulesider",
+  "Facebook og Instagram med i listen",
+  "Send fra din egen innboks",
+  "Pipeline og arbeidskø inkludert",
   "Lovlig B2B-kontakt",
 ];
 
@@ -340,7 +434,7 @@ export const WORKFLOW_DETAILED = [
     step: 1,
     title: "Velg marked",
     description:
-      "Kommune eller fylke, hvor nye firma skal være, og om du bare vil ha de med e-post. Webbyrå-filter finner hvem som faktisk selger nettsider i Brreg.",
+      "Kommune eller fylke, hvor nye firma skal være, og om du bare vil ha de med e-post. Bransje-filter når du vil snevre inn — webbyrå-filter for de som selger nettsider.",
   },
   {
     step: 2,

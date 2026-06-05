@@ -82,7 +82,7 @@ export function UseCasesSection() {
           <p className="type-eyebrow">{USE_CASES.eyebrow}</p>
           <h2 className="type-h2 mt-3 text-brand-navy">{USE_CASES.title}</h2>
         </div>
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
+        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {USE_CASES.items.map(({ icon: Icon, title, text }) => (
             <div
               key={title}
