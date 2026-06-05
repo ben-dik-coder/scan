@@ -73,11 +73,7 @@ export function PricingSection({
               </ul>
 
               {loggedIn ? (
-                <PlanCheckoutButton
-                  planId={DEFAULT_PLAN_ID}
-                  planName={plan.name}
-                  popular
-                />
+                <PlanCheckoutButton planId={DEFAULT_PLAN_ID} planName={plan.name} />
               ) : (
                 <PricingRegisterCta />
               )}

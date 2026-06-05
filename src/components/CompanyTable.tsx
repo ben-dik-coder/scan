@@ -30,6 +30,14 @@ function FacebookIcon({ className }: { className?: string }) {
   );
 }
 
+function LinkedinIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  );
+}
+
 type ColumnId =
   | "score"
   | "orgnr"
@@ -38,6 +46,7 @@ type ColumnId =
   | "website"
   | "facebook"
   | "instagram"
+  | "linkedin"
   | "ceo"
   | "status";
 
@@ -49,6 +58,7 @@ const COLUMN_LABELS: Record<ColumnId, string> = {
   website: "Nettside",
   facebook: "Facebook",
   instagram: "Instagram",
+  linkedin: "LinkedIn",
   ceo: "Daglig leder",
   status: "Status",
 };
@@ -64,6 +74,7 @@ const OPTIONAL_COLUMNS: ColumnId[] = [
   "phone",
   "facebook",
   "instagram",
+  "linkedin",
   "ceo",
 ];
 
@@ -251,6 +262,7 @@ function SocialCell({
   icon,
   label,
   viaFb,
+  viaWebsite,
   confidence,
   scanned,
 }: {
@@ -259,6 +271,7 @@ function SocialCell({
   icon: ReactNode;
   label: string;
   viaFb?: boolean;
+  viaWebsite?: boolean;
   confidence?: "high" | "medium" | "low";
   scanned?: boolean;
 }) {
@@ -285,6 +298,11 @@ function SocialCell({
       <span className="truncate">{uncertain ? "Usikker" : label}</span>
       {viaFb && (
         <span className="shrink-0 rounded bg-blue-100 px-0.5 text-[9px] font-semibold text-blue-700">FB</span>
+      )}
+      {viaWebsite && (
+        <span className="shrink-0 rounded bg-emerald-100 px-0.5 text-[9px] font-semibold text-emerald-800">
+          Web
+        </span>
       )}
     </a>
   );
@@ -396,6 +414,24 @@ function CompanyDetailBody({
           />
           {scan?.instagramUrl && !isScanning && <PresenceBadge kind="info" label="IG" />}
           {scan?.socialScan?.includeInstagram && !scan.instagramUrl && !isScanning && (
+            <PresenceBadge kind="muted" label="Nei" />
+          )}
+        </div>
+      </DetailRow>
+      <DetailRow label="LinkedIn">
+        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+          <SocialCell
+            scanning={!!isScanning}
+            url={scan?.linkedinUrl}
+            confidence={scan?.linkedinConfidence}
+            scanned={Boolean(scan?.socialScan?.includeLinkedIn)}
+            icon={<LinkedinIcon className="h-3.5 w-3.5 shrink-0 text-sky-800" />}
+            label="LI"
+            viaFb={scan?.linkedinFromFacebook}
+            viaWebsite={scan?.linkedinFromWebsite}
+          />
+          {scan?.linkedinUrl && !isScanning && <PresenceBadge kind="info" label="LI" />}
+          {scan?.socialScan?.includeLinkedIn && !scan.linkedinUrl && !isScanning && (
             <PresenceBadge kind="muted" label="Nei" />
           )}
         </div>
@@ -776,6 +812,7 @@ export function CompanyTable({
                 {showCol("website") && <th>Nettside</th>}
                 {showCol("facebook") && <th>Facebook</th>}
                 {showCol("instagram") && <th>Instagram</th>}
+                {showCol("linkedin") && <th>LinkedIn</th>}
                 {showCol("ceo") && <th>Daglig leder</th>}
                 {showCol("status") && <th>Status</th>}
               </tr>
@@ -927,6 +964,30 @@ export function CompanyTable({
                           )}
                           {scan?.socialScan?.includeInstagram &&
                             !scan.instagramUrl &&
+                            !isScanning && <PresenceBadge kind="muted" label="Nei" />}
+                        </div>
+                      </td>
+                    )}
+                    {showCol("linkedin") && (
+                      <td className="max-w-[7rem]">
+                        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+                          <SocialCell
+                            scanning={!!isScanning}
+                            url={scan?.linkedinUrl}
+                            confidence={scan?.linkedinConfidence}
+                            scanned={Boolean(scan?.socialScan?.includeLinkedIn)}
+                            icon={
+                              <LinkedinIcon className="h-3 w-3 shrink-0 text-sky-800" />
+                            }
+                            label="LI"
+                            viaFb={scan?.linkedinFromFacebook}
+                            viaWebsite={scan?.linkedinFromWebsite}
+                          />
+                          {scan?.linkedinUrl && !isScanning && (
+                            <PresenceBadge kind="info" label="LI" />
+                          )}
+                          {scan?.socialScan?.includeLinkedIn &&
+                            !scan.linkedinUrl &&
                             !isScanning && <PresenceBadge kind="muted" label="Nei" />}
                         </div>
                       </td>

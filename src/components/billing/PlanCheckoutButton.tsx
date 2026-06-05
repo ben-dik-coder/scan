@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 type Props = {
   planId: PlanId;
   planName: string;
-  popular?: boolean;
   className?: string;
   /** Vis «Aktiver test» i stedet for «Velg» (når du vet at fake er på) */
   fakeLabel?: boolean;
@@ -22,7 +21,6 @@ type Props = {
 export function PlanCheckoutButton({
   planId,
   planName,
-  popular,
   className,
   fakeLabel = true,
 }: Props) {
@@ -98,13 +96,7 @@ export function PlanCheckoutButton({
         type="button"
         disabled={loading}
         onClick={activate}
-        className={cn(
-          "btn-primary w-full disabled:opacity-60",
-          popular
-            ? undefined
-            : "!bg-brand-navy !text-white hover:!brightness-110 [&_svg]:!text-white",
-          className
-        )}
+        className={cn("btn-primary w-full disabled:opacity-60", className)}
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />

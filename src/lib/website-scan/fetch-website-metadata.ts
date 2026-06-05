@@ -1,3 +1,4 @@
+import { pickBestLinkedInUrl } from "@/lib/website-scan/linkedin-profiles";
 import {
   normalizeFacebookUrl,
   normalizeInstagramUrl,
@@ -10,6 +11,7 @@ export type WebsitePageMetadata = {
   displayName: string | null;
   facebookUrl: string | null;
   instagramUrl: string | null;
+  linkedinUrl: string | null;
 };
 
 function decodeHtmlEntities(text: string): string {
@@ -76,17 +78,22 @@ function extractH1(html: string): string | null {
 function extractRawSocialUrls(html: string): {
   facebook: string[];
   instagram: string[];
+  linkedin: string[];
 } {
   const facebook: string[] = [];
   const instagram: string[] = [];
+  const linkedin: string[] = [];
   const seenFb = new Set<string>();
   const seenIg = new Set<string>();
+  const seenLi = new Set<string>();
 
   const patterns = [
     /https?:\/\/(?:[\w-]+\.)?(?:facebook\.com|fb\.com|fb\.me)\/[^\s"'<>\\]+/gi,
     /https?:\/\/(?:[\w-]+\.)?instagram\.com\/[^\s"'<>\\]+/gi,
+    /https?:\/\/(?:[\w-]+\.)?linkedin\.com\/[^\s"'<>\\]+/gi,
     /(?:https?:)?\/\/(?:[\w-]+\.)?(?:facebook\.com|fb\.com)\/[^\s"'<>\\]+/gi,
     /(?:https?:)?\/\/(?:[\w-]+\.)?instagram\.com\/[^\s"'<>\\]+/gi,
+    /(?:https?:)?\/\/(?:[\w-]+\.)?linkedin\.com\/[^\s"'<>\\]+/gi,
   ];
 
   for (const re of patterns) {
@@ -106,11 +113,16 @@ function extractRawSocialUrls(html: string): {
           seenIg.add(norm);
           instagram.push(norm);
         }
+      } else if (/linkedin/i.test(raw)) {
+        if (!seenLi.has(raw)) {
+          seenLi.add(raw);
+          linkedin.push(raw);
+        }
       }
     }
   }
 
-  return { facebook, instagram };
+  return { facebook, instagram, linkedin };
 }
 
 function pickBestSocialUrl(urls: string[]): string | null {
@@ -127,12 +139,13 @@ function pickBestSocialUrl(urls: string[]): string | null {
 }
 
 export function parseWebsitePageMetadata(html: string): WebsitePageMetadata {
-  const { facebook, instagram } = extractRawSocialUrls(html);
+  const { facebook, instagram, linkedin } = extractRawSocialUrls(html);
   return {
     displayName:
       extractMetaSiteName(html) ?? extractTitle(html) ?? extractH1(html),
     facebookUrl: pickBestSocialUrl(facebook),
     instagramUrl: pickBestSocialUrl(instagram),
+    linkedinUrl: pickBestLinkedInUrl(linkedin),
   };
 }
 
@@ -156,12 +169,22 @@ export async function fetchWebsitePageMetadata(
     });
 
     if (!res.ok) {
-      return { displayName: null, facebookUrl: null, instagramUrl: null };
+      return {
+        displayName: null,
+        facebookUrl: null,
+        instagramUrl: null,
+        linkedinUrl: null,
+      };
     }
 
     const reader = res.body?.getReader();
     if (!reader) {
-      return { displayName: null, facebookUrl: null, instagramUrl: null };
+      return {
+        displayName: null,
+        facebookUrl: null,
+        instagramUrl: null,
+        linkedinUrl: null,
+      };
     }
 
     const decoder = new TextDecoder();
@@ -185,7 +208,12 @@ export async function fetchWebsitePageMetadata(
 
     return parseWebsitePageMetadata(html);
   } catch {
-    return { displayName: null, facebookUrl: null, instagramUrl: null };
+    return {
+      displayName: null,
+      facebookUrl: null,
+      instagramUrl: null,
+      linkedinUrl: null,
+    };
   } finally {
     clearTimeout(timer);
   }

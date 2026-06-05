@@ -15,9 +15,15 @@ type Props = {
   className?: string;
   /** Kompakt variant for prisseksjon */
   compact?: boolean;
+  /** Glass-tema inne i /app — mørk bakgrunn, lys tekst */
+  variant?: "default" | "glass";
 };
 
-export function SubscriberCapBanner({ className, compact = false }: Props) {
+export function SubscriberCapBanner({
+  className,
+  compact = false,
+  variant = "default",
+}: Props) {
   const [data, setData] = useState<CountData | null>(null);
   const [error, setError] = useState(false);
 
@@ -50,11 +56,15 @@ export function SubscriberCapBanner({ className, compact = false }: Props) {
     data.cap > 0 ? Math.min(100, Math.round((data.taken / data.cap) * 100)) : 0;
   const urgent = pct >= 85 && !data.full;
 
+  const isGlass = variant === "glass";
+
   if (data.full) {
     return (
       <div
         className={cn(
-          "border-b border-red-500/30 bg-red-950/90 text-white",
+          isGlass
+            ? "rounded-lg border border-red-400/30 bg-red-950/60 text-white"
+            : "border-b border-red-500/30 bg-red-950/90 text-white",
           className
         )}
         role="status"
@@ -87,8 +97,11 @@ export function SubscriberCapBanner({ className, compact = false }: Props) {
   return (
     <div
       className={cn(
-        "border-b border-brand-gold/15 bg-brand-goldPale text-brand-navy",
-        urgent && "border-amber-400/40 bg-amber-50",
+        isGlass
+          ? "rounded-lg border border-white/15 bg-white/5 text-slate-200"
+          : "border-b border-brand-gold/15 bg-brand-goldPale text-brand-navy",
+        !isGlass && urgent && "border-amber-400/40 bg-amber-50",
+        isGlass && urgent && "border-amber-400/30 bg-amber-950/30",
         className
       )}
       role="status"
@@ -96,32 +109,50 @@ export function SubscriberCapBanner({ className, compact = false }: Props) {
     >
       <div
         className={cn(
-          "mx-auto flex max-w-6xl flex-col gap-2 px-4 sm:flex-row sm:items-center sm:gap-4",
-          compact ? "py-2" : "py-2.5 sm:py-3"
+          "flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4",
+          isGlass ? "px-3 py-2.5" : "mx-auto max-w-6xl px-4 sm:max-w-6xl",
+          !isGlass && (compact ? "py-2" : "py-2.5 sm:py-3")
         )}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <Users
             className={cn(
               "h-4 w-4 shrink-0",
-              urgent ? "text-amber-600" : "text-brand-gold"
+              isGlass
+                ? urgent
+                  ? "text-amber-400"
+                  : "text-sky-400"
+                : urgent
+                  ? "text-amber-600"
+                  : "text-brand-gold"
             )}
             aria-hidden
           />
           <p
             className={cn(
-              "font-sans leading-snug text-slate-700",
+              "font-sans leading-snug",
+              isGlass ? "text-slate-300" : "text-slate-700",
               compact ? "text-xs" : "text-sm"
             )}
           >
-            <span className="font-sans text-base font-bold tabular-nums text-brand-navy sm:text-lg">
+            <span
+              className={cn(
+                "font-sans font-bold tabular-nums",
+                isGlass ? "text-base text-white sm:text-lg" : "text-base text-brand-navy sm:text-lg"
+              )}
+            >
               {data.taken}
             </span>{" "}
             <span className="font-medium">
               av {data.cap} sitteplasser er tatt
             </span>
             {!compact && data.remaining > 0 && (
-              <span className="hidden text-slate-500 sm:inline">
+              <span
+                className={cn(
+                  "hidden sm:inline",
+                  isGlass ? "text-slate-400" : "text-slate-500"
+                )}
+              >
                 {" "}
                 · {data.remaining} ledige
               </span>
@@ -131,7 +162,10 @@ export function SubscriberCapBanner({ className, compact = false }: Props) {
 
         <div className="flex w-full items-center gap-2 sm:max-w-[200px] lg:max-w-[240px]">
           <div
-            className="h-1.5 flex-1 overflow-hidden rounded-full bg-brand-border"
+            className={cn(
+              "h-1.5 flex-1 overflow-hidden rounded-full",
+              isGlass ? "bg-white/15" : "bg-brand-border"
+            )}
             aria-hidden
           >
             <div
@@ -139,14 +173,17 @@ export function SubscriberCapBanner({ className, compact = false }: Props) {
                 "h-full rounded-full transition-all duration-500",
                 urgent
                   ? "bg-gradient-to-r from-amber-500 to-amber-400"
-                  : "bg-gradient-to-r from-brand-gold to-brand-goldLight"
+                  : isGlass
+                    ? "bg-gradient-to-r from-sky-500 to-sky-400"
+                    : "bg-gradient-to-r from-brand-gold to-brand-goldLight"
               )}
               style={{ width: `${pct}%` }}
             />
           </div>
           <span
             className={cn(
-              "shrink-0 font-sans font-semibold tabular-nums text-slate-600",
+              "shrink-0 font-sans font-semibold tabular-nums",
+              isGlass ? "text-slate-400" : "text-slate-600",
               compact ? "text-[10px]" : "text-xs"
             )}
           >

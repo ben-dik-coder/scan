@@ -5,15 +5,18 @@ export type ScanSocialOptions = {
   includeFacebook: boolean;
   /** Instagram via lenke på Facebook-profil, ellers eget søk + instagram_profile */
   includeInstagram: boolean;
+  /** LinkedIn company-URL fra nettside-HTML / Facebook-lenker (ingen ekstra SerpAPI) */
+  includeLinkedIn: boolean;
 };
 
 export const DEFAULT_SCAN_SOCIAL_OPTIONS: ScanSocialOptions = {
   includeFacebook: true,
   includeInstagram: true,
+  includeLinkedIn: true,
 };
 
 /** Øk når sosialsøk forbedres — gamle cache-rader skannes på nytt automatisk */
-export const SOCIAL_SCAN_VERSION = 3;
+export const SOCIAL_SCAN_VERSION = 4;
 
 /** Full SerpAPI-sosialsjekk — skiller fra hurtig e-postskann uten FB/IG-felt */
 export function isSocialScanComplete(
@@ -32,6 +35,10 @@ export function isSocialScanComplete(
     if (!done?.includeInstagram) return false;
     if (!("instagramUrl" in scan)) return false;
   }
+  if (social.includeLinkedIn) {
+    if (!done?.includeLinkedIn) return false;
+    if (!("linkedinUrl" in scan)) return false;
+  }
   return true;
 }
 
@@ -41,6 +48,7 @@ export function buildSocialScanMeta(
   return {
     includeFacebook: social.includeFacebook,
     includeInstagram: social.includeInstagram,
+    includeLinkedIn: social.includeLinkedIn,
     version: SOCIAL_SCAN_VERSION,
   };
 }
@@ -56,6 +64,7 @@ export function loadScanSocialOptions(): ScanSocialOptions {
     return {
       includeFacebook: parsed.includeFacebook !== false,
       includeInstagram: parsed.includeInstagram !== false,
+      includeLinkedIn: parsed.includeLinkedIn !== false,
     };
   } catch {
     return DEFAULT_SCAN_SOCIAL_OPTIONS;

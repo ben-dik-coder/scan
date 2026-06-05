@@ -4,6 +4,7 @@ export type SocialLinkConfidence = "high" | "medium" | "low";
 export type SocialScanMeta = {
   includeFacebook: boolean;
   includeInstagram: boolean;
+  includeLinkedIn: boolean;
   /** Økes når søkelogikk forbedres — utløser ny skann av gamle cache-rader */
   version?: number;
 };
@@ -39,6 +40,10 @@ export type FacebookProfileSnippet = {
   source: "serpapi_facebook_profile" | "demo";
   /** Instagram-lenke listet på Facebook-profilen */
   linkedInstagramUrl?: string | null;
+  /** LinkedIn company-lenke på Facebook-profilen */
+  linkedLinkedInUrl?: string | null;
+  /** Nettside-lenke på Facebook-profilen */
+  linkedWebsiteUrl?: string | null;
 };
 
 /** Data fra SerpAPI Instagram Profile API (https://serpapi.com/instagram-profile-api) */
@@ -84,6 +89,19 @@ export type WebsiteScanResult = {
   instagramProfile?: InstagramProfileSnippet | null;
   /** Instagram kom fra lenke på Facebook-profilen */
   instagramFromFacebook?: boolean;
+  /** LinkedIn company-side (kun URL fra nettside / Facebook-lenker) */
+  linkedinUrl?: string | null;
+  linkedinConfidence?: SocialLinkConfidence;
+  linkedinFromWebsite?: boolean;
+  linkedinFromFacebook?: boolean;
+  /** Hvor nettsiden ble funnet når ikke Brreg/Google */
+  websiteDiscoverySource?:
+    | "brreg"
+    | "google"
+    | "email"
+    | "facebook_link"
+    | "instagram_external"
+    | null;
   /** Merkenavn fra nettside (tittel / og:site_name) når det avviker fra Brreg */
   displayName?: string | null;
   /** Settes når SerpAPI/Google-sosialsøk er kjørt — brukes for cache-gyldighet */

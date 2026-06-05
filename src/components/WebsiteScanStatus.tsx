@@ -21,8 +21,10 @@ type Props = {
   withWebsiteCount: number;
   withFacebookCount?: number;
   withInstagramCount?: number;
+  withLinkedInCount?: number;
   includeFacebook?: boolean;
   includeInstagram?: boolean;
+  includeLinkedIn?: boolean;
   listFilter: ListFilter;
   notScannedCount: number;
   onRescan: () => void;
@@ -45,8 +47,10 @@ export function WebsiteScanStatus({
   withWebsiteCount,
   withFacebookCount = 0,
   withInstagramCount = 0,
+  withLinkedInCount = 0,
   includeFacebook = true,
   includeInstagram = true,
+  includeLinkedIn = true,
   listFilter,
   notScannedCount,
   onRescan,
@@ -139,6 +143,7 @@ export function WebsiteScanStatus({
                     {noWebsiteCount} uten nettside · {withWebsiteCount} med nettside
                     {includeFacebook && ` · ${withFacebookCount} Facebook`}
                     {includeInstagram && ` · ${withInstagramCount} Instagram`}
+                    {includeLinkedIn && ` · ${withLinkedInCount} LinkedIn`}
                   </span>
                 </>
               )}

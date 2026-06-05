@@ -55,6 +55,11 @@ export function computeQueueScore(
     else if (!scan.hasWebsite) score += 10;
     if (scan.facebookUrl) score += 4;
     if (!scan.facebookUrl && scan.socialScan?.includeFacebook) score += 2;
+    if (scan.linkedinUrl && !scan.hasWebsite && scan.websiteKind === "none") {
+      score += 6;
+      if (scan.facebookUrl) score += 3;
+    }
+    if (scan.linkedinFromWebsite) score += 2;
   } else if (company.has_email) {
     score += 5;
   }

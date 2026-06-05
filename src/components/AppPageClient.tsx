@@ -188,6 +188,12 @@ export function AppPageClient(props: Props) {
     [companies, websiteScans]
   );
 
+  const withLinkedInCount = useMemo(
+    () =>
+      companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.linkedinUrl)).length,
+    [companies, websiteScans]
+  );
+
   const notScannedCount = useMemo(
     () =>
       companies.filter((c) => c.has_email && !websiteScans.has(c.orgnr)).length,
@@ -870,8 +876,10 @@ export function AppPageClient(props: Props) {
           withWebsiteCount={withWebsiteCount}
           withFacebookCount={withFacebookCount}
           withInstagramCount={withInstagramCount}
+          withLinkedInCount={withLinkedInCount}
           includeFacebook={socialOptions.includeFacebook}
           includeInstagram={socialOptions.includeInstagram}
+          includeLinkedIn={socialOptions.includeLinkedIn}
           listFilter={listFilter}
           notScannedCount={notScannedCount}
           onRescan={rescan}

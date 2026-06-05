@@ -1,8 +1,14 @@
 import { facebookProfileMatchesRegion } from "@/lib/website-scan/facebook-geo";
 import { hasSerpApi } from "@/lib/website-scan/config";
 import { companyMatchesResult } from "@/lib/website-scan/parse-results";
+import { websiteFromCrossLink } from "@/lib/website-scan/cross-link-website";
+import { pickBestLinkedInUrl } from "@/lib/website-scan/linkedin-profiles";
 import { instagramUrlFromFacebookProfile } from "@/lib/website-scan/serpapi-instagram-profile";
-import { demoInstagramUrl } from "@/lib/website-scan/social-profiles";
+import {
+  demoInstagramUrl,
+  normalizeFacebookUrl,
+  normalizeInstagramUrl,
+} from "@/lib/website-scan/social-profiles";
 import type { FacebookProfileSnippet } from "@/lib/website-scan/types";
 
 const SERPAPI_TIMEOUT_MS = 25_000;
@@ -75,6 +81,37 @@ export function extractFacebookProfileId(facebookUrl: string): string | null {
   }
 }
 
+function isSocialLinkUrl(link: string): boolean {
+  return (
+    Boolean(normalizeFacebookUrl(link)) ||
+    Boolean(normalizeInstagramUrl(link)) ||
+    /linkedin\.com/i.test(link)
+  );
+}
+
+/** Nettside-lenke fra Facebook-profilens links[] (tittel «Website» eller ekstern URL). */
+export function websiteUrlFromFacebookProfile(
+  links?: Array<{ title?: string; link?: string }> | null
+): string | null {
+  for (const item of links ?? []) {
+    if (!item.link) continue;
+    if (isSocialLinkUrl(item.link)) continue;
+    const hint = websiteFromCrossLink(item.link);
+    if (hint) return hint.websiteUrl;
+  }
+  return null;
+}
+
+/** LinkedIn company-URL fra Facebook-profilens links[]. */
+export function linkedinUrlFromFacebookProfile(
+  links?: Array<{ title?: string; link?: string }> | null
+): string | null {
+  const rawUrls = (links ?? [])
+    .map((item) => item.link)
+    .filter((link): link is string => Boolean(link));
+  return pickBestLinkedInUrl(rawUrls);
+}
+
 function mapProfile(
   profileId: string,
   raw: NonNullable<SerpApiFacebookResponse["profile_results"]>
@@ -95,6 +132,8 @@ function mapProfile(
     isPrivate: Boolean(raw.private),
     source: "serpapi_facebook_profile",
     linkedInstagramUrl: instagramUrlFromFacebookProfile(raw.links),
+    linkedLinkedInUrl: linkedinUrlFromFacebookProfile(raw.links),
+    linkedWebsiteUrl: websiteUrlFromFacebookProfile(raw.links),
   };
 }
 
@@ -238,5 +277,7 @@ export function demoFacebookProfile(
     isPrivate: false,
     source: "demo",
     linkedInstagramUrl: demoInstagramUrl(company),
+    linkedLinkedInUrl: null,
+    linkedWebsiteUrl: null,
   };
 }

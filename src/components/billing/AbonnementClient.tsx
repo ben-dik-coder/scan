@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PlanCheckoutButton } from "@/components/billing/PlanCheckoutButton";
-import { PricingSection } from "@/components/marketing/PricingSection";
+import { SubscriberCapBanner } from "@/components/marketing/SubscriberCapBanner";
 import {
   DEFAULT_PLAN_ID,
   NYLEAD_PLAN,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/billing/checkout-client";
 import type { Entitlements } from "@/lib/billing/entitlements";
 import type { StoredPlanId } from "@/types/database";
-import { CreditCard, Loader2 } from "lucide-react";
+import { CheckCircle2, CreditCard, Loader2 } from "lucide-react";
 
 type BillingProfile = {
   plan: StoredPlanId | null;
@@ -150,13 +150,13 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
     : null;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       {dbReady === false && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-900">
-          <p className="font-semibold">Database mangler abonnementsfelt</p>
-          <p className="mt-2 text-red-800">
+        <div className="app-settings-card px-4 py-4 text-sm">
+          <p className="scan-glass-strong font-semibold">Database mangler abonnementsfelt</p>
+          <p className="scan-glass-muted mt-2">
             Du må kjøre én SQL-fil i Supabase (tar 1 minutt). Åpne SQL Editor, lim inn
-            innholdet fra <code className="rounded bg-black/20 px-1">supabase/SETUP_BILLING.sql</code>{" "}
+            innholdet fra <code className="rounded bg-white/10 px-1">supabase/SETUP_BILLING.sql</code>{" "}
             i prosjektet, og trykk <strong>Run</strong>.
           </p>
           <Link
@@ -174,8 +174,8 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
         <div
           className={`rounded-xl px-4 py-3 text-sm ${
             message.includes("mangler") || message.includes("SETUP_BILLING")
-              ? "border border-red-200 bg-red-50 text-red-900"
-              : "border border-brand-gold/30 bg-brand-gold/10 text-brand-navy"
+              ? "border border-red-400/30 bg-red-950/40 text-red-100"
+              : "border border-sky-400/30 bg-sky-950/30 text-sky-100"
           }`}
         >
           {message}
@@ -193,25 +193,25 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
       )}
 
       {entitlements.hasAccess ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card sm:p-8">
+        <section className="app-settings-card p-5 sm:p-6">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-gold/15">
-              <CreditCard className="h-6 w-6 text-brand-gold" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/15">
+              <CreditCard className="h-6 w-6 text-sky-400" />
             </div>
-            <div className="flex-1">
-              <h1 className="font-display text-2xl font-bold text-brand-navy">
+            <div className="min-w-0 flex-1">
+              <h1 className="scan-glass-strong font-display text-2xl font-bold">
                 {entitlements.isBillingFree ? "Gratis tilgang" : "Ditt abonnement"}
               </h1>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="scan-glass-muted mt-2 text-sm">
                 {entitlements.isBillingFree ? (
                   <>
                     Du er plattform-eier og har full tilgang til{" "}
-                    <strong>{NYLEAD_PLAN.name}</strong> uten betaling.
+                    <strong className="text-white">{NYLEAD_PLAN.name}</strong> uten betaling.
                   </>
                 ) : (
                   <>
                     Du har{" "}
-                    <strong>
+                    <strong className="text-white">
                       {profile.plan ? formatPlanName(profile.plan) : NYLEAD_PLAN.name}
                     </strong>
                     {profile.subscription_status === "trialing" && " (prøveperiode)"}
@@ -224,9 +224,9 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
                   </>
                 )}
               </p>
-              <p className="mt-3 text-sm text-slate-500">
+              <p className="scan-glass-muted mt-3 text-sm">
                 Bedrifter med tlf/e-post denne måneden:{" "}
-                {entitlements.companiesWithContactUsed} av{" "}
+                <span className="text-white">{entitlements.companiesWithContactUsed}</span> av{" "}
                 {entitlements.maxCompaniesWithContactPerMonth}
                 {entitlements.emailIntegration && (
                   <>
@@ -255,32 +255,62 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
               )}
             </div>
           </div>
-        </div>
+        </section>
       ) : (
         <>
-          <div className="mx-auto max-w-md space-y-4 rounded-xl border border-brand-border bg-white p-5 shadow-card sm:p-6">
-            <p className="text-sm font-medium text-slate-700">
-              {fakeBilling
-                ? "Du trenger NyLead-abonnement for å bruke appen. Test-modus aktiverer med én gang (ingen kort)."
-                : "Du trenger NyLead-abonnement for å bruke appen. Betal trygt med kort via Stripe."}
-            </p>
-            <div className="rounded-xl border border-brand-border bg-brand-surface p-5 text-center">
-              <p className="font-display text-lg font-bold uppercase text-brand-navy">
-                {NYLEAD_PLAN.name}
+          <div className="page-header">
+            <div>
+              <h1 className="page-header-title">Abonnement</h1>
+              <p className="scan-glass-muted mt-1 text-sm">
+                {fakeBilling
+                  ? "Du trenger NyLead-abonnement for å bruke appen. Test-modus aktiverer med én gang (ingen kort)."
+                  : "Du trenger NyLead-abonnement for å bruke appen. Betal trygt med kort via Stripe."}
               </p>
-              <p className="mt-1 text-2xl font-black text-brand-gold">
-                {NYLEAD_PLAN.priceNok} kr/mnd
-              </p>
-              <p className="mt-2 text-xs text-slate-600">{NYLEAD_PLAN.tagline}</p>
-              <PlanCheckoutButton
-                planId={DEFAULT_PLAN_ID}
-                planName={NYLEAD_PLAN.name}
-                fakeLabel={fakeBilling}
-                className="!mt-4 !py-2.5 !text-xs"
-              />
             </div>
           </div>
-          <PricingSection loggedIn />
+
+          <SubscriberCapBanner compact variant="glass" className="mx-auto max-w-md" />
+
+          <section className="app-settings-card mx-auto max-w-md space-y-5 p-5 sm:p-6">
+            <div className="text-center">
+              <p className="type-eyebrow text-sky-400">Pris</p>
+              <h2 className="scan-glass-strong mt-2 font-display text-xl font-bold">
+                Én pakke — alt inkludert
+              </h2>
+              <p className="scan-glass-muted mt-2 text-xs">
+                Brønnøysund-data er gratis — du betaler for verktøyet. Pris eks. mva.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5 text-center">
+              <p className="scan-glass-strong font-display text-lg font-bold uppercase">
+                {NYLEAD_PLAN.name}
+              </p>
+              <p className="mt-1 text-3xl font-black text-sky-400">
+                {NYLEAD_PLAN.priceNok} kr/mnd
+              </p>
+              <p className="scan-glass-muted mt-2 text-xs">{NYLEAD_PLAN.tagline}</p>
+            </div>
+
+            <ul className="space-y-2.5">
+              {NYLEAD_PLAN.features.map((feature) => (
+                <li
+                  key={feature}
+                  className="scan-glass-muted flex items-start gap-2.5 text-sm"
+                >
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+
+            <PlanCheckoutButton
+              planId={DEFAULT_PLAN_ID}
+              planName={NYLEAD_PLAN.name}
+              fakeLabel={fakeBilling}
+              className="!mt-0"
+            />
+          </section>
         </>
       )}
     </div>

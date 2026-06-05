@@ -1,5 +1,6 @@
 import { hasGoogleCse, hasSerpApi } from "./config";
 import { websiteFromBrreg } from "./brreg-website-hint";
+import { websiteFromCrossLink } from "./cross-link-website";
 import { websiteFromEmail } from "./email-hint";
 import { fetchWebsitePageMetadata } from "./fetch-website-metadata";
 import { companyGeoPlaces, primaryGeoPlace } from "@/lib/brreg/geo-place";
@@ -56,7 +57,15 @@ type SocialFields = Pick<
   | "instagramConfidence"
   | "instagramProfile"
   | "instagramFromFacebook"
+  | "linkedinUrl"
+  | "linkedinConfidence"
+  | "linkedinFromWebsite"
+  | "linkedinFromFacebook"
 >;
+
+type ScanExtras = {
+  websiteDiscoverySource?: WebsiteScanResult["websiteDiscoverySource"];
+};
 
 const SOCIAL_SERP_NUM = 15;
 const DEV = process.env.NODE_ENV === "development";
@@ -74,7 +83,8 @@ function fromPick(
   topHits?: PickResult["topHits"],
   social?: SocialFields,
   displayName?: string | null,
-  socialScan?: ScanSocialOptions
+  socialScan?: ScanSocialOptions,
+  extras?: ScanExtras
 ): WebsiteScanResult {
   return {
     orgnr,
@@ -98,8 +108,105 @@ function fromPick(
     instagramConfidence: social?.instagramConfidence,
     instagramProfile: social?.instagramProfile ?? null,
     instagramFromFacebook: social?.instagramFromFacebook ?? false,
+    linkedinUrl: social?.linkedinUrl ?? null,
+    linkedinConfidence: social?.linkedinConfidence,
+    linkedinFromWebsite: social?.linkedinFromWebsite ?? false,
+    linkedinFromFacebook: social?.linkedinFromFacebook ?? false,
+    websiteDiscoverySource: extras?.websiteDiscoverySource ?? null,
     socialScan: socialScan ? buildSocialScanMeta(socialScan) : undefined,
   };
+}
+
+function resolveLinkedInFromUrls(options: {
+  includeLinkedIn: boolean;
+  websiteLinkedInUrl?: string | null;
+  facebookLinkedInUrl?: string | null;
+}): Pick<
+  SocialFields,
+  | "linkedinUrl"
+  | "linkedinConfidence"
+  | "linkedinFromWebsite"
+  | "linkedinFromFacebook"
+> {
+  if (!options.includeLinkedIn) {
+    return {
+      linkedinUrl: null,
+      linkedinConfidence: undefined,
+      linkedinFromWebsite: false,
+      linkedinFromFacebook: false,
+    };
+  }
+
+  if (options.websiteLinkedInUrl) {
+    return {
+      linkedinUrl: options.websiteLinkedInUrl,
+      linkedinConfidence: "high",
+      linkedinFromWebsite: true,
+      linkedinFromFacebook: false,
+    };
+  }
+
+  if (options.facebookLinkedInUrl) {
+    return {
+      linkedinUrl: options.facebookLinkedInUrl,
+      linkedinConfidence: "medium",
+      linkedinFromWebsite: false,
+      linkedinFromFacebook: true,
+    };
+  }
+
+  return {
+    linkedinUrl: null,
+    linkedinConfidence: undefined,
+    linkedinFromWebsite: false,
+    linkedinFromFacebook: false,
+  };
+}
+
+function applyCrossLinkWebsiteFallback(
+  pick: PickResult,
+  options: {
+    facebookWebsiteUrl?: string | null;
+    instagramExternalUrl?: string | null;
+  }
+): { pick: PickResult; discoverySource?: WebsiteScanResult["websiteDiscoverySource"] } {
+  if (pick.hasWebsite) {
+    return { pick };
+  }
+
+  const fbHint = websiteFromCrossLink(options.facebookWebsiteUrl);
+  if (fbHint) {
+    return {
+      pick: {
+        hasWebsite: fbHint.kind === "own",
+        websiteKind: fbHint.kind,
+        websiteUrl: fbHint.websiteUrl,
+        websiteDomain: fbHint.websiteDomain,
+        bookingPlatform: fbHint.kind === "booking_only" ? fbHint.websiteDomain : null,
+        topHits: pick.topHits,
+        confidence: "medium",
+      },
+      discoverySource: "facebook_link",
+    };
+  }
+
+  const igHint = websiteFromCrossLink(options.instagramExternalUrl);
+  if (igHint) {
+    return {
+      pick: {
+        hasWebsite: igHint.kind === "own",
+        websiteKind: igHint.kind,
+        websiteUrl: igHint.websiteUrl,
+        websiteDomain: igHint.websiteDomain,
+        bookingPlatform: igHint.kind === "booking_only" ? igHint.websiteDomain : null,
+        topHits: pick.topHits,
+        confidence: "medium",
+      },
+      discoverySource: "instagram_external",
+    };
+  }
+
+  return { pick };
 }
 
 async function resolveFacebook(
@@ -399,6 +506,10 @@ function demoScan(company: WebsiteScanCompanyInput): WebsiteScanResult {
     instagramConfidence: undefined,
     instagramProfile: null,
     instagramFromFacebook: false,
+    linkedinUrl: null,
+    linkedinConfidence: undefined,
+    linkedinFromWebsite: false,
+    linkedinFromFacebook: false,
   };
 
   if (emailHint) {
@@ -575,6 +686,9 @@ export async function scanCompanyWebsite(
   let displayName: string | null = null;
   let websiteFacebookUrl: string | null = null;
   let websiteInstagramUrl: string | null = null;
+  let websiteLinkedInUrl: string | null = null;
+  let websiteDiscoverySource: WebsiteScanResult["websiteDiscoverySource"] =
+    brregHint ? "brreg" : emailHint ? "email" : finalPick.hasWebsite ? "google" : null;
 
   if (finalPick.hasWebsite && finalPick.websiteUrl) {
     const meta = await fetchWebsitePageMetadata(finalPick.websiteUrl).catch(
@@ -582,15 +696,18 @@ export async function scanCompanyWebsite(
         displayName: null,
         facebookUrl: null,
         instagramUrl: null,
+        linkedinUrl: null,
       })
     );
     displayName = meta.displayName;
     websiteFacebookUrl = meta.facebookUrl;
     websiteInstagramUrl = meta.instagramUrl;
+    websiteLinkedInUrl = meta.linkedinUrl;
     logScan(company.orgnr, "Nettside-metadata", {
       displayName,
       websiteFacebookUrl,
       websiteInstagramUrl,
+      websiteLinkedInUrl,
     });
   }
 
@@ -614,9 +731,31 @@ export async function scanCompanyWebsite(
     websiteInstagramUrl,
   });
 
+  const linkedInResult = resolveLinkedInFromUrls({
+    includeLinkedIn: social.includeLinkedIn,
+    websiteLinkedInUrl,
+    facebookLinkedInUrl: socialResult.facebookProfile?.linkedLinkedInUrl,
+  });
+
+  const fallback = applyCrossLinkWebsiteFallback(finalPick, {
+    facebookWebsiteUrl: socialResult.facebookProfile?.linkedWebsiteUrl,
+    instagramExternalUrl: socialResult.instagramProfile?.externalUrl,
+  });
+  finalPick = fallback.pick;
+  if (fallback.discoverySource) {
+    websiteDiscoverySource = fallback.discoverySource;
+  }
+
+  const mergedSocial: SocialFields = {
+    ...socialResult,
+    ...linkedInResult,
+  };
+
   logScan(company.orgnr, "Sosialt resultat", {
-    facebookUrl: socialResult.facebookUrl,
-    instagramUrl: socialResult.instagramUrl,
+    facebookUrl: mergedSocial.facebookUrl,
+    instagramUrl: mergedSocial.instagramUrl,
+    linkedinUrl: mergedSocial.linkedinUrl,
+    websiteDiscoverySource,
   });
 
   return fromPick(
@@ -625,9 +764,10 @@ export async function scanCompanyWebsite(
     source,
     effectiveQuery,
     finalPick.topHits ?? [],
-    socialResult,
+    mergedSocial,
     displayName,
-    social
+    social,
+    { websiteDiscoverySource }
   );
 }
 
