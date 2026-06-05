@@ -134,6 +134,27 @@ function PresenceBadge({
   );
 }
 
+function GulesiderBadge({
+  scan,
+  scanning,
+}: {
+  scan?: WebsiteScanResult;
+  scanning?: boolean;
+}) {
+  if (scanning || !scan?.gulesiderListed || !scan.gulesiderUrl) return null;
+  return (
+    <a
+      href={scan.gulesiderUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Finnes på Gulesider"
+      className="inline-flex"
+    >
+      <PresenceBadge kind="info" label="Gul" />
+    </a>
+  );
+}
+
 function WebsiteCell({
   scan,
   scanning,
@@ -379,7 +400,28 @@ function CompanyDetailBody({
               {!scan.hasWebsite &&
                 scan.websiteKind === "none" &&
                 scan.confidence !== "low" && <PresenceBadge kind="warn" label="Uten" />}
+              <GulesiderBadge scan={scan} scanning={isScanning} />
             </>
+          )}
+        </div>
+      </DetailRow>
+      <DetailRow label="Gulesider">
+        <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
+          {isScanning ? (
+            <span className="cv-muted">Sjekker…</span>
+          ) : scan?.gulesiderListed && scan.gulesiderUrl ? (
+            <a
+              href={scan.gulesiderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cv-accent inline-flex items-center gap-0.5 truncate"
+            >
+              På Gulesider
+            </a>
+          ) : scan?.gulesiderListed === false ? (
+            <span className="cv-muted">Ikke funnet</span>
+          ) : (
+            <span className="cv-muted">—</span>
           )}
         </div>
       </DetailRow>
@@ -605,6 +647,7 @@ function CompanyMobileCard({
               {!scan.hasWebsite &&
                 scan.websiteKind === "none" &&
                 scan.confidence !== "low" && <PresenceBadge kind="warn" label="Uten" />}
+              <GulesiderBadge scan={scan} scanning={isScanning} />
             </>
           )}
           {scan?.facebookUrl && !isScanning && (
@@ -914,6 +957,7 @@ export function CompanyTable({
                                 scan.confidence !== "low" && (
                                   <PresenceBadge kind="warn" label="Uten" />
                                 )}
+                              <GulesiderBadge scan={scan} scanning={isScanning} />
                             </>
                           )}
                         </div>

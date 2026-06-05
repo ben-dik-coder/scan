@@ -106,6 +106,10 @@ export type WebsiteScanResult = {
   displayName?: string | null;
   /** Settes når SerpAPI/Google-sosialsøk er kjørt — brukes for cache-gyldighet */
   socialScan?: SocialScanMeta;
+  /** Funnet på gulesider.no via Google-søk (ikke egen nettside) */
+  gulesiderListed?: boolean;
+  gulesiderUrl?: string | null;
+  gulesiderConfidence?: SocialLinkConfidence;
 };
 
 export type WebsiteScanCompanyInput = {

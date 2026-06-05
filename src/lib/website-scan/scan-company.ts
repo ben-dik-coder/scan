@@ -6,11 +6,18 @@ import { fetchWebsitePageMetadata } from "./fetch-website-metadata";
 import { companyGeoPlaces, primaryGeoPlace } from "@/lib/brreg/geo-place";
 import { searchGoogleCse } from "./google-cse";
 import {
+  buildGulesiderSearchQuery,
+  mergeGulesiderPresence,
+  pickGulesiderFromHits,
+  type GulesiderPresence,
+} from "./directory-presence";
+import {
   buildSearchQueries,
   dedupeHits,
   displayNameDiffersFromLegal,
   normalizeDomain,
   pickBestWebsite,
+  stripCompanySuffix,
   type SearchHit,
 } from "./parse-results";
 import { searchSerpApi } from "./serpapi";
@@ -65,6 +72,7 @@ type SocialFields = Pick<
 
 type ScanExtras = {
   websiteDiscoverySource?: WebsiteScanResult["websiteDiscoverySource"];
+  gulesider?: GulesiderPresence;
 };
 
 const SOCIAL_SERP_NUM = 15;
@@ -114,7 +122,45 @@ function fromPick(
     linkedinFromFacebook: social?.linkedinFromFacebook ?? false,
     websiteDiscoverySource: extras?.websiteDiscoverySource ?? null,
     socialScan: socialScan ? buildSocialScanMeta(socialScan) : undefined,
+    gulesiderListed: extras?.gulesider?.gulesiderListed ?? false,
+    gulesiderUrl: extras?.gulesider?.gulesiderUrl ?? null,
+    gulesiderConfidence: extras?.gulesider?.gulesiderConfidence,
   };
+}
+
+async function resolveGulesiderPresence(
+  company: WebsiteScanCompanyInput,
+  hits: SearchHit[],
+  options: { canSearch: boolean; ranGoogleSearch: boolean }
+): Promise<GulesiderPresence> {
+  let presence = pickGulesiderFromHits(hits, company.name);
+
+  if (
+    !presence.gulesiderListed &&
+    options.canSearch &&
+    options.ranGoogleSearch
+  ) {
+    try {
+      const query = buildGulesiderSearchQuery(company);
+      const extraHits = await fetchHitsForQueries([query], {
+        orgnr: company.orgnr,
+        serpNum: 8,
+      });
+      presence = mergeGulesiderPresence(
+        presence,
+        pickGulesiderFromHits(extraHits, company.name)
+      );
+      logScan(company.orgnr, "Gulesider-søk", {
+        query,
+        listed: presence.gulesiderListed,
+        url: presence.gulesiderUrl,
+      });
+    } catch {
+      /* behold resultat fra hovedsøk */
+    }
+  }
+
+  return presence;
 }
 
 function resolveLinkedInFromUrls(options: {
@@ -618,10 +664,17 @@ export async function scanCompanyWebsite(
       demo: true,
       social,
     });
+    const demoListed =
+      !base.hasWebsite && parseInt(company.orgnr.replace(/\D/g, "").slice(-2), 10) % 3 === 0;
     return {
       ...base,
       ...socialResult,
       socialScan: buildSocialScanMeta(social),
+      gulesiderListed: demoListed,
+      gulesiderUrl: demoListed
+        ? `https://www.gulesider.no/${encodeURIComponent(stripCompanySuffix(company.name))}/bedrifter`
+        : null,
+      gulesiderConfidence: demoListed ? "medium" : undefined,
     };
   }
 
@@ -758,6 +811,11 @@ export async function scanCompanyWebsite(
     websiteDiscoverySource,
   });
 
+  const gulesider = await resolveGulesiderPresence(company, hits, {
+    canSearch: hasGoogleCse() || hasSerpApi(),
+    ranGoogleSearch: true,
+  });
+
   return fromPick(
     company.orgnr,
     finalPick,
@@ -767,7 +825,7 @@ export async function scanCompanyWebsite(
     mergedSocial,
     displayName,
     social,
-    { websiteDiscoverySource }
+    { websiteDiscoverySource, gulesider }
   );
 }
 

@@ -184,6 +184,12 @@ export function AppPageClient(props: Props) {
     [companies, websiteScans]
   );
 
+  const withGulesiderCount = useMemo(
+    () =>
+      companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.gulesiderListed)).length,
+    [companies, websiteScans]
+  );
+
   const withInstagramCount = useMemo(
     () =>
       companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.instagramUrl)).length,
@@ -931,6 +937,7 @@ export function AppPageClient(props: Props) {
           noWebsiteCount={noWebsiteCount}
           withWebsiteCount={withWebsiteCount}
           withFacebookCount={withFacebookCount}
+          withGulesiderCount={withGulesiderCount}
           withInstagramCount={withInstagramCount}
           withLinkedInCount={withLinkedInCount}
           includeFacebook={socialOptions.includeFacebook}

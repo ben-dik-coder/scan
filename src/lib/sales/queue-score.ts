@@ -53,6 +53,7 @@ export function computeQueueScore(
   if (scan) {
     if (!scan.hasWebsite && scan.websiteKind === "none") score += 18;
     else if (!scan.hasWebsite) score += 10;
+    if (scan.gulesiderListed && !scan.hasWebsite) score += 6;
     if (scan.facebookUrl) score += 4;
     if (!scan.facebookUrl && scan.socialScan?.includeFacebook) score += 2;
     if (scan.linkedinUrl && !scan.hasWebsite && scan.websiteKind === "none") {
