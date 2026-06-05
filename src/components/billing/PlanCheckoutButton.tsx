@@ -100,7 +100,9 @@ export function PlanCheckoutButton({
         onClick={activate}
         className={cn(
           "btn-primary w-full disabled:opacity-60",
-          !popular && "!bg-brand-navy",
+          popular
+            ? undefined
+            : "!bg-brand-navy !text-white hover:!brightness-110 [&_svg]:!text-white",
           className
         )}
       >
