@@ -2,15 +2,28 @@
 
 ## Vercel miljøvariabler (Production)
 
+Sett disse under **Vercel → Project → Settings → Environment Variables → Production** (ikke bare Preview). **Redeploy** etter endring.
+
 | Variabel | Påkrevd | Beskrivelse |
 |----------|---------|-------------|
-| `STRIPE_SECRET_KEY` | Ja | Secret key fra Stripe Dashboard → Developers → API keys |
-| `STRIPE_WEBHOOK_SECRET` | Ja | Signing secret fra webhook-endepunkt (se under) |
-| `STRIPE_PRICE` | Ja | Price ID for NyLead (499 kr/mnd) |
+| `STRIPE_SECRET_KEY` | Ja | Secret key (`sk_live_…`) fra Stripe Dashboard → Developers → API keys. **Ikke** `pk_…`, **ikke** `whsec_…`, **ikke** `price_…`. Lim inn uten anførselstegn. |
+| `STRIPE_WEBHOOK_SECRET` | Ja | Signing secret (`whsec_…`) fra webhook-endepunkt (se under) |
+| `STRIPE_PRICE` | Ja | Price ID (`price_…`) for NyLead (499 kr/mnd), samme test/live-modus som nøkkelen |
 | `BILLING_FAKE` | Anbefalt | Sett `false` i prod når Stripe er satt opp |
 | `BILLING_FREE_EMAILS` | Valgfritt | Kommaseparerte e-poster med gratis tilgang (f.eks. `ben-dik@hotmail.com`) |
-| `NEXT_PUBLIC_APP_URL` | Ja | `https://dittdomene.no` — brukes i Stripe redirect-URL-er |
+| `NEXT_PUBLIC_APP_URL` | Ja | `https://nylead.no` — brukes i Stripe redirect-URL-er |
 | `NEXT_PUBLIC_DEMO_MODE` | Viktig | Sett `false` i prod — ellers slipper alle inn uten abonnement |
+
+### Feilsøking Stripe-nøkkel
+
+Åpne `https://nylead.no/api/billing/status` etter deploy:
+
+- `stripeKeyKind` skal være `"live"` (prod) eller `"test"` (dev)
+- `stripeReady` skal være `true`
+- `stripeKeyDebug.maskedPrefix` skal starte med `sk_live` (eller `sk_test`)
+- `appUrl` skal være `https://nylead.no`
+
+Hvis du får «STRIPE_SECRET_KEY ser ugyldig ut» selv om nøkkelen ser riktig ut i Vercel: sjekk at den er satt for **Production**, uten `"` foran, og at du har **redeployet** etter lagring.
 
 ### Bakoverkompatibilitet (valgfritt)
 
