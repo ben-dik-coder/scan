@@ -288,13 +288,66 @@ export async function fetchCampaigns(userId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("email_campaigns")
-    .select("*")
+    .select("*, email_campaign_recipients(count)")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(50);
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+
+  return (data ?? []).map((row) => {
+    const recipients = row.email_campaign_recipients as { count: number }[] | null;
+    const recipient_count = recipients?.[0]?.count ?? row.sent_count + row.failed_count;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip join aggregate
+    const { email_campaign_recipients, ...campaign } = row;
+    return { ...campaign, recipient_count };
+  });
+}
+
+export async function fetchCampaignDetail(userId: string, campaignId: string) {
+  const supabase = await createClient();
+
+  const { data: campaign, error: campaignError } = await supabase
+    .from("email_campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (campaignError) throw new Error(campaignError.message);
+  if (!campaign) return null;
+
+  const { data: recipientRows, error: recipientsError } = await supabase
+    .from("email_campaign_recipients")
+    .select("*")
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: true });
+
+  if (recipientsError) throw new Error(recipientsError.message);
+
+  const orgnrs = (recipientRows ?? []).map((r) => r.orgnr);
+  let companyNames = new Map<string, string>();
+
+  if (orgnrs.length > 0) {
+    const { data: companies } = await supabase
+      .from("companies")
+      .select("orgnr, name")
+      .in("orgnr", orgnrs);
+    companyNames = new Map((companies ?? []).map((c) => [c.orgnr, c.name]));
+  }
+
+  const recipients = (recipientRows ?? []).map((r) => ({
+    id: r.id,
+    orgnr: r.orgnr,
+    companyName: companyNames.get(r.orgnr) ?? r.orgnr,
+    email: r.email,
+    status: r.status,
+    error_message: r.error_message,
+    ab_variant: r.ab_variant,
+    sent_at: r.sent_at,
+  }));
+
+  return { campaign, recipients };
 }
 
 export async function fetchTemplates(userId: string) {

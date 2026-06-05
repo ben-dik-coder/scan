@@ -37,6 +37,7 @@ type DemoContextValue = {
   templates: EmailTemplate[];
   sequences: Sequence[];
   campaigns: EmailCampaign[];
+  campaignRecipients: Record<string, string[]>;
   savedLists: SavedList[];
   updateLeadStatus: (
     orgnr: string,
@@ -63,6 +64,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState(DEMO_TEMPLATES);
   const [sequences] = useState(DEMO_SEQUENCES);
   const [campaigns, setCampaigns] = useState(DEMO_CAMPAIGNS);
+  const [campaignRecipients, setCampaignRecipients] = useState<Record<string, string[]>>(
+    {}
+  );
   const [savedLists, setSavedLists] = useState<SavedList[]>(DEMO_SAVED_LISTS);
 
   const setLeadStatus = useCallback(
@@ -160,9 +164,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
           : c
       )
     );
+    const campaignId = `camp-${Date.now()}`;
     setCampaigns((prev) => [
       {
-        id: `camp-${Date.now()}`,
+        id: campaignId,
         user_id: "demo-user",
         subject,
         subject_b: null,
@@ -173,6 +178,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       },
       ...prev,
     ]);
+    setCampaignRecipients((prev) => ({ ...prev, [campaignId]: orgnrs }));
   }, []);
 
   const enrollSequenceDemo = useCallback((_sequenceId: string, orgnrs: string[]) => {
@@ -204,6 +210,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       templates,
       sequences,
       campaigns,
+      campaignRecipients,
       savedLists,
       updateLeadStatus,
       setLeadStatus,
@@ -219,6 +226,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       templates,
       sequences,
       campaigns,
+      campaignRecipients,
       savedLists,
       updateLeadStatus,
       setLeadStatus,

@@ -1288,6 +1288,48 @@ body {
     background: rgba(255, 255, 255, 0.03);
   }
 
+  /* Kampanjer v2 */
+  .scan-glass-shell .campaign-row {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .scan-glass-shell .campaign-row:hover {
+    border-color: rgba(251, 191, 36, 0.3);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .scan-glass-shell .campaign-drawer {
+    color: #f8fafc;
+  }
+
+  .scan-glass-shell .campaign-empty {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .scan-glass-shell .campaign-preview {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .scan-glass-shell .campaign-recipient-status--sent {
+    background: rgba(52, 211, 153, 0.15);
+    color: #6ee7b7;
+  }
+
+  .scan-glass-shell .campaign-recipient-status--failed {
+    background: rgba(248, 113, 113, 0.15);
+    color: #fca5a5;
+  }
+
+  .scan-glass-shell .campaign-recipient-status--blocked {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fcd34d;
+  }
+
+  .scan-glass-shell .campaign-recipient-status--pending {
+    background: rgba(148, 163, 184, 0.15);
+    color: #cbd5e1;
+  }
+
   .scan-glass-shell .ko-queue-section-toggle {
     background: rgba(11, 22, 42, 0.72) !important;
     border-color: rgba(255, 255, 255, 0.1) !important;

@@ -2,7 +2,6 @@
 
 import { LEAD_STATUSES } from "@/lib/sales/constants";
 import type { SalesDashboardStats } from "@/lib/sales/dashboard-stats";
-import type { EmailCampaign } from "@/types/database";
 import Link from "next/link";
 import { ArrowRight, Bell, Mail, Sparkles, TrendingUp, Users } from "lucide-react";
 import { useOnboarding } from "@/components/onboarding/OnboardingProvider";
@@ -79,45 +78,3 @@ export function SalesOverview({ stats }: { stats: SalesDashboardStats }) {
   );
 }
 
-export function CampaignsList({ campaigns }: { campaigns: EmailCampaign[] }) {
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Kampanjer"
-        description="Historikk over sendte e-poster"
-      />
-
-      <div className="panel overflow-hidden">
-        <table className="app-table min-w-full text-sm">
-          <thead>
-            <tr>
-              <th>Dato</th>
-              <th>Emne</th>
-              <th>Sendt</th>
-              <th>Feilet</th>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map((c) => (
-              <tr key={c.id}>
-                <td className="muted">
-                  {new Date(c.created_at).toLocaleString("nb-NO")}
-                </td>
-                <td className="font-medium text-brand-navy">{c.subject}</td>
-                <td className="font-semibold text-brand-gold">{c.sent_count}</td>
-                <td className="font-semibold text-red-600">{c.failed_count}</td>
-              </tr>
-            ))}
-            {campaigns.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-12 text-center text-slate-500">
-                  Ingen kampanjer sendt ennå
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}

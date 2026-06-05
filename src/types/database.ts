@@ -70,6 +70,38 @@ export type EmailCampaign = {
   created_at: string;
 };
 
+export type EmailCampaignRecipient = {
+  id: string;
+  campaign_id: string;
+  orgnr: string;
+  email: string;
+  status: CampaignRecipientStatus;
+  error_message: string | null;
+  ab_variant: "a" | "b" | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+export type CampaignListItem = EmailCampaign & {
+  recipient_count: number;
+};
+
+export type CampaignRecipientDetail = {
+  id: string;
+  orgnr: string;
+  companyName: string;
+  email: string;
+  status: CampaignRecipientStatus;
+  error_message: string | null;
+  ab_variant: "a" | "b" | null;
+  sent_at: string | null;
+};
+
+export type CampaignDetail = {
+  campaign: EmailCampaign;
+  recipients: CampaignRecipientDetail[];
+};
+
 export type UserSettings = {
   user_id: string;
   webhook_url: string | null;

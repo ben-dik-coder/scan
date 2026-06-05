@@ -415,29 +415,63 @@ export function AppPageClient(props: Props) {
     );
   }
 
+  function noWebsiteOrgnrsInSelection(orgnrFilter?: Set<string>) {
+    return companies
+      .filter(
+        (c) =>
+          (!orgnrFilter || orgnrFilter.has(c.orgnr)) &&
+          isLeadWithoutOwnSite(c.orgnr) &&
+          c.has_email
+      )
+      .map((c) => c.orgnr);
+  }
+
   async function addLeadsToQueue(orgnrs: string[]) {
     if (orgnrs.length === 0) return;
     setAddingToQueue(true);
+    setScanSelectionMessage(null);
     try {
+      let failed = 0;
       if (isDemoMode()) {
         for (const orgnr of orgnrs) {
           demo.setLeadStatus(orgnr, "ny", { queue: true });
         }
       } else {
-        await Promise.all(
-          orgnrs.map((orgnr) =>
-            fetch("/api/leads/status", {
+        const results = await Promise.all(
+          orgnrs.map(async (orgnr) => {
+            const res = await fetch("/api/leads/status", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ orgnr, status: "ny", queue: true }),
-            })
-          )
+            });
+            return res.ok;
+          })
+        );
+        failed = results.filter((ok) => !ok).length;
+      }
+      const queued = orgnrs.length - failed;
+      if (queued === 0) {
+        setScanSelectionMessage("Kunne ikke legge firma i kø — prøv igjen.");
+        return;
+      }
+      if (failed > 0) {
+        setScanSelectionMessage(
+          `${queued} lagt i kø. ${failed} feilet — prøv igjen for resten.`
         );
       }
       router.push("/app/ko");
     } finally {
       setAddingToQueue(false);
     }
+  }
+
+  function addSelectedToQueue() {
+    const orgnrs = Array.from(selected);
+    if (orgnrs.length === 0) {
+      setScanSelectionMessage("Velg minst ett firma først.");
+      return;
+    }
+    void addLeadsToQueue(orgnrs);
   }
 
   async function updateStatus(orgnr: string, status: string) {
@@ -532,7 +566,7 @@ export function AppPageClient(props: Props) {
     const result = scanCompanies(selectedCompanies, { preserveOrder: true });
     if (!result.ok) {
       setScanSelectionMessage(result.message);
-      return;
+      return result;
     }
     if ("cachedOnly" in result && result.cachedOnly) {
       setScanSelectionMessage("Alle valgte er allerede sjekket — ingen nytt Google-søk.");
@@ -540,7 +574,7 @@ export function AppPageClient(props: Props) {
         setListFilter("no_website");
         setNoWebsiteBanner(true);
       }
-      return;
+      return result;
     }
     const parts: string[] = [];
     if (result.cachedCount && result.cachedCount > 0) {
@@ -556,6 +590,7 @@ export function AppPageClient(props: Props) {
       const msg = parts.join(" · ");
       setScanSelectionMessage(msg.charAt(0).toUpperCase() + msg.slice(1));
     }
+    return result;
   }
 
   function checkAndAddToQueue() {
@@ -567,11 +602,26 @@ export function AppPageClient(props: Props) {
       setScanSelectionMessage("Ingen firma med e-post å sjekke.");
       return;
     }
-    setQueueAfterScan(true);
-    setSelected(new Set(ranked.map((c) => c.orgnr)));
+    const rankedOrgnrs = new Set(ranked.map((c) => c.orgnr));
+    setSelected(rankedOrgnrs);
     setWorkflowStep(2);
     setScanSelectionMessage(null);
-    scanSelectedWithGoogle();
+    const result = scanSelectedWithGoogle();
+    if (!result?.ok) return;
+
+    if ("cachedOnly" in result && result.cachedOnly) {
+      const orgnrs = noWebsiteOrgnrsInSelection(rankedOrgnrs);
+      if (orgnrs.length > 0) {
+        void addLeadsToQueue(orgnrs);
+      } else {
+        setScanSelectionMessage(
+          "Ingen uten nettside med e-post i topp 10 — prøv «Legg valgte i kø» på firma du velger selv."
+        );
+      }
+      return;
+    }
+
+    setQueueAfterScan(true);
   }
 
   useEffect(() => {
@@ -584,22 +634,16 @@ export function AppPageClient(props: Props) {
 
   useEffect(() => {
     if (!queueAfterScan || scanning || !scanComplete) return;
-    const orgnrs = companies
-      .filter(
-        (c) =>
-          selected.has(c.orgnr) && isLeadWithoutOwnSite(c.orgnr) && c.has_email
-      )
-      .map((c) => c.orgnr);
     setQueueAfterScan(false);
+    const orgnrs = noWebsiteOrgnrsInSelection(selected);
     if (orgnrs.length > 0) {
       void addLeadsToQueue(orgnrs);
     } else {
       setScanSelectionMessage(
-        "Ingen uten nettside med e-post i valget — prøv andre firma."
+        "Ingen uten nettside med e-post i valget — velg firma og bruk «Legg valgte i kø»."
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run when scan batch completes
-  }, [queueAfterScan, scanning, scanComplete, companies, selected]);
+  }, [queueAfterScan, scanning, scanComplete, companies, selected, websiteScans]);
 
   const listTabs = [
     { id: "all" as const, label: "Alle", shortLabel: "Alle", count: companies.length, icon: List },
@@ -809,7 +853,7 @@ export function AppPageClient(props: Props) {
                     onClick={checkAndAddToQueue}
                     disabled={scanning || addingToQueue || withEmailCount === 0}
                     className="scan-btn-ghost inline-flex min-h-[40px] items-center gap-1.5 px-3 text-xs font-semibold disabled:opacity-40"
-                    title="Sjekker topp 10 med e-post og legger uten nettside i arbeidskø"
+                    title="Sjekker topp 10 med e-post og legger kun uten nettside i kø. For valgte firma: bruk «Legg valgte i kø»."
                   >
                     <ListTodo className="h-3.5 w-3.5" />
                     {addingToQueue ? "Legger i kø…" : "Sjekk og legg i kø"}
@@ -1004,15 +1048,26 @@ export function AppPageClient(props: Props) {
 
           <div className="mt-1.5 flex flex-wrap gap-1">
             {selected.size > 0 && (
-              <button
-                type="button"
-                onClick={exportSelectedCsv}
-                disabled={exporting}
-                className="scan-btn-ghost inline-flex items-center gap-1"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {exporting ? "Eksporterer…" : `CSV (${selected.size})`}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={addSelectedToQueue}
+                  disabled={addingToQueue}
+                  className="scan-btn-ghost inline-flex items-center gap-1 font-semibold text-brand-gold"
+                >
+                  <ListTodo className="h-3.5 w-3.5" />
+                  {addingToQueue ? "Legger i kø…" : `Legg valgte i kø (${selected.size})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={exportSelectedCsv}
+                  disabled={exporting}
+                  className="scan-btn-ghost inline-flex items-center gap-1"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {exporting ? "Eksporterer…" : `CSV (${selected.size})`}
+                </button>
+              </>
             )}
             {exportMessage && (
               <p className="w-full text-xs text-emerald-300">{exportMessage}</p>
@@ -1116,13 +1171,23 @@ export function AppPageClient(props: Props) {
               </span>
             )}
           </span>
-          <button
-            type="button"
-            onClick={scrollToEmail}
-            className="scan-btn-primary min-h-[36px] px-3"
-          >
-            Gå til e-post
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={addSelectedToQueue}
+              disabled={addingToQueue}
+              className="scan-btn-ghost min-h-[36px] px-3 text-xs font-semibold"
+            >
+              {addingToQueue ? "Legger i kø…" : "Legg i kø"}
+            </button>
+            <button
+              type="button"
+              onClick={scrollToEmail}
+              className="scan-btn-primary min-h-[36px] px-3"
+            >
+              Gå til e-post
+            </button>
+          </div>
         </div>
       )}
 
