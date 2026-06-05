@@ -142,10 +142,18 @@ export async function fetchPipelineLeads(userId: string) {
 
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => ({
-    lead: row as UserLead,
-    company: row.companies as Company,
-  }));
+  return (data ?? []).map((row) => {
+    const { companies: companyRaw, ...leadRow } = row;
+    const companyJoined = companyRaw as Company | Company[] | null;
+    const company = Array.isArray(companyJoined) ? companyJoined[0] : companyJoined;
+    if (!company) {
+      throw new Error(`Manglende firmadata for lead ${leadRow.orgnr}`);
+    }
+    return {
+      lead: leadRow as UserLead,
+      company,
+    };
+  });
 }
 
 export async function fetchSalesDashboard(

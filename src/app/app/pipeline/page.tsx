@@ -1,25 +1,21 @@
-"use client";
+import { getSessionUser } from "@/lib/auth";
+import { fetchPipelineLeads } from "@/lib/companies";
+import { isDemoMode } from "@/lib/demo/config";
+import { PipelineClient } from "./PipelineClient";
 
-import { PipelineBoard, PipelineClosed } from "@/components/PipelineBoard";
-import { PageHeader } from "@/components/ui/primitives";
-import { useDemo } from "@/lib/demo/store";
+export default async function PipelinePage() {
+  const isDemo = isDemoMode();
+  const user = await getSessionUser();
 
-export default function PipelinePage() {
-  const { companies, updateLeadStatus } = useDemo();
+  let initialItems: Awaited<ReturnType<typeof fetchPipelineLeads>> = [];
 
-  const items = companies.map((c) => ({
-    lead: c.user_lead!,
-    company: c,
-  }));
+  if (!isDemo && user) {
+    try {
+      initialItems = await fetchPipelineLeads(user.id);
+    } catch {
+      initialItems = [];
+    }
+  }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Pipeline"
-        description="Dra leads gjennom salgsprosessen — fra ny til møte booket"
-      />
-      <PipelineBoard items={items} onStatusChange={updateLeadStatus} />
-      <PipelineClosed items={items} onStatusChange={updateLeadStatus} />
-    </div>
-  );
+  return <PipelineClient initialItems={initialItems} isDemo={isDemo} />;
 }
