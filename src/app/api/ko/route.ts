@@ -6,13 +6,10 @@ import {
   buildQueueCandidates,
   mapQueueCandidatesToItems,
 } from "@/lib/sales/queue-score";
-import { forEachOrgnrBatch } from "@/lib/supabase/query-batches";
 import type { Company, UserLead } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const ORGNR_BATCH_SIZE = 80;
 
 export async function GET() {
   try {
@@ -22,44 +19,36 @@ export async function GET() {
     }
 
     const supabase = await createClient();
-    const since = new Date();
-    since.setDate(since.getDate() - 30);
-    const sinceStr = since.toISOString().slice(0, 10);
 
-    const { data: companies, error } = await supabase
-      .from("companies")
+    const { data: leadRows, error: leadsError } = await supabase
+      .from("user_leads")
       .select("*")
-      .gte("registered_at", sinceStr)
-      .order("registered_at", { ascending: false });
+      .eq("user_id", user.id)
+      .not("queued_at", "is", null)
+      .in("status", ["ny", "kontaktet"])
+      .order("queued_at", { ascending: false });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (leadsError) {
+      return NextResponse.json({ error: leadsError.message }, { status: 500 });
     }
 
-    const companyRows = (companies ?? []) as Company[];
-    if (companyRows.length === 0) {
+    const leads = (leadRows ?? []) as UserLead[];
+    if (leads.length === 0) {
       return NextResponse.json({ items: [] });
     }
 
-    const orgnrs = companyRows.map((c) => c.orgnr);
+    const orgnrs = leads.map((l) => l.orgnr);
+    const { data: companies, error: companiesError } = await supabase
+      .from("companies")
+      .select("*")
+      .in("orgnr", orgnrs);
 
-    const leadRows = await forEachOrgnrBatch<UserLead>(
-      orgnrs,
-      ORGNR_BATCH_SIZE,
-      async (batch) => {
-        const { data, error: leadsError } = await supabase
-          .from("user_leads")
-          .select("*")
-          .eq("user_id", user.id)
-          .in("orgnr", batch);
-        if (leadsError) {
-          throw new Error(leadsError.message);
-        }
-        return (data ?? []) as UserLead[];
-      }
-    );
+    if (companiesError) {
+      return NextResponse.json({ error: companiesError.message }, { status: 500 });
+    }
 
-    const leadsByOrgnr = new Map(leadRows.map((l) => [l.orgnr, l]));
+    const companyRows = (companies ?? []) as Company[];
+    const leadsByOrgnr = new Map(leads.map((l) => [l.orgnr, l]));
     const scans = await loadCachedWebsiteScans(orgnrs);
     const scansByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
 

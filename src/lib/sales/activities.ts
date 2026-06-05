@@ -27,6 +27,7 @@ export async function upsertUserLead(
     notes?: string;
     last_contacted_at?: string;
     next_follow_up_at?: string | null;
+    queued_at?: string | null;
   }
 ) {
   const supabase = createServiceClient();

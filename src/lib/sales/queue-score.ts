@@ -89,8 +89,8 @@ export function buildQueueCandidates(
       };
     })
     .filter((c) => {
-      const status = c.lead?.status ?? "ny";
-      // Kun daglig kø — ikke_interessert, tapt, vunnet osv. vises ikke her
+      if (!c.lead?.queued_at) return false;
+      const status = c.lead.status;
       return status === "ny" || status === "kontaktet";
     })
     .sort((a, b) => b.queueScore - a.queueScore);

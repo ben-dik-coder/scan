@@ -250,6 +250,7 @@ function toUserLead(c: RawCompany): UserLead {
     notes: c.notes ?? null,
     last_contacted_at: c.status === "kontaktet" ? daysAgo(2) : null,
     next_follow_up_at: c.status === "svarte" ? daysAgo(-2) : null,
+    queued_at: null,
     created_at: c.created_at,
     updated_at: c.updated_at,
   };

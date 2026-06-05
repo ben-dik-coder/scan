@@ -421,7 +421,7 @@ export function AppPageClient(props: Props) {
     try {
       if (isDemoMode()) {
         for (const orgnr of orgnrs) {
-          demo.setLeadStatus(orgnr, "ny");
+          demo.setLeadStatus(orgnr, "ny", { queue: true });
         }
       } else {
         await Promise.all(
@@ -429,7 +429,7 @@ export function AppPageClient(props: Props) {
             fetch("/api/leads/status", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orgnr, status: "ny" }),
+              body: JSON.stringify({ orgnr, status: "ny", queue: true }),
             })
           )
         );

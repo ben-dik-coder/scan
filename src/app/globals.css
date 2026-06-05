@@ -1263,6 +1263,31 @@ body {
     background: rgba(255, 255, 255, 0.03);
   }
 
+  /* Arbeidskø v2 — fokusmodus */
+  .scan-glass-shell .ko-focus-card {
+    background: rgba(11, 22, 42, 0.92);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+
+  .scan-glass-shell .ko-focus-progress {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .scan-glass-shell .ko-focus-progress-fill {
+    background: linear-gradient(90deg, #38bdf8, #fbbf24);
+  }
+
+  .scan-glass-shell .ko-send-drawer {
+    color: #f8fafc;
+  }
+
+  .scan-glass-shell .ko-empty {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
   .scan-glass-shell .ko-queue-section-toggle {
     background: rgba(11, 22, 42, 0.72) !important;
     border-color: rgba(255, 255, 255, 0.1) !important;

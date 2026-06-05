@@ -91,6 +91,7 @@ function toCompanyWithLead(company: Company): CompanyWithLead {
       notes: null,
       last_contacted_at: null,
       next_follow_up_at: null,
+      queued_at: null,
       created_at: company.created_at,
       updated_at: company.updated_at,
     },

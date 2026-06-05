@@ -105,6 +105,8 @@ export type UserLead = {
   notes: string | null;
   last_contacted_at: string | null;
   next_follow_up_at: string | null;
+  /** Satt når bruker eksplisitt legger lead i arbeidskø */
+  queued_at: string | null;
   created_at: string;
   updated_at: string;
 };

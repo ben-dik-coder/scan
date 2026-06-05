@@ -38,8 +38,16 @@ type DemoContextValue = {
   sequences: Sequence[];
   campaigns: EmailCampaign[];
   savedLists: SavedList[];
-  updateLeadStatus: (orgnr: string, status: LeadStatus) => void;
-  setLeadStatus: (orgnr: string, status: LeadStatus) => void;
+  updateLeadStatus: (
+    orgnr: string,
+    status: LeadStatus,
+    options?: { queue?: boolean; unqueue?: boolean }
+  ) => void;
+  setLeadStatus: (
+    orgnr: string,
+    status: LeadStatus,
+    options?: { queue?: boolean; unqueue?: boolean }
+  ) => void;
   deleteLead: (orgnr: string) => void;
   addTemplate: (t: Omit<EmailTemplate, "id" | "user_id" | "created_at" | "updated_at">) => void;
   removeTemplate: (id: string) => void;
@@ -57,40 +65,56 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [campaigns, setCampaigns] = useState(DEMO_CAMPAIGNS);
   const [savedLists, setSavedLists] = useState<SavedList[]>(DEMO_SAVED_LISTS);
 
-  const setLeadStatus = useCallback((orgnr: string, status: LeadStatus) => {
-    const now = new Date().toISOString();
-    setCompanies((prev) =>
-      prev.map((c) => {
-        if (c.orgnr !== orgnr) return c;
-        if (c.user_lead) {
+  const setLeadStatus = useCallback(
+    (
+      orgnr: string,
+      status: LeadStatus,
+      options?: { queue?: boolean; unqueue?: boolean }
+    ) => {
+      const now = new Date().toISOString();
+      setCompanies((prev) =>
+        prev.map((c) => {
+          if (c.orgnr !== orgnr) return c;
+          const queuedAt =
+            options?.unqueue || status === "ikke_interessert"
+              ? null
+              : options?.queue && status === "ny"
+                ? now
+                : c.user_lead?.queued_at ?? null;
+
+          if (c.user_lead) {
+            return {
+              ...c,
+              user_lead: {
+                ...c.user_lead,
+                status,
+                queued_at: queuedAt,
+                updated_at: now,
+                last_contacted_at:
+                  status === "kontaktet" ? now : c.user_lead.last_contacted_at,
+              },
+            };
+          }
           return {
             ...c,
             user_lead: {
-              ...c.user_lead,
+              user_id: "demo-user",
+              orgnr,
               status,
+              score: computeLeadScore(c),
+              notes: null,
+              last_contacted_at: status === "kontaktet" ? now : null,
+              next_follow_up_at: null,
+              queued_at: queuedAt,
+              created_at: now,
               updated_at: now,
-              last_contacted_at:
-                status === "kontaktet" ? now : c.user_lead.last_contacted_at,
             },
           };
-        }
-        return {
-          ...c,
-          user_lead: {
-            user_id: "demo-user",
-            orgnr,
-            status,
-            score: computeLeadScore(c),
-            notes: null,
-            last_contacted_at: status === "kontaktet" ? now : null,
-            next_follow_up_at: null,
-            created_at: now,
-            updated_at: now,
-          },
-        };
-      })
-    );
-  }, []);
+        })
+      );
+    },
+    []
+  );
 
   const updateLeadStatus = setLeadStatus;
 
