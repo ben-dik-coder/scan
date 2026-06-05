@@ -1,5 +1,25 @@
 import type { Company } from "@/types/database";
+import type { PipelineItem } from "@/components/pipeline/types";
 import type { QueueItemResponse } from "@/lib/sales/queue-score";
+import { computeLeadScore } from "@/lib/sales/lead-score";
+
+export function pipelineItemToQueueItem(item: PipelineItem): QueueItemResponse {
+  const { company, lead } = item;
+  return {
+    orgnr: company.orgnr,
+    name: company.name,
+    email: company.email,
+    phone: company.phone ?? company.mobile,
+    municipalityName: company.municipality_name,
+    registeredAt: company.registered_at,
+    status: lead.status,
+    queueScore: lead.score ?? computeLeadScore(company),
+    daysSinceRegistration: null,
+    hasWebsite: null,
+    websiteKind: null,
+    dagligLeder: company.daglig_leder,
+  };
+}
 
 export function queueItemToCompany(item: QueueItemResponse): Company {
   const now = new Date().toISOString();

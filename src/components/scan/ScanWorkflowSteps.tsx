@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Check, Mail, Search, Users } from "lucide-react";
+import { Check, ListTodo, Search, Users } from "lucide-react";
 
 export type WorkflowStep = 1 | 2 | 3;
 
@@ -14,7 +14,7 @@ type Props = {
 const STEPS = [
   { id: 1 as const, label: "Velg firma", short: "Velg", icon: Users },
   { id: 2 as const, label: "Google-sjekk", short: "Sjekk", icon: Search },
-  { id: 3 as const, label: "Send e-post", short: "Send", icon: Mail },
+  { id: 3 as const, label: "Legg i kø", short: "Kø", icon: ListTodo },
 ];
 
 export function ScanWorkflowSteps({ activeStep, selectedCount, onStepClick }: Props) {
@@ -64,7 +64,7 @@ export function ScanWorkflowSteps({ activeStep, selectedCount, onStepClick }: Pr
               <span className="scan-glass-muted block text-[10px]">
                 {step.id === 1 && "Huk av i listen"}
                 {step.id === 2 && "Maks 10 om gangen"}
-                {step.id === 3 && "E-post til valgte"}
+                {step.id === 3 && "Til arbeidskøen"}
               </span>
             </span>
             {index < STEPS.length - 1 && (

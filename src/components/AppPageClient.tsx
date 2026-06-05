@@ -18,6 +18,7 @@ import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
 import { ScanLeadModes } from "@/components/scan/ScanLeadModes";
 import { ScanSavedAudiences } from "@/components/scan/ScanSavedAudiences";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
+import { NextStepBanner } from "@/components/journey/NextStepBanner";
 import {
   ScanWorkflowSteps,
   type WorkflowStep,
@@ -109,7 +110,8 @@ export function AppPageClient(props: Props) {
   const [noWebsiteBanner, setNoWebsiteBanner] = useState(false);
   const [queueAfterScan, setQueueAfterScan] = useState(false);
   const [addingToQueue, setAddingToQueue] = useState(false);
-  const emailSectionRef = useRef<HTMLDivElement>(null);
+  const emailSectionRef = useRef<HTMLDetailsElement>(null);
+  const queueActionRef = useRef<HTMLDivElement>(null);
   const wasScanningRef = useRef(false);
 
   const activeLeadMode = useMemo((): ScanLeadMode | null => {
@@ -236,14 +238,14 @@ export function AppPageClient(props: Props) {
   const scanQueueCount = Math.min(selected.size, MAX_WEBSITE_SCAN_BATCH);
   const scanQueueRemaining = Math.max(0, MAX_WEBSITE_SCAN_BATCH - scanQueueCount);
 
-  function scrollToEmail() {
+  function scrollToQueue() {
     setWorkflowStep(3);
-    emailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    queueActionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function handleWorkflowStepClick(step: WorkflowStep) {
     setWorkflowStep(step);
-    if (step === 3) scrollToEmail();
+    if (step === 3) scrollToQueue();
   }
 
   const matchesPresenceFilters = (c: CompanyWithLead) => {
@@ -458,6 +460,14 @@ export function AppPageClient(props: Props) {
         setScanSelectionMessage(
           `${queued} lagt i kø. ${failed} feilet — prøv igjen for resten.`
         );
+      }
+      try {
+        sessionStorage.setItem(
+          "nylead-queue-toast",
+          `${queued} lagt i kø — neste: kontakt første firma`
+        );
+      } catch {
+        /* ignore */
       }
       router.push("/app/ko");
     } finally {
@@ -693,7 +703,7 @@ export function AppPageClient(props: Props) {
             <div className="min-w-0">
               <h1 className="scan-glass-title">Skann markedet</h1>
               <p className="scan-glass-subtitle">
-                Velg firma → sjekk (maks 10) → send e-post
+                Velg firma → sjekk → legg i arbeidskø
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -720,6 +730,8 @@ export function AppPageClient(props: Props) {
             </p>
           </details>
         </header>
+
+        <NextStepBanner pagePhase="scan" />
 
         <ScanWorkflowSteps
           activeStep={workflowStep}
@@ -1046,14 +1058,14 @@ export function AppPageClient(props: Props) {
             </div>
           </div>
 
-          <div className="mt-1.5 flex flex-wrap gap-1">
+          <div ref={queueActionRef} className="mt-1.5 flex flex-wrap gap-1 scroll-mt-24">
             {selected.size > 0 && (
               <>
                 <button
                   type="button"
                   onClick={addSelectedToQueue}
                   disabled={addingToQueue}
-                  className="scan-btn-ghost inline-flex items-center gap-1 font-semibold text-brand-gold"
+                  className="scan-btn-primary inline-flex items-center gap-1 font-semibold"
                 >
                   <ListTodo className="h-3.5 w-3.5" />
                   {addingToQueue ? "Legger i kø…" : `Legg valgte i kø (${selected.size})`}
@@ -1171,39 +1183,32 @@ export function AppPageClient(props: Props) {
               </span>
             )}
           </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={addSelectedToQueue}
-              disabled={addingToQueue}
-              className="scan-btn-ghost min-h-[36px] px-3 text-xs font-semibold"
-            >
-              {addingToQueue ? "Legger i kø…" : "Legg i kø"}
-            </button>
-            <button
-              type="button"
-              onClick={scrollToEmail}
-              className="scan-btn-primary min-h-[36px] px-3"
-            >
-              Gå til e-post
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={addSelectedToQueue}
+            disabled={addingToQueue}
+            className="scan-btn-primary min-h-[36px] px-4 text-xs font-semibold"
+          >
+            {addingToQueue ? "Legger i kø…" : `Legg i kø (${selected.size})`}
+          </button>
         </div>
       )}
 
-      <div ref={emailSectionRef} className="scan-surface-pad w-full max-w-none scroll-mt-4">
-        <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
-          Steg 3 — Send e-post
-        </p>
-        <SendCampaignForm
-          selectedCompanies={selectedCompanies}
-          templates={props.templates}
-          sequences={props.sequences}
-          websiteScans={websiteScans}
-          onSent={() => setSelected(new Set())}
-          light
-        />
-      </div>
+      <details ref={emailSectionRef} className="scan-surface-pad w-full max-w-none scroll-mt-4">
+        <summary className="scan-glass-muted cursor-pointer select-none text-[10px] font-semibold uppercase tracking-wide hover:text-slate-200">
+          Avansert: send til mange
+        </summary>
+        <div className="mt-3">
+          <SendCampaignForm
+            selectedCompanies={selectedCompanies}
+            templates={props.templates}
+            sequences={props.sequences}
+            websiteScans={websiteScans}
+            onSent={() => setSelected(new Set())}
+            light
+          />
+        </div>
+      </details>
 
       <ScanSavedAudiences
         onApply={(next) => applyFilters(next)}

@@ -23,6 +23,8 @@ type Props = {
   onSent: () => void;
   light?: boolean;
   websiteScans?: Map<string, WebsiteScanResult>;
+  /** Én mottaker (kø/pipeline) — enklere layout og tittel. */
+  singleRecipient?: boolean;
 };
 
 const DEFAULT_WEBSITE_PITCH = {
@@ -47,6 +49,7 @@ export function SendCampaignForm({
   onSent,
   light = true,
   websiteScans,
+  singleRecipient = false,
 }: Props) {
   const demo = useDemo();
   const websiteTemplate =
@@ -263,6 +266,9 @@ export function SendCampaignForm({
 
   const inputClass = light ? "scan-input mt-1.5" : "input-dark mt-1.5 py-2.5";
   const labelClass = light ? "font-medium text-slate-600" : "font-semibold text-white/70";
+  const isSingle = singleRecipient || selectedCompanies.length === 1;
+  const singleName = selectedCompanies[0]?.name;
+  const zoneClass = "text-[10px] font-semibold uppercase tracking-wider text-slate-500";
 
   return (
     <form onSubmit={handleSend} className={light ? "space-y-5" : "panel space-y-5 p-5 sm:p-6"}>
@@ -290,46 +296,60 @@ export function SendCampaignForm({
                 : "font-display text-lg font-bold uppercase tracking-wide text-white"
             }
           >
-            Send tilbud til valgte
+            {isSingle && singleName ? `Send til ${singleName}` : "Send tilbud til valgte"}
           </h3>
-          <p className={light ? "mt-1 text-sm text-slate-500" : "mt-1 font-sans text-sm text-white/50"}>
-            Én melding til{" "}
-            <span className={light ? "font-semibold text-brand-navy" : "font-semibold text-brand-gold"}>
-              {withEmail.length}
-            </span>{" "}
-            firma
-            {withEmail.length !== selectedCompanies.length &&
-              ` (${selectedCompanies.length - withEmail.length} uten e-post hoppes over)`}
-            {facebookCount > 0 && (
-              <>
-                {" "}
-                · <span className="font-semibold text-blue-700">{facebookCount}</span> fra
-                Facebook
-              </>
-            )}
-          </p>
+          {!isSingle && (
+            <p className={light ? "mt-1 text-sm text-slate-500" : "mt-1 font-sans text-sm text-white/50"}>
+              Én melding til{" "}
+              <span className={light ? "font-semibold text-brand-navy" : "font-semibold text-brand-gold"}>
+                {withEmail.length}
+              </span>{" "}
+              firma
+              {withEmail.length !== selectedCompanies.length &&
+                ` (${selectedCompanies.length - withEmail.length} uten e-post hoppes over)`}
+              {facebookCount > 0 && (
+                <>
+                  {" "}
+                  · <span className="font-semibold text-blue-700">{facebookCount}</span> fra
+                  Facebook
+                </>
+              )}
+            </p>
+          )}
         </div>
       </div>
 
-      {withEmail.length > 0 && (
-        <CampaignRecipientsPanel
-          recipients={resolvedRecipients}
-          skipped={skippedCompanies}
-          light={light}
-        />
-      )}
-
-      <EmailConnect light={light} compact />
-
       {!isDemoMode() && !emailLoading && !sendEmail && (
-        <p className={light ? "text-xs text-amber-800" : "text-xs text-amber-200/90"}>
-          Du må{" "}
+        <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          Koble e-post først —{" "}
           <Link href="/app/innstillinger" className="font-semibold underline">
-            koble e-post
-          </Link>{" "}
-          før du kan sende.
-        </p>
+            gå til innstillinger
+          </Link>
+        </div>
       )}
+
+      {isSingle ? (
+        <section className="space-y-2">
+          <h4 className={zoneClass}>Mottaker</h4>
+          {withEmail.length > 0 ? (
+            <p className={light ? "text-sm text-slate-700" : "text-sm text-slate-200"}>
+              {resolvedRecipients[0]?.resolved.email ?? selectedCompanies[0]?.email ?? "—"}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-500">Ingen e-post funnet for dette firmaet.</p>
+          )}
+        </section>
+      ) : (
+        withEmail.length > 0 && (
+          <CampaignRecipientsPanel
+            recipients={resolvedRecipients}
+            skipped={skippedCompanies}
+            light={light}
+          />
+        )
+      )}
+
+      {sendEmail && <EmailConnect light={light} compact />}
 
       {!isDemoMode() && sendEmail && hasMultipleAccounts && (
         <label className="block text-sm">
@@ -349,6 +369,9 @@ export function SendCampaignForm({
           </select>
         </label>
       )}
+
+      <section className="space-y-3">
+        {isSingle && <h4 className={zoneClass}>Melding</h4>}
 
       {templates.length > 0 && (
         <label className="block text-sm">
@@ -390,6 +413,11 @@ export function SendCampaignForm({
           required
         />
       </label>
+
+      </section>
+
+      <section className="space-y-3">
+        {isSingle && <h4 className={zoneClass}>Send</h4>}
 
       {personalCount > 0 && (
         <label
@@ -453,9 +481,13 @@ export function SendCampaignForm({
         {loading
           ? "Sender…"
           : sendEmail
-            ? `Send til ${withEmail.length} firma fra ${sendEmail.split("@")[0]}@…`
+            ? isSingle && singleName
+              ? `Send til ${singleName}`
+              : `Send til ${withEmail.length} firma fra ${sendEmail.split("@")[0]}@…`
             : `Koble e-post for å sende`}
       </button>
+
+      </section>
 
       <button
         type="button"

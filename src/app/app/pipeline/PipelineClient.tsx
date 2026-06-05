@@ -1,14 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageHeader } from "@/components/ui/primitives";
+import { NextStepBanner } from "@/components/journey/NextStepBanner";
+import { KoSendDrawer } from "@/components/ko/KoSendDrawer";
+import { pipelineItemToQueueItem } from "@/components/ko/queue-utils";
 import { LeadDetailDrawer } from "@/components/pipeline/LeadDetailDrawer";
+import { PageHeader } from "@/components/ui/primitives";
 import { PipelineBoard } from "@/components/pipeline/PipelineBoard";
 import { PipelineToolbar } from "@/components/pipeline/PipelineToolbar";
 import type { PipelineItem } from "@/components/pipeline/types";
 import { ACTIVE_PIPELINE_STATUSES } from "@/components/pipeline/types";
 import { useDemo } from "@/lib/demo/store";
-import type { LeadStatus } from "@/types/database";
+import type { EmailTemplate, LeadStatus } from "@/types/database";
 import { isFollowUpOverdue } from "@/lib/utils";
 
 type Props = {
@@ -36,6 +40,11 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
   const [drawerItem, setDrawerItem] = useState<PipelineItem | null>(null);
   const [drawerFocusNotes, setDrawerFocusNotes] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [sendTarget, setSendTarget] = useState<PipelineItem | null>(null);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [emailSequences, setEmailSequences] = useState<
+    { id: string; name: string; steps: unknown[] }[]
+  >([]);
 
   useEffect(() => {
     if (!isDemo) return;
@@ -43,7 +52,27 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
       .filter((c) => c.user_lead)
       .map((c) => ({ lead: c.user_lead!, company: c }));
     setItems(demoItems);
-  }, [isDemo, demo.companies]);
+    setEmailTemplates(demo.templates);
+    setEmailSequences(demo.sequences);
+  }, [isDemo, demo.companies, demo.templates, demo.sequences]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    void (async () => {
+      const [tplRes, seqRes] = await Promise.all([
+        fetch("/api/templates"),
+        fetch("/api/sequences"),
+      ]);
+      if (tplRes.ok) {
+        const tplData = (await tplRes.json()) as EmailTemplate[];
+        setEmailTemplates(Array.isArray(tplData) ? tplData : []);
+      }
+      if (seqRes.ok) {
+        const seqData = (await seqRes.json()) as { id: string; name: string; steps: unknown[] }[];
+        setEmailSequences(Array.isArray(seqData) ? seqData : []);
+      }
+    })();
+  }, [isDemo]);
 
   const activeItems = useMemo(
     () =>
@@ -160,8 +189,10 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
     <div className="scan-glass-kommand space-y-4 pb-8">
       <PageHeader
         title="Pipeline"
-        description="Dra leads mellom steg — eller klikk for detaljer"
+        description="Her følger du opp leads du allerede har kontaktet"
       />
+
+      <NextStepBanner pagePhase="pipeline" />
 
       {overdueCount > 0 && (
         <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
@@ -192,11 +223,16 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
         <div className="pipeline-empty rounded-xl border border-dashed border-white/15 px-6 py-12 text-center">
           <p className="scan-glass-strong text-sm font-semibold">Ingen leads i pipeline ennå</p>
           <p className="scan-glass-muted mt-2 text-sm">
-            Legg firma til fra Skann eller Arbeidskø — så dukker de opp her.
+            Ingen leads ennå — start på Skann og legg i kø, så dukker de opp her etter kontakt.
           </p>
-          <a href="/app" className="btn-primary mt-4 inline-block text-sm">
-            Gå til Skann
-          </a>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <Link href="/app" className="btn-primary text-sm">
+              Gå til Skann
+            </Link>
+            <Link href="/app/ko" className="scan-btn-ghost text-sm">
+              Arbeidskø
+            </Link>
+          </div>
         </div>
       ) : (
         <PipelineBoard
@@ -214,6 +250,23 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
         onClose={() => setDrawerItem(null)}
         onStatusChange={handleStatusChange}
         onLeadPatch={handleLeadPatch}
+        onSendEmail={
+          drawerItem?.company.email
+            ? () => {
+                setSendTarget(drawerItem);
+                setDrawerItem(null);
+              }
+            : undefined
+        }
+      />
+
+      <KoSendDrawer
+        item={sendTarget ? pipelineItemToQueueItem(sendTarget) : null}
+        open={Boolean(sendTarget)}
+        templates={emailTemplates}
+        sequences={emailSequences}
+        onClose={() => setSendTarget(null)}
+        onSent={() => setSendTarget(null)}
       />
     </div>
   );

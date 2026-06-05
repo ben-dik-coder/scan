@@ -79,7 +79,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       openOnboarding,
-      canRestart: status !== "completed",
+      canRestart: true,
     }),
     [status, openOnboarding]
   );

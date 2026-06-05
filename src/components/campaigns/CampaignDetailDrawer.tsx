@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import type { CampaignDetail, CampaignListItem } from "@/types/database";
 import { CampaignRecipientList } from "./CampaignRecipientList";
 import { formatCampaignDate } from "./campaign-utils";
@@ -53,101 +54,84 @@ export function CampaignDetailDrawer({
       .finally(() => setLoading(false));
   }, [open, campaign, isDemo, demoDetail]);
 
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open || !campaign) return null;
+  if (!campaign) return null;
 
   const activeDetail = isDemo ? demoDetail : detail;
 
+  const header = (
+    <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4 pr-14">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-slate-400">{formatCampaignDate(campaign.created_at)}</p>
+        <h2 className="mt-1 text-lg font-semibold text-white">{campaign.subject}</h2>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-200">
+            {campaign.sent_count} sendt
+          </span>
+          {campaign.failed_count > 0 && (
+            <span className="rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 font-semibold text-red-200">
+              {campaign.failed_count} feilet
+            </span>
+          )}
+          {campaign.subject_b && (
+            <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 font-semibold text-sky-200">
+              A/B-test
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <>
-      <button
-        type="button"
-        aria-label="Lukk"
-        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]"
-        onClick={onClose}
-      />
-      <aside className="campaign-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur-md">
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-slate-400">{formatCampaignDate(campaign.created_at)}</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">{campaign.subject}</h2>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-200">
-                {campaign.sent_count} sendt
-              </span>
-              {campaign.failed_count > 0 && (
-                <span className="rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 font-semibold text-red-200">
-                  {campaign.failed_count} feilet
-                </span>
-              )}
-              {campaign.subject_b && (
-                <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 font-semibold text-sky-200">
-                  A/B-test
-                </span>
-              )}
-            </div>
+    <AppSideDrawer
+      open={open}
+      onClose={onClose}
+      header={header}
+      panelClassName="campaign-drawer"
+    >
+      <div className="space-y-5 p-4">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Laster detaljer…
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        )}
 
-        <div className="flex-1 space-y-5 overflow-y-auto p-4">
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Laster detaljer…
-            </div>
-          )}
+        {error && (
+          <p className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {error}
+          </p>
+        )}
 
-          {error && (
-            <p className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-              {error}
-            </p>
-          )}
-
-          {activeDetail && (
-            <>
-              {activeDetail.campaign.subject_b && (
-                <section className="space-y-1">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Emne B
-                  </h3>
-                  <p className="text-sm text-slate-300">{activeDetail.campaign.subject_b}</p>
-                </section>
-              )}
-
-              <section className="space-y-2">
+        {activeDetail && (
+          <>
+            {activeDetail.campaign.subject_b && (
+              <section className="space-y-1">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Melding
+                  Emne B
                 </h3>
-                <div className="campaign-preview rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-sm leading-relaxed text-slate-300 whitespace-pre-wrap">
-                  {activeDetail.campaign.body || "Ingen meldingstekst lagret."}
-                </div>
+                <p className="text-sm text-slate-300">{activeDetail.campaign.subject_b}</p>
               </section>
+            )}
 
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Mottakere ({activeDetail.recipients.length})
-                </h3>
-                <CampaignRecipientList recipients={activeDetail.recipients} />
-              </section>
-            </>
-          )}
-        </div>
-      </aside>
-    </>
+            <section className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Melding
+              </h3>
+              <div className="campaign-preview rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-sm leading-relaxed text-slate-300 whitespace-pre-wrap">
+                {activeDetail.campaign.body || "Ingen meldingstekst lagret."}
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Mottakere ({activeDetail.recipients.length})
+              </h3>
+              <CampaignRecipientList recipients={activeDetail.recipients} />
+            </section>
+          </>
+        )}
+      </div>
+    </AppSideDrawer>
   );
 }

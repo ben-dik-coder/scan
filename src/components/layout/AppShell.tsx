@@ -60,7 +60,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Innstillinger",
     items: [
-      { href: "/app/innstillinger", label: "E-post", icon: Mail },
+      { href: "/app/innstillinger", label: "Koble e-post", icon: Mail },
       { href: "/app/abonnement", label: "Abonnement", icon: CreditCard },
     ],
   },

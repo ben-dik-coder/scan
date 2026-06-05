@@ -1255,7 +1255,8 @@ body {
     background: rgba(15, 28, 52, 0.95);
   }
 
-  .scan-glass-shell .pipeline-drawer {
+  .scan-glass-shell .pipeline-drawer,
+  .scan-glass-shell .ko-send-drawer {
     color: #f8fafc;
   }
 
@@ -1280,12 +1281,42 @@ body {
     background: linear-gradient(90deg, #38bdf8, #fbbf24);
   }
 
-  .scan-glass-shell .ko-send-drawer {
-    color: #f8fafc;
-  }
-
   .scan-glass-shell .ko-empty {
     background: rgba(255, 255, 255, 0.03);
+  }
+
+  /* Salgsflyt — «Ditt neste steg» */
+  .journey-banner {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .journey-banner--hero {
+    border-color: rgba(56, 189, 248, 0.35);
+    background: linear-gradient(
+      135deg,
+      rgba(56, 189, 248, 0.12) 0%,
+      rgba(255, 255, 255, 0.04) 55%
+    );
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+
+  .journey-banner-step--active {
+    background: rgba(56, 189, 248, 0.2);
+    color: #e0f2fe;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+  }
+
+  .journey-banner-step--done {
+    color: #6ee7b7;
+  }
+
+  .journey-banner-cta {
+    box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+  }
+
+  .app-overview-page .journey-banner {
+    border-radius: 1rem;
   }
 
   /* Kampanjer v2 */
@@ -1298,8 +1329,14 @@ body {
     background: rgba(255, 255, 255, 0.06);
   }
 
-  .scan-glass-shell .campaign-drawer {
+  .scan-glass-shell .campaign-drawer,
+  .scan-glass-shell .app-side-drawer {
     color: #f8fafc;
+  }
+
+  /* Side-skuffer: under app-header, ikke klippet av main overflow */
+  .app-side-drawer {
+    top: calc(3.5rem + env(safe-area-inset-top, 0px));
   }
 
   .scan-glass-shell .campaign-empty {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ListTodo, Trash2, X } from "lucide-react";
+import { NextStepBanner } from "@/components/journey/NextStepBanner";
 import { KoFocusView } from "@/components/ko/KoFocusView";
 import { KoListView } from "@/components/ko/KoListView";
 import { KoSendDrawer } from "@/components/ko/KoSendDrawer";
@@ -47,6 +48,8 @@ export function KoClient() {
   const [skippedOrgnrs, setSkippedOrgnrs] = useState<Set<string>>(new Set());
   const [sendTarget, setSendTarget] = useState<QueueItem | null>(null);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(templates);
+  const [queueToast, setQueueToast] = useState<string | null>(null);
+  const [contactedHint, setContactedHint] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,6 +107,20 @@ export function KoClient() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem("nylead-queue-toast");
+      if (msg) {
+        setQueueToast(msg);
+        sessionStorage.removeItem("nylead-queue-toast");
+        const t = setTimeout(() => setQueueToast(null), 6000);
+        return () => clearTimeout(t);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const filteredItems = useMemo(
     () =>
       filterQueueItems(items, {
@@ -154,12 +171,19 @@ export function KoClient() {
       next.delete(orgnr);
       return next;
     });
+    const name = prev.find((i) => i.orgnr === orgnr)?.name;
     try {
       if (isDemoMode()) {
         setLeadStatus(orgnr, "kontaktet");
-        return;
+      } else {
+        await postStatus(orgnr, "kontaktet");
       }
-      await postStatus(orgnr, "kontaktet");
+      setContactedHint(
+        name
+          ? `${name} flyttet til Pipeline som kontaktet`
+          : "Lead flyttet til Pipeline som kontaktet"
+      );
+      setTimeout(() => setContactedHint(null), 5000);
     } catch (err) {
       setItems(prev);
       setError(err instanceof Error ? err.message : "Feil ved oppdatering");
@@ -249,6 +273,20 @@ export function KoClient() {
         </p>
       </header>
 
+      <NextStepBanner pagePhase="work_queue" />
+
+      {queueToast && (
+        <p className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {queueToast}
+        </p>
+      )}
+
+      {contactedHint && (
+        <p className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-2 text-sm text-sky-100">
+          {contactedHint}
+        </p>
+      )}
+
       {hasAnyItems && (
         <KoToolbar
           nyCount={items.filter((i) => i.status === "ny").length}
@@ -280,11 +318,16 @@ export function KoClient() {
             Du har ingen firma i køen ennå
           </p>
           <p className="scan-glass-muted mt-2 text-sm">
-            Gå til Skann, velg firma og trykk «Sjekk og legg i kø».
+            Gå til Skann, velg firma og legg dem i kø. Etterpå tar du kontakt her — én og én.
           </p>
-          <Link href="/app" className="btn-primary mt-4 inline-block text-sm">
-            Gå til Skann
-          </Link>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <Link href="/app" className="btn-primary text-sm">
+              Gå til Skann
+            </Link>
+            <Link href="/app/pipeline" className="scan-btn-ghost text-sm">
+              Sjekk Pipeline
+            </Link>
+          </div>
         </div>
       ) : viewMode === "focus" ? (
         focusItem ? (
@@ -306,7 +349,7 @@ export function KoClient() {
               Bra jobba! Alle i køen er kontaktet i dag.
             </p>
             <p className="mt-2 text-sm text-emerald-200/80">
-              Legg til flere fra Skann, eller sjekk Pipeline.
+              Du er ferdig med køen i dag — sjekk Pipeline for oppfølging.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <Link href="/app" className="scan-btn-ghost text-sm">

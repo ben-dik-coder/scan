@@ -6,14 +6,10 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
-  FileText,
   GitBranch,
   LayoutDashboard,
   ListTodo,
-  Mail,
-  Send,
   Sparkles,
-  Workflow,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -31,52 +27,43 @@ const STEPS: Step[] = [
   {
     id: "welcome",
     title: "Velkommen til NyLead",
-    body: "Her får du oversikt over leads, e-poster og oppfølging. Vi viser deg kort hvordan du går fra å finne firma til å ta kontakt.",
+    body: "Én tydelig vei: Skann → Kø → Kontakt → Pipeline → Oversikt. Vi viser deg kort hvordan det henger sammen.",
     icon: Sparkles,
   },
   {
     id: "scan",
-    title: "Finn nye firma",
-    body: "Start med «Selger nettsider» på Skann. Velg firma, kjør Google-sjekk (maks 10), og se hvem som mangler nettside. Slå på ukentlig varsel under E-post med samme filter.",
+    title: "1. Skann — finn firma",
+    body: "Velg firma i listen, kjør Google-sjekk (maks 10), og legg valgte i arbeidskøen. Du sender ikke e-post her — det kommer i neste steg.",
     icon: Building2,
-    links: [
-      { href: "/app?modus=websites", label: "Åpne Skann" },
-      { href: "/app/innstillinger", label: "Ukentlig varsel" },
-    ],
+    links: [{ href: "/app", label: "Åpne Skann" }],
   },
   {
     id: "queue",
-    title: "Jobb i arbeidskøen",
-    body: "Firma du vil følge opp havner i Arbeidskø. Der prioriterer du, markerer kontaktet og holder orden.",
+    title: "2. Kø — jobb én og én",
+    body: "Arbeidskøen er listen din. Prioriter, send e-post eller ring, og marker «Ferdig — kontaktet» når du har tatt kontakt.",
     icon: ListTodo,
     links: [{ href: "/app/ko", label: "Åpne arbeidskø" }],
   },
   {
-    id: "followup",
-    title: "Følg opp salget",
-    body: "Pipeline viser status på hvert lead. Kampanjer og sekvenser hjelper deg å sende og følge opp e-post.",
+    id: "contact",
+    title: "3. Kontakt — send og ring",
+    body: "Ta kontakt fra arbeidskøen. Når et firma er kontaktet, flytter det til Pipeline der du følger opp videre.",
+    icon: ListTodo,
+    links: [{ href: "/app/ko", label: "Start i arbeidskø" }],
+  },
+  {
+    id: "pipeline",
+    title: "4. Pipeline — følg opp status",
+    body: "Dra leads mellom steg eller åpne detaljer. Send oppfølging, legg notater og sett dato for neste oppfølging.",
     icon: GitBranch,
-    links: [
-      { href: "/app/pipeline", label: "Pipeline" },
-      { href: "/app/kampanjer", label: "Kampanjer" },
-    ],
+    links: [{ href: "/app/pipeline", label: "Åpne Pipeline" }],
   },
   {
-    id: "content",
-    title: "Maler og e-post",
-    body: "Lag maler én gang og bruk dem i utsendelser. Koble til e-postkonto under Innstillinger før du sender.",
-    icon: FileText,
-    links: [
-      { href: "/app/maler", label: "Maler" },
-      { href: "/app/innstillinger", label: "E-postinnstillinger" },
-    ],
-  },
-  {
-    id: "done",
-    title: "Du er klar",
-    body: "Start gjerne på Oversikt eller gå rett til Skann. Du finner denne guiden igjen under Kom i gang.",
+    id: "overview",
+    title: "5. Oversikt — se fremdrift",
+    body: "Oversikt viser tall og «ditt neste steg». Du finner denne guiden igjen med «Kom i gang».",
     icon: LayoutDashboard,
-    links: [{ href: "/app/oversikt", label: "Oversikt" }],
+    links: [{ href: "/app/oversikt", label: "Åpne Oversikt" }],
   },
 ];
 
@@ -196,30 +183,6 @@ export function OnboardingFlow({ open, onClose, onComplete, onSkip }: Props) {
           <p id="onboarding-body" className="text-sm leading-relaxed text-slate-200">
             {step.body}
           </p>
-
-          {step.id === "followup" && (
-            <ul className="mt-3 space-y-1.5 text-xs text-slate-300">
-              <li className="flex items-center gap-2">
-                <GitBranch className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-                Pipeline — status på hvert lead
-              </li>
-              <li className="flex items-center gap-2">
-                <Send className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-                Kampanjer — sendte e-poster
-              </li>
-              <li className="flex items-center gap-2">
-                <Workflow className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-                Sekvenser — automatisert oppfølging
-              </li>
-            </ul>
-          )}
-
-          {step.id === "content" && (
-            <p className="mt-3 flex items-center gap-2 text-xs text-slate-300">
-              <Mail className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-              Koble e-post før du sender fra Skann eller kampanjer.
-            </p>
-          )}
 
           {step.links && step.links.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">

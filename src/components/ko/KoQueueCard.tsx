@@ -110,18 +110,25 @@ export function KoQueueCard({
 
       <div className={cn("flex flex-wrap gap-2", isFocus ? "mt-6" : "mt-3")}>
         {!isContacted && (
-          <button
-            type="button"
-            onClick={onMarkContacted}
-            disabled={busy}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg bg-sky-600 font-semibold text-white hover:bg-sky-700 disabled:opacity-50",
-              isFocus ? "px-5 py-3 text-sm" : "px-3 py-1.5 text-xs"
+          <div className="flex w-full flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={onMarkContacted}
+              disabled={busy}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg bg-sky-600 font-semibold text-white hover:bg-sky-700 disabled:opacity-50",
+                isFocus ? "px-5 py-3 text-sm" : "px-3 py-1.5 text-xs"
+              )}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {busy ? "Lagrer…" : "Ferdig — kontaktet"}
+            </button>
+            {isFocus && (
+              <p className="text-xs text-slate-500">
+                Neste etter dette: marker kontaktet → Pipeline
+              </p>
             )}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            {busy ? "Lagrer…" : "Ferdig — kontaktet"}
-          </button>
+          </div>
         )}
 
         {item.email && onSendEmail && (

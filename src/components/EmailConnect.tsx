@@ -228,6 +228,16 @@ export function EmailConnect({
 
   return (
     <div className={cn(boxClass, compact && !embedded && "p-3")}>
+      {embedded && (
+        <p
+          className={cn(
+            "mb-3 text-sm font-semibold",
+            light ? "text-slate-900" : "text-white"
+          )}
+        >
+          Steg 1: Koble e-postkontoen din
+        </p>
+      )}
       {!embedded && (
         <div className="flex items-start gap-2">
           <Mail className="mt-0.5 h-4 w-4 shrink-0 text-brand-gold" />
