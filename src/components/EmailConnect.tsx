@@ -17,15 +17,21 @@ type MailAccount = {
 type Props = {
   light?: boolean;
   compact?: boolean;
+  /** Inni Innstillinger-kort — ingen ekstra ramme/tittel */
+  embedded?: boolean;
 };
 
 function providerLabel(provider: MailProvider) {
   if (provider === "google") return "Gmail";
   if (provider === "smtp") return "Outlook (app-passord)";
-  return "Outlook";
+  return "Outlook (OAuth)";
 }
 
-export function EmailConnect({ light = true, compact = false }: Props) {
+export function EmailConnect({
+  light = true,
+  compact = false,
+  embedded = false,
+}: Props) {
   const demo = isDemoMode();
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [providers, setProviders] = useState({ google: false, microsoft: false });
@@ -36,6 +42,7 @@ export function EmailConnect({ light = true, compact = false }: Props) {
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpSaving, setSmtpSaving] = useState(false);
   const [smtpError, setSmtpError] = useState<string | null>(null);
+  const [showAllOptions, setShowAllOptions] = useState(false);
 
   const load = useCallback(async () => {
     if (demo) {
@@ -63,6 +70,7 @@ export function EmailConnect({ light = true, compact = false }: Props) {
     try {
       await fetch(`/api/email/accounts?provider=${provider}`, { method: "DELETE" });
       await load();
+      if (accounts.length <= 1) setShowAllOptions(true);
     } finally {
       setDisconnecting(null);
     }
@@ -84,6 +92,7 @@ export function EmailConnect({ light = true, compact = false }: Props) {
       }
       setSmtpPassword("");
       setSmtpOpen(false);
+      setShowAllOptions(false);
       await load();
     } catch (err) {
       setSmtpError(err instanceof Error ? err.message : "Ukjent feil");
@@ -92,9 +101,11 @@ export function EmailConnect({ light = true, compact = false }: Props) {
     }
   }
 
-  const boxClass = light
-    ? "rounded-xl border border-slate-200 bg-white/80 p-4"
-    : "rounded-lg border border-white/10 bg-white/[0.03] p-4";
+  const boxClass = embedded
+    ? ""
+    : light
+      ? "rounded-xl border border-slate-200 bg-white/80 p-4"
+      : "rounded-lg border border-white/10 bg-white/[0.03] p-4";
 
   if (demo) {
     return (
@@ -128,27 +139,53 @@ export function EmailConnect({ light = true, compact = false }: Props) {
   const google = accounts.find((a) => a.provider === "google");
   const microsoft = accounts.find((a) => a.provider === "microsoft");
   const smtp = accounts.find((a) => a.provider === "smtp");
+  const hasConnected = accounts.length > 0;
+  const collapseOptions =
+    hasConnected && !showAllOptions && (embedded || compact);
 
-  return (
-    <div className={cn(boxClass, compact && "p-3")}>
-      <div className="flex items-start gap-2">
-        <Mail className={cn("mt-0.5 h-4 w-4 shrink-0", light ? "text-brand-gold" : "text-brand-gold")} />
-        <div className="min-w-0 flex-1">
-          <p
-            className={cn(
-              "text-sm font-semibold",
-              light ? "text-slate-900" : "text-white"
-            )}
-          >
-            Din e-post
-          </p>
-          <p className={cn("mt-1 text-xs", light ? "text-slate-500" : "text-white/45")}>
-            Kampanjer sendes fra kontoen du kobler her — ikke fra NyLead.
-          </p>
-        </div>
-      </div>
+  if (compact && hasConnected && !showAllOptions) {
+    const primary = accounts[0];
+    return (
+      <p className={cn("text-xs", light ? "text-slate-500" : "text-white/45")}>
+        <CheckCircle2
+          className={cn(
+            "mr-1 inline h-3.5 w-3.5",
+            light ? "text-emerald-600" : "text-emerald-400"
+          )}
+          aria-hidden
+        />
+        Sendes fra{" "}
+        <strong className={light ? "text-slate-700" : "text-white/80"}>
+          {primary.email}
+        </strong>{" "}
+        ({providerLabel(primary.provider)})
+        {" · "}
+        <Link href="/app/innstillinger" className="font-semibold underline hover:text-brand-gold">
+          Bytt konto
+        </Link>
+      </p>
+    );
+  }
 
-      <div className="mt-4 space-y-2">
+  function renderProviderOptions() {
+    return (
+      <div className="space-y-2">
+        <ProviderRow
+          label="Outlook (OAuth)"
+          hint={
+            providers.microsoft
+              ? "Anbefalt for Hotmail når app-passord feiler"
+              : "Krever Azure-oppsett — se docs/OUTLOOK_SETUP.md"
+          }
+          connected={microsoft}
+          configured={providers.microsoft}
+          connectHref="/api/email/connect/microsoft"
+          onDisconnect={() => disconnect("microsoft")}
+          disconnecting={disconnecting === "microsoft"}
+          light={light}
+          muted={!providers.microsoft}
+        />
+
         <ProviderRow
           label="Gmail"
           hint="Anbefalt — ett klikk"
@@ -172,121 +209,209 @@ export function EmailConnect({ light = true, compact = false }: Props) {
             light={light}
           />
         ) : (
-          <div
-            className={cn(
-              "rounded-lg border",
-              light ? "border-slate-200 bg-slate-50/80" : "border-white/10 bg-white/[0.02]"
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => setSmtpOpen((v) => !v)}
+          <SmtpAccordion
+            smtpOpen={smtpOpen}
+            setSmtpOpen={setSmtpOpen}
+            smtpEmail={smtpEmail}
+            setSmtpEmail={setSmtpEmail}
+            smtpPassword={smtpPassword}
+            setSmtpPassword={setSmtpPassword}
+            smtpSaving={smtpSaving}
+            smtpError={smtpError}
+            onSubmit={saveSmtp}
+            light={light}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn(boxClass, compact && !embedded && "p-3")}>
+      {!embedded && (
+        <div className="flex items-start gap-2">
+          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-brand-gold" />
+          <div className="min-w-0 flex-1">
+            <p
               className={cn(
-                "flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-xs font-semibold",
-                light ? "text-slate-800" : "text-white/90"
+                "text-sm font-semibold",
+                light ? "text-slate-900" : "text-white"
               )}
             >
-              <span>
-                Outlook / Hotmail
-                <span className={cn("ml-1.5 font-normal", light ? "text-slate-500" : "text-white/45")}>
-                  — fungerer ikke for alle Hotmail-kontoer
-                </span>
-              </span>
-              {smtpOpen ? (
-                <ChevronUp className="h-4 w-4 shrink-0 opacity-60" />
-              ) : (
-                <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
-              )}
-            </button>
-
-            {smtpOpen && (
-              <form
-                onSubmit={saveSmtp}
-                className={cn(
-                  "space-y-2 border-t px-3 py-3",
-                  light ? "border-slate-200/80" : "border-white/10"
-                )}
-              >
-                <p className={cn("text-[11px] leading-relaxed", light ? "text-slate-500" : "text-white/40")}>
-                  Du lager et app-passord på{" "}
-                  <a
-                    href="https://account.microsoft.com/security"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-brand-gold"
-                  >
-                    account.microsoft.com/security
-                  </a>{" "}
-                  og limer det inn her. Merk: Microsoft har slått av app-passord for mange
-                  Hotmail-kontoer — fungerer det ikke, bruk «Outlook (OAuth)» under.
-                </p>
-                <input
-                  type="email"
-                  required
-                  placeholder="din@outlook.com eller @hotmail.com"
-                  value={smtpEmail}
-                  onChange={(e) => setSmtpEmail(e.target.value)}
-                  className={cn(
-                    "w-full rounded-md border px-2.5 py-2 text-xs",
-                    light ? "border-slate-200 bg-white text-slate-900" : "scan-input text-sm"
-                  )}
-                />
-                <input
-                  type="password"
-                  required
-                  autoComplete="off"
-                  placeholder="App-passord (16 tegn)"
-                  value={smtpPassword}
-                  onChange={(e) => setSmtpPassword(e.target.value)}
-                  className={cn(
-                    "w-full rounded-md border px-2.5 py-2 text-xs",
-                    light ? "border-slate-200 bg-white text-slate-900" : "scan-input text-sm"
-                  )}
-                />
-                {smtpError && (
-                  <p className={cn("text-[11px]", light ? "text-red-600" : "text-red-300")}>
-                    {smtpError}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  disabled={smtpSaving}
-                  className={cn(
-                    "w-full rounded-md px-3 py-2 text-xs font-semibold transition",
-                    light
-                      ? "bg-brand-gold text-slate-900 hover:bg-amber-400"
-                      : "bg-brand-gold/90 text-slate-900 hover:bg-brand-gold"
-                  )}
-                >
-                  {smtpSaving ? "Tester og lagrer…" : "Lagre Outlook-kobling"}
-                </button>
-              </form>
-            )}
+              Din e-post
+            </p>
+            <p className={cn("mt-1 text-xs", light ? "text-slate-500" : "text-white/45")}>
+              Kampanjer sendes fra kontoen du kobler her — ikke fra NyLead.
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        <ProviderRow
-          label="Outlook (OAuth)"
-          hint={
-            providers.microsoft
-              ? "Anbefalt for Hotmail når app-passord feiler"
-              : "Krever Azure-oppsett — se docs/OUTLOOK_SETUP.md"
-          }
-          connected={microsoft}
-          configured={providers.microsoft}
-          connectHref="/api/email/connect/microsoft"
-          onDisconnect={() => disconnect("microsoft")}
-          disconnecting={disconnecting === "microsoft"}
-          light={light}
-          muted={!providers.microsoft}
-        />
-      </div>
+      {collapseOptions ? (
+        <div className={cn(!embedded && "mt-4", "space-y-2")}>
+          {accounts.map((account) => (
+            <ProviderRow
+              key={account.provider}
+              label={providerLabel(account.provider)}
+              connected={account}
+              configured
+              connectHref="#"
+              onDisconnect={() => disconnect(account.provider)}
+              disconnecting={disconnecting === account.provider}
+              light={light}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={() => setShowAllOptions(true)}
+            className={cn(
+              "w-full text-left text-xs font-semibold underline transition",
+              light ? "text-slate-500 hover:text-slate-700" : "scan-glass-muted hover:text-white/70"
+            )}
+          >
+            Legg til eller bytt konto
+          </button>
+        </div>
+      ) : (
+        <div className={cn(!embedded && "mt-4", "space-y-2")}>
+          {hasConnected && (embedded || compact) && (
+            <button
+              type="button"
+              onClick={() => setShowAllOptions(false)}
+              className={cn(
+                "mb-1 text-left text-xs underline transition",
+                light ? "text-slate-400 hover:text-slate-600" : "text-white/35 hover:text-white/55"
+              )}
+            >
+              Skjul andre valg
+            </button>
+          )}
+          {renderProviderOptions()}
+        </div>
+      )}
 
-      {!compact && (
+      {!compact && !embedded && (
         <p className={cn("mt-3 text-xs", light ? "text-slate-400" : "text-white/35")}>
-          Privat Hotmail som ikke tar app-passord? Bruk <strong>Outlook (OAuth)</strong> under
+          Privat Hotmail som ikke tar app-passord? Bruk <strong>Outlook (OAuth)</strong> over
           (plattform-eier må sette opp Azure én gang).
         </p>
+      )}
+    </div>
+  );
+}
+
+function SmtpAccordion({
+  smtpOpen,
+  setSmtpOpen,
+  smtpEmail,
+  setSmtpEmail,
+  smtpPassword,
+  setSmtpPassword,
+  smtpSaving,
+  smtpError,
+  onSubmit,
+  light,
+}: {
+  smtpOpen: boolean;
+  setSmtpOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+  smtpEmail: string;
+  setSmtpEmail: (v: string) => void;
+  smtpPassword: string;
+  setSmtpPassword: (v: string) => void;
+  smtpSaving: boolean;
+  smtpError: string | null;
+  onSubmit: (e: React.FormEvent) => void;
+  light: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border",
+        light ? "border-slate-200 bg-slate-50/80" : "border-white/10 bg-white/[0.02]"
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setSmtpOpen((v) => !v)}
+        className={cn(
+          "flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-xs font-semibold",
+          light ? "text-slate-800" : "text-white/90"
+        )}
+      >
+        <span>
+          Outlook / Hotmail
+          <span className={cn("ml-1.5 font-normal", light ? "text-slate-500" : "text-white/45")}>
+            — app-passord (fungerer ikke for alle Hotmail)
+          </span>
+        </span>
+        {smtpOpen ? (
+          <ChevronUp className="h-4 w-4 shrink-0 opacity-60" />
+        ) : (
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+        )}
+      </button>
+
+      {smtpOpen && (
+        <form
+          onSubmit={onSubmit}
+          className={cn(
+            "space-y-2 border-t px-3 py-3",
+            light ? "border-slate-200/80" : "border-white/10"
+          )}
+        >
+          <p className={cn("text-[11px] leading-relaxed", light ? "text-slate-500" : "scan-glass-muted")}>
+            Lag app-passord på{" "}
+            <a
+              href="https://account.microsoft.com/security"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-brand-gold"
+            >
+              account.microsoft.com/security
+            </a>
+            . Fungerer det ikke? Bruk <strong>Outlook (OAuth)</strong> over.
+          </p>
+          <input
+            type="email"
+            required
+            placeholder="din@outlook.com eller @hotmail.com"
+            value={smtpEmail}
+            onChange={(e) => setSmtpEmail(e.target.value)}
+            className={cn(
+              "w-full rounded-md border px-2.5 py-2 text-xs",
+              light ? "border-slate-200 bg-white text-slate-900" : "scan-input text-sm"
+            )}
+          />
+          <input
+            type="password"
+            required
+            autoComplete="off"
+            placeholder="App-passord (16 tegn)"
+            value={smtpPassword}
+            onChange={(e) => setSmtpPassword(e.target.value)}
+            className={cn(
+              "w-full rounded-md border px-2.5 py-2 text-xs",
+              light ? "border-slate-200 bg-white text-slate-900" : "scan-input text-sm"
+            )}
+          />
+          {smtpError && (
+            <p className={cn("text-[11px]", light ? "text-red-600" : "text-red-300")}>
+              {smtpError}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={smtpSaving}
+            className={cn(
+              "w-full rounded-md px-3 py-2 text-xs font-semibold transition",
+              light
+                ? "bg-brand-gold text-slate-900 hover:bg-amber-400"
+                : "bg-brand-gold/90 text-slate-900 hover:bg-brand-gold"
+            )}
+          >
+            {smtpSaving ? "Tester og lagrer…" : "Lagre Outlook-kobling"}
+          </button>
+        </form>
       )}
     </div>
   );
@@ -350,7 +475,7 @@ function ProviderRow({
       <p
         className={cn(
           "rounded-lg px-3 py-2 text-xs",
-          light ? "bg-slate-50 text-slate-400" : "bg-white/5 text-white/35",
+          light ? "bg-slate-50 text-slate-400" : "bg-white/5 scan-glass-muted",
           muted && "opacity-70"
         )}
       >
@@ -372,7 +497,7 @@ function ProviderRow({
     >
       Koble {label}
       {hint ? (
-        <span className={cn("mt-0.5 block text-[10px] font-normal opacity-70")}>{hint}</span>
+        <span className="mt-0.5 block text-[10px] font-normal opacity-70">{hint}</span>
       ) : null}
     </a>
   );

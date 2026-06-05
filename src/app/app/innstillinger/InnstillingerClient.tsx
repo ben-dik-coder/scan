@@ -184,11 +184,9 @@ export default function InnstillingerClient({
 
       <SettingsCard title="E-post" icon={Mail}>
         <p className="scan-glass-muted text-xs leading-relaxed">
-          <strong className="scan-glass-strong">Gmail:</strong> ett klikk.{" "}
-          <strong className="scan-glass-strong">Hotmail/Outlook:</strong> prøv app-passord først
-          — fungerer det ikke, bruk Outlook (OAuth).
+          Kampanjer sendes fra din egen konto — ikke fra NyLead.
         </p>
-        <EmailConnect light={false} />
+        <EmailConnect light={false} embedded />
       </SettingsCard>
 
       <SettingsCard title="Varsler" icon={Bell}>

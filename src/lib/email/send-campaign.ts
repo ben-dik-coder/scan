@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { buildCampaignVars } from "./campaign-vars";
 import {
   buildUnsubscribeUrl,
   renderTemplate,
@@ -78,10 +79,8 @@ export async function sendCampaign(
   const errors: string[] = [];
 
   for (const recipient of toSend) {
-    const bodyHtml = renderTemplate(input.body, {
-      firmanavn: recipient.name,
-      orgnr: recipient.orgnr,
-    }).replace(/\n/g, "<br>");
+    const vars = buildCampaignVars({ name: recipient.name, orgnr: recipient.orgnr });
+    const bodyHtml = renderTemplate(input.body, vars).replace(/\n/g, "<br>");
 
     const unsubscribeUrl = buildUnsubscribeUrl(recipient.email);
     const html = `
@@ -115,9 +114,7 @@ export async function sendCampaign(
       .select("id")
       .single();
 
-    const renderedSubject = renderTemplate(subjectTemplate, {
-      firmanavn: recipient.name,
-    });
+    const renderedSubject = renderTemplate(subjectTemplate, vars);
 
     if (!userMail && !resend) {
       failed += 1;

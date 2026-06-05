@@ -5,6 +5,8 @@ import type { Company, EmailTemplate } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { resolveCompanyEmail } from "@/lib/website-scan/resolve-company-email";
 import { EmailConnect, providerLabel, useConnectedEmail } from "@/components/EmailConnect";
+import { CampaignPreviewPanel } from "@/components/campaign/CampaignPreviewPanel";
+import { CampaignRecipientsPanel } from "@/components/campaign/CampaignRecipientsPanel";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { cn } from "@/lib/utils";
@@ -67,6 +69,10 @@ export function SendCampaignForm({
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [previewOrgnr, setPreviewOrgnr] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   const selectedAccount =
     accounts.find((a) => a.provider === mailProvider) ?? accounts[0] ?? null;
@@ -92,8 +98,22 @@ export function SendCampaignForm({
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
   const withEmail = resolvedRecipients.map((r) => r.company);
+  const skippedCompanies = selectedCompanies.filter(
+    (c) => !resolvedRecipients.some((r) => r.company.orgnr === c.orgnr)
+  );
   const personalCount = resolvedRecipients.filter((r) => r.resolved.isPersonal).length;
   const facebookCount = resolvedRecipients.filter((r) => r.resolved.source === "facebook").length;
+
+  useEffect(() => {
+    if (withEmail.length > 0 && !previewOrgnr) {
+      setPreviewOrgnr(withEmail[0].orgnr);
+    } else if (
+      withEmail.length > 0 &&
+      !withEmail.some((c) => c.orgnr === previewOrgnr)
+    ) {
+      setPreviewOrgnr(withEmail[0].orgnr);
+    }
+  }, [withEmail, previewOrgnr]);
 
   function applyTemplate(id: string) {
     setSelectedTemplateId(id);
@@ -101,6 +121,46 @@ export function SendCampaignForm({
     if (t) {
       setSubject(t.subject);
       setBody(t.body);
+    }
+  }
+
+  async function handleSendTest() {
+    if (!subject.trim() || !body.trim() || !previewOrgnr) return;
+
+    setTestLoading(true);
+    setTestResult(null);
+    setTestError(null);
+
+    try {
+      if (isDemoMode()) {
+        setTestResult("Demo: test-e-post «sendt» til deg selv (øvelse)");
+        return;
+      }
+
+      if (!sendEmail) {
+        setTestError("Koble e-post under Innstillinger først.");
+        return;
+      }
+
+      const res = await fetch("/api/campaigns/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject,
+          body,
+          previewOrgnr,
+          mailProvider: selectedAccount?.provider,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Test-sending feilet");
+      }
+      setTestResult(`Test sendt til ${data.to}`);
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : "Ukjent feil");
+    } finally {
+      setTestLoading(false);
     }
   }
 
@@ -251,6 +311,14 @@ export function SendCampaignForm({
         </div>
       </div>
 
+      {withEmail.length > 0 && (
+        <CampaignRecipientsPanel
+          recipients={resolvedRecipients}
+          skipped={skippedCompanies}
+          light={light}
+        />
+      )}
+
       <EmailConnect light={light} compact />
 
       {!isDemoMode() && !emailLoading && !sendEmail && (
@@ -282,12 +350,6 @@ export function SendCampaignForm({
         </label>
       )}
 
-      {!isDemoMode() && sendEmail && !hasMultipleAccounts && (
-        <p className={light ? "text-xs text-slate-500" : "text-xs text-white/45"}>
-          Sendes fra <strong>{sendEmail}</strong>
-        </p>
-      )}
-
       {templates.length > 0 && (
         <label className="block text-sm">
           <span className={labelClass}>Bruk mal (valgfritt)</span>
@@ -306,7 +368,7 @@ export function SendCampaignForm({
       )}
 
       <label className="block text-sm">
-        <span className={labelClass}>Emne (variant A)</span>
+        <span className={labelClass}>Emne</span>
         <input
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
@@ -317,37 +379,6 @@ export function SendCampaignForm({
           {'{firmanavn}'} byttes ut med hvert firmanavn
         </p>
       </label>
-
-      <label
-        className={
-          light
-            ? "flex items-center gap-2 text-sm text-slate-600"
-            : "flex items-center gap-2 text-sm text-white/55"
-        }
-      >
-        <input
-          type="checkbox"
-          checked={useAbTest}
-          onChange={(e) => setUseAbTest(e.target.checked)}
-        />
-        A/B-test: test to emnelinjer (50/50)
-      </label>
-
-      {useAbTest && (
-        <label className="block text-sm">
-          <span className={labelClass}>Emne (variant B)</span>
-          <input
-            value={subjectB}
-            onChange={(e) => setSubjectB(e.target.value)}
-            className={inputClass}
-            required={useAbTest}
-            placeholder="Alternativ emnelinje"
-          />
-          <p className={light ? "mt-1 text-[11px] text-slate-400" : "mt-1 font-sans text-[11px] text-white/35"}>
-            Vi lagrer hvilken variant hver mottaker fikk (åpning/svar kommer senere).
-          </p>
-        </label>
-      )}
 
       <label className="block text-sm">
         <span className={labelClass}>Melding (samme til alle)</span>
@@ -435,20 +466,68 @@ export function SendCampaignForm({
             : "w-full text-center font-sans text-xs text-white/40 underline"
         }
       >
-        {showAdvanced ? "Skjul" : "Vis"} avansert (sekvenser)
+        {showAdvanced ? "Skjul" : "Vis"} forhåndsvisning og test
       </button>
 
-      {showAdvanced && sequences.length > 0 && (
-        <p
-          className={
-            light
-              ? "rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
-              : "rounded-lg border border-white/10 bg-white/[0.02] p-3 font-sans text-xs text-white/45"
-          }
-        >
-          Automatisk oppfølging (dag 3, 7) finner du under Sekvenser i menyen. Hovedflyten er
-          «velg firma → send én gang».
-        </p>
+      {showAdvanced && (
+        <div className="space-y-4">
+          <CampaignPreviewPanel
+            companies={withEmail}
+            previewOrgnr={previewOrgnr}
+            onPreviewOrgnrChange={setPreviewOrgnr}
+            subject={subject}
+            body={body}
+            light={light}
+            testLoading={testLoading}
+            testResult={testResult}
+            testError={testError}
+            onSendTest={handleSendTest}
+            canSendTest={Boolean(sendEmail) && withEmail.length > 0}
+          />
+
+          <label
+            className={
+              light
+                ? "flex items-center gap-2 text-sm text-slate-600"
+                : "flex items-center gap-2 text-sm text-white/55"
+            }
+          >
+            <input
+              type="checkbox"
+              checked={useAbTest}
+              onChange={(e) => setUseAbTest(e.target.checked)}
+            />
+            A/B-test: test to emnelinjer (50/50)
+          </label>
+
+          {useAbTest && (
+            <label className="block text-sm">
+              <span className={labelClass}>Emne (variant B)</span>
+              <input
+                value={subjectB}
+                onChange={(e) => setSubjectB(e.target.value)}
+                className={inputClass}
+                required={useAbTest}
+                placeholder="Alternativ emnelinje"
+              />
+              <p className={light ? "mt-1 text-[11px] text-slate-400" : "mt-1 font-sans text-[11px] text-white/35"}>
+                Vi lagrer hvilken variant hver mottaker fikk (åpning/svar kommer senere).
+              </p>
+            </label>
+          )}
+
+          {sequences.length > 0 && (
+            <p
+              className={
+                light
+                  ? "rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
+                  : "rounded-lg border border-white/10 bg-white/[0.02] p-3 font-sans text-xs text-white/45"
+              }
+            >
+              Automatisk oppfølging (dag 3, 7) finner du under Sekvenser i menyen.
+            </p>
+          )}
+        </div>
       )}
     </form>
   );
