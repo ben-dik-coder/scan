@@ -81,7 +81,20 @@ export async function syncSubscriptionToProfile(
     updates.plan = null;
   }
 
-  await supabase.from("profiles").update(updates).eq("id", targetUserId);
+  const { error } = await supabase.from("profiles").update(updates).eq("id", targetUserId);
+  if (error) {
+    console.error("[billing] profile sync failed:", error.message, {
+      userId: targetUserId,
+      subscriptionId: subscription.id,
+      plan,
+      status,
+    });
+    throw new Error(
+      error.message.includes("profiles_plan_check") || error.code === "23514"
+        ? "Database tillater ikke plan=nylead. Kjør supabase/migrations/009_nylead_plan.sql i Supabase."
+        : error.message
+    );
+  }
 }
 
 export async function syncCheckoutSession(session: Stripe.Checkout.Session) {

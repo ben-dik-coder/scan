@@ -7,7 +7,7 @@ import {
   countActiveSubscribers,
   isSubscriberCapReached,
 } from "@/lib/billing/subscriber-cap";
-import { appUrl, getStripe, isStripeConfigured } from "@/lib/billing/stripe";
+import { appUrl, getStripe, isStripeConfigured, stripeSecretKeyError } from "@/lib/billing/stripe";
 import { createServiceClient } from "@/lib/supabase/service";
 
 export async function POST(request: Request) {
@@ -139,14 +139,17 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[billing/checkout] unhandled:", err);
     const raw = err instanceof Error ? err.message : "Ukjent feil";
+    const configError = stripeSecretKeyError();
     const hint =
-      raw.includes("No such price") || raw.includes("resource_missing")
-        ? " STRIPE_PRICE i Vercel må matche en aktiv pris i Stripe (samme test/live-modus som nøkkelen)."
-        : raw.includes("Invalid API Key") || raw.includes("api_key")
-          ? " STRIPE_SECRET_KEY er ugyldig."
-          : raw.includes("Missing Supabase")
-            ? " Supabase service role mangler i Vercel."
-            : "";
+      configError && !raw.includes("STRIPE_SECRET_KEY")
+        ? ` ${configError}`
+        : raw.includes("No such price") || raw.includes("resource_missing")
+          ? " STRIPE_PRICE i Vercel må matche en aktiv pris i Stripe (samme test/live-modus som nøkkelen)."
+          : raw.includes("Invalid API Key") || raw.includes("api_key")
+            ? " STRIPE_SECRET_KEY i Vercel matcher ikke en gyldig Stripe Secret key."
+            : raw.includes("Missing Supabase")
+              ? " Supabase service role mangler i Vercel."
+              : "";
     return NextResponse.json(
       { error: `Kunne ikke starte betaling: ${raw}${hint}` },
       { status: 500 }

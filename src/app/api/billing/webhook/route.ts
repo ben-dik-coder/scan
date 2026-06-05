@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { syncCheckoutSession, syncSubscriptionToProfile } from "@/lib/billing/sync-subscription";
-import { getStripe } from "@/lib/billing/stripe";
+import { getStripe, getStripeWebhookSecret } from "@/lib/billing/stripe";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  const secret = getStripeWebhookSecret();
   if (!secret) {
     return NextResponse.json({ error: "Webhook secret mangler" }, { status: 500 });
+  }
+  if (!secret.startsWith("whsec_")) {
+    return NextResponse.json(
+      { error: "STRIPE_WEBHOOK_SECRET må starte med whsec_" },
+      { status: 500 }
+    );
   }
 
   const body = await request.text();

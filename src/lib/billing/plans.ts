@@ -1,3 +1,5 @@
+import { normalizeSecret } from "@/lib/billing/stripe";
+
 export type PlanId = "nylead";
 
 /** Eldre abonnement i databasen — samme rettigheter som NyLead */
@@ -32,14 +34,7 @@ export type PlanConfig = {
 
 function priceId(...envKeys: string[]): string | undefined {
   for (const key of envKeys) {
-    let v = process.env[key]?.trim();
-    if (!v) continue;
-    if (
-      (v.startsWith('"') && v.endsWith('"')) ||
-      (v.startsWith("'") && v.endsWith("'"))
-    ) {
-      v = v.slice(1, -1).trim();
-    }
+    const v = normalizeSecret(process.env[key]);
     if (v) return v;
   }
   return undefined;
