@@ -12,6 +12,10 @@ import {
   type GulesiderPresence,
 } from "./directory-presence";
 import {
+  applyPlatformContactEnrichment,
+  enrichPlatformContacts,
+} from "./platform-contact";
+import {
   buildSearchQueries,
   dedupeHits,
   displayNameDiffersFromLegal,
@@ -127,6 +131,68 @@ function fromPick(
     gulesiderConfidence: extras?.gulesider?.gulesiderConfidence,
   };
 }
+
+/** Berik eksisterende delt cache med kontakt fra alle plattformer — uten full ny Google-skann. */
+export async function enrichScanContacts(
+  company: WebsiteScanCompanyInput,
+  scan: WebsiteScanResult,
+  options?: { skipFetch?: boolean }
+): Promise<WebsiteScanResult> {
+  if (scan.contactsEnriched) return scan;
+
+  let workingScan = scan;
+
+  if (!options?.skipFetch && hasSerpApi()) {
+    if (scan.facebookUrl && !scan.facebookProfile) {
+      const fb = await enrichFacebookWithSerpApi(scan.facebookUrl, company.name, {
+        municipalityName: primaryGeoPlace(company),
+        verifiedViaSearch: true,
+      });
+      if (fb.facebookProfile) {
+        workingScan = {
+          ...workingScan,
+          facebookUrl: fb.facebookUrl ?? workingScan.facebookUrl,
+          facebookProfile: fb.facebookProfile,
+        };
+      }
+    }
+
+    if (scan.instagramUrl && !scan.instagramProfile) {
+      const ig = await enrichInstagramWithSerpApi(scan.instagramUrl, company.name, {
+        verifiedViaSearch: !scan.instagramFromFacebook,
+        fromFacebook: scan.instagramFromFacebook ?? false,
+      });
+      if (ig.instagramProfile) {
+        workingScan = {
+          ...workingScan,
+          instagramUrl: ig.instagramUrl ?? workingScan.instagramUrl,
+          instagramProfile: ig.instagramProfile,
+        };
+      }
+    }
+  }
+
+  const hits: SearchHit[] = (workingScan.topHits ?? []).map((h) => ({
+    title: h.title,
+    link: h.link,
+  }));
+
+  const canSearch = hasGoogleCse() || hasSerpApi();
+  const needsGulesiderSearch = typeof workingScan.gulesiderListed !== "boolean";
+
+  const enrichment = await enrichPlatformContacts(company, workingScan, {
+    hits,
+    runDirectorySearch: needsGulesiderSearch && canSearch,
+    fetchHitsForQueries:
+      needsGulesiderSearch && canSearch ? fetchHitsForQueries : undefined,
+    skipFetch: options?.skipFetch,
+  });
+
+  return applyPlatformContactEnrichment(workingScan, enrichment);
+}
+
+/** @deprecated Bruk enrichScanContacts */
+export const enrichScanWithGulesider = enrichScanContacts;
 
 async function resolveGulesiderPresence(
   company: WebsiteScanCompanyInput,
@@ -666,7 +732,7 @@ export async function scanCompanyWebsite(
     });
     const demoListed =
       !base.hasWebsite && parseInt(company.orgnr.replace(/\D/g, "").slice(-2), 10) % 3 === 0;
-    return {
+    const demoBase: WebsiteScanResult = {
       ...base,
       ...socialResult,
       socialScan: buildSocialScanMeta(social),
@@ -676,6 +742,7 @@ export async function scanCompanyWebsite(
         : null,
       gulesiderConfidence: demoListed ? "medium" : undefined,
     };
+    return enrichScanContacts(company, demoBase, { skipFetch: true });
   }
 
   let hits: SearchHit[] = [];
@@ -816,7 +883,7 @@ export async function scanCompanyWebsite(
     ranGoogleSearch: true,
   });
 
-  return fromPick(
+  const base = fromPick(
     company.orgnr,
     finalPick,
     source,
@@ -827,6 +894,8 @@ export async function scanCompanyWebsite(
     social,
     { websiteDiscoverySource, gulesider }
   );
+
+  return enrichScanContacts(company, base);
 }
 
 export function sleep(ms: number) {

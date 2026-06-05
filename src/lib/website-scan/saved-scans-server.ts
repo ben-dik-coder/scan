@@ -9,10 +9,11 @@ type ScanRow = {
 };
 
 /**
- * Lagret Google-sjekk gjenbrukes for alltid — ingen automatisk re-skanning.
- * Brukeren kan fortsatt tvinge ny sjekk via «Sjekk på nytt».
+ * Delt plattform-cache: én rad per orgnr i `company_website_scans`.
+ * Når bruker A har sjekket et firma, gjenbruker bruker B samme resultat uten nye API-kall.
+ * Re-skanning skjer bare ved «Sjekk på nytt» eller når cache mangler felt (f.eks. Gulesider).
  */
-export const WEBSITE_SCAN_CACHE_POLICY = "permanent" as const;
+export const WEBSITE_SCAN_CACHE_POLICY = "shared_per_orgnr" as const;
 
 export function isWebsiteScanResult(value: unknown): value is WebsiteScanResult {
   if (!value || typeof value !== "object") return false;

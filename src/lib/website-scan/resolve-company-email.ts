@@ -1,7 +1,7 @@
 import { isGenericEmail, isPersonalEmail } from "@/lib/brreg/map-company";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
-export type CompanyEmailSource = "brreg" | "facebook";
+export type CompanyEmailSource = "brreg" | "facebook" | "platform";
 
 export type ResolvedCompanyEmail = {
   email: string;
@@ -65,6 +65,16 @@ export function resolveCompanyEmail(
       source: "facebook",
       isGeneric: isGenericEmail(facebookEmail),
       isPersonal: isPersonalEmail(facebookEmail),
+    };
+  }
+
+  const platformEmail = normalizeEmail(scan?.enrichedEmail);
+  if (platformEmail) {
+    return {
+      email: platformEmail,
+      source: "platform",
+      isGeneric: isGenericEmail(platformEmail),
+      isPersonal: isPersonalEmail(platformEmail),
     };
   }
 

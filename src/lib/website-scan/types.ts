@@ -53,6 +53,10 @@ export type InstagramProfileSnippet = {
   name: string | null;
   url: string | null;
   biography: string | null;
+  /** SerpAPI business_phone_number når tilgjengelig */
+  phone: string | null;
+  /** SerpAPI business_email når tilgjengelig */
+  email: string | null;
   followers: string | null;
   following: string | null;
   postsCount: string | null;
@@ -110,6 +114,20 @@ export type WebsiteScanResult = {
   gulesiderListed?: boolean;
   gulesiderUrl?: string | null;
   gulesiderConfidence?: SocialLinkConfidence;
+  /** Kontakt funnet på booking/katalog/nettside/Facebook/Instagram */
+  platformContacts?: Array<{
+    source: "facebook" | "instagram" | "website" | "booking" | "gulesider" | "1881" | "directory" | "proff" | string;
+    url: string;
+    phone: string | null;
+    email: string | null;
+    externalWebsite: string | null;
+  }>;
+  enrichedPhone?: string | null;
+  enrichedPhoneSource?: string | null;
+  enrichedEmail?: string | null;
+  enrichedEmailSource?: string | null;
+  /** Settes når plattform-kontakt er beriket — brukes for delt cache */
+  contactsEnriched?: boolean;
 };
 
 export type WebsiteScanCompanyInput = {

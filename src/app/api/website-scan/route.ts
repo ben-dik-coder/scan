@@ -4,7 +4,12 @@ import {
   getWebsiteScanProviders,
   hasAnyWebsiteScanProvider,
 } from "@/lib/website-scan/config";
-import { scanCompanyWebsite, sleep } from "@/lib/website-scan/scan-company";
+import {
+  enrichScanContacts,
+  scanCompanyWebsite,
+  sleep,
+} from "@/lib/website-scan/scan-company";
+import { isWebsiteScanCacheComplete } from "@/lib/website-scan/scan-cache";
 import {
   loadCachedWebsiteScans,
   persistCachedWebsiteScans,
@@ -82,8 +87,15 @@ export async function POST(request: NextRequest) {
   for (let i = 0; i < companies.length; i++) {
     const company = companies[i]!;
     const cached = cachedByOrgnr.get(company.orgnr);
-    if (cached && isSocialScanComplete(cached, social)) {
+    if (cached && isWebsiteScanCacheComplete(cached, social)) {
       results.push(cached);
+      continue;
+    }
+
+    if (cached && isSocialScanComplete(cached, social)) {
+      const enriched = await enrichScanContacts(company, cached);
+      results.push(enriched);
+      freshResults.push(enriched);
       continue;
     }
 

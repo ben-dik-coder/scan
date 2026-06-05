@@ -2,6 +2,7 @@ import type { Company, UserLead } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { computeLeadScore } from "@/lib/sales/lead-score";
 import { resolveCompanyEmail } from "@/lib/website-scan/resolve-company-email";
+import { resolveCompanyPhone } from "@/lib/website-scan/resolve-company-contact";
 
 export type QueueItemResponse = {
   orgnr: string;
@@ -48,7 +49,7 @@ export function computeQueueScore(
     else if (days <= 30) score += 3;
   }
 
-  if (company.phone || company.mobile) score += 12;
+  if (company.phone || company.mobile || scan?.enrichedPhone) score += 12;
 
   if (scan) {
     if (!scan.hasWebsite && scan.websiteKind === "none") score += 18;
@@ -102,11 +103,12 @@ export function mapQueueCandidatesToItems(
 ): QueueItemResponse[] {
   return candidates.map((item) => {
     const resolved = resolveCompanyEmail(item.company, item.scan);
+    const resolvedPhone = resolveCompanyPhone(item.company, item.scan);
     return {
       orgnr: item.company.orgnr,
       name: item.company.name,
       email: resolved?.email ?? item.company.email,
-      phone: item.company.phone ?? item.company.mobile,
+      phone: resolvedPhone?.phone ?? null,
       municipalityName: item.company.municipality_name,
       registeredAt: item.company.registered_at,
       status: item.lead?.status ?? "ny",

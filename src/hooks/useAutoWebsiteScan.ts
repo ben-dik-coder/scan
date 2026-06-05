@@ -6,9 +6,10 @@ import {
   MAX_WEBSITE_SCAN_BATCH,
 } from "@/lib/constants/market";
 import { quickScanFromEmail } from "@/lib/website-scan/client-quick-scan";
+import { isWebsiteScanCacheComplete } from "@/lib/website-scan/scan-cache";
+import { isDemoMode } from "@/lib/demo/config";
 import {
   DEFAULT_SCAN_SOCIAL_OPTIONS,
-  isSocialScanComplete,
   type ScanSocialOptions,
 } from "@/lib/website-scan/scan-social-options";
 import type { Company } from "@/types/database";
@@ -94,7 +95,7 @@ export function useAutoWebsiteScan(
       const needsFreshScan = (orgnr: string) => {
         const saved = websiteScansRef.current.get(orgnr);
         if (!saved) return true;
-        return !isSocialScanComplete(saved, social);
+        return !isWebsiteScanCacheComplete(saved, social);
       };
 
       // Gjenbruk lagret skann — aldri kall SerpAPI på nytt uten «Sjekk på nytt».
@@ -136,7 +137,9 @@ export function useAutoWebsiteScan(
           setProgress({ done: i, total: toScan.length });
 
           const quick =
-            !social.includeFacebook && !social.includeInstagram
+            isDemoMode() &&
+            !social.includeFacebook &&
+            !social.includeInstagram
               ? quickScanFromEmail(company)
               : null;
           if (quick) {
@@ -305,7 +308,9 @@ export function useAutoWebsiteScan(
 
       const incompleteOrgnrs = new Set(
         savedScans
-          .filter((s) => orgnrSet.has(s.orgnr) && !isSocialScanComplete(s, social))
+          .filter(
+            (s) => orgnrSet.has(s.orgnr) && !isWebsiteScanCacheComplete(s, social)
+          )
           .map((s) => s.orgnr)
       );
       if (incompleteOrgnrs.size === 0) return;
@@ -350,7 +355,7 @@ export function useAutoWebsiteScan(
       const needsScan = targets.filter((c) => {
         const scan = saved.get(c.orgnr);
         if (!scan) return true;
-        return !isSocialScanComplete(scan, social);
+        return !isWebsiteScanCacheComplete(scan, social);
       });
       const cachedCount = targets.length - needsScan.length;
 

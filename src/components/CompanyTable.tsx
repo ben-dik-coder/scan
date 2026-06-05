@@ -8,6 +8,7 @@ import {
   resolveCompanyEmail,
   type ResolvedCompanyEmail,
 } from "@/lib/website-scan/resolve-company-email";
+import { resolveCompanyPhone } from "@/lib/website-scan/resolve-company-contact";
 import { hasUncertainWebsiteHits, displayNameDiffersFromLegal } from "@/lib/website-scan/parse-results";
 import { StatusPill, EmptyState } from "@/components/ui/primitives";
 import { ScanGoogleSearchPopup } from "@/components/scan/ScanGoogleSearchPopup";
@@ -227,6 +228,42 @@ function WebsiteCell({
   );
 }
 
+const PLATFORM_SOURCE_LABELS: Record<string, string> = {
+  booking: "booking",
+  gulesider: "Gulesider",
+  "1881": "1881",
+  proff: "Proff",
+  directory: "katalog",
+  website: "nettside",
+  facebook: "Facebook",
+  instagram: "Instagram",
+};
+
+function PhoneCell({
+  company,
+  scan,
+}: {
+  company: { phone?: string | null; mobile?: string | null };
+  scan?: WebsiteScanResult;
+}) {
+  const resolved = resolveCompanyPhone(company, scan);
+  if (!resolved) return <span className="cv-muted">—</span>;
+  const platformLabel =
+    resolved.source === "platform" && scan?.enrichedPhoneSource
+      ? PLATFORM_SOURCE_LABELS[scan.enrichedPhoneSource] ?? scan.enrichedPhoneSource
+      : null;
+  return (
+    <a href={`tel:${resolved.phone}`} className="cv-link truncate">
+      {resolved.phone}
+      {platformLabel && (
+        <span className="ml-1 shrink-0 rounded bg-emerald-100 px-1 text-[9px] font-semibold text-emerald-800">
+          {platformLabel}
+        </span>
+      )}
+    </a>
+  );
+}
+
 function EmailCell({ resolved }: { resolved: ResolvedCompanyEmail }) {
   const { email, source, isPersonal } = resolved;
   return (
@@ -240,6 +277,11 @@ function EmailCell({ resolved }: { resolved: ResolvedCompanyEmail }) {
       {source === "facebook" && (
         <span className="ml-1 shrink-0 rounded bg-blue-100 px-1 text-[9px] font-semibold text-blue-700">
           Fra Facebook
+        </span>
+      )}
+      {source === "platform" && (
+        <span className="ml-1 shrink-0 rounded bg-emerald-100 px-1 text-[9px] font-semibold text-emerald-800">
+          Fra nett
         </span>
       )}
     </a>
@@ -355,7 +397,6 @@ function CompanyDetailBody({
 }) {
   const status = c.user_lead?.status ?? "ny";
   const resolved = resolveCompanyEmail(c, scan);
-  const phone = c.phone ?? c.mobile;
 
   return (
     <dl className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -383,13 +424,7 @@ function CompanyDetailBody({
         )}
       </DetailRow>
       <DetailRow label="Tlf">
-        {phone ? (
-          <a href={`tel:${phone}`} className="cv-link">
-            {phone}
-          </a>
-        ) : (
-          <span className="cv-muted">—</span>
-        )}
+        <PhoneCell company={c} scan={scan} />
       </DetailRow>
       <DetailRow label="Nettside">
         <div className="inline-flex max-w-full flex-wrap items-center gap-0.5">
@@ -590,7 +625,7 @@ function CompanyMobileCard({
 }) {
   const status = c.user_lead?.status ?? "ny";
   const resolved = resolveCompanyEmail(c, scan);
-  const phone = c.phone ?? c.mobile;
+  const resolvedPhone = resolveCompanyPhone(c, scan);
 
   return (
     <article
@@ -631,10 +666,8 @@ function CompanyMobileCard({
         <div className="mt-1 min-w-0 text-[12px]">
           {resolved ? (
             <EmailCell resolved={resolved} />
-          ) : phone ? (
-            <a href={`tel:${phone}`} className="cv-link truncate">
-              {phone}
-            </a>
+          ) : resolvedPhone ? (
+            <PhoneCell company={c} scan={scan} />
           ) : (
             <span className="cv-muted">Ingen kontakt</span>
           )}
@@ -930,13 +963,7 @@ export function CompanyTable({
                     )}
                     {showCol("phone") && (
                       <td className="whitespace-nowrap">
-                        {c.phone ?? c.mobile ? (
-                          <a href={`tel:${c.phone ?? c.mobile}`} className="cv-link">
-                            {c.phone ?? c.mobile}
-                          </a>
-                        ) : (
-                          <span className="cv-muted">—</span>
-                        )}
+                        <PhoneCell company={c} scan={scan} />
                       </td>
                     )}
                     {showCol("website") && (

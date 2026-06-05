@@ -18,7 +18,9 @@ type Props = {
 };
 
 function sourceLabel(source: ResolvedCompanyEmail["source"]) {
-  return source === "facebook" ? "Facebook" : "Brreg";
+  if (source === "facebook") return "Facebook";
+  if (source === "platform") return "Fra nett";
+  return "Brreg";
 }
 
 export function CampaignRecipientsPanel({ recipients, skipped, light = true }: Props) {

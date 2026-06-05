@@ -12,6 +12,8 @@ type SerpApiInstagramResponse = {
     username?: string;
     full_name?: string;
     biography?: string;
+    business_email?: string;
+    business_phone_number?: string;
     followers?: number;
     following?: number;
     posts_count?: number;
@@ -63,6 +65,8 @@ function mapInstagramProfile(
     name: raw.full_name ?? null,
     url: `https://www.instagram.com/${username}/`,
     biography: raw.biography ?? null,
+    phone: raw.business_phone_number?.trim() || null,
+    email: raw.business_email?.trim() || null,
     followers:
       raw.followers != null ? String(raw.followers) : null,
     following:
@@ -139,6 +143,8 @@ export function demoInstagramProfile(
     biography: fromFacebook
       ? "Fant via Facebook-profilen (demo)"
       : "Demo Instagram",
+    phone: null,
+    email: null,
     followers: "890",
     following: "120",
     postsCount: "45",
