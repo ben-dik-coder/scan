@@ -7,9 +7,27 @@ import {
   getStripeWebhookSecret,
   isStripeConfigured,
   isStripeFullyConfigured,
-  stripeSecretKeyDebugInfo,
-  stripeSecretKeyError,
+  type StripeKeyKind,
 } from "@/lib/billing/stripe";
+
+function publicStripeKeyHint(kind: StripeKeyKind): string | null {
+  switch (kind) {
+    case "mangler":
+      return "STRIPE_SECRET_KEY mangler i Vercel (Production). Redeploy etter lagring.";
+    case "publishable-feil":
+      return "STRIPE_SECRET_KEY er publishable key (pk_…). Bruk Secret key (sk_live_… eller sk_test_…).";
+    case "webhook-feil":
+      return "STRIPE_SECRET_KEY inneholder webhook secret (whsec_…). Flytt den til STRIPE_WEBHOOK_SECRET.";
+    case "price-feil":
+      return "STRIPE_SECRET_KEY inneholder Price ID (price_…). Lim Price ID inn i STRIPE_PRICE i stedet.";
+    case "product-feil":
+      return "STRIPE_SECRET_KEY inneholder Product ID (prod_…). Bruk Price ID (price_…) i STRIPE_PRICE.";
+    case "ukjent-format":
+      return "STRIPE_SECRET_KEY ser ugyldig ut. Den skal starte med sk_live_ (prod) eller sk_test_ (test), uten anførselstegn.";
+    default:
+      return null;
+  }
+}
 
 export async function GET() {
   const fakeBilling = isFakeBillingEnabled();
@@ -17,7 +35,7 @@ export async function GET() {
   const keyKind = getStripeKeyKind();
   const webhookSecret = getStripeWebhookSecret();
   const webhookSet = Boolean(webhookSecret?.startsWith("whsec_"));
-  const configError = stripeSecretKeyError();
+  const keyHint = publicStripeKeyHint(keyKind);
   const canonicalAppUrl =
     process.env.VERCEL_ENV === "production" ? "https://nylead.no" : appUrl();
   const appUrlMismatch =
@@ -25,8 +43,8 @@ export async function GET() {
     appUrl() !== canonicalAppUrl;
 
   let hint: string;
-  if (configError) {
-    hint = configError;
+  if (keyHint) {
+    hint = keyHint;
   } else if (fakeBilling) {
     hint = "Test-modus: sett BILLING_FAKE=false i Vercel når Stripe er riktig satt opp.";
   } else if (!stripeReady) {
@@ -45,7 +63,6 @@ export async function GET() {
     stripeReady,
     stripeKeySet: isStripeConfigured(),
     stripeKeyKind: keyKind,
-    stripeKeyDebug: stripeSecretKeyDebugInfo(),
     priceIdSet: Boolean(NYLEAD_PLAN.stripePriceId),
     webhookSet,
     appUrl: appUrl(),

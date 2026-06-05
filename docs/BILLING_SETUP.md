@@ -16,14 +16,14 @@ Sett disse under **Vercel → Project → Settings → Environment Variables →
 
 ### Feilsøking Stripe-nøkkel
 
-Åpne `https://nylead.no/api/billing/status` etter deploy:
+Etter deploy kan du åpne `https://nylead.no/api/billing/status` (offentlig sammendrag — **viser aldri** hemmelig nøkkel):
 
 - `stripeKeyKind` skal være `"live"` (prod) eller `"test"` (dev)
 - `stripeReady` skal være `true`
-- `stripeKeyDebug.maskedPrefix` skal starte med `sk_live` (eller `sk_test`)
-- `appUrl` skal være `https://nylead.no`
+- `appUrlMismatch` skal være `false` og `appUrl` skal være `https://nylead.no`
+- `hint` forklarer hva som mangler hvis noe er feil
 
-Hvis du får «STRIPE_SECRET_KEY ser ugyldig ut» selv om nøkkelen ser riktig ut i Vercel: sjekk at den er satt for **Production**, uten `"` foran, og at du har **redeployet** etter lagring.
+Hvis `stripeKeyKind` er `"ukjent-format"` eller `"mangler"`: sjekk at nøkkelen er satt for **Production** i Vercel, uten `"` foran, og at du har **redeployet** etter lagring. Lim inn nøkkelen fra Stripe Dashboard → Developers → **Secret key** (`sk_live_…`), ikke publishable key (`pk_…`).
 
 ### Bakoverkompatibilitet (valgfritt)
 
