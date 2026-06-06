@@ -6,7 +6,7 @@ import { DEFAULT_MARKET_FILTERS, OSLO_MUNICIPALITY_CODE } from "@/lib/constants/
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { cn } from "@/lib/utils";
-import { Bookmark, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 type SavedListRow = {
   id: string;
@@ -134,11 +134,7 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
   }
 
   return (
-    <section className="scan-surface-pad w-full max-w-none">
-      <p className="scan-glass-muted mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
-        <Bookmark className="h-3.5 w-3.5" aria-hidden />
-        Mine målgrupper
-      </p>
+    <section className="w-full max-w-none">
       <div className="flex flex-wrap gap-1.5">
         {PRESET_AUDIENCES.map((p) => (
           <button

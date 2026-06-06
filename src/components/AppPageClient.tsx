@@ -8,14 +8,14 @@ import {
 } from "@/components/CompanyFilters";
 import { CompanyTable } from "@/components/CompanyTable";
 import { SendCampaignForm } from "@/components/SendCampaignForm";
-import { WebsiteScanStatus } from "@/components/WebsiteScanStatus";
 import {
   ScanActiveFilterChips,
   countActiveMarketFilters,
 } from "@/components/scan/ScanActiveFilterChips";
 import { ScanFilterSheet } from "@/components/scan/ScanFilterSheet";
-import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
+import { ScanGoogleSection } from "@/components/scan/ScanGoogleSection";
 import { ScanLeadModes } from "@/components/scan/ScanLeadModes";
+import { ScanListToolbar } from "@/components/scan/ScanListToolbar";
 import { ScanSavedAudiences } from "@/components/scan/ScanSavedAudiences";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
 import { ScanQuickBar } from "@/components/scan/ScanQuickBar";
@@ -39,19 +39,14 @@ import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
-import { cn } from "@/lib/utils";
 import {
   Building2,
-  Download,
   Globe,
   Globe2,
-  LayoutGrid,
   List,
-  ListTodo,
   PhoneCall,
   Radar,
   Search,
-  Table2,
 } from "lucide-react";
 
 type SequenceOption = {
@@ -107,7 +102,6 @@ export function AppPageClient(props: Props) {
   const [queueAfterScan, setQueueAfterScan] = useState(false);
   const [addingToQueue, setAddingToQueue] = useState(false);
   const emailSectionRef = useRef<HTMLDetailsElement>(null);
-  const queueActionRef = useRef<HTMLDivElement>(null);
   const wasScanningRef = useRef(false);
 
   const activeLeadMode = useMemo((): ScanLeadMode | null => {
@@ -246,7 +240,6 @@ export function AppPageClient(props: Props) {
   );
 
   const scanQueueCount = Math.min(selected.size, MAX_WEBSITE_SCAN_BATCH);
-  const scanQueueRemaining = Math.max(0, MAX_WEBSITE_SCAN_BATCH - scanQueueCount);
 
   const matchesPresenceFilters = (c: CompanyWithLead) => {
     const scan = websiteScans.get(c.orgnr);
@@ -398,17 +391,6 @@ export function AppPageClient(props: Props) {
   function toggleAll() {
     if (allSelected) setSelected(new Set());
     else setSelected(new Set(selectable.map((c) => c.orgnr)));
-  }
-
-  function selectNoWebsite() {
-    setSelected(new Set(noWebsiteOrgnrs));
-  }
-
-  function selectNoWebsiteWithEmail() {
-    const orgnrs = companies
-      .filter((c) => isLeadWithoutOwnSite(c.orgnr) && c.has_email)
-      .map((c) => c.orgnr);
-    setSelected(new Set(orgnrs));
   }
 
   function selectAllWithEmail() {
@@ -654,6 +636,17 @@ export function AppPageClient(props: Props) {
     }
   }, [queueAfterScan, scanning, scanComplete, companies, selected, websiteScans]);
 
+  function handleListTabChange(tabId: typeof listFilter) {
+    if (filters.websitePresence !== "all") {
+      applyFilters(
+        { ...filters, websitePresence: "all" },
+        { preserveListFilter: true, listFilter: tabId }
+      );
+    } else {
+      setListFilter(tabId);
+    }
+  }
+
   const listTabs = [
     { id: "all" as const, label: "Alle", shortLabel: "Alle", count: companies.length, icon: List },
     {
@@ -690,6 +683,16 @@ export function AppPageClient(props: Props) {
       : 0;
   const showExactTotal = pagination && !pagination.truncated;
 
+  const listSummary = pagination
+    ? `Viser ${pageStart > 0 ? `${pageStart}–${pageEnd}` : "0"} ${
+        showExactTotal
+          ? `av ${pagination.total}`
+          : props.brregTotal != null
+            ? `(ca. ${props.brregTotal.toLocaleString("nb-NO")} i Brønnøysund)`
+            : `av minst ${pagination.total}`
+      }${listFilter !== "all" ? ` · ${rankedDisplayCompanies.length} i valgt fane` : ""} · sortert etter score`
+    : `Viser ${rankedDisplayCompanies.length} av ${companies.length} · sortert etter score`;
+
   return (
     <div className="scan-glass-kommand w-full max-w-none space-y-2 pb-6 lg:space-y-2.5">
       <section className="scan-surface-full overflow-hidden">
@@ -700,9 +703,9 @@ export function AppPageClient(props: Props) {
         <header className="scan-glass-header p-2.5 lg:p-3">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
             <div className="min-w-0">
-              <h1 className="scan-glass-title">Finn klare leads</h1>
+              <h1 className="scan-glass-title">Skann</h1>
               <p className="scan-glass-subtitle">
-                Velg marked → hent kontakt → ring eller send
+                1. Velg målgruppe · 2. Velg firma · 3. Legg i kø eller send
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -732,18 +735,6 @@ export function AppPageClient(props: Props) {
           onChange={applyFilters}
         />
 
-        <div className="scan-mobile-market-filters scan-glass-divider border-t px-2.5 py-2.5 lg:hidden">
-          <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
-            Område og yrke
-          </p>
-          <CompanyFilters
-            layout="mobile-bar"
-            filters={filters}
-            municipalities={props.municipalities}
-            onChange={applyFilters}
-          />
-        </div>
-
         <div className="scan-glass-divider flex flex-col border-t lg:flex-row lg:gap-0">
           <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/10 p-3 lg:block lg:w-[17.5rem] xl:w-[19rem]">
             <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
@@ -767,96 +758,23 @@ export function AppPageClient(props: Props) {
               addingToQueue={addingToQueue}
               onSelectWithEmail={selectAllWithEmail}
               onCheckAndQueue={checkAndAddToQueue}
+              onOpenFilters={() => setFilterSheetOpen(true)}
+              activeFilterCount={activeFilterCount}
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-2.5 py-2 lg:px-3">
-              <ScanFilterSheet
-                open={filterSheetOpen}
-                onOpen={() => setFilterSheetOpen(true)}
-                onClose={() => setFilterSheetOpen(false)}
-                filters={filters}
-                municipalities={props.municipalities}
-                onChange={(next) => {
-                  applyFilters(next);
-                  setFilterSheetOpen(false);
-                }}
-                activeFilterCount={activeFilterCount}
-              />
-              {selected.size > 0 && (
-                <div className="scan-queue-badge rounded-xl border border-sky-400/30 bg-sky-400/10 px-2.5 py-1.5 text-[11px]">
-                  <span className="scan-glass-strong font-semibold">
-                    {scanQueueCount} av {MAX_WEBSITE_SCAN_BATCH} i kø
-                  </span>
-                  {scanQueueRemaining > 0 && selected.size > MAX_WEBSITE_SCAN_BATCH && (
-                    <span className="scan-glass-muted ml-1">
-                      · {selected.size - MAX_WEBSITE_SCAN_BATCH} venter til neste runde
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div
-              id="scan-step-google"
-              className="scan-step-panel scan-glass-divider border-b p-2.5 lg:p-3"
-            >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <label className="scan-chip cursor-pointer" title="Ekstra søk. Bruk bare når du vil sjekke sosiale medier også.">
-                    <input
-                      type="checkbox"
-                      checked={socialOptions.includeFacebook}
-                      onChange={(e) =>
-                        setSocialOptions((prev) => ({
-                          ...prev,
-                          includeFacebook: e.target.checked,
-                        }))
-                      }
-                      className="h-3 w-3 rounded accent-sky-600"
-                    />
-                    Facebook (ekstra)
-                  </label>
-                  <label className="scan-chip cursor-pointer" title="Ekstra søk. Bruk bare når du vil sjekke Instagram også.">
-                    <input
-                      type="checkbox"
-                      checked={socialOptions.includeInstagram}
-                      onChange={(e) =>
-                        setSocialOptions((prev) => ({
-                          ...prev,
-                          includeInstagram: e.target.checked,
-                        }))
-                      }
-                      className="h-3 w-3 rounded accent-sky-600"
-                    />
-                    Instagram (ekstra)
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  onClick={scanSelectedWithGoogle}
-                  disabled={scanning || selected.size === 0}
-                  className={cn(
-                    "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-semibold transition",
-                    selected.size > 0 && !scanning
-                      ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
-                      : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
-                  )}
-                >
-                  <Search className="h-3.5 w-3.5" />
-                  {scanning
-                    ? "Søker…"
-                    : selected.size > 0
-                      ? `Sjekk valgte (${scanQueueCount})`
-                      : "Velg firma først"}
-                </button>
-              </div>
-              {scanSelectionMessage && (
-                <p className="mt-1.5 text-xs font-medium text-amber-200">
-                  {scanSelectionMessage}
-                </p>
-              )}
-              <ScanGooglePanel searchQuery={googleSearchQuery} />
-            </div>
+            <ScanFilterSheet
+              open={filterSheetOpen}
+              onOpen={() => setFilterSheetOpen(true)}
+              onClose={() => setFilterSheetOpen(false)}
+              filters={filters}
+              municipalities={props.municipalities}
+              onChange={(next) => {
+                applyFilters(next);
+                setFilterSheetOpen(false);
+              }}
+              activeFilterCount={activeFilterCount}
+              hideTrigger
+            />
 
             {props.dataSource === "brreg" &&
           ((props.companiesSource === "db" &&
@@ -895,210 +813,36 @@ export function AppPageClient(props: Props) {
             </div>
           )}
 
-            <WebsiteScanStatus
-          embedded
-          scanning={scanning}
-          scanComplete={scanComplete}
-          scanPending={scanPending}
-          scanTargetCount={scanTargetCount}
-          scanningName={scanningName}
-          progress={progress}
-          error={scanError}
-          providers={providers}
-          truncated={truncated}
-          noWebsiteCount={noWebsiteCount}
-          withWebsiteCount={withWebsiteCount}
-          withFacebookCount={withFacebookCount}
-          withGulesiderCount={withGulesiderCount}
-          withInstagramCount={withInstagramCount}
-          withLinkedInCount={withLinkedInCount}
-          includeFacebook={socialOptions.includeFacebook}
-          includeInstagram={socialOptions.includeInstagram}
-          includeLinkedIn={socialOptions.includeLinkedIn}
-          listFilter={listFilter}
-          notScannedCount={notScannedCount}
-          onRescan={rescan}
-          scanResults={websiteScans}
+            <ScanListToolbar
+              tabs={listTabs}
+              activeTab={listFilter}
+              onTabChange={handleListTabChange}
+              listViewMode={listViewMode}
+              onViewModeChange={setListViewMode}
+              summary={listSummary}
+              selectedCount={selected.size}
+              addingToQueue={addingToQueue}
+              exporting={exporting}
+              onAddToQueue={addSelectedToQueue}
+              onExportCsv={exportSelectedCsv}
+              exportMessage={exportMessage}
             />
 
-            <div className="scan-glass-divider border-t px-2.5 py-2 lg:px-3">
-          <div className="-mx-0.5 flex flex-wrap gap-1 px-0.5">
-            {listTabs.map((tab) => {
-              const TabIcon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    if (filters.websitePresence !== "all") {
-                      applyFilters(
-                        { ...filters, websitePresence: "all" },
-                        { preserveListFilter: true, listFilter: tab.id }
-                      );
-                    } else {
-                      setListFilter(tab.id);
-                    }
-                  }}
-                  className={cn(
-                    "scan-tab",
-                    listFilter === tab.id && "scan-tab-active"
-                  )}
-                >
-                  <TabIcon className="h-3 w-3" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="sm:hidden">{tab.shortLabel}</span>
-                  <span className="tabular-nums font-semibold">{tab.count}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
-            <div
-              className="mt-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100"
-              role="status"
-            >
-              <strong>{noWebsiteCount} firma uten nettside</strong> — klar for kontakt.
-              Velg og send e-post, eller bruk «Sjekk og legg i kø».
-            </div>
-          )}
-
-          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <p className="scan-glass-muted">
-            {pagination ? (
-              <>
-                Viser{" "}
-                <strong className="scan-glass-strong">
-                  {pageStart > 0 ? `${pageStart}–${pageEnd}` : "0"}
-                </strong>{" "}
-                {showExactTotal ? (
-                  <>
-                    av <strong className="scan-glass-strong">{pagination.total}</strong>
-                  </>
-                ) : props.brregTotal != null ? (
-                  <>
-                    (ca.{" "}
-                    <strong className="scan-glass-strong">
-                      {props.brregTotal.toLocaleString("nb-NO")}
-                    </strong>{" "}
-                    i Brønnøysund)
-                  </>
-                ) : (
-                  <>
-                    av minst{" "}
-                    <strong className="scan-glass-strong">{pagination.total}</strong>
-                  </>
-                )}
-                {listFilter !== "all" && (
-                  <>
-                    {" "}
-                    · <strong className="scan-glass-strong">{rankedDisplayCompanies.length}</strong> i
-                    valgt fane
-                  </>
-                )}
-                {" "}
-                · sortert etter score
-              </>
-            ) : (
-              <>
-                Viser <strong className="scan-glass-strong">{rankedDisplayCompanies.length}</strong> av{" "}
-                {companies.length} · sortert etter score
-              </>
-            )}
-            </p>
-          </div>
-
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            <div className="hidden items-center gap-0.5 rounded-xl border border-white/15 p-0.5 md:flex">
-              <button
-                type="button"
-                onClick={() => setListViewMode("table")}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium",
-                  listViewMode === "table" && "bg-white/12 text-white"
-                )}
-                aria-pressed={listViewMode === "table"}
+            {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
+              <div
+                className="mx-2.5 mb-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 lg:mx-3"
+                role="status"
               >
-                <Table2 className="h-3 w-3" />
-                Tabell
-              </button>
-              <button
-                type="button"
-                onClick={() => setListViewMode("cards")}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium",
-                  listViewMode === "cards" && "bg-white/12 text-white"
-                )}
-                aria-pressed={listViewMode === "cards"}
-              >
-                <LayoutGrid className="h-3 w-3" />
-                Kort
-              </button>
-            </div>
-          </div>
+                <strong>{noWebsiteCount} firma uten nettside</strong> — gode leads for nettside-salg.
+              </div>
+            )}
 
-          <div ref={queueActionRef} className="mt-1.5 flex flex-wrap gap-1 scroll-mt-24">
-            {selected.size > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={addSelectedToQueue}
-                  disabled={addingToQueue}
-                  className="scan-btn-primary inline-flex items-center gap-1 font-semibold"
-                >
-                  <ListTodo className="h-3.5 w-3.5" />
-                  {addingToQueue ? "Legger i kø…" : `Legg valgte i kø (${selected.size})`}
-                </button>
-                <button
-                  type="button"
-                  onClick={exportSelectedCsv}
-                  disabled={exporting}
-                  className="scan-btn-ghost inline-flex items-center gap-1"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  {exporting ? "Eksporterer…" : `CSV (${selected.size})`}
-                </button>
-              </>
+            {selected.size > MAX_WEBSITE_SCAN_BATCH && (
+              <p className="scan-glass-muted px-2.5 text-[11px] lg:px-3">
+                Google sjekker maks {MAX_WEBSITE_SCAN_BATCH} om gangen — {scanQueueCount} valgt til
+                neste sjekk.
+              </p>
             )}
-            {exportMessage && (
-              <p className="w-full text-xs text-emerald-300">{exportMessage}</p>
-            )}
-            <button
-              type="button"
-              onClick={toggleAll}
-              className="scan-btn-ghost"
-            >
-              {allSelected ? "Fjern valg" : "Velg synlige"}
-            </button>
-            {withEmailCount > 0 && (
-              <button
-                type="button"
-                onClick={selectAllWithEmail}
-                className="scan-btn-ghost"
-              >
-                Velg med e-post
-              </button>
-            )}
-            {scanComplete && noWebsiteCount > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={selectNoWebsite}
-                  className="scan-btn-ghost"
-                >
-                  Uten nettside ({noWebsiteCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={selectNoWebsiteWithEmail}
-                  className="scan-btn-ghost"
-                >
-                  Uten nettside + e-post
-                </button>
-              </>
-            )}
-          </div>
-            </div>
 
             <div className="scan-glass-divider border-t p-2">
               <CompanyTable
@@ -1146,6 +890,35 @@ export function AppPageClient(props: Props) {
               </div>
             </div>
               )}
+
+            <ScanGoogleSection
+              selectedCount={selected.size}
+              scanQueueCount={scanQueueCount}
+              scanning={scanning}
+              onScanSelected={scanSelectedWithGoogle}
+              socialOptions={socialOptions}
+              onSocialOptionsChange={setSocialOptions}
+              scanSelectionMessage={scanSelectionMessage}
+              googleSearchQuery={googleSearchQuery}
+              scanComplete={scanComplete}
+              scanPending={scanPending}
+              scanTargetCount={scanTargetCount}
+              scanningName={scanningName}
+              progress={progress}
+              scanError={scanError}
+              providers={providers}
+              truncated={truncated}
+              noWebsiteCount={noWebsiteCount}
+              withWebsiteCount={withWebsiteCount}
+              withFacebookCount={withFacebookCount}
+              withGulesiderCount={withGulesiderCount}
+              withInstagramCount={withInstagramCount}
+              withLinkedInCount={withLinkedInCount}
+              listFilter={listFilter}
+              notScannedCount={notScannedCount}
+              onRescan={rescan}
+              websiteScans={websiteScans}
+            />
             </div>
           </div>
         </div>
@@ -1174,8 +947,8 @@ export function AppPageClient(props: Props) {
       )}
 
       <details ref={emailSectionRef} className="scan-surface-pad w-full max-w-none scroll-mt-4">
-        <summary className="scan-glass-muted cursor-pointer select-none text-[10px] font-semibold uppercase tracking-wide hover:text-slate-200">
-          Avansert: send til mange
+        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-semibold text-white/70 hover:text-white">
+          Send e-post til valgte firma
         </summary>
         <div className="mt-3">
           <SendCampaignForm
@@ -1189,11 +962,18 @@ export function AppPageClient(props: Props) {
         </div>
       </details>
 
-      <ScanSavedAudiences
-        onApply={(next) => applyFilters(next)}
-        onSaveCurrent={saveAudience}
-        saveMessage={saveMessage}
-      />
+      <details className="scan-surface-pad w-full max-w-none">
+        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-semibold text-white/70 hover:text-white">
+          Lagrede målgrupper
+        </summary>
+        <div className="mt-3">
+          <ScanSavedAudiences
+            onApply={(next) => applyFilters(next)}
+            onSaveCurrent={saveAudience}
+            saveMessage={saveMessage}
+          />
+        </div>
+      </details>
     </div>
   );
 }

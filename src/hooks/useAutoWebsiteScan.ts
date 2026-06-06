@@ -56,7 +56,6 @@ export function useAutoWebsiteScan(
   );
   socialOptionsRef.current =
     options?.socialOptions ?? DEFAULT_SCAN_SOCIAL_OPTIONS;
-  const socialScanKey = `${socialOptionsRef.current.includeFacebook}-${socialOptionsRef.current.includeInstagram}`;
   const [websiteScans, setWebsiteScans] = useState<Map<string, WebsiteScanResult>>(
     () => new Map()
   );
@@ -302,30 +301,10 @@ export function useAutoWebsiteScan(
         });
         return next;
       });
-
-      const social = socialOptionsRef.current;
-      if (!social.includeFacebook && !social.includeInstagram) return;
-
-      const incompleteOrgnrs = new Set(
-        savedScans
-          .filter(
-            (s) => orgnrSet.has(s.orgnr) && !isWebsiteScanCacheComplete(s, social)
-          )
-          .map((s) => s.orgnr)
-      );
-      if (incompleteOrgnrs.size === 0) return;
-
-      const toEnrich = companies
-        .filter((c) => incompleteOrgnrs.has(c.orgnr))
-        .slice(0, MAX_WEBSITE_SCAN_BATCH);
-      if (toEnrich.length === 0) return;
-
-      const gen = ++scanGenRef.current;
-      void runScan(toEnrich, gen, { merge: true });
     })();
 
     return () => controller.abort();
-  }, [companyListKey, socialScanKey, companies, runScan]);
+  }, [companyListKey, companies]);
 
   const rescan = useCallback(() => {
     const pool = companies.filter((c) => c.has_email);

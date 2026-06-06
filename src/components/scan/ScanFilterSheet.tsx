@@ -13,6 +13,7 @@ type Props = {
   onChange: (filters: FilterState) => void;
   activeFilterCount: number;
   onOpen: () => void;
+  hideTrigger?: boolean;
 };
 
 export function ScanFilterSheet({
@@ -23,6 +24,7 @@ export function ScanFilterSheet({
   onChange,
   activeFilterCount,
   onOpen,
+  hideTrigger = false,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -40,19 +42,21 @@ export function ScanFilterSheet({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="scan-filter-trigger lg:hidden inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold"
-      >
-        <SlidersHorizontal className="h-3.5 w-3.5" />
-        Flere filter
-        {activeFilterCount > 0 && (
-          <span className="rounded-full bg-sky-400/25 px-1.5 py-0.5 text-[10px] font-bold text-sky-100">
-            {activeFilterCount}
-          </span>
-        )}
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="scan-filter-trigger lg:hidden inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Flere filter
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-sky-400/25 px-1.5 py-0.5 text-[10px] font-bold text-sky-100">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {open && (
         <div className="scan-filter-sheet-overlay fixed inset-0 z-[110] lg:hidden">

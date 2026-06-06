@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ListTodo, Search, Users } from "lucide-react";
+import { ListTodo, Search, SlidersHorizontal, Users } from "lucide-react";
 
 type Props = {
   withContactCount: number;
@@ -12,6 +12,8 @@ type Props = {
   addingToQueue: boolean;
   onSelectWithEmail: () => void;
   onCheckAndQueue: () => void;
+  onOpenFilters?: () => void;
+  activeFilterCount?: number;
 };
 
 const STEPS = [
@@ -29,6 +31,8 @@ export function ScanQuickBar({
   addingToQueue,
   onSelectWithEmail,
   onCheckAndQueue,
+  onOpenFilters,
+  activeFilterCount = 0,
 }: Props) {
   const activeStep = selectedCount > 0 ? 2 : 1;
 
@@ -77,6 +81,21 @@ export function ScanQuickBar({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
+          {onOpenFilters && (
+            <button
+              type="button"
+              onClick={onOpenFilters}
+              className="scan-filter-trigger lg:hidden inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-sky-400/30 px-1.5 py-0.5 text-[10px] font-bold text-sky-100">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={onSelectWithEmail}
@@ -91,7 +110,7 @@ export function ScanQuickBar({
             disabled={scanning || addingToQueue || withEmailCount === 0}
             className="scan-btn-primary min-h-[36px] px-3 text-xs font-semibold disabled:opacity-40"
           >
-            {addingToQueue ? "Legger i kø…" : "Sjekk topp 10 og legg i kø"}
+            {addingToQueue ? "Legger i kø…" : "Rask start: topp 10 → kø"}
           </button>
         </div>
       </div>

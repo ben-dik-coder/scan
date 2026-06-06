@@ -62,8 +62,8 @@ export function loadScanSocialOptions(): ScanSocialOptions {
     if (!raw) return DEFAULT_SCAN_SOCIAL_OPTIONS;
     const parsed = JSON.parse(raw) as Partial<ScanSocialOptions>;
     return {
-      includeFacebook: parsed.includeFacebook !== false,
-      includeInstagram: parsed.includeInstagram !== false,
+      includeFacebook: parsed.includeFacebook === true,
+      includeInstagram: parsed.includeInstagram === true,
       includeLinkedIn: parsed.includeLinkedIn !== false,
     };
   } catch {
