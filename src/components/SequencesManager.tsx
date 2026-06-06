@@ -7,15 +7,28 @@ import { PageHeader } from "@/components/ui/primitives";
 type Step = { step_order: number; delay_days: number; subject: string; body: string };
 type Sequence = { id: string; name: string; active: boolean; steps: Step[] };
 
-export function SequencesManager({ sequences }: { sequences: Sequence[] }) {
+export function SequencesManager({
+  sequences,
+  loading = false,
+  error = null,
+  isDemo = false,
+  onProcessed,
+}: {
+  sequences: Sequence[];
+  loading?: boolean;
+  error?: string | null;
+  isDemo?: boolean;
+  onProcessed?: () => void;
+}) {
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
   async function processDue() {
     setProcessing(true);
-    if (isDemoMode()) {
+    setResult(null);
+    if (isDemo || isDemoMode()) {
       setTimeout(() => {
-        setResult("Demo: 2 e-poster ville blitt sendt nå (backend kobles på senere)");
+        setResult("Demo: 2 e-poster ville blitt sendt nå (øvelse)");
         setProcessing(false);
       }, 800);
       return;
@@ -24,6 +37,7 @@ export function SequencesManager({ sequences }: { sequences: Sequence[] }) {
     const data = await res.json();
     setResult(res.ok ? `Sendt ${data.sent} steg` : data.error);
     setProcessing(false);
+    if (res.ok) onProcessed?.();
   }
 
   return (
@@ -43,7 +57,15 @@ export function SequencesManager({ sequences }: { sequences: Sequence[] }) {
         }
       />
 
+      {error && <p className="text-sm text-red-400">{error}</p>}
       {result && <p className="text-sm text-brand-gold">{result}</p>}
+
+      {sequences.length === 0 && !loading && (
+        <p className="scan-glass-muted text-sm">
+          Ingen sekvenser ennå. Standard sekvenser legges inn automatisk første gang du åpner
+          siden.
+        </p>
+      )}
 
       <div className="space-y-4">
         {sequences.map((seq) => (

@@ -1,15 +1,23 @@
-"use client";
+import { getSessionUser } from "@/lib/auth";
+import { fetchTemplates } from "@/lib/companies";
+import { isDemoMode } from "@/lib/demo/config";
+import { seedDefaultSalesAssets } from "@/lib/sales/sequences";
+import { MalerClient } from "./MalerClient";
 
-import { TemplatesManager } from "@/components/TemplatesManager";
-import { useDemo } from "@/lib/demo/store";
+export default async function MalerPage() {
+  const isDemo = isDemoMode();
+  const user = await getSessionUser();
 
-export default function MalerPage() {
-  const { templates, addTemplate, removeTemplate } = useDemo();
-  return (
-    <TemplatesManager
-      templates={templates}
-      onAdd={addTemplate}
-      onRemove={removeTemplate}
-    />
-  );
+  let initialTemplates: Awaited<ReturnType<typeof fetchTemplates>> = [];
+
+  if (!isDemo && user) {
+    try {
+      await seedDefaultSalesAssets(user.id);
+      initialTemplates = await fetchTemplates(user.id);
+    } catch {
+      initialTemplates = [];
+    }
+  }
+
+  return <MalerClient initialTemplates={initialTemplates} isDemo={isDemo} />;
 }

@@ -2,7 +2,7 @@
 
 import { AppPageClient } from "@/components/AppPageClient";
 import { DEMO_MUNICIPALITIES } from "@/lib/demo/data";
-import { isBrregLive } from "@/lib/demo/config";
+import { isBrregLive, isDemoMode } from "@/lib/demo/config";
 import { filterDemoCompanies, useDemo } from "@/lib/demo/store";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -153,12 +153,61 @@ function FirmaPageDemo() {
   );
 }
 
+type SequenceOption = {
+  id: string;
+  name: string;
+  active: boolean;
+  steps: { step_order: number; delay_days: number; subject: string; body: string }[];
+};
+
 function FirmaPageBrreg() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filters = parseFilters(searchParams, true);
   const currentPage = parsePageParam(searchParams);
-  const { templates, sequences } = useDemo();
+  const demo = useDemo();
+  const demoMode = isDemoMode();
+  const [templates, setTemplates] = useState<EmailTemplate[]>(
+    demoMode ? demo.templates : []
+  );
+  const [sequences, setSequences] = useState<SequenceOption[]>(
+    demoMode ? demo.sequences : []
+  );
+
+  useEffect(() => {
+    if (demoMode) {
+      setTemplates(demo.templates);
+      setSequences(demo.sequences);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSalesAssets() {
+      try {
+        const [templatesRes, sequencesRes] = await Promise.all([
+          fetch("/api/templates"),
+          fetch("/api/sequences"),
+        ]);
+        const templatesData = await templatesRes.json();
+        const sequencesData = await sequencesRes.json();
+        if (cancelled) return;
+        if (templatesRes.ok && Array.isArray(templatesData)) {
+          setTemplates(templatesData);
+        }
+        if (sequencesRes.ok && Array.isArray(sequencesData)) {
+          setSequences(sequencesData);
+        }
+      } catch {
+        /* behold tom liste — sending fungerer fortsatt med manuell tekst */
+      }
+    }
+
+    loadSalesAssets();
+    return () => {
+      cancelled = true;
+    };
+  }, [demoMode, demo.templates, demo.sequences]);
 
   useEffect(() => {
     const hasAnyFilter =
@@ -426,7 +475,7 @@ function FirmaPageBrreg() {
         withEmail={withEmail}
         municipalities={municipalities}
         initialFilters={filters}
-        templates={templates as EmailTemplate[]}
+        templates={templates}
         sequences={sequences}
         dataSource="brreg"
         companiesSource={companiesSource}

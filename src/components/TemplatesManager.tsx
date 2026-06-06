@@ -8,10 +8,16 @@ export function TemplatesManager({
   templates,
   onAdd,
   onRemove,
+  loading = false,
+  error = null,
+  onRefresh,
 }: {
   templates: EmailTemplate[];
   onAdd: (t: Omit<EmailTemplate, "id" | "user_id" | "created_at" | "updated_at">) => void;
   onRemove: (id: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
 }) {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
@@ -30,7 +36,28 @@ export function TemplatesManager({
       <PageHeader
         title="E-postmaler"
         description="Lagre og gjenbruk meldinger"
+        action={
+          onRefresh ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="btn-primary text-sm disabled:opacity-50"
+            >
+              {loading ? "Laster…" : "Oppdater"}
+            </button>
+          ) : undefined
+        }
       />
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {templates.length === 0 && !loading && (
+        <p className="scan-glass-muted text-sm">
+          Ingen maler ennå. Standardmaler legges inn automatisk første gang — eller lag en ny
+          under.
+        </p>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         {templates.map((t) => (

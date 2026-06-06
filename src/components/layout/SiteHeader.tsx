@@ -55,7 +55,7 @@ export function SiteHeader({ className }: { className?: string }) {
               href="/registrer"
               className="hidden font-sans text-sm font-semibold text-white/80 transition hover:text-brand-goldLight md:inline"
             >
-              Register
+              Registrer
             </Link>
             <Link
               href="/innlogging"
@@ -117,7 +117,7 @@ export function SiteHeader({ className }: { className?: string }) {
                 onClick={() => setOpen(false)}
                 className="inline-flex min-h-[44px] w-full items-center justify-center rounded-[10px] border-2 border-white/20 bg-transparent px-8 py-4 font-sans text-sm font-semibold text-white transition hover:border-brand-goldLight/40 hover:text-brand-goldLight"
               >
-                Register
+                Registrer
               </Link>
               <Link
                 href="/innlogging"

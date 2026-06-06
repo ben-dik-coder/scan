@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
+import { seedDefaultSalesAssets } from "@/lib/sales/sequences";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -8,6 +9,8 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await seedDefaultSalesAssets(user.id);
 
   const supabase = await createClient();
   const { data, error } = await supabase
