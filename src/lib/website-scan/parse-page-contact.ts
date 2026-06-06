@@ -1,3 +1,4 @@
+import { isValidNorwegianPhoneCore, phoneCoreDigits } from "./phone-plausible";
 import { parseEmailFromText } from "./resolve-company-email";
 
 const EMAIL_IN_TEXT =
@@ -14,13 +15,16 @@ const SKIP_PHONE_PREFIXES = new Set([
   "99999999",
 ]);
 
+/** Fjern org.nr-blokker før fri tekst-regex (unngår org.nr som telefon). */
+const ORGNR_BLOCK =
+  /(?:org\.?\s*nr|organisasjonsnummer)\s*[:.]?\s*(?:\d[\s.-]?){9}/gi;
+
 function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  let core = digits;
-  if (core.startsWith("47") && core.length === 10) core = core.slice(2);
-  if (core.length !== 8) return null;
+  const core = phoneCoreDigits(raw);
+  if (!core) return null;
   if (SKIP_PHONE_PREFIXES.has(core)) return null;
   if (/^(\d)\1{7}$/.test(core)) return null;
+  if (!isValidNorwegianPhoneCore(core)) return null;
   return core.replace(/(\d{3})(\d{2})(\d{3})/, "$1 $2 $3");
 }
 
@@ -33,17 +37,25 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&nbsp;/gi, " ");
 }
 
-export function extractPhonesFromHtml(html: string): string[] {
+function stripOrgnrBlocks(text: string): string {
+  return text.replace(ORGNR_BLOCK, " ");
+}
+
+export type ExtractPhonesOptions = {
+  /** Fri regex på brødtekst — skru av for katalog/proff (bruk kun tel: og JSON-LD). */
+  trustTextRegex?: boolean;
+};
+
+export function extractPhonesFromHtml(
+  html: string,
+  options?: ExtractPhonesOptions
+): string[] {
+  const trustTextRegex = options?.trustTextRegex !== false;
   const found = new Set<string>();
   const decoded = decodeHtmlEntities(html);
 
   for (const m of decoded.matchAll(/href=["']tel:([^"']+)["']/gi)) {
     const p = normalizePhone(m[1] ?? "");
-    if (p) found.add(p);
-  }
-
-  for (const m of decoded.matchAll(NO_PHONE)) {
-    const p = normalizePhone(m[0] ?? "");
     if (p) found.add(p);
   }
 
@@ -59,6 +71,14 @@ export function extractPhonesFromHtml(html: string): string[] {
       }
     } catch {
       /* ignore */
+    }
+  }
+
+  if (trustTextRegex) {
+    const stripped = stripOrgnrBlocks(decoded);
+    for (const m of stripped.matchAll(NO_PHONE)) {
+      const p = normalizePhone(m[0] ?? "");
+      if (p) found.add(p);
     }
   }
 

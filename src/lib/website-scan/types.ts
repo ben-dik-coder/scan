@@ -128,6 +128,8 @@ export type WebsiteScanResult = {
   enrichedEmailSource?: string | null;
   /** Settes når plattform-kontakt er beriket — brukes for delt cache */
   contactsEnriched?: boolean;
+  /** Versjon av kontakt-berikelse — lav versjon trigget gratis re-berikelse */
+  contactEnrichmentVersion?: number;
 };
 
 export type WebsiteScanCompanyInput = {

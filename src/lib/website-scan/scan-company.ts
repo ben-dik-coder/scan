@@ -32,6 +32,7 @@ import {
   MAX_WEBSITE_SEARCH_QUERIES,
   SOCIAL_SERP_NUM,
 } from "./scan-api-budget";
+import { CONTACT_ENRICHMENT_VERSION } from "./scan-cache";
 import {
   buildSocialScanMeta,
   DEFAULT_SCAN_SOCIAL_OPTIONS,
@@ -145,7 +146,12 @@ export async function enrichScanContacts(
   scan: WebsiteScanResult,
   options?: { skipFetch?: boolean; allowSocialProfileEnrichment?: boolean }
 ): Promise<WebsiteScanResult> {
-  if (scan.contactsEnriched) return scan;
+  if (
+    scan.contactsEnriched &&
+    (scan.contactEnrichmentVersion ?? 1) >= CONTACT_ENRICHMENT_VERSION
+  ) {
+    return scan;
+  }
 
   let workingScan = scan;
 

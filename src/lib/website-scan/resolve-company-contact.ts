@@ -1,3 +1,4 @@
+import { phonePlausibleForCompany } from "./phone-plausible";
 import type { WebsiteScanResult } from "./types";
 import {
   resolveCompanyEmail,
@@ -5,6 +6,7 @@ import {
 } from "./resolve-company-email";
 
 type CompanyContactInput = {
+  orgnr?: string;
   email?: string | null;
   has_email?: boolean;
   phone?: string | null;
@@ -25,22 +27,32 @@ export function normalizeDisplayPhone(value: string): string {
   return core.replace(/(\d{3})(\d{2})(\d{3})/, "$1 $2 $3");
 }
 
+function plausibleBrregPhone(
+  phone: string,
+  orgnr: string | undefined
+): boolean {
+  if (!orgnr?.trim()) return true;
+  return phonePlausibleForCompany(phone, orgnr);
+}
+
 /** Beste telefon: Brreg først, deretter funn fra booking/katalog/nettside/Facebook. */
 export function resolveCompanyPhone(
   company: CompanyContactInput,
   scan?: WebsiteScanResult | null
 ): ResolvedCompanyPhone | null {
+  const orgnr = company.orgnr?.trim() ?? "";
+
   const mobile = company.mobile?.trim();
-  if (mobile) {
+  if (mobile && plausibleBrregPhone(mobile, orgnr)) {
     return { phone: normalizeDisplayPhone(mobile), source: "mobile" };
   }
 
   const phone = company.phone?.trim();
-  if (phone) {
+  if (phone && plausibleBrregPhone(phone, orgnr)) {
     return { phone: normalizeDisplayPhone(phone), source: "brreg" };
   }
 
-  if (scan?.enrichedPhone) {
+  if (scan?.enrichedPhone && plausibleBrregPhone(scan.enrichedPhone, orgnr)) {
     return {
       phone: normalizeDisplayPhone(scan.enrichedPhone),
       source: "platform",

@@ -29,8 +29,10 @@ import {
   emailPlausibleForCompany,
   normalizeEmail,
 } from "@/lib/website-scan/resolve-company-email";
+import { pickPlausiblePhone, phonePlausibleForCompany } from "./phone-plausible";
 import { socialUrlMatchesCompany } from "@/lib/website-scan/social-profiles";
 import { MAX_PLATFORM_FETCHES } from "./scan-api-budget";
+import { CONTACT_ENRICHMENT_VERSION } from "./scan-cache";
 import type { WebsiteScanResult } from "./types";
 
 export type PlatformContactSource =
@@ -59,6 +61,7 @@ export type PlatformContactEnrichment = {
   enrichedEmail: string | null;
   enrichedEmailSource: PlatformContactSource | null;
   contactsEnriched: true;
+  contactEnrichmentVersion: number;
 };
 
 const DIRECTORY_1881 = ["1881.no", "kart.1881.no"];
@@ -176,20 +179,38 @@ export function build1881SearchQuery(company: {
     : `site:1881.no "${name}"`;
 }
 
+function isDirectorySource(source: PlatformContactSource): boolean {
+  return (
+    source === "directory" ||
+    source === "proff" ||
+    source === "gulesider" ||
+    source === "1881"
+  );
+}
+
 function pickPhoneFromSerpApiText(
+  orgnr: string,
   direct: string | null | undefined,
   ...texts: Array<string | null | undefined>
 ): string | null {
+  const candidates: string[] = [];
   const trimmed = direct?.trim();
-  if (trimmed) {
-    const normalized = extractPhonesFromHtml(trimmed)[0];
-    if (normalized) return normalized;
-  }
+  if (trimmed) candidates.push(...extractPhonesFromHtml(trimmed));
   for (const text of texts) {
-    const phone = extractPhonesFromHtml(text ?? "")[0];
-    if (phone) return phone;
+    candidates.push(...extractPhonesFromHtml(text ?? ""));
   }
-  return null;
+  return pickPlausiblePhone(candidates, orgnr);
+}
+
+function sanitizeContactPhones(
+  contacts: PlatformContactRecord[],
+  orgnr: string
+): PlatformContactRecord[] {
+  return contacts.map((c) => ({
+    ...c,
+    phone:
+      c.phone && phonePlausibleForCompany(c.phone, orgnr) ? c.phone : null,
+  }));
 }
 
 function pickEmailFromSerpApiText(
@@ -246,13 +267,15 @@ function instagramContactTrusted(
 
 function recordFromFacebook(
   scan: WebsiteScanResult,
-  companyName: string
+  companyName: string,
+  orgnr: string
 ): PlatformContactRecord | null {
   const profile = scan.facebookProfile;
   if (!profile?.url && !scan.facebookUrl) return null;
   if (!facebookContactTrusted(scan, companyName)) return null;
 
   const phone = pickPhoneFromSerpApiText(
+    orgnr,
     profile?.phone,
     profile?.intro,
     profile?.address
@@ -280,13 +303,14 @@ function recordFromFacebook(
 
 function recordFromInstagram(
   scan: WebsiteScanResult,
-  companyName: string
+  companyName: string,
+  orgnr: string
 ): PlatformContactRecord | null {
   const profile = scan.instagramProfile;
   if (!profile?.url && !scan.instagramUrl) return null;
   if (!instagramContactTrusted(scan, companyName)) return null;
 
-  const phone = pickPhoneFromSerpApiText(profile?.phone, profile?.biography);
+  const phone = pickPhoneFromSerpApiText(orgnr, profile?.phone, profile?.biography);
   const rawEmail = pickEmailFromSerpApiText(profile?.email, profile?.biography);
   const email =
     rawEmail && emailPlausibleForCompany(rawEmail, companyName)
@@ -348,26 +372,30 @@ function collectFetchUrls(
 }
 
 async function fetchPlatformRecord(
-  url: string
+  url: string,
+  orgnr: string
 ): Promise<PlatformContactRecord | null> {
   const html = await fetchPublicHtml(url);
   if (!html) return null;
 
   const domain = normalizeDomain(url);
   const source = classifyPlatform(url);
-  const phones = extractPhonesFromHtml(html);
+  const phones = extractPhonesFromHtml(html, {
+    trustTextRegex: !isDirectorySource(source),
+  });
+  const phone = pickPlausiblePhone(phones, orgnr);
   const emails = filterEmailsForSource(extractEmailsFromHtml(html), url, source);
   const external =
     source !== "website"
       ? extractExternalWebsiteFromHtml(html, domain)
       : null;
 
-  if (phones.length === 0 && emails.length === 0 && !external) return null;
+  if (!phone && emails.length === 0 && !external) return null;
 
   return {
     source,
     url,
-    phone: phones[0] ?? null,
+    phone,
     email: emails[0] ?? null,
     externalWebsite: external,
   };
@@ -468,31 +496,35 @@ export async function enrichPlatformContacts(
 
   const contacts: PlatformContactRecord[] = [];
 
-  const fb = recordFromFacebook(scan, company.name);
+  const fb = recordFromFacebook(scan, company.name, company.orgnr);
   if (fb) contacts.push(fb);
 
-  const ig = recordFromInstagram(scan, company.name);
+  const ig = recordFromInstagram(scan, company.name, company.orgnr);
   if (ig) contacts.push(ig);
 
   if (!options?.skipFetch) {
     const urls = collectFetchUrls(workingScan, company.name);
-    const fetched = await Promise.all(urls.map((url) => fetchPlatformRecord(url)));
+    const fetched = await Promise.all(
+      urls.map((url) => fetchPlatformRecord(url, company.orgnr))
+    );
     for (const row of fetched) {
       if (row) contacts.push(row);
     }
   }
 
-  const bestPhone = pickBest(contacts, "phone", PHONE_PRIORITY);
-  const bestEmail = pickBest(contacts, "email", EMAIL_PRIORITY);
+  const sanitized = sanitizeContactPhones(contacts, company.orgnr);
+  const bestPhone = pickBest(sanitized, "phone", PHONE_PRIORITY);
+  const bestEmail = pickBest(sanitized, "email", EMAIL_PRIORITY);
 
   return {
-    contacts,
+    contacts: sanitized,
     gulesider,
     enrichedPhone: bestPhone?.value ?? null,
     enrichedPhoneSource: bestPhone?.source ?? null,
     enrichedEmail: bestEmail?.value ?? null,
     enrichedEmailSource: bestEmail?.source ?? null,
     contactsEnriched: true,
+    contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
   };
 }
 
@@ -511,5 +543,7 @@ export function applyPlatformContactEnrichment(
     enrichedEmail: enrichment.enrichedEmail,
     enrichedEmailSource: enrichment.enrichedEmailSource,
     contactsEnriched: true,
+    contactEnrichmentVersion:
+      enrichment.contactEnrichmentVersion ?? CONTACT_ENRICHMENT_VERSION,
   };
 }

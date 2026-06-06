@@ -16,6 +16,16 @@ import {
   emailPlausibleForCompany,
   resolveCompanyEmail,
 } from "../src/lib/website-scan/resolve-company-email";
+import { extractPhonesFromHtml } from "../src/lib/website-scan/parse-page-contact";
+import {
+  phonePlausibleForCompany,
+  phoneLooksLikeOrgnr,
+} from "../src/lib/website-scan/phone-plausible";
+import { resolveCompanyPhone } from "../src/lib/website-scan/resolve-company-contact";
+import {
+  CONTACT_ENRICHMENT_VERSION,
+  needsContactEnrichment,
+} from "../src/lib/website-scan/scan-cache";
 import { profileMatchesCompany } from "../src/lib/website-scan/serpapi-facebook-profile";
 import type { FacebookProfileSnippet } from "../src/lib/website-scan/types";
 
@@ -197,6 +207,90 @@ test("Facebook-e-post krever validert profil", () => {
     }
   );
   assert.equal(resolved, null);
+});
+
+console.log("\nTelefonvalidering\n");
+
+test("Wild Horse mobil 96687189 godtas for org 936662889", () => {
+  assert.equal(phonePlausibleForCompany("96687189", "936662889"), true);
+});
+
+test("Hair by Ellen org.nr-prefix 93751017 avvises", () => {
+  assert.equal(phonePlausibleForCompany("93751017", "937510179"), false);
+  assert.equal(phoneLooksLikeOrgnr("93751017", "937510179"), true);
+});
+
+test("Karlsen org.nr-prefix 93763926 avvises", () => {
+  assert.equal(phonePlausibleForCompany("93763926", "937639260"), false);
+});
+
+test("Barauske nesten-org.nr 93742994 avvises (fuzzy)", () => {
+  assert.equal(phonePlausibleForCompany("93742994", "937429924"), false);
+});
+
+test("Nails by Marit 17047328 avvises (ugyldig norsk prefiks)", () => {
+  assert.equal(phonePlausibleForCompany("17047328", "937359276"), false);
+});
+
+const PROFF_HTML = `
+  <div>Org nr 937 785 674</div>
+  <div>Resultat før skatt -578 000</div>
+  <div>Årsresultat -578 000</div>
+  <p>Omsetning 578 31 276</p>
+`;
+
+test("Proff/katalog-HTML uten tel: gir ingen telefon fra regex", () => {
+  const phones = extractPhonesFromHtml(PROFF_HTML, { trustTextRegex: false });
+  assert.equal(phones.length, 0);
+});
+
+test("Proff-HTML med tel:-lenke godtar 91908244", () => {
+  const html = `${PROFF_HTML}<a href="tel:+4791908244">Ring oss</a>`;
+  const phones = extractPhonesFromHtml(html, { trustTextRegex: false });
+  assert.equal(phones.includes("919 08 244"), true);
+});
+
+test("resolveCompanyPhone avviser ugyldig enrichedPhone", () => {
+  const resolved = resolveCompanyPhone(
+    { orgnr: "937510179", mobile: null, phone: null },
+    {
+      orgnr: "937510179",
+      hasWebsite: false,
+      websiteKind: "none",
+      websiteUrl: null,
+      websiteDomain: null,
+      bookingPlatform: null,
+      source: "serpapi",
+      confidence: "low",
+      query: "",
+      scannedAt: new Date().toISOString(),
+      enrichedPhone: "937 51 017",
+      enrichedPhoneSource: "directory",
+      contactsEnriched: true,
+      contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
+    }
+  );
+  assert.equal(resolved, null);
+});
+
+test("Gammel cache med contactsEnriched v1 trenger re-berikelse", () => {
+  assert.equal(
+    needsContactEnrichment({
+      orgnr: "937510179",
+      hasWebsite: false,
+      websiteKind: "none",
+      websiteUrl: null,
+      websiteDomain: null,
+      bookingPlatform: null,
+      source: "serpapi",
+      confidence: "low",
+      query: "",
+      scannedAt: new Date().toISOString(),
+      contactsEnriched: true,
+      contactEnrichmentVersion: 1,
+    }),
+    true
+  );
 });
 
 console.log(`\n${passed} bestått, ${failed} feilet`);
