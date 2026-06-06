@@ -9,6 +9,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { FilterState } from "@/components/CompanyFilters";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
+import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 import { regionLabel } from "@/lib/constants/regions";
 import { getDemoShuffleSessionId } from "@/lib/shuffle/demo-session";
 import {
@@ -67,7 +68,7 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
         ? DEFAULT_MARKET_FILTERS.genericEmailOnly
         : false,
     industryGroup: params.get("bransje") ?? "",
-    professionSearch: params.get("yrke") ?? "",
+    professionId: parseProfessionIdFromParam(params.get("yrke") ?? ""),
     websitePresence:
       (params.get("web") as FilterState["websitePresence"]) || "all",
     facebookPresence:
@@ -95,7 +96,7 @@ function buildCompaniesQuery(filters: FilterState, page = 1): string {
   params.set("generisk", filters.genericEmailOnly ? "1" : "0");
   if (filters.industryGroup) params.set("bransje", filters.industryGroup);
   else params.delete("bransje");
-  if (filters.professionSearch.trim()) params.set("yrke", filters.professionSearch.trim());
+  if (filters.professionId) params.set("yrke", filters.professionId);
   else params.delete("yrke");
   if (filters.websitePresence !== "all") params.set("web", filters.websitePresence);
   else params.delete("web");
@@ -120,7 +121,7 @@ function FirmaPageDemo() {
     hasEmail: filters.hasEmail,
     genericEmailOnly: filters.genericEmailOnly,
     industryGroup: filters.industryGroup || undefined,
-    professionSearch: filters.professionSearch.trim() || undefined,
+    professionId: filters.professionId || undefined,
   });
 
   const shuffled = useMemo(() => {
@@ -132,7 +133,7 @@ function FirmaPageDemo() {
         hasEmail: filters.hasEmail,
         genericEmailOnly: filters.genericEmailOnly,
         industryGroup: filters.industryGroup || undefined,
-        professionSearch: filters.professionSearch.trim() || undefined,
+        professionId: filters.professionId || undefined,
       },
       getDemoShuffleSessionId()
     );
@@ -328,7 +329,7 @@ function FirmaPageBrreg() {
     filters.hasEmail,
     filters.genericEmailOnly,
     filters.industryGroup,
-    filters.professionSearch,
+    filters.professionId,
     currentPage,
   ]);
 

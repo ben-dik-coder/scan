@@ -205,7 +205,7 @@ export const PROFESSIONS: ProfessionDef[] = [
   },
   {
     id: "frisor_spa",
-    label: "Skjønnhet / spa",
+    label: "Skjønnhetssalong / spa",
     aliases: ["skjønnhet", "skjonnhet", "spa", "velvære", "velvaere", "negler", "manikyr", "pedikyr", "vipper"],
     codes: ["96.02", "96.04"],
     prefixes: ["96"],
@@ -308,6 +308,50 @@ export const PROFESSIONS: ProfessionDef[] = [
   },
 ];
 
+export const PROFESSION_OPTIONS = [...PROFESSIONS].sort((a, b) =>
+  a.label.localeCompare(b.label, "nb")
+);
+
+export function getProfessionById(id: string): ProfessionDef | undefined {
+  return PROFESSIONS.find((p) => p.id === id);
+}
+
+export function professionLabel(id: string): string | null {
+  return getProfessionById(id)?.label ?? null;
+}
+
+function buildProfessionMatch(profession: ProfessionDef): ProfessionMatch {
+  const keywords = new Set<string>();
+  keywords.add(normalizeText(profession.label));
+  for (const alias of profession.aliases) keywords.add(normalizeText(alias));
+  for (const kw of profession.nameKeywords ?? []) keywords.add(normalizeText(kw));
+
+  return {
+    query: profession.label,
+    label: profession.label,
+    professionId: profession.id,
+    nacePrefixes: profession.prefixes ?? [],
+    naceCodes: profession.codes ?? [],
+    searchKeywords: [...keywords].filter(Boolean),
+  };
+}
+
+/** Konkret yrke-valg fra dropdown (id) */
+export function resolveProfessionFilter(professionId: string): ProfessionMatch | null {
+  const profession = getProfessionById(professionId.trim());
+  if (!profession) return null;
+  return buildProfessionMatch(profession);
+}
+
+/** URL `yrke` — id eller gammel fritekst */
+export function parseProfessionIdFromParam(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (getProfessionById(trimmed)) return trimmed;
+  const legacy = resolveProfessionQuery(trimmed);
+  return legacy?.professionId ?? "";
+}
+
 function normalizeText(value: string): string {
   return value
     .toLowerCase()
@@ -397,19 +441,7 @@ export function resolveProfessionQuery(raw: string): ProfessionMatch | null {
   const keywords = new Set<string>([normalizeText(query)]);
 
   if (best) {
-    const { profession } = best;
-    keywords.add(normalizeText(profession.label));
-    for (const alias of profession.aliases) keywords.add(normalizeText(alias));
-    for (const kw of profession.nameKeywords ?? []) keywords.add(normalizeText(kw));
-
-    return {
-      query,
-      label: profession.label,
-      professionId: profession.id,
-      nacePrefixes: profession.prefixes ?? [],
-      naceCodes: profession.codes ?? [],
-      searchKeywords: [...keywords].filter(Boolean),
-    };
+    return { ...buildProfessionMatch(best.profession), query };
   }
 
   /** Ukjent yrke — søk i navn/beskrivelse med det brukeren skrev */
@@ -460,12 +492,13 @@ export function matchesProfessionSearch(
 
   if (hasNace) {
     const naceHit = matchesNaceForProfession(industryCode, match);
+    const knownProfession = Boolean(match.professionId);
+    const broadPrefixOnly =
+      match.nacePrefixes.some((p) => ["43", "47", "49", "56", "62"].includes(p)) &&
+      match.naceCodes.length === 0;
+
     if (naceHit) {
-      /** Smale divisjoner (43, 96) — krev også treff i navn/beskrivelse */
-      const broadPrefix =
-        match.nacePrefixes.some((p) => ["43", "47", "49", "56", "62"].includes(p)) &&
-        match.naceCodes.length === 0;
-      if (broadPrefix && match.searchKeywords.length > 0) {
+      if (knownProfession || broadPrefixOnly) {
         return nameHit;
       }
       return true;
@@ -508,6 +541,8 @@ export function getProfessionNameOrFilters(match: ProfessionMatch): string[] {
 }
 
 export function professionSearchLabel(raw: string): string | null {
+  const byId = professionLabel(raw);
+  if (byId) return byId;
   const match = resolveProfessionQuery(raw);
   return match?.label ?? null;
 }

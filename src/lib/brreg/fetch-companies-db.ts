@@ -7,7 +7,7 @@ import {
   getProfessionCodeOrFilters,
   getProfessionNameOrFilters,
   matchesProfessionSearch,
-  resolveProfessionQuery,
+  resolveProfessionFilter,
 } from "@/lib/constants/professions";
 import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
 import { computeLeadScore } from "@/lib/sales/lead-score";
@@ -34,12 +34,12 @@ async function getAllKommuneCodes(): Promise<string[]> {
 function applyProfessionFilter(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   query: any,
-  professionSearch?: string
+  professionId?: string
 ) {
-  const trimmed = professionSearch?.trim();
+  const trimmed = professionId?.trim();
   if (!trimmed) return query;
 
-  const match = resolveProfessionQuery(trimmed);
+  const match = resolveProfessionFilter(trimmed);
   if (!match) return query;
 
   const codeFilters = getProfessionCodeOrFilters(match);
@@ -159,7 +159,7 @@ export async function fetchCompaniesFromDb(
   }
 
   query = applyIndustryFilter(query, filters.industryGroup);
-  query = applyProfessionFilter(query, filters.professionSearch);
+  query = applyProfessionFilter(query, filters.professionId);
 
   query = query.order("registered_at", { ascending: false, nullsFirst: false });
 
@@ -176,8 +176,8 @@ export async function fetchCompaniesFromDb(
       matchesIndustryGroup(c.industry_code, "webbyra", { name: c.name })
     );
   }
-  if (filters.professionSearch?.trim()) {
-    const professionMatch = resolveProfessionQuery(filters.professionSearch);
+  if (filters.professionId?.trim()) {
+    const professionMatch = resolveProfessionFilter(filters.professionId);
     if (professionMatch) {
       rows = rows.filter((c) =>
         matchesProfessionSearch(c.industry_code, { name: c.name }, professionMatch)

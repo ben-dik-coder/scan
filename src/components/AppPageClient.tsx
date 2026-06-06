@@ -313,8 +313,8 @@ export function AppPageClient(props: Props) {
       next = { ...next, days: 0 };
     }
     if (
-      next.professionSearch.trim() &&
-      next.professionSearch.trim() !== filters.professionSearch.trim() &&
+      next.professionId &&
+      next.professionId !== filters.professionId &&
       next.days !== 0
     ) {
       next = { ...next, days: 0 };
@@ -330,7 +330,7 @@ export function AppPageClient(props: Props) {
     params.set("generisk", next.genericEmailOnly ? "1" : "0");
     if (next.industryGroup) params.set("bransje", next.industryGroup);
     else params.delete("bransje");
-    if (next.professionSearch.trim()) params.set("yrke", next.professionSearch.trim());
+    if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
     if (next.websitePresence !== "all") params.set("web", next.websitePresence);
     else params.delete("web");
@@ -364,7 +364,7 @@ export function AppPageClient(props: Props) {
     params.set("generisk", next.genericEmailOnly ? "1" : "0");
     if (next.industryGroup) params.set("bransje", next.industryGroup);
     else params.delete("bransje");
-    if (next.professionSearch.trim()) params.set("yrke", next.professionSearch.trim());
+    if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
     params.delete("web");
     params.delete("fb");
@@ -524,7 +524,7 @@ export function AppPageClient(props: Props) {
       hasEmail: filters.hasEmail,
       genericEmailOnly: filters.genericEmailOnly,
       industryGroup: filters.industryGroup,
-      professionSearch: filters.professionSearch,
+      professionId: filters.professionId,
       websitePresence: filters.websitePresence,
       facebookPresence: filters.facebookPresence,
       instagramPresence: filters.instagramPresence,

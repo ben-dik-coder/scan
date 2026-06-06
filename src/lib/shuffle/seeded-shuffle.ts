@@ -7,7 +7,7 @@ export type MarketShuffleFilters = {
   hasEmail?: boolean;
   genericEmailOnly?: boolean;
   industryGroup?: string;
-  professionSearch?: string;
+  professionId?: string;
 };
 
 export function currentMonthKey(): string {
@@ -23,7 +23,7 @@ export function buildMarketFilterKey(filters: MarketShuffleFilters): string {
     filters.hasEmail ? "1" : "0",
     filters.genericEmailOnly ? "1" : "0",
     filters.industryGroup ?? "",
-    filters.professionSearch ?? "",
+    filters.professionId ?? "",
   ].join("|");
 }
 

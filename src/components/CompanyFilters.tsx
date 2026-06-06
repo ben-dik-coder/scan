@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { INDUSTRY_GROUPS } from "@/lib/constants/industries";
-import { professionSearchLabel } from "@/lib/constants/professions";
+import { PROFESSION_OPTIONS } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion, REGIONS } from "@/lib/constants/regions";
 import { WEBBYRA_MARKET_PRESET } from "@/lib/constants/market";
 import {
@@ -26,8 +26,8 @@ export type FilterState = {
   hasEmail: boolean;
   genericEmailOnly: boolean;
   industryGroup: string;
-  /** Fritekst yrke, f.eks. «rørlegger» */
-  professionSearch: string;
+  /** Konkret yrke-id fra dropdown (tom = alle yrker) */
+  professionId: string;
   websitePresence: WebsitePresenceFilter;
   facebookPresence: SocialPresenceFilter;
   instagramPresence: SocialPresenceFilter;
@@ -47,9 +47,7 @@ export function CompanyFilters({
   onChange,
   layout = "stack",
 }: Props) {
-  const [professionDraft, setProfessionDraft] = useState(filters.professionSearch);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const matchedProfession = professionSearchLabel(professionDraft);
 
   const isSidebar = layout === "sidebar";
   const isMobileBar = layout === "mobile-bar";
@@ -58,22 +56,6 @@ export function CompanyFilters({
     : isMobileBar
       ? "grid gap-2 sm:grid-cols-2"
       : "grid gap-2 sm:grid-cols-2 lg:grid-cols-4";
-
-  useEffect(() => {
-    setProfessionDraft(filters.professionSearch);
-  }, [filters.professionSearch]);
-
-  useEffect(() => {
-    const trimmed = professionDraft.trim();
-    if (trimmed === filters.professionSearch.trim()) return;
-
-    const timer = window.setTimeout(() => {
-      onChange({ ...filters, professionSearch: trimmed });
-    }, 400);
-
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce kun på utkast
-  }, [professionDraft]);
 
   const kommunerInRegion = filters.regionId
     ? municipalities.filter((m) => kommuneBelongsToRegion(m.code, filters.regionId))
@@ -133,24 +115,20 @@ export function CompanyFilters({
     <label className={`flex flex-col gap-0.5 ${isMobileBar ? "sm:col-span-2" : ""}`}>
       <span className="scan-label">
         <Briefcase className="h-3.5 w-3.5 text-brand-gold" />
-        Søk yrke
+        Yrke
       </span>
-      <input
-        type="search"
-        value={professionDraft}
-        onChange={(e) => setProfessionDraft(e.target.value)}
-        placeholder="F.eks. rørlegger, frisør, elektriker…"
+      <select
+        value={filters.professionId}
+        onChange={(e) => onChange({ ...filters, professionId: e.target.value })}
         className="scan-input"
-        autoComplete="off"
-        spellCheck={false}
-      />
-      {professionDraft.trim().length >= 2 && (
-        <span className="scan-glass-muted text-[10px]">
-          {matchedProfession
-            ? `Finner: ${matchedProfession}`
-            : "Søker i navn og bransje — prøv et annet ord hvis du får lite treff"}
-        </span>
-      )}
+      >
+        <option value="">Alle yrker</option>
+        {PROFESSION_OPTIONS.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 

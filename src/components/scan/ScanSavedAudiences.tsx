@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { FilterState } from "@/components/CompanyFilters";
 import { DEFAULT_MARKET_FILTERS, OSLO_MUNICIPALITY_CODE } from "@/lib/constants/market";
+import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { cn } from "@/lib/utils";
@@ -24,7 +25,7 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
       municipalityCode: OSLO_MUNICIPALITY_CODE,
       days: 30,
       industryGroup: "",
-      professionSearch: "",
+      professionId: "",
     },
   },
   {
@@ -36,7 +37,7 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
       municipalityCode: "",
       days: 30,
       industryGroup: "",
-      professionSearch: "",
+      professionId: "",
     },
   },
   {
@@ -47,7 +48,7 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
       regionId: "oslo",
       municipalityCode: OSLO_MUNICIPALITY_CODE,
       days: 30,
-      professionSearch: "rørlegger",
+      professionId: "rorlegger",
       industryGroup: "",
     },
   },
@@ -59,7 +60,18 @@ type Props = {
   saveMessage: string | null;
 };
 
-function mergeFilters(partial: Partial<FilterState>): FilterState {
+function resolveProfessionId(
+  partial: Partial<FilterState> & { professionSearch?: string }
+): string {
+  if (partial.professionId) return partial.professionId;
+  const legacy = partial.professionSearch?.trim();
+  if (legacy) return parseProfessionIdFromParam(legacy);
+  return "";
+}
+
+function mergeFilters(
+  partial: Partial<FilterState> & { professionSearch?: string }
+): FilterState {
   return {
     regionId: partial.regionId ?? "",
     municipalityCode: partial.municipalityCode ?? "",
@@ -67,7 +79,7 @@ function mergeFilters(partial: Partial<FilterState>): FilterState {
     hasEmail: partial.hasEmail ?? false,
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
-    professionSearch: partial.professionSearch ?? "",
+    professionId: resolveProfessionId(partial),
     websitePresence: partial.websitePresence ?? "all",
     facebookPresence: partial.facebookPresence ?? "all",
     instagramPresence: partial.instagramPresence ?? "all",

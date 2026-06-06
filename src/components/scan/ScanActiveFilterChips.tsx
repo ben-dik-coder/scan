@@ -3,7 +3,7 @@
 import type { FilterState } from "@/components/CompanyFilters";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
 import { industryGroupLabel } from "@/lib/constants/industries";
-import { professionSearchLabel } from "@/lib/constants/professions";
+import { professionLabel } from "@/lib/constants/professions";
 import { regionLabel } from "@/lib/constants/regions";
 import { X } from "lucide-react";
 
@@ -52,14 +52,12 @@ function buildChips(
     });
   }
 
-  if (filters.professionSearch.trim()) {
-    const label =
-      professionSearchLabel(filters.professionSearch.trim()) ??
-      filters.professionSearch.trim();
+  if (filters.professionId) {
+    const label = professionLabel(filters.professionId) ?? filters.professionId;
     chips.push({
       id: "yrke",
       label,
-      onRemove: () => onChange({ ...filters, professionSearch: "" }),
+      onRemove: () => onChange({ ...filters, professionId: "" }),
     });
   }
 

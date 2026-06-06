@@ -1,6 +1,7 @@
 import type { FilterState } from "@/components/CompanyFilters";
+import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 
-type AlertFilters = Partial<FilterState>;
+type AlertFilters = Partial<FilterState> & { professionSearch?: string };
 
 /** Bygg /app-URL med filter + valgfri Skann-modus / web-fane. */
 export function buildScanDeepLink(
@@ -17,7 +18,12 @@ export function buildScanDeepLink(
   if (filters.hasEmail) params.set("epost", "1");
   if (filters.genericEmailOnly) params.set("generisk", "1");
   if (filters.industryGroup) params.set("bransje", filters.industryGroup);
-  if (filters.professionSearch?.trim()) params.set("yrke", filters.professionSearch.trim());
+  const professionId =
+    filters.professionId ??
+    (filters.professionSearch?.trim()
+      ? parseProfessionIdFromParam(filters.professionSearch)
+      : "");
+  if (professionId) params.set("yrke", professionId);
   if (filters.websitePresence && filters.websitePresence !== "all") {
     params.set("web", filters.websitePresence);
   }

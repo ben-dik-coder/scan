@@ -9,6 +9,7 @@ import {
   parsePaginationParams,
 } from "@/lib/brreg/fetch-companies";
 import { isBrregLive, isDemoMode } from "@/lib/demo/config";
+import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 import { buildMarketShuffleSeed } from "@/lib/shuffle/seeded-shuffle";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
   const hasEmail = searchParams.get("epost") !== "0";
   const genericEmailOnly = searchParams.get("generisk") === "1";
   const industryGroup = searchParams.get("bransje") ?? "";
-  const professionSearch = searchParams.get("yrke") ?? "";
+  const professionId = parseProfessionIdFromParam(searchParams.get("yrke") ?? "");
   const { page, pageSize } = parsePaginationParams(
     parsePageParam(searchParams.get("page")),
     parsePageParam(searchParams.get("pageSize"))
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
     hasEmail,
     genericEmailOnly,
     industryGroup: industryGroup || undefined,
-    professionSearch: professionSearch || undefined,
+    professionId: professionId || undefined,
   };
 
   try {

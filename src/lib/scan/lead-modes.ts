@@ -1,5 +1,6 @@
 import type { FilterState } from "@/components/CompanyFilters";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
+import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 
 export type ScanLeadMode = "websites" | "profession" | "all_new";
 
@@ -36,7 +37,7 @@ export function filtersForLeadMode(
       municipalityCode,
       days: 30,
       industryGroup: "",
-      professionSearch: "",
+      professionId: "",
       hasEmail: false,
       genericEmailOnly: false,
       websitePresence: "all",
@@ -63,7 +64,7 @@ export function filtersForLeadMode(
     municipalityCode,
     days: 30,
     industryGroup: "",
-    professionSearch: "",
+    professionId: "",
     hasEmail: false,
     genericEmailOnly: false,
     websitePresence: "all",
@@ -86,7 +87,13 @@ export function loadScanAudienceFilters(): Partial<FilterState> | null {
   try {
     const raw = localStorage.getItem(SCAN_AUDIENCE_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as Partial<FilterState>;
+    const parsed = JSON.parse(raw) as Partial<FilterState> & {
+      professionSearch?: string;
+    };
+    if (!parsed.professionId && parsed.professionSearch?.trim()) {
+      parsed.professionId = parseProfessionIdFromParam(parsed.professionSearch);
+    }
+    return parsed;
   } catch {
     return null;
   }

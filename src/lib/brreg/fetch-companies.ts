@@ -12,7 +12,7 @@ import {
 import {
   getBrregNaeringskodeForProfession,
   matchesProfessionSearch,
-  resolveProfessionQuery,
+  resolveProfessionFilter,
 } from "@/lib/constants/professions";
 import {
   getBrregNaeringskodeParam,
@@ -67,8 +67,8 @@ export type BrregCompanyFilters = {
   hasEmail?: boolean;
   genericEmailOnly?: boolean;
   industryGroup?: string;
-  /** Fritekst yrke, f.eks. «rørlegger» */
-  professionSearch?: string;
+  /** Konkret yrke-id fra dropdown, f.eks. «rorlegger» */
+  professionId?: string;
   /** Maks antall sider à 100 firma (sikkerhetsgrense) */
   maxPages?: number;
   /** 1-basert side */
@@ -133,8 +133,8 @@ function matchesFilters(
   ) {
     return false;
   }
-  if (filters.professionSearch?.trim()) {
-    const professionMatch = resolveProfessionQuery(filters.professionSearch);
+  if (filters.professionId?.trim()) {
+    const professionMatch = resolveProfessionFilter(filters.professionId);
     if (
       professionMatch &&
       !matchesProfessionSearch(company.industry_code, {
@@ -219,8 +219,8 @@ export async function fetchCompaniesFromBrreg(
   const industryBrregCodes = filters.industryGroup
     ? getBrregNaeringskodeParam(filters.industryGroup)
     : undefined;
-  const professionMatch = filters.professionSearch?.trim()
-    ? resolveProfessionQuery(filters.professionSearch)
+  const professionMatch = filters.professionId?.trim()
+    ? resolveProfessionFilter(filters.professionId)
     : null;
   const professionBrregCodes = professionMatch
     ? getBrregNaeringskodeForProfession(professionMatch)

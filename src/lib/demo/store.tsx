@@ -25,7 +25,7 @@ import {
 import { matchesIndustryGroup } from "@/lib/constants/industries";
 import {
   matchesProfessionSearch,
-  resolveProfessionQuery,
+  resolveProfessionFilter,
 } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion } from "@/lib/constants/regions";
 import { computeLeadScore } from "@/lib/sales/lead-score";
@@ -277,7 +277,7 @@ export function filterDemoCompanies(
     hasEmail?: boolean;
     genericEmailOnly?: boolean;
     industryGroup?: string;
-    professionSearch?: string;
+    professionId?: string;
     minScore?: number;
   }
 ) {
@@ -309,8 +309,8 @@ export function filterDemoCompanies(
     ) {
       return false;
     }
-    if (filters.professionSearch?.trim()) {
-      const professionMatch = resolveProfessionQuery(filters.professionSearch);
+    if (filters.professionId?.trim()) {
+      const professionMatch = resolveProfessionFilter(filters.professionId);
       if (
         professionMatch &&
         !matchesProfessionSearch(c.industry_code, {
