@@ -46,6 +46,11 @@ export function SiteFooter() {
                     Om oss
                   </Link>
                 </li>
+                <li>
+                  <Link href="/hjelp" className="transition hover:text-brand-goldLight">
+                    Hjelp og support
+                  </Link>
+                </li>
               </ul>
             </div>
 

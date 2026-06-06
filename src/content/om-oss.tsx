@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { legal } from "@/lib/legal";
+import { support } from "@/lib/support";
 import { site } from "@/lib/site";
 
 export function OmOssContent() {
@@ -46,8 +47,16 @@ export function OmOssContent() {
 
       <h2>Kontakt</h2>
       <p>
-        Spørsmål om {site.name} eller {legal.operatorName}? Send e-post til{" "}
-        <a href={`mailto:${legal.contactEmail}`}>{legal.contactEmail}</a>.
+        Kundestøtte:{" "}
+        <a href={`mailto:${support.email}`}>{support.email}</a>
+        {" · "}
+        <a href={`tel:${support.phoneE164}`}>{support.phoneDisplay}</a>
+        {" "}({support.phoneHoursLabel.toLowerCase()}, {support.emailResponseLabel.toLowerCase()}).
+      </p>
+      <p>
+        Formelle henvendelser om {legal.operatorName}:{" "}
+        <a href={`mailto:${legal.contactEmail}`}>{legal.contactEmail}</a>.{" "}
+        <Link href="/hjelp">Se hjelpesiden</Link> for mer.
       </p>
       <p>
         Les mer om hvordan vi behandler data i{" "}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
+import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { cn } from "@/lib/utils";
 import { isDemoMode } from "@/lib/demo/config";
@@ -11,6 +12,7 @@ import {
   CreditCard,
   FileText,
   GitBranch,
+  Headphones,
   LayoutDashboard,
   ListTodo,
   LogOut,
@@ -166,6 +168,18 @@ export function AppShell({
             ))}
           </div>
         ))}
+        <div className="space-y-1 border-t border-white/10 pt-3">
+          <p className={groupLabelClass}>Hjelp</p>
+          <TutorialMenuButton onOpen={() => setDrawerOpen(false)} />
+          <Link
+            href="/hjelp"
+            onClick={() => setDrawerOpen(false)}
+            className={navLinkClass("/hjelp")}
+          >
+            <Headphones className="h-4 w-4 shrink-0" />
+            Support
+          </Link>
+        </div>
         {isAdmin && (
           <Link
             href="/admin"
@@ -201,7 +215,7 @@ export function AppShell({
       )}
       style={
         isGlassShell
-          ? { backgroundColor: "#1e3a5f", color: "#f8fafc", minHeight: "100vh" }
+          ? { backgroundColor: "#234a73", color: "#f8fafc", minHeight: "100vh" }
           : undefined
       }
     >

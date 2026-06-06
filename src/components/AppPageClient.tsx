@@ -18,11 +18,8 @@ import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
 import { ScanLeadModes } from "@/components/scan/ScanLeadModes";
 import { ScanSavedAudiences } from "@/components/scan/ScanSavedAudiences";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
-import { NextStepBanner } from "@/components/journey/NextStepBanner";
-import {
-  ScanWorkflowSteps,
-  type WorkflowStep,
-} from "@/components/scan/ScanWorkflowSteps";
+import { ScanQuickBar } from "@/components/scan/ScanQuickBar";
+import { ScanQueueHint } from "@/components/scan/ScanQueueHint";
 import { useAutoWebsiteScan } from "@/hooks/useAutoWebsiteScan";
 import {
   loadScanSocialOptions,
@@ -45,7 +42,6 @@ import type { LeadStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 import {
   Building2,
-  CheckCircle2,
   Download,
   Globe,
   Globe2,
@@ -105,7 +101,6 @@ export function AppPageClient(props: Props) {
   const [socialOptions, setSocialOptions] = useState<ScanSocialOptions>(() =>
     loadScanSocialOptions()
   );
-  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>(1);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listViewMode, setListViewMode] = useState<"table" | "cards">("table");
   const [noWebsiteBanner, setNoWebsiteBanner] = useState(false);
@@ -243,16 +238,7 @@ export function AppPageClient(props: Props) {
   useEffect(() => {
     setSelected(new Set());
     setListFilter("all");
-    setWorkflowStep(1);
   }, [companyListKey]);
-
-  useEffect(() => {
-    if (selected.size === 0) {
-      setWorkflowStep(1);
-    } else if (scanning) {
-      setWorkflowStep(2);
-    }
-  }, [selected.size, scanning]);
 
   const activeFilterCount = countActiveMarketFilters(
     filters,
@@ -261,16 +247,6 @@ export function AppPageClient(props: Props) {
 
   const scanQueueCount = Math.min(selected.size, MAX_WEBSITE_SCAN_BATCH);
   const scanQueueRemaining = Math.max(0, MAX_WEBSITE_SCAN_BATCH - scanQueueCount);
-
-  function scrollToQueue() {
-    setWorkflowStep(3);
-    queueActionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  function handleWorkflowStepClick(step: WorkflowStep) {
-    setWorkflowStep(step);
-    if (step === 3) scrollToQueue();
-  }
 
   const matchesPresenceFilters = (c: CompanyWithLead) => {
     const scan = websiteScans.get(c.orgnr);
@@ -638,7 +614,6 @@ export function AppPageClient(props: Props) {
     }
     const rankedOrgnrs = new Set(ranked.map((c) => c.orgnr));
     setSelected(rankedOrgnrs);
-    setWorkflowStep(2);
     setScanSelectionMessage(null);
     const result = scanSelectedWithGoogle();
     if (!result?.ok) return;
@@ -745,68 +720,9 @@ export function AppPageClient(props: Props) {
               </span>
             </div>
           </div>
-          <details className="scan-glass-muted mt-1">
-            <summary className="cursor-pointer select-none hover:text-slate-200">
-              Tilfeldig rekkefølge denne måneden
-            </summary>
-            <p className="mt-0.5 leading-snug">
-              Ikke alle brukere treffer de samme firmaene først — det gjør det mer rettferdig.
-            </p>
-          </details>
         </header>
 
-        <NextStepBanner pagePhase="scan" />
-
-        <ScanWorkflowSteps
-          activeStep={workflowStep}
-          selectedCount={selected.size}
-          onStepClick={handleWorkflowStepClick}
-        />
-
-        <div className="scan-guided-action mx-2.5 mb-2 rounded-2xl border px-3 py-3 lg:mx-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-200">
-                Dagens oppgave
-              </p>
-              <h2 className="mt-1 text-base font-semibold text-white">
-                Finn firma med kontaktinfo, sjekk dem, legg de beste i køen.
-              </h2>
-              <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium text-slate-200">
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-1">
-                  <CheckCircle2 className="h-3 w-3 text-emerald-300" />
-                  {withContactCount} med kontakt
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-1">
-                  <CheckCircle2 className="h-3 w-3 text-sky-300" />
-                  {noWebsiteCount} uten nettside
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-1">
-                  <CheckCircle2 className="h-3 w-3 text-violet-300" />
-                  {selected.size} valgt
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={selectAllWithEmail}
-                disabled={withEmailCount === 0}
-                className="scan-btn-ghost min-h-[40px] text-xs font-semibold disabled:opacity-40"
-              >
-                Velg med e-post
-              </button>
-              <button
-                type="button"
-                onClick={checkAndAddToQueue}
-                disabled={scanning || addingToQueue || withEmailCount === 0}
-                className="scan-btn-primary min-h-[40px] px-4 text-xs font-semibold disabled:opacity-40"
-              >
-                {addingToQueue ? "Legger i kø…" : "Sjekk topp 10 og legg i kø"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ScanQueueHint />
 
         <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
 
@@ -842,6 +758,17 @@ export function AppPageClient(props: Props) {
           </aside>
 
           <div className="scan-main-panel min-w-0 flex-1">
+            <ScanQuickBar
+              withContactCount={withContactCount}
+              noWebsiteCount={noWebsiteCount}
+              selectedCount={selected.size}
+              withEmailCount={withEmailCount}
+              scanning={scanning}
+              addingToQueue={addingToQueue}
+              onSelectWithEmail={selectAllWithEmail}
+              onCheckAndQueue={checkAndAddToQueue}
+            />
+
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-2.5 py-2 lg:px-3">
               <ScanFilterSheet
                 open={filterSheetOpen}
@@ -873,9 +800,6 @@ export function AppPageClient(props: Props) {
               id="scan-step-google"
               className="scan-step-panel scan-glass-divider border-b p-2.5 lg:p-3"
             >
-              <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
-                Steg 2 — Google-sjekk
-              </p>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <label className="scan-chip cursor-pointer" title="Ekstra søk. Bruk bare når du vil sjekke sosiale medier også.">
@@ -907,39 +831,24 @@ export function AppPageClient(props: Props) {
                     Instagram (ekstra)
                   </label>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWorkflowStep(2);
-                      scanSelectedWithGoogle();
-                    }}
-                    disabled={scanning || selected.size === 0}
-                    className={cn(
-                      "inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-semibold transition",
-                      selected.size > 0 && !scanning
-                        ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
-                        : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
-                    )}
-                  >
-                    <Search className="h-3.5 w-3.5" />
-                    {scanning
-                      ? "Søker…"
-                      : selected.size > 0
-                        ? `Start sjekk (${scanQueueCount})`
-                        : "Velg firma først"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={checkAndAddToQueue}
-                    disabled={scanning || addingToQueue || withEmailCount === 0}
-                    className="scan-btn-ghost inline-flex min-h-[40px] items-center gap-1.5 px-3 text-xs font-semibold disabled:opacity-40"
-                    title="Sjekker topp 10 med e-post og legger kun uten nettside i kø. For valgte firma: bruk «Legg valgte i kø»."
-                  >
-                    <ListTodo className="h-3.5 w-3.5" />
-                    {addingToQueue ? "Legger i kø…" : "Sjekk og legg i kø"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={scanSelectedWithGoogle}
+                  disabled={scanning || selected.size === 0}
+                  className={cn(
+                    "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-semibold transition",
+                    selected.size > 0 && !scanning
+                      ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
+                      : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
+                  )}
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  {scanning
+                    ? "Søker…"
+                    : selected.size > 0
+                      ? `Sjekk valgte (${scanQueueCount})`
+                      : "Velg firma først"}
+                </button>
               </div>
               {scanSelectionMessage && (
                 <p className="mt-1.5 text-xs font-medium text-amber-200">

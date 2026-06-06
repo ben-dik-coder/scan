@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
+import { AppTutorial } from "@/components/onboarding/AppTutorial";
 import {
   getOnboardingStatus,
   setOnboardingStatus,
@@ -87,7 +87,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   return (
     <OnboardingContext.Provider value={value}>
       {children}
-      <OnboardingFlow
+      <AppTutorial
         open={open}
         onClose={handleClose}
         onComplete={handleComplete}

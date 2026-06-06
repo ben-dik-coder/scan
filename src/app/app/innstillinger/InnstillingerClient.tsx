@@ -16,17 +16,20 @@ import {
   Bell,
   BookOpen,
   CreditCard,
+  Headphones,
   Mail,
+  Phone,
   Sparkles,
   User,
   Webhook,
 } from "lucide-react";
+import { support } from "@/lib/support";
 
 const EMAIL_ERROR_MESSAGES: Record<string, string> = {
   google_not_configured:
     "Gmail er ikke satt opp på serveren ennå. Prøv Outlook (OAuth) eller app-passord i stedet.",
   microsoft_not_configured:
-    "Outlook OAuth er ikke satt opp på serveren ennå. Prøv app-passord over, eller kontakt oss.",
+    `Outlook OAuth er ikke satt opp på serveren ennå. Prøv app-passord over, eller kontakt ${support.email}.`,
   upgrade_email: "Du trenger aktivt NyLead-abonnement for å koble e-post. Gå til Abonnement.",
 };
 
@@ -264,6 +267,34 @@ export default function InnstillingerClient({
             <code className="text-sky-200">lead.email</code> osv.
           </p>
         </details>
+      </SettingsCard>
+
+      <SettingsCard title="Support" icon={Headphones}>
+        <p className="scan-glass-muted text-sm">
+          {support.emailResponseLabel} · {support.phoneHoursLabel}
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <a
+            href={`mailto:${support.email}`}
+            className="scan-btn-ghost inline-flex min-h-[40px] items-center gap-2 px-3 text-sm font-semibold"
+          >
+            <Mail className="h-4 w-4 shrink-0" aria-hidden />
+            {support.email}
+          </a>
+          <a
+            href={`tel:${support.phoneE164}`}
+            className="scan-btn-ghost inline-flex min-h-[40px] items-center gap-2 px-3 text-sm font-semibold"
+          >
+            <Phone className="h-4 w-4 shrink-0" aria-hidden />
+            {support.phoneDisplay}
+          </a>
+        </div>
+        <Link
+          href="/hjelp"
+          className="inline-flex text-sm font-semibold text-sky-300 underline hover:text-sky-200"
+        >
+          Se hjelpesiden
+        </Link>
       </SettingsCard>
 
       <SettingsCard title="Hjelp" icon={BookOpen}>

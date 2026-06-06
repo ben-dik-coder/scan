@@ -181,3 +181,27 @@ html.app-glass-theme body {
     width: auto;
   }
 }
+
+.scan-glass-shell .app-overview-stat-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+.scan-glass-shell .app-overview-pipeline-card {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+  text-decoration: none;
+}
+
+.scan-glass-shell .app-overview-page .scan-glass-title,
+.scan-glass-shell .app-overview-page .scan-glass-strong {
+  color: #f8fafc;
+}
+
+.scan-glass-shell .app-overview-page .scan-glass-muted {
+  color: #cbd5e1;
+}

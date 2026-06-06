@@ -25,6 +25,10 @@ export function LegalLayout({
               Om oss
             </Link>
             <span aria-hidden>/</span>
+            <Link href="/hjelp" className="hover:text-brand-navy">
+              Hjelp
+            </Link>
+            <span aria-hidden>/</span>
             <Link href="/personvern" className="hover:text-brand-navy">
               Personvern
             </Link>

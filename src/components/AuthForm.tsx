@@ -13,6 +13,7 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,8 +28,12 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === "register" && password !== confirmPassword) {
+      setError("Passordene er ikke like. Skriv samme passord to ganger.");
+      return;
+    }
     if (mode === "register" && !acceptedTerms) {
-      setError("Du må godta vilkårene og personvernerklæringen for å registrere deg.");
+      setError("Du må bekrefte at du har lest vilkårene og personvernerklæringen.");
       return;
     }
     setLoading(true);
@@ -157,6 +162,21 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
           </label>
 
           {mode === "register" && (
+            <label className="block text-sm">
+              <span className="font-semibold text-white/70">Bekreft passord</span>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+                placeholder="Skriv passordet på nytt"
+                className="input-dark mt-1.5"
+              />
+            </label>
+          )}
+
+          {mode === "register" && (
             <label className="flex items-start gap-3 text-sm text-white/60">
               <input
                 type="checkbox"
@@ -166,7 +186,7 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
                 required
               />
               <span>
-                Jeg har lest og godtar{" "}
+                Jeg bekrefter at jeg har lest og godtar{" "}
                 <Link href="/vilkar" target="_blank" className="text-brand-gold hover:underline">
                   vilkårene
                 </Link>{" "}

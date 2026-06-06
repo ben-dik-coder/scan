@@ -569,37 +569,44 @@ body {
     -webkit-backdrop-filter: blur(4px);
   }
 
-  /* Mobil hamburger-meny: ugjennomsiktig panel (glass-sidebar er for gjennomsiktig) */
+  /* Mobil hamburger-meny: lys blå glass, matcher resten av appen */
   .scan-glass-shell .scan-glass-drawer-backdrop {
-    background: rgba(2, 6, 23, 0.88) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(23, 52, 90, 0.45) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer {
-    border-color: rgba(255, 255, 255, 0.18);
-    background: #0f172a !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.22);
+    background: linear-gradient(
+      160deg,
+      rgba(42, 82, 122, 0.98) 0%,
+      rgba(35, 74, 115, 0.98) 55%,
+      rgba(28, 64, 102, 0.98) 100%
+    ) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
     box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-      0 24px 48px -12px rgba(0, 0, 0, 0.55);
+      0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+      0 24px 48px -12px rgba(15, 58, 95, 0.45);
     color: #f8fafc;
     isolation: isolate;
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer .glass-nav-link {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer .glass-nav-link-active {
-    background: rgba(56, 189, 248, 0.22);
+    background: rgba(56, 189, 248, 0.2);
+    border-color: rgba(56, 189, 248, 0.4);
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer .app-nav-group-label {
-    color: rgba(148, 163, 184, 0.9);
+    color: rgba(203, 213, 225, 0.95);
     letter-spacing: 0.08em;
   }
 
@@ -1386,6 +1393,24 @@ body {
 
   .app-overview-page .journey-banner {
     border-radius: 1rem;
+  }
+
+  /* App-veiledning (tutorial) */
+  .app-tutorial-backdrop {
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .app-tutorial-panel {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+      0 32px 64px -24px rgba(0, 0, 0, 0.65);
+  }
+
+  .app-tutorial-step-btn:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.55);
+    outline-offset: 2px;
   }
 
   /* Kampanjer v2 */

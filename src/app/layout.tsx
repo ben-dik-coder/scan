@@ -6,7 +6,7 @@ import "./globals.css";
 import { site } from "@/lib/site";
 
 /** Aktiver glass-tema på /app før første paint (unngår hvit flash og rå layout) */
-const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;if(p!=='/app'&&p.indexOf('/app/')!==0)return;document.documentElement.classList.add('app-glass-theme');document.body.classList.add('app-glass-theme');document.documentElement.style.backgroundColor='#1e3a5f';document.body.style.color='#f8fafc';})();`;
+const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;if(p!=='/app'&&p.indexOf('/app/')!==0)return;document.documentElement.classList.add('app-glass-theme');document.body.classList.add('app-glass-theme');document.documentElement.style.backgroundColor='#234a73';document.body.style.color='#f8fafc';})();`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
