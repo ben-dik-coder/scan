@@ -19,7 +19,7 @@ type Props = {
 
 function sourceLabel(source: ResolvedCompanyEmail["source"]) {
   if (source === "facebook") return "Facebook";
-  if (source === "platform") return "Fra nett";
+  if (source === "instagram") return "Instagram";
   return "Brreg";
 }
 

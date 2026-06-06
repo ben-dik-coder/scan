@@ -1,7 +1,7 @@
 import { isGenericEmail, isPersonalEmail } from "@/lib/brreg/map-company";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
-export type CompanyEmailSource = "brreg" | "facebook" | "platform";
+export type CompanyEmailSource = "brreg" | "facebook" | "instagram";
 
 export type ResolvedCompanyEmail = {
   email: string;
@@ -75,6 +75,16 @@ function facebookEmailFromScan(scan?: WebsiteScanResult | null): string | null {
   return parseEmailFromText(profile.intro);
 }
 
+function instagramEmailFromScan(scan?: WebsiteScanResult | null): string | null {
+  const profile = scan?.instagramProfile;
+  if (!profile) return null;
+
+  const direct = normalizeEmail(profile.email);
+  if (direct) return direct;
+
+  return parseEmailFromText(profile.biography);
+}
+
 type CompanyEmailInput = {
   email?: string | null;
   has_email?: boolean;
@@ -107,14 +117,13 @@ export function resolveCompanyEmail(
     };
   }
 
-  const platformEmail = normalizeEmail(scan?.enrichedEmail);
-  if (isDirectoryOwnedEmail(platformEmail)) return null;
-  if (platformEmail) {
+  const instagramEmail = instagramEmailFromScan(scan);
+  if (instagramEmail) {
     return {
-      email: platformEmail,
-      source: "platform",
-      isGeneric: isGenericEmail(platformEmail),
-      isPersonal: isPersonalEmail(platformEmail),
+      email: instagramEmail,
+      source: "instagram",
+      isGeneric: isGenericEmail(instagramEmail),
+      isPersonal: isPersonalEmail(instagramEmail),
     };
   }
 

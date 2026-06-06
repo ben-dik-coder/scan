@@ -279,9 +279,9 @@ function EmailCell({ resolved }: { resolved: ResolvedCompanyEmail }) {
           Fra Facebook
         </span>
       )}
-      {source === "platform" && (
+      {source === "instagram" && (
         <span className="ml-1 shrink-0 rounded bg-emerald-100 px-1 text-[9px] font-semibold text-emerald-800">
-          Fra nett
+          Fra Instagram
         </span>
       )}
     </a>

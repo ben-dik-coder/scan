@@ -224,7 +224,8 @@ export function AppPageClient(props: Props) {
             c.phone ||
             c.mobile ||
             scan?.enrichedPhone ||
-            scan?.enrichedEmail
+            scan?.facebookProfile?.email ||
+            scan?.instagramProfile?.email
         );
       }).length,
     [companies, websiteScans]
