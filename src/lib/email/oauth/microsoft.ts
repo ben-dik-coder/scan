@@ -1,3 +1,4 @@
+import type { EmailAttachment } from "@/lib/email/attachments";
 import { redirectUri, MICROSOFT_SCOPES, type MailProvider } from "./config";
 
 const PROVIDER: MailProvider = "microsoft";
@@ -83,7 +84,15 @@ export async function sendViaMicrosoft(input: {
   to: string;
   subject: string;
   html: string;
+  attachments?: EmailAttachment[];
 }) {
+  const attachments = (input.attachments ?? []).map((file) => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: file.name,
+    contentType: file.mimeType,
+    contentBytes: file.contentBase64,
+  }));
+
   const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
     method: "POST",
     headers: {
@@ -95,6 +104,7 @@ export async function sendViaMicrosoft(input: {
         subject: input.subject,
         body: { contentType: "HTML", content: input.html },
         toRecipients: [{ emailAddress: { address: input.to } }],
+        ...(attachments.length > 0 ? { attachments } : {}),
       },
       saveToSentItems: true,
     }),

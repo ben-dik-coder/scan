@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
+import { parseAttachmentsFromBody, validateAttachments } from "@/lib/email/attachments";
 import { sendCampaign } from "@/lib/email/send-campaign";
 import { createClient } from "@/lib/supabase/server";
 
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
     allowPersonal,
     mailProvider,
     mailAccountId,
+    attachments: rawAttachments,
   } = body as {
     subject?: string;
     subjectB?: string;
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
     allowPersonal?: boolean;
     mailProvider?: "google" | "microsoft" | "smtp";
     mailAccountId?: string;
+    attachments?: unknown;
   };
 
   const hasClientRecipients = Boolean(clientRecipients?.length);
@@ -116,6 +119,12 @@ export async function POST(request: Request) {
       }));
   }
 
+  const attachments = parseAttachmentsFromBody(rawAttachments) ?? [];
+  const attachmentError = validateAttachments(attachments);
+  if (attachmentError) {
+    return NextResponse.json({ error: attachmentError }, { status: 400 });
+  }
+
   try {
     const result = await sendCampaign(user.id, {
       subject,
@@ -123,6 +132,7 @@ export async function POST(request: Request) {
       body: emailBody,
       recipients,
       allowPersonal: Boolean(allowPersonal),
+      attachments: attachments.length > 0 ? attachments : undefined,
       mailAccountId:
         typeof mailAccountId === "string" && mailAccountId.trim()
           ? mailAccountId.trim()

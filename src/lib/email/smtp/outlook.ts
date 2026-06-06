@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type { EmailAttachment } from "@/lib/email/attachments";
 
 const OUTLOOK_SMTP = {
   host: "smtp-mail.outlook.com",
@@ -55,6 +56,7 @@ export async function sendViaOutlookSmtp(input: {
   to: string;
   subject: string;
   html: string;
+  attachments?: EmailAttachment[];
 }) {
   const transporter = nodemailer.createTransport({
     ...OUTLOOK_SMTP,
@@ -70,6 +72,11 @@ export async function sendViaOutlookSmtp(input: {
       to: input.to,
       subject: input.subject,
       html: input.html,
+      attachments: (input.attachments ?? []).map((file) => ({
+        filename: file.name,
+        content: Buffer.from(file.contentBase64, "base64"),
+        contentType: file.mimeType,
+      })),
     });
   } catch (err) {
     logSmtpFailure("send", input.email, err);

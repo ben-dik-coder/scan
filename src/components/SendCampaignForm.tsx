@@ -5,12 +5,17 @@ import type { Company, EmailTemplate } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { resolveCompanyEmail } from "@/lib/website-scan/resolve-company-email";
 import { EmailConnect, useConnectedEmail } from "@/components/EmailConnect";
+import {
+  CampaignAttachmentsPanel,
+  pendingAttachmentsToPayload,
+  type PendingAttachment,
+} from "@/components/campaign/CampaignAttachmentsPanel";
 import { CampaignPreviewPanel } from "@/components/campaign/CampaignPreviewPanel";
 import { CampaignRecipientsPanel } from "@/components/campaign/CampaignRecipientsPanel";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { cn } from "@/lib/utils";
-import { Mail, Send } from "lucide-react";
+import { FileImage, Mail, MessageSquare, Send } from "lucide-react";
 import Link from "next/link";
 import { legal } from "@/lib/legal";
 
@@ -90,6 +95,8 @@ export function SendCampaignForm({
   const defaultSequenceId = activeSequences[0]?.id ?? "";
   const [useSequence, setUseSequence] = useState(activeSequences.length > 0);
   const [selectedSequenceId, setSelectedSequenceId] = useState(defaultSequenceId);
+  const [messageTab, setMessageTab] = useState<"text" | "files">("text");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
   const selectedAccount =
     accounts.find((a) => a.id === defaultAccountId) ?? accounts[0] ?? null;
@@ -159,6 +166,9 @@ export function SendCampaignForm({
         return;
       }
 
+      const attachmentPayload =
+        attachments.length > 0 ? await pendingAttachmentsToPayload(attachments) : undefined;
+
       const res = await fetch("/api/campaigns/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,6 +177,7 @@ export function SendCampaignForm({
           body,
           previewOrgnr,
           mailAccountId: selectedAccount?.id,
+          attachments: attachmentPayload,
         }),
       });
       const data = await res.json();
@@ -224,6 +235,9 @@ export function SendCampaignForm({
         return;
       }
 
+      const attachmentPayload =
+        attachments.length > 0 ? await pendingAttachmentsToPayload(attachments) : undefined;
+
       const res = await fetch("/api/campaigns/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,6 +248,7 @@ export function SendCampaignForm({
           recipients,
           allowPersonal,
           mailAccountId: selectedAccount?.id,
+          attachments: attachmentPayload,
         }),
       });
       const data = await res.json();
@@ -397,47 +412,114 @@ export function SendCampaignForm({
       <section className="space-y-3">
         {isSingle && <h4 className={zoneClass}>Melding</h4>}
 
-      {templates.length > 0 && (
-        <label className="block text-sm">
-          <span className={labelClass}>Bruk mal (valgfritt)</span>
-          <select
-            value={selectedTemplateId}
-            onChange={(e) => applyTemplate(e.target.value)}
-            className={inputClass}
+        <div
+          className={cn(
+            "flex gap-1 rounded-lg p-1",
+            light ? "bg-slate-100" : "bg-white/[0.06]"
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => setMessageTab("text")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition",
+              messageTab === "text"
+                ? light
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "bg-white/12 text-white"
+                : light
+                  ? "text-slate-500 hover:text-slate-700"
+                  : "text-white/45 hover:text-white/70"
+            )}
           >
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            Tekst
+          </button>
+          <button
+            type="button"
+            onClick={() => setMessageTab("files")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition",
+              messageTab === "files"
+                ? light
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "bg-white/12 text-white"
+                : light
+                  ? "text-slate-500 hover:text-slate-700"
+                  : "text-white/45 hover:text-white/70"
+            )}
+          >
+            <FileImage className="h-3.5 w-3.5" aria-hidden />
+            Bilder og filer
+            {attachments.length > 0 && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[10px]",
+                  light ? "bg-amber-100 text-amber-800" : "bg-brand-gold/20 text-brand-gold"
+                )}
+              >
+                {attachments.length}
+              </span>
+            )}
+          </button>
+        </div>
 
-      <label className="block text-sm">
-        <span className={labelClass}>Emne</span>
-        <input
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          className={inputClass}
-          required
-        />
-        <p className={light ? "mt-1 text-[11px] text-slate-400" : "mt-1 font-sans text-[11px] text-white/35"}>
-          {'{firmanavn}'} byttes ut med hvert firmanavn
-        </p>
-      </label>
+        {messageTab === "text" ? (
+          <div className="space-y-3">
+            {templates.length > 0 && (
+              <label className="block text-sm">
+                <span className={labelClass}>Bruk mal (valgfritt)</span>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => applyTemplate(e.target.value)}
+                  className={inputClass}
+                >
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
-      <label className="block text-sm">
-        <span className={labelClass}>Melding (samme til alle)</span>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={8}
-          className={cn(inputClass, "leading-relaxed")}
-          required
-        />
-      </label>
+            <label className="block text-sm">
+              <span className={labelClass}>Emne</span>
+              <input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className={inputClass}
+                required
+              />
+              <p
+                className={
+                  light
+                    ? "mt-1 text-[11px] text-slate-400"
+                    : "mt-1 font-sans text-[11px] text-white/35"
+                }
+              >
+                {'{firmanavn}'} byttes ut med hvert firmanavn
+              </p>
+            </label>
 
+            <label className="block text-sm">
+              <span className={labelClass}>Melding (samme til alle)</span>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={8}
+                className={cn(inputClass, "leading-relaxed")}
+                required
+              />
+            </label>
+          </div>
+        ) : (
+          <CampaignAttachmentsPanel
+            attachments={attachments}
+            onChange={setAttachments}
+            light={light}
+          />
+        )}
       </section>
 
       <section className="space-y-3">

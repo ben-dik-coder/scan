@@ -149,6 +149,7 @@ export async function sendCampaign(
             to: recipient.email,
             subject: renderedSubject,
             html,
+            attachments: input.attachments,
           });
         } else if (userMail.provider === "smtp") {
           await sendViaOutlookSmtp({
@@ -157,6 +158,7 @@ export async function sendCampaign(
             to: recipient.email,
             subject: renderedSubject,
             html,
+            attachments: input.attachments,
           });
         } else {
           await sendViaMicrosoft({
@@ -164,6 +166,7 @@ export async function sendCampaign(
             to: recipient.email,
             subject: renderedSubject,
             html,
+            attachments: input.attachments,
           });
         }
       } else if (resend) {

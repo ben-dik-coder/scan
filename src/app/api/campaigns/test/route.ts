@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getEntitlements, requireFeature } from "@/lib/billing/entitlements";
+import { parseAttachmentsFromBody, validateAttachments } from "@/lib/email/attachments";
 import { buildCampaignVars } from "@/lib/email/campaign-vars";
 import { getPreferredMailAccount } from "@/lib/email/oauth/accounts";
 import { sendViaGmail } from "@/lib/email/oauth/google";
@@ -22,12 +23,14 @@ export async function POST(request: Request) {
     previewOrgnr,
     mailProvider,
     mailAccountId,
+    attachments: rawAttachments,
   } = body as {
     subject?: string;
     body?: string;
     previewOrgnr?: string;
     mailProvider?: "google" | "microsoft" | "smtp";
     mailAccountId?: string;
+    attachments?: unknown;
   };
 
   if (!subject?.trim() || !emailBody?.trim() || !previewOrgnr?.trim()) {
@@ -100,6 +103,12 @@ export async function POST(request: Request) {
     </div>
   `;
 
+  const attachments = parseAttachmentsFromBody(rawAttachments) ?? [];
+  const attachmentError = validateAttachments(attachments);
+  if (attachmentError) {
+    return NextResponse.json({ error: attachmentError }, { status: 400 });
+  }
+
   try {
     if (userMail.provider === "google") {
       await sendViaGmail({
@@ -108,6 +117,7 @@ export async function POST(request: Request) {
         to: userMail.email,
         subject: renderedSubject,
         html,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
     } else if (userMail.provider === "smtp") {
       await sendViaOutlookSmtp({
@@ -116,6 +126,7 @@ export async function POST(request: Request) {
         to: userMail.email,
         subject: renderedSubject,
         html,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
     } else {
       await sendViaMicrosoft({
@@ -123,6 +134,7 @@ export async function POST(request: Request) {
         to: userMail.email,
         subject: renderedSubject,
         html,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
     }
 

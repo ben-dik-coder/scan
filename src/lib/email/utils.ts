@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from "crypto";
 import { isPersonalEmail } from "@/lib/brreg/map-company";
+import type { EmailAttachment } from "./attachments";
 
 const UNSUBSCRIBE_SECRET =
   process.env.CRON_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "dev-secret";
@@ -41,6 +42,7 @@ export type SendCampaignInput = {
   body: string;
   recipients: Array<{ orgnr: string; email: string; name: string }>;
   allowPersonal?: boolean;
+  attachments?: EmailAttachment[];
 };
 
 export type SendCampaignResult = {

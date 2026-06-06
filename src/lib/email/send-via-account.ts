@@ -1,3 +1,4 @@
+import type { EmailAttachment } from "./attachments";
 import type { MailProvider } from "./oauth/config";
 import { getPreferredMailAccount } from "./oauth/accounts";
 import { sendViaGmail } from "./oauth/google";
@@ -12,6 +13,7 @@ export async function sendEmailViaUserAccount(
     html: string;
     preferredProvider?: MailProvider;
     mailAccountId?: string;
+    attachments?: EmailAttachment[];
   }
 ): Promise<{ fromEmail: string; provider: MailProvider }> {
   const account = await getPreferredMailAccount(
@@ -33,6 +35,7 @@ export async function sendEmailViaUserAccount(
       to: input.to,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments,
     });
   } else if (account.provider === "smtp") {
     await sendViaOutlookSmtp({
@@ -41,6 +44,7 @@ export async function sendEmailViaUserAccount(
       to: input.to,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments,
     });
   } else {
     await sendViaMicrosoft({
@@ -48,6 +52,7 @@ export async function sendEmailViaUserAccount(
       to: input.to,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments,
     });
   }
 

@@ -1,3 +1,5 @@
+import type { EmailAttachment } from "@/lib/email/attachments";
+import { buildHtmlMime } from "@/lib/email/mime";
 import {
   GOOGLE_SCOPES,
   redirectUri,
@@ -89,16 +91,15 @@ export async function sendViaGmail(input: {
   to: string;
   subject: string;
   html: string;
+  attachments?: EmailAttachment[];
 }) {
-  const mime = [
-    `From: ${input.fromEmail}`,
-    `To: ${input.to}`,
-    `Subject: =?UTF-8?B?${Buffer.from(input.subject).toString("base64")}?=`,
-    "MIME-Version: 1.0",
-    "Content-Type: text/html; charset=UTF-8",
-    "",
-    input.html,
-  ].join("\r\n");
+  const mime = buildHtmlMime({
+    fromEmail: input.fromEmail,
+    to: input.to,
+    subject: input.subject,
+    html: input.html,
+    attachments: input.attachments,
+  });
 
   const res = await fetch(
     "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
