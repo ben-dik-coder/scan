@@ -1,3 +1,5 @@
+import { hasApi1881 } from "./api1881/config";
+
 export function hasGoogleCse(): boolean {
   return Boolean(
     process.env.GOOGLE_CSE_API_KEY?.trim() && process.env.GOOGLE_CSE_CX?.trim()
@@ -20,5 +22,6 @@ export function getWebsiteScanProviders(): string[] {
     providers.push("SerpAPI Facebook Profile");
     providers.push("SerpAPI Instagram Profile");
   }
+  if (hasApi1881()) providers.push("1881 API");
   return providers;
 }

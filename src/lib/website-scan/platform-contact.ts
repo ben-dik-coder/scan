@@ -29,6 +29,8 @@ import {
   emailPlausibleForCompany,
   normalizeEmail,
 } from "@/lib/website-scan/resolve-company-email";
+import { hasApi1881 } from "./api1881/config";
+import { finalizePhoneWithApi1881 } from "./api1881/phone";
 import { pickPlausiblePhone, phonePlausibleForCompany } from "./phone-plausible";
 import { socialUrlMatchesCompany } from "@/lib/website-scan/social-profiles";
 import { MAX_PLATFORM_FETCHES } from "./scan-api-budget";
@@ -355,11 +357,13 @@ function collectFetchUrls(
     }
   }
 
-  const hit1881 = pick1881FromHits(
-    (scan.topHits ?? []).map((h) => ({ title: h.title, link: h.link })),
-    companyName
-  );
-  if (hit1881) add(hit1881.url);
+  if (!hasApi1881()) {
+    const hit1881 = pick1881FromHits(
+      (scan.topHits ?? []).map((h) => ({ title: h.title, link: h.link })),
+      companyName
+    );
+    if (hit1881) add(hit1881.url);
+  }
 
   if (scan.websiteKind === "own" && scan.websiteUrl) {
     const base = scan.websiteUrl.replace(/\/$/, "");
@@ -512,15 +516,33 @@ export async function enrichPlatformContacts(
     }
   }
 
-  const sanitized = sanitizeContactPhones(contacts, company.orgnr);
+  let sanitized = sanitizeContactPhones(contacts, company.orgnr);
   const bestPhone = pickBest(sanitized, "phone", PHONE_PRIORITY);
+  const phoneResult = await finalizePhoneWithApi1881(
+    company,
+    bestPhone ? { phone: bestPhone.value, source: bestPhone.source } : null
+  );
+
+  if (phoneResult.from1881 && phoneResult.phone) {
+    sanitized = [
+      ...sanitized.filter((c) => c.source !== "1881"),
+      {
+        source: "1881" as const,
+        url: "https://www.1881.no/",
+        phone: phoneResult.phone,
+        email: null,
+        externalWebsite: null,
+      },
+    ];
+  }
+
   const bestEmail = pickBest(sanitized, "email", EMAIL_PRIORITY);
 
   return {
     contacts: sanitized,
     gulesider,
-    enrichedPhone: bestPhone?.value ?? null,
-    enrichedPhoneSource: bestPhone?.source ?? null,
+    enrichedPhone: phoneResult.phone,
+    enrichedPhoneSource: phoneResult.source,
     enrichedEmail: bestEmail?.value ?? null,
     enrichedEmailSource: bestEmail?.source ?? null,
     contactsEnriched: true,

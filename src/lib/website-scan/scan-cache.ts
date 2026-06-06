@@ -5,7 +5,7 @@ import {
 } from "./scan-social-options";
 
 /** Øk når kontakt-berikelse forbedres — gamle cache-rader berikes på nytt uten SerpAPI */
-export const CONTACT_ENRICHMENT_VERSION = 3;
+export const CONTACT_ENRICHMENT_VERSION = 4;
 
 /**
  * Google/SerpAPI-skann lagres globalt per orgnr i `company_website_scans`.
