@@ -40,6 +40,13 @@ export function phoneLooksLikeOrgnr(core: string, orgnr: string): boolean {
   return false;
 }
 
+/** Gyldig norsk telefonformat (uten org.nr-sjekk). */
+export function isPlausibleNorwegianPhone(phone: string): boolean {
+  const core = phoneCoreDigits(phone);
+  if (!core) return false;
+  return isValidNorwegianPhoneCore(core);
+}
+
 /** Telefon er gyldig norsk nummer og ikke org.nr-lignende. */
 export function phonePlausibleForCompany(
   phone: string,
@@ -48,7 +55,10 @@ export function phonePlausibleForCompany(
   const core = phoneCoreDigits(phone);
   if (!core) return false;
   if (!isValidNorwegianPhoneCore(core)) return false;
-  if (phoneLooksLikeOrgnr(core, orgnr)) return false;
+  const normalizedOrgnr = orgnr.replace(/\D/g, "");
+  if (normalizedOrgnr.length === 9 && phoneLooksLikeOrgnr(core, normalizedOrgnr)) {
+    return false;
+  }
   return true;
 }
 

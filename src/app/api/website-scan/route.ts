@@ -10,6 +10,7 @@ import {
   sleep,
 } from "@/lib/website-scan/scan-company";
 import { isWebsiteScanCacheComplete } from "@/lib/website-scan/scan-cache";
+import { sanitizeScanPhone } from "@/lib/website-scan/sanitize-scan-phone";
 import {
   loadCachedWebsiteScans,
   persistCachedWebsiteScans,
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
   const withWebsite = results.filter((r) => r.hasWebsite).length;
 
   return NextResponse.json({
-    results,
+    results: results.map(sanitizeScanPhone),
     summary: {
       scanned: results.length,
       withWebsite,

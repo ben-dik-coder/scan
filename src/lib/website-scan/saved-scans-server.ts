@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { forEachOrgnrBatch } from "@/lib/supabase/query-batches";
+import { sanitizeScanPhone } from "@/lib/website-scan/sanitize-scan-phone";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
 type ScanRow = {
@@ -45,7 +46,10 @@ export async function loadCachedWebsiteScans(
     return (data ?? []) as ScanRow[];
   });
 
-  return rows.map((row) => row.scan).filter(isWebsiteScanResult);
+  return rows
+    .map((row) => row.scan)
+    .filter(isWebsiteScanResult)
+    .map(sanitizeScanPhone);
 }
 
 export async function persistCachedWebsiteScans(

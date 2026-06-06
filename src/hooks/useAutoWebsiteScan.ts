@@ -7,6 +7,7 @@ import {
 } from "@/lib/constants/market";
 import { quickScanFromEmail } from "@/lib/website-scan/client-quick-scan";
 import { isWebsiteScanCacheComplete } from "@/lib/website-scan/scan-cache";
+import { sanitizeScanPhone } from "@/lib/website-scan/sanitize-scan-phone";
 import { isDemoMode } from "@/lib/demo/config";
 import {
   DEFAULT_SCAN_SOCIAL_OPTIONS,
@@ -293,11 +294,13 @@ export function useAutoWebsiteScan(
       setWebsiteScans((prev) => {
         const next = new Map<string, WebsiteScanResult>();
         for (const scan of savedScans) {
-          if (orgnrSet.has(scan.orgnr)) next.set(scan.orgnr, scan);
+          if (orgnrSet.has(scan.orgnr)) {
+            next.set(scan.orgnr, sanitizeScanPhone(scan));
+          }
         }
         // Behold skann fra samme økt (f.eks. nettopp ferdig) mens vi venter på DB
         prev.forEach((scan, orgnr) => {
-          if (orgnrSet.has(orgnr)) next.set(orgnr, scan);
+          if (orgnrSet.has(orgnr)) next.set(orgnr, sanitizeScanPhone(scan));
         });
         return next;
       });

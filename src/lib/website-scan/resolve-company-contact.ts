@@ -1,4 +1,7 @@
-import { phonePlausibleForCompany } from "./phone-plausible";
+import {
+  isPlausibleNorwegianPhone,
+  phonePlausibleForCompany,
+} from "./phone-plausible";
 import type { WebsiteScanResult } from "./types";
 import {
   resolveCompanyEmail,
@@ -27,11 +30,19 @@ export function normalizeDisplayPhone(value: string): string {
   return core.replace(/(\d{3})(\d{2})(\d{3})/, "$1 $2 $3");
 }
 
-function plausibleBrregPhone(
+function resolveOrgnr(
+  company: CompanyContactInput,
+  scan?: WebsiteScanResult | null
+): string {
+  return company.orgnr?.trim() || scan?.orgnr?.trim() || "";
+}
+
+function isAcceptablePhone(
   phone: string,
-  orgnr: string | undefined
+  orgnr: string
 ): boolean {
-  if (!orgnr?.trim()) return true;
+  if (!isPlausibleNorwegianPhone(phone)) return false;
+  if (!orgnr) return true;
   return phonePlausibleForCompany(phone, orgnr);
 }
 
@@ -40,19 +51,19 @@ export function resolveCompanyPhone(
   company: CompanyContactInput,
   scan?: WebsiteScanResult | null
 ): ResolvedCompanyPhone | null {
-  const orgnr = company.orgnr?.trim() ?? "";
+  const orgnr = resolveOrgnr(company, scan);
 
   const mobile = company.mobile?.trim();
-  if (mobile && plausibleBrregPhone(mobile, orgnr)) {
+  if (mobile && isAcceptablePhone(mobile, orgnr)) {
     return { phone: normalizeDisplayPhone(mobile), source: "mobile" };
   }
 
   const phone = company.phone?.trim();
-  if (phone && plausibleBrregPhone(phone, orgnr)) {
+  if (phone && isAcceptablePhone(phone, orgnr)) {
     return { phone: normalizeDisplayPhone(phone), source: "brreg" };
   }
 
-  if (scan?.enrichedPhone && plausibleBrregPhone(scan.enrichedPhone, orgnr)) {
+  if (scan?.enrichedPhone && isAcceptablePhone(scan.enrichedPhone, orgnr)) {
     return {
       phone: normalizeDisplayPhone(scan.enrichedPhone),
       source: "platform",

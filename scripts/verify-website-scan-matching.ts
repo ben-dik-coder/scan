@@ -273,6 +273,31 @@ test("resolveCompanyPhone avviser ugyldig enrichedPhone", () => {
   assert.equal(resolved, null);
 });
 
+test("Hundetrener 10601148 avvises (ugyldig prefiks 10)", () => {
+  assert.equal(phonePlausibleForCompany("106 01 148", "936804306"), false);
+});
+
+test("resolveCompanyPhone bruker scan.orgnr når company mangler orgnr", () => {
+  const resolved = resolveCompanyPhone(
+    { mobile: null, phone: null },
+    {
+      orgnr: "936804306",
+      hasWebsite: false,
+      websiteKind: "none",
+      websiteUrl: null,
+      websiteDomain: null,
+      bookingPlatform: null,
+      source: "serpapi",
+      confidence: "low",
+      query: "",
+      scannedAt: new Date().toISOString(),
+      enrichedPhone: "106 01 148",
+      enrichedPhoneSource: "website",
+    }
+  );
+  assert.equal(resolved, null);
+});
+
 test("Gammel cache med contactsEnriched v1 trenger re-berikelse", () => {
   assert.equal(
     needsContactEnrichment({
