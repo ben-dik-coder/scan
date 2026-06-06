@@ -1,5 +1,6 @@
 import type { WebsiteScanResult } from "./types";
 import {
+  isDirectoryOwnedEmail,
   resolveCompanyEmail,
   type ResolvedCompanyEmail,
 } from "./resolve-company-email";
@@ -60,7 +61,7 @@ export function resolveCompanyContactEmail(
   if (brreg) return brreg;
 
   const platformEmail = scan?.enrichedEmail;
-  if (platformEmail) {
+  if (platformEmail && !isDirectoryOwnedEmail(platformEmail)) {
     return {
       email: platformEmail,
       source: "facebook",

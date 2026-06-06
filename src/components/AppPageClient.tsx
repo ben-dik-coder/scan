@@ -877,7 +877,7 @@ export function AppPageClient(props: Props) {
               </p>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <label className="scan-chip cursor-pointer">
+                  <label className="scan-chip cursor-pointer" title="Ekstra søk. Bruk bare når du vil sjekke sosiale medier også.">
                     <input
                       type="checkbox"
                       checked={socialOptions.includeFacebook}
@@ -889,9 +889,9 @@ export function AppPageClient(props: Props) {
                       }
                       className="h-3 w-3 rounded accent-sky-600"
                     />
-                    Facebook
+                    Facebook (ekstra)
                   </label>
-                  <label className="scan-chip cursor-pointer">
+                  <label className="scan-chip cursor-pointer" title="Ekstra søk. Bruk bare når du vil sjekke Instagram også.">
                     <input
                       type="checkbox"
                       checked={socialOptions.includeInstagram}
@@ -903,7 +903,7 @@ export function AppPageClient(props: Props) {
                       }
                       className="h-3 w-3 rounded accent-sky-600"
                     />
-                    Instagram
+                    Instagram (ekstra)
                   </label>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">

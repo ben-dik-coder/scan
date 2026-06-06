@@ -10,8 +10,8 @@ export type ScanSocialOptions = {
 };
 
 export const DEFAULT_SCAN_SOCIAL_OPTIONS: ScanSocialOptions = {
-  includeFacebook: true,
-  includeInstagram: true,
+  includeFacebook: false,
+  includeInstagram: false,
   includeLinkedIn: true,
 };
 
@@ -53,7 +53,7 @@ export function buildSocialScanMeta(
   };
 }
 
-const STORAGE_KEY = "nylead-scan-social";
+const STORAGE_KEY = "nylead-scan-social-v2";
 
 export function loadScanSocialOptions(): ScanSocialOptions {
   if (typeof window === "undefined") return DEFAULT_SCAN_SOCIAL_OPTIONS;

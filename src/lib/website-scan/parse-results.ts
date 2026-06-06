@@ -34,6 +34,7 @@ const DIRECTORY_DOMAINS = [
   "data.brreg.no",
   "118.no",
   "180.no",
+  "1850.no",
   "eniro.no",
   "180.no",
   "norske-bedrifter.no",

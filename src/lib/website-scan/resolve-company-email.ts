@@ -12,11 +12,50 @@ export type ResolvedCompanyEmail = {
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 
-function normalizeEmail(value: string | null | undefined): string | null {
+const DIRECTORY_EMAIL_DOMAINS = new Set([
+  "118.no",
+  "180.no",
+  "1850.no",
+  "1881.no",
+  "allabolag.se",
+  "bizin.no",
+  "brreg.no",
+  "daa.no",
+  "degulesider.no",
+  "eniro.no",
+  "eniro.se",
+  "firmalene.no",
+  "firmanett.no",
+  "gulesider.no",
+  "hitta.se",
+  "kompass.com",
+  "proff.no",
+  "purehelp.no",
+  "regnskapstall.no",
+  "roller.no",
+  "trustpilot.com",
+  "trustpilot.no",
+  "yellowpages.com",
+  "yelp.com",
+  "yelp.no",
+]);
+
+export function normalizeEmail(value: string | null | undefined): string | null {
   const trimmed = value?.trim().toLowerCase();
   if (!trimmed || !EMAIL_REGEX.test(trimmed)) return null;
   const match = trimmed.match(EMAIL_REGEX);
   return match?.[0] ?? null;
+}
+
+export function emailDomain(email: string): string {
+  return email.split("@")[1]?.replace(/^www\./i, "").toLowerCase() ?? "";
+}
+
+export function isDirectoryOwnedEmail(email: string | null | undefined): boolean {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  const domain = emailDomain(normalized);
+  return DIRECTORY_EMAIL_DOMAINS.has(domain);
 }
 
 /** Hent første gyldige e-post fra fritekst (f.eks. Facebook intro). */
@@ -69,6 +108,7 @@ export function resolveCompanyEmail(
   }
 
   const platformEmail = normalizeEmail(scan?.enrichedEmail);
+  if (isDirectoryOwnedEmail(platformEmail)) return null;
   if (platformEmail) {
     return {
       email: platformEmail,

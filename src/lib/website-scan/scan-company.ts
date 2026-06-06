@@ -136,13 +136,17 @@ function fromPick(
 export async function enrichScanContacts(
   company: WebsiteScanCompanyInput,
   scan: WebsiteScanResult,
-  options?: { skipFetch?: boolean }
+  options?: { skipFetch?: boolean; allowSocialProfileEnrichment?: boolean }
 ): Promise<WebsiteScanResult> {
   if (scan.contactsEnriched) return scan;
 
   let workingScan = scan;
 
-  if (!options?.skipFetch && hasSerpApi()) {
+  if (
+    options?.allowSocialProfileEnrichment &&
+    !options?.skipFetch &&
+    hasSerpApi()
+  ) {
     if (scan.facebookUrl && !scan.facebookProfile) {
       const fb = await enrichFacebookWithSerpApi(scan.facebookUrl, company.name, {
         municipalityName: primaryGeoPlace(company),
@@ -177,14 +181,10 @@ export async function enrichScanContacts(
     link: h.link,
   }));
 
-  const canSearch = hasGoogleCse() || hasSerpApi();
-  const needsGulesiderSearch = typeof workingScan.gulesiderListed !== "boolean";
-
   const enrichment = await enrichPlatformContacts(company, workingScan, {
     hits,
-    runDirectorySearch: needsGulesiderSearch && canSearch,
-    fetchHitsForQueries:
-      needsGulesiderSearch && canSearch ? fetchHitsForQueries : undefined,
+    runDirectorySearch: false,
+    fetchHitsForQueries: undefined,
     skipFetch: options?.skipFetch,
   });
 
@@ -678,8 +678,8 @@ async function fetchSocialSerpHits(
   const canSearch = hasGoogleCse() || hasSerpApi();
   if (!canSearch) return { fbHits: [], igHits: [] };
 
-  const fbQueries = buildFacebookSearchQueries(company, context);
-  const igQueries = buildInstagramSearchQueries(company, context);
+  const fbQueries = buildFacebookSearchQueries(company, context).slice(0, 1);
+  const igQueries = buildInstagramSearchQueries(company, context).slice(0, 1);
   const serpOpts = { serpNum: SOCIAL_SERP_NUM, orgnr: company.orgnr };
 
   const tasks: Promise<SearchHit[]>[] = [];
@@ -779,7 +779,9 @@ export async function scanCompanyWebsite(
   } else {
     const canSearch = hasGoogleCse() || hasSerpApi();
     try {
-      hits = canSearch ? await fetchHitsForQueries(searchQueries, { orgnr: company.orgnr }) : [];
+      hits = canSearch
+        ? await fetchHitsForQueries(searchQueries.slice(0, 1), { orgnr: company.orgnr })
+        : [];
       finalPick = pickBestWebsite(hits, company.name, {
         municipalityName: primaryGeoPlace(company),
       });
@@ -879,7 +881,7 @@ export async function scanCompanyWebsite(
   });
 
   const gulesider = await resolveGulesiderPresence(company, hits, {
-    canSearch: hasGoogleCse() || hasSerpApi(),
+    canSearch: false,
     ranGoogleSearch: true,
   });
 

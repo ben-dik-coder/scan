@@ -18,7 +18,11 @@ import {
   normalizeDomain,
   type SearchHit,
 } from "./parse-results";
-import { parseEmailFromText } from "./resolve-company-email";
+import {
+  emailDomain,
+  isDirectoryOwnedEmail,
+  parseEmailFromText,
+} from "./resolve-company-email";
 import type { WebsiteScanResult } from "./types";
 
 export type PlatformContactSource =
@@ -60,6 +64,7 @@ const DIRECTORY_FETCH_DOMAINS = new Set([
   "kart.1881.no",
   "118.no",
   "180.no",
+  "1850.no",
   "eniro.no",
   "eniro.se",
   "proff.no",
@@ -86,6 +91,23 @@ const DIRECTORY_FETCH_DOMAINS = new Set([
   "virksomhet.brreg.no",
   "kart.gulesider.no",
 ]);
+
+function filterEmailsForSource(
+  emails: string[],
+  url: string,
+  source: PlatformContactSource
+): string[] {
+  const sourceDomain = normalizeDomain(url);
+  return emails.filter((email) => {
+    if (isDirectoryOwnedEmail(email)) return false;
+    const domain = emailDomain(email);
+    if (!domain) return false;
+
+    // På katalog/booking-sider er e-post på samme domene nesten alltid plattformens egen.
+    if (source !== "website" && domain === sourceDomain) return false;
+    return true;
+  });
+}
 
 function classifyPlatform(url: string): PlatformContactSource {
   const domain = normalizeDomain(url);
@@ -275,17 +297,18 @@ async function fetchPlatformRecord(
   if (!html) return null;
 
   const domain = normalizeDomain(url);
+  const source = classifyPlatform(url);
   const phones = extractPhonesFromHtml(html);
-  const emails = extractEmailsFromHtml(html);
+  const emails = filterEmailsForSource(extractEmailsFromHtml(html), url, source);
   const external =
-    classifyPlatform(url) !== "website"
+    source !== "website"
       ? extractExternalWebsiteFromHtml(html, domain)
       : null;
 
   if (phones.length === 0 && emails.length === 0 && !external) return null;
 
   return {
-    source: classifyPlatform(url),
+    source,
     url,
     phone: phones[0] ?? null,
     email: emails[0] ?? null,
