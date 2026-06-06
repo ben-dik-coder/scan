@@ -1,5 +1,7 @@
 import { websiteFromBrreg } from "@/lib/website-scan/brreg-website-hint";
 import {
+  companyMatchesResult,
+  domainSimilarToCompany,
   isBookingPlatformDomain,
   isNonOwnWebsiteDomain,
   normalizeDomain,
@@ -32,13 +34,20 @@ function isSkippableExternalHost(domain: string): boolean {
 
 /** Valider ekstern URL fra Facebook-lenke eller Instagram externalUrl. */
 export function websiteFromCrossLink(
-  url: string | null | undefined
+  url: string | null | undefined,
+  companyName?: string
 ): CrossLinkWebsiteHint | null {
-  const base = websiteFromBrreg(url);
+  const base = websiteFromBrreg(url, companyName);
   if (!base) return null;
 
   const domain = normalizeDomain(base.websiteUrl);
   if (!domain || isSkippableExternalHost(domain)) return null;
+
+  if (companyName?.trim()) {
+    const domainOk = domainSimilarToCompany(domain, companyName);
+    const urlOk = companyMatchesResult("", base.websiteUrl, companyName);
+    if (!domainOk && !urlOk) return null;
+  }
 
   if (isBookingPlatformDomain(domain)) {
     return { ...base, kind: "booking_only" };

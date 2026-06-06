@@ -1,13 +1,16 @@
 import {
+  domainSimilarToCompany,
   isNonOwnWebsiteDomain,
   normalizeDomain,
 } from "@/lib/website-scan/parse-results";
 
 /**
  * Offisiell hjemmeside fra Brreg — høyere prioritet enn e-postdomene-gjetning.
+ * Krever at domenet ligner firmanavn (Brreg-data er ofte utdatert/feil).
  */
 export function websiteFromBrreg(
-  website: string | null | undefined
+  website: string | null | undefined,
+  companyName?: string
 ): { websiteUrl: string; websiteDomain: string } | null {
   if (!website?.trim()) return null;
 
@@ -20,6 +23,10 @@ export function websiteFromBrreg(
     const parsed = new URL(url);
     const domain = normalizeDomain(parsed.href);
     if (!domain || isNonOwnWebsiteDomain(domain)) return null;
+  if (!companyName?.trim()) return null;
+  if (!domainSimilarToCompany(domain, companyName)) {
+    return null;
+  }
 
     return {
       websiteUrl: parsed.href,

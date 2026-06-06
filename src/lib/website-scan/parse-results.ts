@@ -208,33 +208,94 @@ export function primarySearchTokens(companyName: string, max = 2): string[] {
 }
 
 export function compactAlnum(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9æøå]/gi, "");
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ø/g, "o")
+    .replace(/æ/g, "ae")
+    .replace(/å/g, "a")
+    .replace(/[^a-z0-9]/gi, "");
+}
+
+/**
+ * Sosial profil / sidetittel — alle navneord må finnes i selve profilnavnet,
+ * ikke bare i URL eller «Headline Frisør Narvik» for «Narvik Frisør AS».
+ */
+export function companyMatchesProfileName(
+  profileName: string,
+  companyName: string
+): boolean {
+  const profileHay = compactAlnum(profileName);
+  if (!profileHay) return false;
+
+  const stripped = stripCompanySuffix(companyName);
+  const strippedCompact = compactAlnum(stripped);
+  if (strippedCompact.length >= 5 && profileHay.includes(strippedCompact)) {
+    return true;
+  }
+
+  const tokens = nameTokens(companyName);
+  if (tokens.length >= 2) {
+    const [first, second] = [tokens[0]!, tokens[1]!];
+    if (profileHay.includes(first + second)) return true;
+    if (profileHay.startsWith(first) && tokens.every((t) => profileHay.includes(t))) {
+      return true;
+    }
+    return false;
+  }
+
+  if (tokens.length === 1) {
+    const t = tokens[0]!;
+    return t.length >= 4 && profileHay.includes(t);
+  }
+
+  if (strippedCompact.length >= 5) {
+    return profileHay.includes(strippedCompact);
+  }
+
+  return false;
 }
 
 /**
  * Treff må faktisk handle om dette firmaet — ikke bare «Bø» i «Bønes Spa».
  */
+function linkMatchHaystack(link: string): string {
+  try {
+    const u = new URL(link.startsWith("http") ? link : `https://${link}`);
+    const host = u.hostname.replace(/^www\./i, "");
+    const path = u.pathname.split("/").filter(Boolean).join("/");
+    return compactAlnum(`${host}/${path}`);
+  } catch {
+    return compactAlnum(link);
+  }
+}
+
 export function companyMatchesResult(
   title: string,
   link: string,
   companyName: string
 ): boolean {
   const tokens = nameTokens(companyName);
-  const hay = compactAlnum(`${title} ${link}`);
+  const titleHay = compactAlnum(title);
+  const linkHay = link ? linkMatchHaystack(link) : "";
 
   if (tokens.length >= 2) {
-    return tokens.every((t) => hay.includes(t));
+    if (titleHay && tokens.every((t) => titleHay.includes(t))) return true;
+    return false;
   }
 
   if (tokens.length === 1) {
     const t = tokens[0]!;
     if (t.length < 4) return false;
-    return hay.includes(t);
+    if (titleHay.includes(t)) return true;
+    return linkHay.includes(t);
   }
 
-  const compact = compactAlnum(companyName);
+  const compact = compactAlnum(stripCompanySuffix(companyName));
   if (compact.length < 5) return false;
-  return hay.includes(compact);
+  if (titleHay.includes(compact)) return true;
+  return linkHay.includes(compact);
 }
 
 export function domainSimilarToCompany(
@@ -350,12 +411,12 @@ function scoreHit(
   if (domain.endsWith(".no")) score += 2;
   else if (domain.endsWith(".com")) score += 1;
 
+  const titleHit = matchesLegal || matchesStripped;
   const acceptAsOwn =
-    nameInDomain ||
-    ((matchesLegal || matchesStripped) && looksLikeHomepage(link)) ||
-    (domainMatch && placeMatch && looksLikeHomepage(link));
+    (titleHit && looksLikeHomepage(link)) ||
+    (nameInDomain && titleHit);
 
-  const minScore = domainMatch && !matchesLegal && !matchesStripped ? 8 : 6;
+  const minScore = 10;
   if (!acceptAsOwn || score < minScore) return null;
 
   return { title, link, domain, score, nameInDomain };
@@ -523,6 +584,21 @@ export function buildSearchQuery(company: {
   municipality_name?: string | null;
 }): string {
   return buildSearchQueries(company)[0]!;
+}
+
+/** Sjekker om URL faktisk hører til firmaet (domene eller sidetittel). */
+export function websiteUrlPlausibleForCompany(
+  websiteUrl: string,
+  companyName: string,
+  pageTitle?: string | null
+): boolean {
+  const domain = normalizeDomain(websiteUrl);
+  if (!domain || isNonOwnWebsiteDomain(domain)) return false;
+  if (domainSimilarToCompany(domain, companyName)) return true;
+  if (pageTitle?.trim() && companyMatchesResult(pageTitle, websiteUrl, companyName)) {
+    return true;
+  }
+  return companyMatchesResult("", websiteUrl, companyName);
 }
 
 export function hasUncertainWebsiteHits(

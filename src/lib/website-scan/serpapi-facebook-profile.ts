@@ -1,6 +1,9 @@
 import { facebookProfileMatchesRegion } from "@/lib/website-scan/facebook-geo";
 import { hasSerpApi } from "@/lib/website-scan/config";
-import { companyMatchesResult } from "@/lib/website-scan/parse-results";
+import {
+  companyMatchesProfileName,
+  companyMatchesResult,
+} from "@/lib/website-scan/parse-results";
 import { websiteFromCrossLink } from "@/lib/website-scan/cross-link-website";
 import { pickBestLinkedInUrl } from "@/lib/website-scan/linkedin-profiles";
 import { instagramUrlFromFacebookProfile } from "@/lib/website-scan/serpapi-instagram-profile";
@@ -91,12 +94,13 @@ function isSocialLinkUrl(link: string): boolean {
 
 /** Nettside-lenke fra Facebook-profilens links[] (tittel «Website» eller ekstern URL). */
 export function websiteUrlFromFacebookProfile(
-  links?: Array<{ title?: string; link?: string }> | null
+  links?: Array<{ title?: string; link?: string }> | null,
+  companyName?: string
 ): string | null {
   for (const item of links ?? []) {
     if (!item.link) continue;
     if (isSocialLinkUrl(item.link)) continue;
-    const hint = websiteFromCrossLink(item.link);
+    const hint = websiteFromCrossLink(item.link, companyName);
     if (hint) return hint.websiteUrl;
   }
   return null;
@@ -133,7 +137,7 @@ function mapProfile(
     source: "serpapi_facebook_profile",
     linkedInstagramUrl: instagramUrlFromFacebookProfile(raw.links),
     linkedLinkedInUrl: linkedinUrlFromFacebookProfile(raw.links),
-    linkedWebsiteUrl: websiteUrlFromFacebookProfile(raw.links),
+    linkedWebsiteUrl: websiteUrlFromFacebookProfile(raw.links, undefined),
   };
 }
 
@@ -143,8 +147,9 @@ export function profileMatchesCompany(
   municipalityName?: string | null
 ): boolean {
   if (!facebookProfileMatchesRegion(profile, municipalityName)) return false;
-  if (profile.isPrivate) return true;
-  if (!profile.name) return true;
+  if (profile.isPrivate) return false;
+  if (!profile.name?.trim()) return false;
+  if (companyMatchesProfileName(profile.name, companyName)) return true;
   return companyMatchesResult(profile.name, profile.url ?? "", companyName);
 }
 
@@ -222,23 +227,20 @@ export async function enrichFacebookWithSerpApi(
   try {
     const profile = await fetchSerpApiFacebookProfile(profileId);
     if (!profile) {
-      return options?.verifiedViaSearch
-        ? { facebookUrl, facebookProfile: null }
-        : { facebookUrl: null, facebookProfile: null };
+      return { facebookUrl: null, facebookProfile: null };
     }
 
     const regionOk = facebookProfileMatchesRegion(
       profile,
       options?.municipalityName
     );
-    const companyOk =
-      options?.verifiedViaSearch ||
-      profileMatchesCompany(profile, companyName, options?.municipalityName);
+    const companyOk = profileMatchesCompany(
+      profile,
+      companyName,
+      options?.municipalityName
+    );
 
     if (!regionOk || !companyOk) {
-      if (options?.verifiedViaSearch) {
-        return { facebookUrl, facebookProfile: null };
-      }
       return { facebookUrl: null, facebookProfile: null };
     }
 
@@ -252,7 +254,7 @@ export async function enrichFacebookWithSerpApi(
       profileId,
       err instanceof Error ? err.message : err
     );
-    return { facebookUrl, facebookProfile: null };
+    return { facebookUrl: null, facebookProfile: null };
   }
 }
 

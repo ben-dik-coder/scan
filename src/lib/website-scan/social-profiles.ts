@@ -5,6 +5,7 @@ import {
   scoreFacebookSearchHit,
 } from "@/lib/website-scan/facebook-geo";
 import {
+  companyMatchesProfileName,
   companyMatchesResult,
   compactAlnum,
   nameTokens,
@@ -37,10 +38,13 @@ function partialCompanyMatch(
   companyName: string
 ): boolean {
   const tokens = nameTokens(companyName);
-  if (tokens.length < 3) return false;
-  const hay = compactAlnum(`${title} ${link}`);
+  if (tokens.length < 4) return false;
+  const handle =
+    socialHandleFromLink(link, "facebook") ??
+    socialHandleFromLink(link, "instagram");
+  const hay = compactAlnum(`${title} ${handle ?? ""}`);
   const matched = tokens.filter((t) => hay.includes(t)).length;
-  const required = Math.max(2, Math.ceil(tokens.length * 0.5));
+  const required = Math.ceil(tokens.length * 0.75);
   return matched >= required;
 }
 
@@ -67,36 +71,21 @@ function socialHandleFromLink(
 }
 
 function handleMatchesCompany(handle: string, companyName: string): boolean {
-  const h = compactAlnum(handle);
-  if (h.length < 4) return false;
-
-  const stripped = stripCompanySuffix(companyName);
-  const compactStripped = compactAlnum(stripped);
-  if (compactStripped.length >= 5 && h.includes(compactStripped)) return true;
-  if (compactStripped.length >= 6 && compactStripped.includes(h)) return true;
-
-  const tokens = nameTokens(companyName);
-  if (tokens.length >= 2) {
-    const matched = tokens.filter((t) => h.includes(t)).length;
-    return matched >= Math.min(tokens.length, 2);
-  }
-  if (tokens.length === 1) {
-    const t = tokens[0]!;
-    return t.length >= 4 && h.includes(t);
-  }
-  return false;
+  const normalized = handle.replace(/[._-]+/g, " ");
+  return companyMatchesProfileName(normalized, companyName);
 }
 
 function socialHitMatchesCompany(
   hit: SearchHit,
   companyName: string,
   alternateNames?: string[]
-): { match: boolean; strength: number } {
+): { match: boolean; strength: number; hadTitleMatch: boolean } {
   const stripped = stripCompanySuffix(companyName);
-  const legal = companyMatchesResult(hit.title, hit.link, companyName);
-  const strippedMatch =
-    stripped !== companyName &&
-    companyMatchesResult(hit.title, hit.link, stripped);
+  const titleMatch = companyMatchesProfileName(hit.title, companyName);
+  const strippedTitleMatch =
+    stripped !== companyName && companyMatchesProfileName(hit.title, stripped);
+  const legal = titleMatch;
+  const strippedMatch = strippedTitleMatch;
   const partial = partialCompanyMatch(hit.title, hit.link, companyName);
   const fbHandle = socialHandleFromLink(hit.link, "facebook");
   const igHandle = socialHandleFromLink(hit.link, "instagram");
@@ -107,7 +96,7 @@ function socialHitMatchesCompany(
   let altMatch = false;
   for (const alt of alternateNames ?? []) {
     if (
-      companyMatchesResult(hit.title, hit.link, alt) ||
+      companyMatchesProfileName(hit.title, alt) ||
       partialCompanyMatch(hit.title, hit.link, alt) ||
       (handle != null && handleMatchesCompany(handle, alt))
     ) {
@@ -116,22 +105,38 @@ function socialHitMatchesCompany(
     }
   }
 
+  const hadTitleMatch = titleMatch || strippedTitleMatch;
+
   if (!legal && !strippedMatch && !partial && !slug && !altMatch) {
-    return { match: false, strength: 0 };
+    return { match: false, strength: 0, hadTitleMatch: false };
   }
 
   let strength = 0;
+  if (titleMatch) strength += 6;
+  if (strippedTitleMatch) strength += 5;
   if (legal) strength += 5;
   if (strippedMatch) strength += 4;
   if (slug) strength += 6;
   if (partial) strength += 2;
   if (altMatch) strength += 5;
-  return { match: true, strength };
+  return { match: true, strength, hadTitleMatch };
 }
 
-function strengthToConfidence(strength: number): SocialLinkConfidence {
-  if (strength >= 5) return "high";
-  if (strength >= 2) return "medium";
+/** Valider sosial URL (f.eks. fra nettside-scrape) mot firmanavn. */
+export function socialUrlMatchesCompany(url: string, companyName: string): boolean {
+  const { match, strength } = socialHitMatchesCompany(
+    { title: "", link: url },
+    companyName
+  );
+  return match && strength >= 6;
+}
+
+function strengthToConfidence(
+  strength: number,
+  hadTitleMatch: boolean
+): SocialLinkConfidence {
+  if (strength >= 10 && hadTitleMatch) return "high";
+  if (strength >= 5) return "medium";
   return "low";
 }
 
@@ -220,10 +225,7 @@ export function normalizeFacebookUrl(link: string): string | null {
       return `https://www.facebook.com/pages/${parts[1]}`;
     }
 
-    if (first === "people" && parts.length >= 2) {
-      const id = parts[2] ?? parts[1];
-      return `https://www.facebook.com/people/${parts[1]}/${id}`;
-    }
+    if (first === "people") return null;
 
     if (first === "profile.php") {
       const id = u.searchParams.get("id");
@@ -274,7 +276,7 @@ export function pickFacebookFromHits(
   }
 ): SocialUrlPick {
   const seen = new Set<string>();
-  let best: { url: string; score: number } | null = null;
+  let best: { url: string; score: number; hadTitleMatch: boolean } | null = null;
   const places =
     options?.geoPlaces ??
     (municipalityName?.trim() ? [municipalityName.trim()] : []);
@@ -284,7 +286,7 @@ export function pickFacebookFromHits(
     if (!isFacebookHost(domain)) continue;
     if (facebookUrlHasForeignLocale(h.link)) continue;
 
-    const { match, strength } = socialHitMatchesCompany(
+    const { match, strength, hadTitleMatch } = socialHitMatchesCompany(
       h,
       companyName,
       options?.alternateNames
@@ -300,14 +302,14 @@ export function pickFacebookFromHits(
 
     const score = strength + geoScore;
     if (!best || score > best.score) {
-      best = { url, score };
+      best = { url, score, hadTitleMatch };
     }
   }
 
   if (!best) return { url: null, confidence: "low" };
   return {
     url: best.url,
-    confidence: strengthToConfidence(best.score),
+    confidence: strengthToConfidence(best.score, best.hadTitleMatch),
   };
 }
 
@@ -444,7 +446,7 @@ export function pickInstagramFromHits(
   }
 ): SocialUrlPick {
   const seen = new Set<string>();
-  let best: { url: string; score: number } | null = null;
+  let best: { url: string; score: number; hadTitleMatch: boolean } | null = null;
   const places =
     options?.geoPlaces ??
     (municipalityName?.trim() ? [municipalityName.trim()] : []);
@@ -453,28 +455,31 @@ export function pickInstagramFromHits(
     const domain = normalizeDomain(h.link);
     if (!isInstagramHost(domain)) continue;
 
-    const { match, strength } = socialHitMatchesCompany(
+    const { match, strength, hadTitleMatch } = socialHitMatchesCompany(
       h,
       companyName,
       options?.alternateNames
     );
     if (!match) continue;
 
+    const geoBonus = instagramGeoBonus(h.title, places);
+    if (places.length > 0 && geoBonus === 0 && !hadTitleMatch) continue;
+
     const url = normalizeInstagramUrl(h.link);
     if (!url || seen.has(url)) continue;
     seen.add(url);
 
-    const score = strength + instagramGeoBonus(h.title, places);
+    const score = strength + geoBonus;
 
     if (!best || score > best.score) {
-      best = { url, score };
+      best = { url, score, hadTitleMatch };
     }
   }
 
   if (!best) return { url: null, confidence: "low" };
   return {
     url: best.url,
-    confidence: strengthToConfidence(best.score),
+    confidence: strengthToConfidence(best.score, best.hadTitleMatch),
   };
 }
 

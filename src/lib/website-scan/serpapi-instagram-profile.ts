@@ -1,5 +1,8 @@
 import { hasSerpApi } from "@/lib/website-scan/config";
-import { companyMatchesResult } from "@/lib/website-scan/parse-results";
+import {
+  companyMatchesProfileName,
+  companyMatchesResult,
+} from "@/lib/website-scan/parse-results";
 import { normalizeInstagramUrl } from "@/lib/website-scan/social-profiles";
 import type { InstagramProfileSnippet } from "@/lib/website-scan/types";
 
@@ -205,22 +208,29 @@ export async function enrichInstagramWithSerpApi(
     const profile = await fetchSerpApiInstagramProfile(profileId);
     if (!profile) {
       return {
-        instagramUrl: normalized,
+        instagramUrl: null,
         instagramProfile: null,
-        instagramFromFacebook: fromFacebook,
+        instagramFromFacebook: false,
       };
     }
 
-    if (
-      !options?.verifiedViaSearch &&
-      !fromFacebook &&
-      profile.name &&
-      !companyMatchesResult(profile.name, profile.url ?? "", companyName)
-    ) {
+    if (!profile.name?.trim()) {
       return {
-        instagramUrl: normalized,
+        instagramUrl: null,
         instagramProfile: null,
-        instagramFromFacebook: fromFacebook,
+        instagramFromFacebook: false,
+      };
+    }
+
+    const profileOk =
+      companyMatchesProfileName(profile.name, companyName) ||
+      companyMatchesResult(profile.name, profile.url ?? "", companyName);
+
+    if (!profileOk) {
+      return {
+        instagramUrl: null,
+        instagramProfile: null,
+        instagramFromFacebook: false,
       };
     }
 
@@ -236,9 +246,9 @@ export async function enrichInstagramWithSerpApi(
       err instanceof Error ? err.message : err
     );
     return {
-      instagramUrl: normalized,
+      instagramUrl: null,
       instagramProfile: null,
-      instagramFromFacebook: fromFacebook,
+      instagramFromFacebook: false,
     };
   }
 }

@@ -10,7 +10,9 @@ import {
   extractExternalWebsiteFromHtml,
   extractPhonesFromHtml,
 } from "./parse-page-contact";
+import { profileMatchesCompany } from "@/lib/website-scan/serpapi-facebook-profile";
 import {
+  companyMatchesProfileName,
   companyMatchesResult,
   isBookingPlatformDomain,
   isDirectoryDomain,
@@ -23,6 +25,7 @@ import {
   isDirectoryOwnedEmail,
   parseEmailFromText,
 } from "./resolve-company-email";
+import { socialUrlMatchesCompany } from "@/lib/website-scan/social-profiles";
 import type { WebsiteScanResult } from "./types";
 
 export type PlatformContactSource =
@@ -198,14 +201,52 @@ function pickEmailFromSerpApiText(
   return null;
 }
 
-function externalWebsiteFromUrl(url: string | null | undefined): string | null {
+function externalWebsiteFromUrl(
+  url: string | null | undefined,
+  companyName: string
+): string | null {
   if (!url?.trim()) return null;
-  return websiteFromCrossLink(url)?.websiteUrl ?? null;
+  return websiteFromCrossLink(url, companyName)?.websiteUrl ?? null;
 }
 
-function recordFromFacebook(scan: WebsiteScanResult): PlatformContactRecord | null {
+function facebookContactTrusted(
+  scan: WebsiteScanResult,
+  companyName: string
+): boolean {
+  if (scan.facebookProfile) {
+    return profileMatchesCompany(scan.facebookProfile, companyName);
+  }
+  return Boolean(
+    scan.facebookUrl && socialUrlMatchesCompany(scan.facebookUrl, companyName)
+  );
+}
+
+function instagramContactTrusted(
+  scan: WebsiteScanResult,
+  companyName: string
+): boolean {
+  if (scan.instagramProfile?.name?.trim()) {
+    return (
+      companyMatchesProfileName(scan.instagramProfile.name, companyName) ||
+      companyMatchesResult(
+        scan.instagramProfile.name,
+        scan.instagramProfile.url ?? "",
+        companyName
+      )
+    );
+  }
+  return Boolean(
+    scan.instagramUrl && socialUrlMatchesCompany(scan.instagramUrl, companyName)
+  );
+}
+
+function recordFromFacebook(
+  scan: WebsiteScanResult,
+  companyName: string
+): PlatformContactRecord | null {
   const profile = scan.facebookProfile;
   if (!profile?.url && !scan.facebookUrl) return null;
+  if (!facebookContactTrusted(scan, companyName)) return null;
 
   const phone = pickPhoneFromSerpApiText(
     profile?.phone,
@@ -229,13 +270,17 @@ function recordFromFacebook(scan: WebsiteScanResult): PlatformContactRecord | nu
   };
 }
 
-function recordFromInstagram(scan: WebsiteScanResult): PlatformContactRecord | null {
+function recordFromInstagram(
+  scan: WebsiteScanResult,
+  companyName: string
+): PlatformContactRecord | null {
   const profile = scan.instagramProfile;
   if (!profile?.url && !scan.instagramUrl) return null;
+  if (!instagramContactTrusted(scan, companyName)) return null;
 
   const phone = pickPhoneFromSerpApiText(profile?.phone, profile?.biography);
   const email = pickEmailFromSerpApiText(profile?.email, profile?.biography);
-  const externalWebsite = externalWebsiteFromUrl(profile?.externalUrl);
+  const externalWebsite = externalWebsiteFromUrl(profile?.externalUrl, companyName);
 
   if (!phone && !email) return null;
 
@@ -411,10 +456,10 @@ export async function enrichPlatformContacts(
 
   const contacts: PlatformContactRecord[] = [];
 
-  const fb = recordFromFacebook(scan);
+  const fb = recordFromFacebook(scan, company.name);
   if (fb) contacts.push(fb);
 
-  const ig = recordFromInstagram(scan);
+  const ig = recordFromInstagram(scan, company.name);
   if (ig) contacts.push(ig);
 
   if (!options?.skipFetch) {

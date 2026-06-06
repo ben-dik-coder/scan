@@ -41,7 +41,8 @@
     "db:billing": "node scripts/migrate-billing.mjs",
     "brreg:bulk-import": "node scripts/brreg-bulk-import.mjs",
     "brreg:backfill-geo": "node scripts/backfill-company-geo.mjs",
-    "brreg:backfill-roles": "node scripts/backfill-company-roles.mjs"
+    "brreg:backfill-roles": "node scripts/backfill-company-roles.mjs",
+    "verify:website-scan": "npx tsx scripts/verify-website-scan-matching.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",

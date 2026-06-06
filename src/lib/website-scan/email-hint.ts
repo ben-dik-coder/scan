@@ -1,7 +1,6 @@
 import {
   domainSimilarToCompany,
   isNonOwnWebsiteDomain,
-  nameTokens,
   normalizeDomain,
 } from "./parse-results";
 
@@ -50,8 +49,7 @@ export function websiteFromEmail(
   if (!websiteDomain) return null;
 
   if (!domainSimilarToCompany(websiteDomain, companyName)) {
-    const tokens = nameTokens(companyName);
-    if (tokens.length > 0) return null;
+    return null;
   }
 
   return {

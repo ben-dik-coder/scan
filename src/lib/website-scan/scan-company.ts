@@ -22,6 +22,7 @@ import {
   normalizeDomain,
   pickBestWebsite,
   stripCompanySuffix,
+  websiteUrlPlausibleForCompany,
   type SearchHit,
 } from "./parse-results";
 import { searchSerpApi } from "./serpapi";
@@ -37,6 +38,7 @@ import {
   demoInstagramUrl,
   pickFacebookFromHits,
   pickInstagramFromHits,
+  socialUrlMatchesCompany,
   type SocialLinkConfidence,
 } from "./social-profiles";
 import {
@@ -150,7 +152,7 @@ export async function enrichScanContacts(
     if (scan.facebookUrl && !scan.facebookProfile) {
       const fb = await enrichFacebookWithSerpApi(scan.facebookUrl, company.name, {
         municipalityName: primaryGeoPlace(company),
-        verifiedViaSearch: true,
+        verifiedViaSearch: false,
       });
       if (fb.facebookProfile) {
         workingScan = {
@@ -163,7 +165,7 @@ export async function enrichScanContacts(
 
     if (scan.instagramUrl && !scan.instagramProfile) {
       const ig = await enrichInstagramWithSerpApi(scan.instagramUrl, company.name, {
-        verifiedViaSearch: !scan.instagramFromFacebook,
+        verifiedViaSearch: false,
         fromFacebook: scan.instagramFromFacebook ?? false,
       });
       if (ig.instagramProfile) {
@@ -275,9 +277,20 @@ function resolveLinkedInFromUrls(options: {
   };
 }
 
+const EMPTY_WEBSITE_PICK: PickResult = {
+  hasWebsite: false,
+  websiteKind: "none",
+  websiteUrl: null,
+  websiteDomain: null,
+  bookingPlatform: null,
+  topHits: [],
+  confidence: "low",
+};
+
 function applyCrossLinkWebsiteFallback(
   pick: PickResult,
   options: {
+    companyName: string;
     facebookWebsiteUrl?: string | null;
     instagramExternalUrl?: string | null;
   }
@@ -286,7 +299,7 @@ function applyCrossLinkWebsiteFallback(
     return { pick };
   }
 
-  const fbHint = websiteFromCrossLink(options.facebookWebsiteUrl);
+  const fbHint = websiteFromCrossLink(options.facebookWebsiteUrl, options.companyName);
   if (fbHint) {
     return {
       pick: {
@@ -302,7 +315,7 @@ function applyCrossLinkWebsiteFallback(
     };
   }
 
-  const igHint = websiteFromCrossLink(options.instagramExternalUrl);
+  const igHint = websiteFromCrossLink(options.instagramExternalUrl, options.companyName);
   if (igHint) {
     return {
       pick: {
@@ -346,8 +359,12 @@ async function resolveFacebook(
   const geoLabel = primaryGeoPlace(company);
 
   let facebookUrl = options?.websiteUrl ?? null;
+  let pickedFromSearch = false;
+  if (facebookUrl && !socialUrlMatchesCompany(facebookUrl, company.name)) {
+    facebookUrl = null;
+  }
   let facebookConfidence: SocialLinkConfidence | undefined =
-    facebookUrl ? (options?.websiteConfidence ?? "high") : undefined;
+    facebookUrl ? (options?.websiteConfidence ?? "medium") : undefined;
 
   if (!facebookUrl) {
     const mergedHits = dedupeHits([...hits, ...fbHits]);
@@ -359,6 +376,7 @@ async function resolveFacebook(
     );
     facebookUrl = picked.url;
     facebookConfidence = picked.confidence;
+    pickedFromSearch = Boolean(picked.url);
 
     for (const altName of options?.alternateNames ?? []) {
       if (facebookUrl) break;
@@ -370,6 +388,7 @@ async function resolveFacebook(
       );
       facebookUrl = altPick.url;
       facebookConfidence = altPick.confidence;
+      pickedFromSearch = Boolean(altPick.url);
     }
   }
 
@@ -397,7 +416,7 @@ async function resolveFacebook(
   const enriched = await enrichFacebookWithSerpApi(facebookUrl, company.name, {
     ...options,
     municipalityName: geoLabel,
-    verifiedViaSearch: true,
+    verifiedViaSearch: pickedFromSearch,
   });
 
   return {
@@ -443,15 +462,26 @@ async function resolveInstagram(
   const geoPlaces = options?.geoPlaces ?? companyGeoPlaces(company);
   const geoLabel = primaryGeoPlace(company);
 
-  let instagramUrl = options?.websiteUrl ?? null;
-  let instagramConfidence: SocialLinkConfidence | undefined =
-    instagramUrl ? (options?.websiteConfidence ?? "high") : undefined;
+  let instagramUrl: string | null = null;
+  let instagramConfidence: SocialLinkConfidence | undefined;
   let fromFacebook = false;
+  let pickedFromSearch = false;
 
-  if (!instagramUrl) {
-    instagramUrl = facebookProfile?.linkedInstagramUrl ?? null;
-    fromFacebook = Boolean(instagramUrl);
-    if (instagramUrl) instagramConfidence = "high";
+  if (
+    options?.websiteUrl &&
+    socialUrlMatchesCompany(options.websiteUrl, company.name)
+  ) {
+    instagramUrl = options.websiteUrl;
+    instagramConfidence = options.websiteConfidence ?? "medium";
+  }
+
+  if (!instagramUrl && facebookProfile?.linkedInstagramUrl) {
+    const candidate = facebookProfile.linkedInstagramUrl;
+    if (socialUrlMatchesCompany(candidate, company.name)) {
+      instagramUrl = candidate;
+      fromFacebook = true;
+      instagramConfidence = "medium";
+    }
   }
 
   const mergedIgHits = dedupeHits([...hits, ...igHits]);
@@ -465,6 +495,7 @@ async function resolveInstagram(
     );
     instagramUrl = picked.url;
     instagramConfidence = picked.confidence;
+    pickedFromSearch = Boolean(picked.url);
   }
 
   for (const altName of options?.alternateNames ?? []) {
@@ -477,6 +508,7 @@ async function resolveInstagram(
     );
     instagramUrl = altPick.url;
     instagramConfidence = altPick.confidence;
+    pickedFromSearch = Boolean(altPick.url);
   }
 
   if (!instagramUrl && options?.demo) {
@@ -496,7 +528,7 @@ async function resolveInstagram(
 
   const ig = await enrichInstagramWithSerpApi(instagramUrl, company.name, {
     demo: options?.demo,
-    verifiedViaSearch: !fromFacebook,
+    verifiedViaSearch: pickedFromSearch,
     fromFacebook,
   });
 
@@ -531,7 +563,7 @@ async function resolveSocial(
       includeFacebook: options.social.includeFacebook,
       alternateNames: alt,
       websiteUrl: options.websiteFacebookUrl,
-      websiteConfidence: "high",
+      websiteConfidence: "medium",
       geoPlaces,
     });
 
@@ -540,7 +572,7 @@ async function resolveSocial(
     includeInstagram: options.social.includeInstagram,
     alternateNames: alt,
     websiteUrl: options.websiteInstagramUrl,
-    websiteConfidence: "high",
+    websiteConfidence: "medium",
     geoPlaces,
   });
 
@@ -678,8 +710,8 @@ async function fetchSocialSerpHits(
   const canSearch = hasGoogleCse() || hasSerpApi();
   if (!canSearch) return { fbHits: [], igHits: [] };
 
-  const fbQueries = buildFacebookSearchQueries(company, context).slice(0, 1);
-  const igQueries = buildInstagramSearchQueries(company, context).slice(0, 1);
+  const fbQueries = buildFacebookSearchQueries(company, context).slice(0, 2);
+  const igQueries = buildInstagramSearchQueries(company, context).slice(0, 2);
   const serpOpts = { serpNum: SOCIAL_SERP_NUM, orgnr: company.orgnr };
 
   const tasks: Promise<SearchHit[]>[] = [];
@@ -720,9 +752,10 @@ export async function scanCompanyWebsite(
 
   const searchQueries = buildSearchQueries(company);
   const queryLabel = searchQueries.join(" | ");
-  const brregHint = websiteFromBrreg(company.website);
+  const brregHint = websiteFromBrreg(company.website, company.name);
   const emailHint = brregHint ? null : websiteFromEmail(company.email, company.name);
   const websiteHint = brregHint ?? emailHint;
+  const canSearch = hasGoogleCse() || hasSerpApi();
 
   if (options?.demo || (!hasGoogleCse() && !hasSerpApi())) {
     const base = demoScan(company);
@@ -746,74 +779,18 @@ export async function scanCompanyWebsite(
   }
 
   let hits: SearchHit[] = [];
-  let finalPick: PickResult;
-  let source: WebsiteScanSource;
+  let finalPick: PickResult = EMPTY_WEBSITE_PICK;
+  let source: WebsiteScanSource = "google_cse";
   let effectiveQuery = queryLabel;
-
-  if (websiteHint) {
-    hits = [
-      {
-        title: company.name,
-        link: websiteHint.websiteUrl,
-      },
-    ];
-    finalPick = {
-      hasWebsite: true,
-      websiteKind: "own",
-      websiteUrl: websiteHint.websiteUrl,
-      websiteDomain: websiteHint.websiteDomain,
-      bookingPlatform: null,
-      topHits: [
-        {
-          title: company.name,
-          link: websiteHint.websiteUrl,
-          domain: websiteHint.websiteDomain,
-        },
-      ],
-      confidence: brregHint ? "high" : "medium",
-    };
-    source = brregHint ? "brreg_website" : "email_domain";
-    effectiveQuery = brregHint
-      ? `Brreg hjemmeside @${websiteHint.websiteDomain}`
-      : `E-post @${websiteHint.websiteDomain}`;
-  } else {
-    const canSearch = hasGoogleCse() || hasSerpApi();
-    try {
-      hits = canSearch
-        ? await fetchHitsForQueries(searchQueries.slice(0, 1), { orgnr: company.orgnr })
-        : [];
-      finalPick = pickBestWebsite(hits, company.name, {
-        municipalityName: primaryGeoPlace(company),
-      });
-    } catch {
-      hits = [];
-      finalPick = {
-        hasWebsite: false,
-        websiteKind: "none",
-        websiteUrl: null,
-        websiteDomain: null,
-        bookingPlatform: null,
-        topHits: [],
-        confidence: "low",
-      };
-    }
-
-    source = hasSerpApi()
-      ? hasGoogleCse()
-        ? "both"
-        : "serpapi"
-      : "google_cse";
-  }
-
   let displayName: string | null = null;
   let websiteFacebookUrl: string | null = null;
   let websiteInstagramUrl: string | null = null;
   let websiteLinkedInUrl: string | null = null;
-  let websiteDiscoverySource: WebsiteScanResult["websiteDiscoverySource"] =
-    brregHint ? "brreg" : emailHint ? "email" : finalPick.hasWebsite ? "google" : null;
+  let websiteDiscoverySource: WebsiteScanResult["websiteDiscoverySource"] = null;
+  let usedVerifiedHint = false;
 
-  if (finalPick.hasWebsite && finalPick.websiteUrl) {
-    const meta = await fetchWebsitePageMetadata(finalPick.websiteUrl).catch(
+  if (websiteHint) {
+    const hintMeta = await fetchWebsitePageMetadata(websiteHint.websiteUrl).catch(
       () => ({
         displayName: null,
         facebookUrl: null,
@@ -821,10 +798,99 @@ export async function scanCompanyWebsite(
         linkedinUrl: null,
       })
     );
-    displayName = meta.displayName;
-    websiteFacebookUrl = meta.facebookUrl;
-    websiteInstagramUrl = meta.instagramUrl;
-    websiteLinkedInUrl = meta.linkedinUrl;
+    if (
+      websiteUrlPlausibleForCompany(
+        websiteHint.websiteUrl,
+        company.name,
+        hintMeta.displayName
+      )
+    ) {
+      usedVerifiedHint = true;
+      displayName = hintMeta.displayName;
+      websiteFacebookUrl = hintMeta.facebookUrl;
+      websiteInstagramUrl = hintMeta.instagramUrl;
+      websiteLinkedInUrl = hintMeta.linkedinUrl;
+      hits = [{ title: company.name, link: websiteHint.websiteUrl }];
+      finalPick = {
+        hasWebsite: true,
+        websiteKind: "own",
+        websiteUrl: websiteHint.websiteUrl,
+        websiteDomain: websiteHint.websiteDomain,
+        bookingPlatform: null,
+        topHits: [
+          {
+            title: company.name,
+            link: websiteHint.websiteUrl,
+            domain: websiteHint.websiteDomain,
+          },
+        ],
+        confidence: brregHint ? "high" : "medium",
+      };
+      source = brregHint ? "brreg_website" : "email_domain";
+      effectiveQuery = brregHint
+        ? `Brreg hjemmeside @${websiteHint.websiteDomain}`
+        : `E-post @${websiteHint.websiteDomain}`;
+      websiteDiscoverySource = brregHint ? "brreg" : "email";
+    } else {
+      logScan(company.orgnr, "Hint avvist — prøver Google", {
+        url: websiteHint.websiteUrl,
+        displayName: hintMeta.displayName,
+      });
+    }
+  }
+
+  if (!usedVerifiedHint) {
+    try {
+      hits = canSearch
+        ? await fetchHitsForQueries(searchQueries.slice(0, 3), {
+            orgnr: company.orgnr,
+          })
+        : [];
+      finalPick = pickBestWebsite(hits, company.name, {
+        municipalityName: primaryGeoPlace(company),
+      });
+    } catch {
+      hits = [];
+      finalPick = EMPTY_WEBSITE_PICK;
+    }
+
+    source = hasSerpApi()
+      ? hasGoogleCse()
+        ? "both"
+        : "serpapi"
+      : "google_cse";
+    websiteDiscoverySource = finalPick.hasWebsite ? "google" : null;
+
+    if (finalPick.hasWebsite && finalPick.websiteUrl) {
+      const meta = await fetchWebsitePageMetadata(finalPick.websiteUrl).catch(
+        () => ({
+          displayName: null,
+          facebookUrl: null,
+          instagramUrl: null,
+          linkedinUrl: null,
+        })
+      );
+      displayName = meta.displayName;
+      websiteFacebookUrl = meta.facebookUrl;
+      websiteInstagramUrl = meta.instagramUrl;
+      websiteLinkedInUrl = meta.linkedinUrl;
+
+      if (
+        !websiteUrlPlausibleForCompany(
+          finalPick.websiteUrl,
+          company.name,
+          displayName
+        )
+      ) {
+        logScan(company.orgnr, "Google-treff avvist", {
+          url: finalPick.websiteUrl,
+          displayName,
+        });
+        finalPick = EMPTY_WEBSITE_PICK;
+        websiteDiscoverySource = null;
+      }
+    }
+
     logScan(company.orgnr, "Nettside-metadata", {
       displayName,
       websiteFacebookUrl,
@@ -860,6 +926,7 @@ export async function scanCompanyWebsite(
   });
 
   const fallback = applyCrossLinkWebsiteFallback(finalPick, {
+    companyName: company.name,
     facebookWebsiteUrl: socialResult.facebookProfile?.linkedWebsiteUrl,
     instagramExternalUrl: socialResult.instagramProfile?.externalUrl,
   });
@@ -881,8 +948,8 @@ export async function scanCompanyWebsite(
   });
 
   const gulesider = await resolveGulesiderPresence(company, hits, {
-    canSearch: false,
-    ranGoogleSearch: true,
+    canSearch,
+    ranGoogleSearch: !usedVerifiedHint,
   });
 
   const base = fromPick(
