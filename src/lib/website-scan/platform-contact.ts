@@ -30,6 +30,7 @@ import {
   normalizeEmail,
 } from "@/lib/website-scan/resolve-company-email";
 import { socialUrlMatchesCompany } from "@/lib/website-scan/social-profiles";
+import { MAX_PLATFORM_FETCHES } from "./scan-api-budget";
 import type { WebsiteScanResult } from "./types";
 
 export type PlatformContactSource =
@@ -62,7 +63,6 @@ export type PlatformContactEnrichment = {
 
 const DIRECTORY_1881 = ["1881.no", "kart.1881.no"];
 const DIRECTORY_PROFF = ["proff.no"];
-const MAX_PLATFORM_FETCHES = 8;
 
 const DIRECTORY_FETCH_DOMAINS = new Set([
   "gulesider.no",
