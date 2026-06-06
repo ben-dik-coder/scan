@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
@@ -5,9 +6,13 @@ import { Container } from "@/components/ui/Container";
 import { OmOssContent } from "@/content/om-oss";
 import { legal } from "@/lib/legal";
 
-export const metadata = {
-  title: "Om oss — NyLead",
-  description: "Hvem står bak NyLead, og hvorfor tjenesten finnes.",
+export const metadata: Metadata = {
+  title: "Om oss",
+  description:
+    "NyLead er laget for norske B2B-selgere som vil finne nye firma, kontaktinfo og leads uten tung manuell research.",
+  alternates: {
+    canonical: "/om-oss",
+  },
 };
 
 export default function OmOssPage() {

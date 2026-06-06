@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
 import { HeroAudienceChips } from "@/components/marketing/HeroAudienceChips";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
@@ -22,9 +23,90 @@ import { Container } from "@/components/ui/Container";
 import { FEATURES, FEATURES_SECTION, HERO, TRUST } from "@/content/landing";
 import { site } from "@/lib/site";
 
+export const metadata: Metadata = {
+  title: "Finn nye firma med telefon og e-post",
+  description:
+    "Finn nye firma i Norge fra Brønnøysund. NyLead henter kontaktinfo, sjekker nettside med Google og lar deg ringe eller sende tilbud fra egen innboks.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "NyLead — Finn nye firma med telefon og e-post",
+    description:
+      "Brreg, Google-sjekk, kontaktinfo, arbeidskø, pipeline og e-post i ett verktøy for B2B-salg.",
+    url: site.url,
+    images: [
+      {
+        url: site.ogImage,
+        width: 1991,
+        height: 790,
+        alt: "NyLead dashboard med nye firma, kontaktinfo og nettside-sjekk.",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "NyLead — Finn nye firma med telefon og e-post",
+    description:
+      "Finn nye firma fra Brreg, hent kontaktinfo og send fra egen innboks.",
+    images: [site.ogImage],
+  },
+};
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${site.url}/#organization`,
+      name: site.name,
+      url: site.url,
+      logo: `${site.url}/favicon.svg`,
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${site.url}/#website`,
+      name: site.name,
+      url: site.url,
+      inLanguage: "nb-NO",
+      publisher: { "@id": `${site.url}/#organization` },
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${site.url}/#software`,
+      name: site.name,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: site.url,
+      description: site.description,
+      offers: {
+        "@type": "Offer",
+        price: "499",
+        priceCurrency: "NOK",
+        availability: "https://schema.org/InStock",
+      },
+      audience: {
+        "@type": "BusinessAudience",
+        audienceType: "B2B-selgere, rådgivere, webbyrå, regnskap, IT og markedsføring",
+      },
+      featureList: [
+        "Finn nye firma fra Brønnøysundregistrene",
+        "Hent telefon og trygg e-post fra flere kilder",
+        "Sjekk nettside med Google",
+        "Filtrer leads etter område, bransje og kontaktinfo",
+        "Arbeidskø, pipeline og e-post fra egen innboks",
+      ],
+    },
+  ],
+};
+
 export default function HomePage() {
   return (
     <div className="landing-canvas min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <SiteHeader />
 
       <section

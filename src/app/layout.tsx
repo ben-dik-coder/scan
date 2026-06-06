@@ -9,8 +9,62 @@ import { site } from "@/lib/site";
 const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;if(p!=='/app'&&p.indexOf('/app/')!==0)return;document.documentElement.classList.add('app-glass-theme');document.body.classList.add('app-glass-theme');document.documentElement.style.backgroundColor='#1e3a5f';document.body.style.color='#f8fafc';})();`;
 
 export const metadata: Metadata = {
-  title: `${site.name} — Finn leads og selg nettsider`,
+  metadataBase: new URL(site.url),
+  applicationName: site.name,
+  title: {
+    default: `${site.name} — Finn nye firma med kontaktinfo`,
+    template: `%s — ${site.name}`,
+  },
   description: site.description,
+  keywords: site.keywords,
+  authors: [{ name: "NyLead" }],
+  creator: "NyLead",
+  publisher: "NyLead",
+  category: "B2B sales software",
+  alternates: {
+    canonical: "/",
+    languages: {
+      "nb-NO": "/",
+    },
+  },
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
+  openGraph: {
+    type: "website",
+    locale: "nb_NO",
+    url: site.url,
+    siteName: site.name,
+    title: `${site.name} — Finn nye firma med kontaktinfo`,
+    description: site.description,
+    images: [
+      {
+        url: site.ogImage,
+        width: 1991,
+        height: 790,
+        alt: "NyLead viser nye firma, kontaktinfo, nettside-sjekk og arbeidskø.",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${site.name} — Finn nye firma med kontaktinfo`,
+    description: site.description,
+    images: [site.ogImage],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
 };
 
 export const viewport = {
