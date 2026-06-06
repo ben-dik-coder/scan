@@ -9,9 +9,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { sequenceId, orgnrs } = (await request.json()) as {
+  const { sequenceId, orgnrs, skipFirstStep } = (await request.json()) as {
     sequenceId?: string;
     orgnrs?: string[];
+    skipFirstStep?: boolean;
   };
 
   const entitlements = await getEntitlements(user.id);
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await enrollInSequence(user.id, sequenceId, orgnrs);
+    await enrollInSequence(user.id, sequenceId, orgnrs, { skipFirstStep });
     return NextResponse.json({ ok: true, enrolled: orgnrs.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Feil";

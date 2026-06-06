@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Company, EmailTemplate } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { resolveCompanyEmail } from "@/lib/website-scan/resolve-company-email";
@@ -14,7 +14,7 @@ import { Mail, Send } from "lucide-react";
 import Link from "next/link";
 import { legal } from "@/lib/legal";
 
-type SequenceOption = { id: string; name: string; steps: unknown[] };
+type SequenceOption = { id: string; name: string; active?: boolean; steps: unknown[] };
 
 type Props = {
   selectedCompanies: Company[];
@@ -79,11 +79,29 @@ export function SendCampaignForm({
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const activeSequences = useMemo(
+    () => sequences.filter((s) => s.active !== false),
+    [sequences]
+  );
+  const defaultSequenceId = activeSequences[0]?.id ?? "";
+  const [useSequence, setUseSequence] = useState(activeSequences.length > 0);
+  const [selectedSequenceId, setSelectedSequenceId] = useState(defaultSequenceId);
 
   const selectedAccount =
     accounts.find((a) => a.provider === mailProvider) ?? accounts[0] ?? null;
   const sendEmail = selectedAccount?.email ?? connectedEmail;
   const hasMultipleAccounts = accounts.length > 1;
+
+  useEffect(() => {
+    if (activeSequences.length === 0) {
+      setUseSequence(false);
+      setSelectedSequenceId("");
+      return;
+    }
+    setSelectedSequenceId((prev) =>
+      prev && activeSequences.some((s) => s.id === prev) ? prev : activeSequences[0].id
+    );
+  }, [activeSequences]);
 
   useEffect(() => {
     if (accounts.length === 0) {
@@ -194,11 +212,16 @@ export function SendCampaignForm({
       }));
 
       if (isDemoMode()) {
-        demo.sendCampaignDemo(
-          recipients.map((r) => r.orgnr),
-          subject
-        );
-        setResult(`Demo: ${recipients.length} e-poster «sendt» (øvelse)`);
+        const orgnrs = recipients.map((r) => r.orgnr);
+        demo.sendCampaignDemo(orgnrs, subject);
+        if (useSequence && selectedSequenceId) {
+          demo.enrollSequenceDemo(selectedSequenceId, orgnrs);
+        }
+        const followUp =
+          useSequence && selectedSequenceId
+            ? " Automatisk oppfølging er startet (steg 2–6)."
+            : "";
+        setResult(`Demo: ${recipients.length} e-poster «sendt» (øvelse).${followUp}`);
         onSent();
         return;
       }
@@ -225,10 +248,34 @@ export function SendCampaignForm({
         throw new Error(data.error ?? "Sending feilet");
       }
 
+      const sentOrgnrs = (data.sentOrgnrs as string[] | undefined) ??
+        recipients.map((r) => r.orgnr);
+
+      if (useSequence && selectedSequenceId && sentOrgnrs.length > 0) {
+        const enrollRes = await fetch("/api/sequences/enroll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sequenceId: selectedSequenceId,
+            orgnrs: sentOrgnrs,
+            skipFirstStep: true,
+          }),
+        });
+        const enrollData = await enrollRes.json();
+        if (!enrollRes.ok) {
+          throw new Error(enrollData.error ?? "Kunne ikke starte automatisk oppfølging");
+        }
+      }
+
       const from = data.fromEmail ?? sendEmail;
+      const followUp =
+        useSequence && selectedSequenceId
+          ? ` Oppfølging startet for ${sentOrgnrs.length} firma (steg 2–6).`
+          : "";
       setResult(
         `Sendt ${data.sent} av ${recipients.length} fra ${from}` +
-          (data.failed > 0 ? ` (${data.failed} feilet)` : "")
+          (data.failed > 0 ? ` (${data.failed} feilet)` : "") +
+          followUp
       );
       if (data.errors?.length) {
         setError(data.errors.slice(0, 3).join(" · "));
@@ -551,16 +598,61 @@ export function SendCampaignForm({
             </label>
           )}
 
-          {sequences.length > 0 && (
-            <p
+          {activeSequences.length > 0 && (
+            <div
               className={
                 light
-                  ? "rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
-                  : "rounded-lg border border-white/10 bg-white/[0.02] p-3 font-sans text-xs text-white/45"
+                  ? "space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  : "space-y-3 rounded-lg border border-white/10 bg-white/[0.02] p-3"
               }
             >
-              Automatisk 6-stegs oppfølging finner du under Sekvenser i menyen.
-            </p>
+              <label
+                className={
+                  light
+                    ? "flex items-start gap-2 text-sm text-slate-700"
+                    : "flex items-start gap-2 text-sm text-white/75"
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={useSequence}
+                  onChange={(e) => setUseSequence(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <strong>Start automatisk oppfølging</strong> etter denne e-posten (steg 2–6 på dag
+                  2, 5, 10, 16 og 25)
+                </span>
+              </label>
+              {useSequence && (
+                <label className="block text-sm">
+                  <span className={labelClass}>Velg sekvens</span>
+                  <select
+                    value={selectedSequenceId}
+                    onChange={(e) => setSelectedSequenceId(e.target.value)}
+                    className={inputClass}
+                  >
+                    {activeSequences.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p
+                    className={
+                      light
+                        ? "mt-1 text-[11px] text-slate-400"
+                        : "mt-1 font-sans text-[11px] text-white/35"
+                    }
+                  >
+                    Steg 1 er den e-posten du sender nå. Resten går automatisk.{" "}
+                    <Link href="/app/sekvenser" className="underline">
+                      Se alle steg
+                    </Link>
+                  </p>
+                </label>
+              )}
+            </div>
           )}
         </div>
       )}

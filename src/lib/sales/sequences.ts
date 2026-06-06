@@ -135,7 +135,8 @@ export async function processDueSequences(
 export async function enrollInSequence(
   userId: string,
   sequenceId: string,
-  orgnrs: string[]
+  orgnrs: string[],
+  options?: { skipFirstStep?: boolean }
 ) {
   const supabase = createServiceClient();
 
@@ -147,7 +148,13 @@ export async function enrollInSequence(
 
   if (!steps?.length) throw new Error("Sekvensen har ingen steg");
 
-  const firstStep = steps[0];
+  const skipFirst = Boolean(options?.skipFirstStep);
+  const startStep = skipFirst ? 1 : 0;
+  if (startStep >= steps.length) {
+    throw new Error("Sekvensen har ingen oppfølgingssteg etter første e-post");
+  }
+
+  const firstStep = steps.find((s) => s.step_order === startStep) ?? steps[startStep];
   const nextSend = new Date();
   nextSend.setDate(nextSend.getDate() + firstStep.delay_days);
 
@@ -157,7 +164,7 @@ export async function enrollInSequence(
         user_id: userId,
         sequence_id: sequenceId,
         orgnr,
-        current_step: 0,
+        current_step: startStep,
         status: "active",
         enrolled_at: new Date().toISOString(),
         next_send_at: nextSend.toISOString(),

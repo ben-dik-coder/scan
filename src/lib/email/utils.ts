@@ -48,6 +48,7 @@ export type SendCampaignResult = {
   failed: number;
   blocked: number;
   unsubscribed: number;
+  sentOrgnrs: string[];
   errors: string[];
 };
 

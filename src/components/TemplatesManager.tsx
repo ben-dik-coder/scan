@@ -1,7 +1,9 @@
 "use client";
 
 import type { EmailTemplate } from "@/types/database";
+import Link from "next/link";
 import { useState } from "react";
+import { ArrowRight, FileText } from "lucide-react";
 import { PageHeader } from "@/components/ui/primitives";
 
 export function TemplatesManager({
@@ -51,6 +53,30 @@ export function TemplatesManager({
       />
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <section className="scan-surface-full overflow-hidden">
+        <div className="scan-glass-header flex items-start gap-3 border-b border-white/10 p-4 sm:p-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/20 text-sky-300">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="scan-glass-strong text-base font-semibold">Hva er maler?</h2>
+            <p className="scan-glass-muted mt-1 text-sm">
+              Ferdige tekster du bruker når du sender fra Skann eller arbeidskøen. Velg en mal der —
+              eller lag din egen her. Bytt ut{" "}
+              <code className="text-sky-200">[ditt navn]</code> og lignende.{" "}
+              <code className="text-sky-200">{"{firmanavn}"}</code> fylles inn automatisk.
+            </p>
+            <Link
+              href="/app"
+              className="scan-btn-primary mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold"
+            >
+              Gå til Skann og bruk en mal
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       {templates.length === 0 && !loading && (
         <p className="scan-glass-muted text-sm">

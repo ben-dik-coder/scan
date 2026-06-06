@@ -52,6 +52,7 @@ export async function sendCampaign(
       failed: 0,
       blocked,
       unsubscribed,
+      sentOrgnrs: [] as string[],
       errors: ["Ingen gyldige mottakere å sende til."],
     };
   }
@@ -76,6 +77,7 @@ export async function sendCampaign(
 
   let sent = 0;
   let failed = 0;
+  const sentOrgnrs: string[] = [];
   const errors: string[] = [];
 
   for (const recipient of toSend) {
@@ -169,6 +171,7 @@ export async function sendCampaign(
       }
 
       sent += 1;
+      sentOrgnrs.push(recipient.orgnr);
       const now = new Date().toISOString();
       if (recipientRow) {
         await supabase
@@ -216,6 +219,7 @@ export async function sendCampaign(
     failed,
     blocked,
     unsubscribed,
+    sentOrgnrs,
     errors,
     fromEmail: userMail?.email,
   };

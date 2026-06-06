@@ -5,6 +5,7 @@ import {
   ListTodo,
   Mail,
   Sparkles,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -106,8 +107,25 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     duration: "5 min",
   },
   {
-    id: "overview",
+    id: "sequences",
     phase: "Steg 4",
+    title: "Sekvenser — automatisk oppfølging",
+    summary: "Send én e-post — resten følger av seg selv.",
+    body:
+      "Under Sekvenser ser du oppfølgings-e-postene (dag 2, 5, 10 osv.). Du starter sekvensen fra Skann: send første e-post og kryss av «Start automatisk oppfølging». Da slipper du å huske oppfølging selv.",
+    tips: [
+      "Tilpass [ditt navn] og [telefon] i malene før du sender",
+      "Kryss av for oppfølging når du sender fra Skann eller køen",
+      "Svar fra kunden pauser sekvensen automatisk",
+    ],
+    icon: Workflow,
+    href: "/app/sekvenser",
+    ctaLabel: "Se sekvenser",
+    duration: "3 min",
+  },
+  {
+    id: "overview",
+    phase: "Steg 5",
     title: "Oversikt — se fremdriften",
     summary: "Tall, neste steg og kontroll på salget.",
     body:
