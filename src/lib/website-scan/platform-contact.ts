@@ -25,6 +25,10 @@ import {
   isDirectoryOwnedEmail,
   parseEmailFromText,
 } from "./resolve-company-email";
+import {
+  emailPlausibleForCompany,
+  normalizeEmail,
+} from "@/lib/website-scan/resolve-company-email";
 import { socialUrlMatchesCompany } from "@/lib/website-scan/social-profiles";
 import type { WebsiteScanResult } from "./types";
 
@@ -253,11 +257,15 @@ function recordFromFacebook(
     profile?.intro,
     profile?.address
   );
-  const email = pickEmailFromSerpApiText(
+  const rawEmail = pickEmailFromSerpApiText(
     profile?.email,
     profile?.intro,
     profile?.address
   );
+  const email =
+    rawEmail && emailPlausibleForCompany(rawEmail, companyName)
+      ? normalizeEmail(rawEmail)
+      : null;
 
   if (!phone && !email) return null;
 
@@ -279,7 +287,11 @@ function recordFromInstagram(
   if (!instagramContactTrusted(scan, companyName)) return null;
 
   const phone = pickPhoneFromSerpApiText(profile?.phone, profile?.biography);
-  const email = pickEmailFromSerpApiText(profile?.email, profile?.biography);
+  const rawEmail = pickEmailFromSerpApiText(profile?.email, profile?.biography);
+  const email =
+    rawEmail && emailPlausibleForCompany(rawEmail, companyName)
+      ? normalizeEmail(rawEmail)
+      : null;
   const externalWebsite = externalWebsiteFromUrl(profile?.externalUrl, companyName);
 
   if (!phone && !email) return null;
