@@ -217,3 +217,7 @@ alter table public.user_mail_accounts
 
 alter table public.user_mail_accounts
   add constraint user_mail_accounts_user_id_email_key unique (user_id, email);
+
+-- 016: Standard e-postkonto når bruker har flere koblet
+alter table public.user_settings
+  add column if not exists default_mail_account_id uuid;

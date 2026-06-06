@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Company, EmailTemplate } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { resolveCompanyEmail } from "@/lib/website-scan/resolve-company-email";
-import { EmailConnect, providerLabel, useConnectedEmail } from "@/components/EmailConnect";
+import { EmailConnect, useConnectedEmail } from "@/components/EmailConnect";
 import { CampaignPreviewPanel } from "@/components/campaign/CampaignPreviewPanel";
 import { CampaignRecipientsPanel } from "@/components/campaign/CampaignRecipientsPanel";
 import { isDemoMode } from "@/lib/demo/config";
@@ -60,8 +60,12 @@ export function SendCampaignForm({
     templates.find((t) => t.is_default) ??
     templates[0];
 
-  const { accounts, email: connectedEmail, loading: emailLoading } = useConnectedEmail();
-  const [mailAccountId, setMailAccountId] = useState<string | null>(null);
+  const {
+    accounts,
+    defaultAccountId,
+    email: connectedEmail,
+    loading: emailLoading,
+  } = useConnectedEmail();
   const [subject, setSubject] = useState(
     websiteTemplate?.subject ?? DEFAULT_WEBSITE_PITCH.subject
   );
@@ -88,9 +92,8 @@ export function SendCampaignForm({
   const [selectedSequenceId, setSelectedSequenceId] = useState(defaultSequenceId);
 
   const selectedAccount =
-    accounts.find((a) => a.id === mailAccountId) ?? accounts[0] ?? null;
+    accounts.find((a) => a.id === defaultAccountId) ?? accounts[0] ?? null;
   const sendEmail = selectedAccount?.email ?? connectedEmail;
-  const hasMultipleAccounts = accounts.length > 1;
 
   useEffect(() => {
     if (activeSequences.length === 0) {
@@ -102,16 +105,6 @@ export function SendCampaignForm({
       prev && activeSequences.some((s) => s.id === prev) ? prev : activeSequences[0].id
     );
   }, [activeSequences]);
-
-  useEffect(() => {
-    if (accounts.length === 0) {
-      setMailAccountId(null);
-      return;
-    }
-    setMailAccountId((prev) =>
-      prev && accounts.some((a) => a.id === prev) ? prev : accounts[0].id
-    );
-  }, [accounts]);
 
   const resolvedRecipients = selectedCompanies
     .map((c) => {
@@ -400,23 +393,6 @@ export function SendCampaignForm({
       )}
 
       {sendEmail && <EmailConnect light={light} compact />}
-
-      {!isDemoMode() && sendEmail && hasMultipleAccounts && (
-        <label className="block text-sm">
-          <span className={labelClass}>Send fra</span>
-          <select
-            value={mailAccountId ?? ""}
-            onChange={(e) => setMailAccountId(e.target.value)}
-            className={inputClass}
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {providerLabel(a.provider)} — {a.email}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
 
       <section className="space-y-3">
         {isSingle && <h4 className={zoneClass}>Melding</h4>}

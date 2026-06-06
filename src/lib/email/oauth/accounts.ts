@@ -37,6 +37,43 @@ export async function listMailAccounts(userId: string): Promise<MailAccount[]> {
   return (data ?? []) as MailAccount[];
 }
 
+export async function getDefaultMailAccountId(userId: string): Promise<string | null> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("user_settings")
+    .select("default_mail_account_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data?.default_mail_account_id ?? null;
+}
+
+export async function setDefaultMailAccountId(
+  userId: string,
+  accountId: string | null
+) {
+  const supabase = createServiceClient();
+  const { error } = await supabase.from("user_settings").upsert(
+    {
+      user_id: userId,
+      default_mail_account_id: accountId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
+  if (error) throw new Error(error.message);
+}
+
+async function resolveAccountWithToken(
+  userId: string,
+  accounts: MailAccount[],
+  accountId: string
+): Promise<(MailAccount & { accessToken: string }) | null> {
+  const acc = accounts.find((a) => a.id === accountId);
+  if (!acc) return null;
+  const token = await getValidAccessToken(userId, acc.id);
+  return token ? { ...acc, accessToken: token } : null;
+}
+
 export async function getPreferredMailAccount(
   userId: string,
   preferred?: MailAccountPreference
@@ -47,10 +84,13 @@ export async function getPreferredMailAccount(
   const pref = normalizePreference(preferred);
 
   if (pref?.accountId) {
-    const acc = accounts.find((a) => a.id === pref.accountId);
-    if (!acc) return null;
-    const token = await getValidAccessToken(userId, acc.id);
-    return token ? { ...acc, accessToken: token } : null;
+    return resolveAccountWithToken(userId, accounts, pref.accountId);
+  }
+
+  const defaultId = await getDefaultMailAccountId(userId);
+  if (defaultId) {
+    const fromDefault = await resolveAccountWithToken(userId, accounts, defaultId);
+    if (fromDefault) return fromDefault;
   }
 
   const order: MailProvider[] = pref?.provider
@@ -119,6 +159,11 @@ export async function deleteMailAccountById(userId: string, accountId: string) {
     .delete()
     .eq("user_id", userId)
     .eq("id", accountId);
+
+  const defaultId = await getDefaultMailAccountId(userId);
+  if (defaultId === accountId) {
+    await setDefaultMailAccountId(userId, null);
+  }
 }
 
 async function getValidAccessToken(

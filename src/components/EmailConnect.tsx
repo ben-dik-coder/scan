@@ -43,6 +43,8 @@ export function EmailConnect({
   const [smtpSaving, setSmtpSaving] = useState(false);
   const [smtpError, setSmtpError] = useState<string | null>(null);
   const [showAllOptions, setShowAllOptions] = useState(false);
+  const [defaultAccountId, setDefaultAccountId] = useState<string | null>(null);
+  const [savingDefault, setSavingDefault] = useState(false);
 
   const load = useCallback(async () => {
     if (demo) {
@@ -53,13 +55,31 @@ export function EmailConnect({
       const res = await fetch("/api/email/accounts");
       if (res.ok) {
         const data = await res.json();
-        setAccounts(data.accounts ?? []);
+        const nextAccounts = (data.accounts ?? []) as MailAccount[];
+        setAccounts(nextAccounts);
         setProviders(data.providers ?? { google: false, microsoft: false });
+        setDefaultAccountId(
+          data.defaultMailAccountId ?? nextAccounts[0]?.id ?? null
+        );
       }
     } finally {
       setLoading(false);
     }
   }, [demo]);
+
+  async function saveDefaultAccount(accountId: string) {
+    setDefaultAccountId(accountId);
+    setSavingDefault(true);
+    try {
+      await fetch("/api/email/accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ defaultAccountId: accountId }),
+      });
+    } finally {
+      setSavingDefault(false);
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -144,6 +164,29 @@ export function EmailConnect({
     hasConnected && !showAllOptions && (embedded || compact);
 
   if (compact && hasConnected && !showAllOptions) {
+    if (accounts.length > 1) {
+      return (
+        <div className="space-y-1.5">
+          <MailAccountPicker
+            accounts={accounts}
+            value={defaultAccountId ?? accounts[0]?.id ?? ""}
+            onChange={saveDefaultAccount}
+            saving={savingDefault}
+            light={light}
+          />
+          <Link
+            href="/app/innstillinger"
+            className={cn(
+              "text-[11px] font-semibold underline",
+              light ? "text-slate-500 hover:text-slate-700" : "text-white/45 hover:text-white/70"
+            )}
+          >
+            Administrer kontoer
+          </Link>
+        </div>
+      );
+    }
+
     const primary = accounts[0];
     return (
       <p className={cn("text-xs", light ? "text-slate-500" : "text-white/45")}>
@@ -296,7 +339,11 @@ export function EmailConnect({
             light ? "text-slate-900" : "text-white"
           )}
         >
-          Steg 1: Koble e-postkontoen din
+          {accounts.length > 1
+            ? "Velg hvilken konto som sender"
+            : hasConnected
+              ? "Koblet e-post"
+              : "Steg 1: Koble e-postkontoen din"}
         </p>
       )}
       {!embedded && (
@@ -315,6 +362,19 @@ export function EmailConnect({
               Kampanjer sendes fra kontoen du kobler her — ikke fra NyLead.
             </p>
           </div>
+        </div>
+      )}
+
+      {accounts.length > 1 && (
+        <div className={cn(!embedded && "mt-4", embedded && "mb-3")}>
+          <MailAccountPicker
+            accounts={accounts}
+            value={defaultAccountId ?? accounts[0]?.id ?? ""}
+            onChange={saveDefaultAccount}
+            saving={savingDefault}
+            light={light}
+            showLabel={!embedded}
+          />
         </div>
       )}
 
@@ -363,12 +423,63 @@ export function EmailConnect({
 
       {!compact && !embedded && (
         <p className={cn("mt-3 text-xs", light ? "text-slate-400" : "text-white/35")}>
-          {providers.microsoft
-            ? "Du kan koble flere Gmail- og Outlook-kontoer — velg hvilken som sender når du sender kampanje."
-            : "Privat Hotmail? Be plattform-eier sette opp Outlook (OAuth) — da trenger du ikke app-passord."}
+          {accounts.length > 1
+            ? "Valget over gjelder alle kampanjer og automatisk oppfølging."
+            : providers.microsoft
+              ? "Du kan koble flere Gmail- og Outlook-kontoer med «Legg til eller bytt konto»."
+              : "Privat Hotmail? Be plattform-eier sette opp Outlook (OAuth) — da trenger du ikke app-passord."}
         </p>
       )}
     </div>
+  );
+}
+
+function MailAccountPicker({
+  accounts,
+  value,
+  onChange,
+  saving,
+  light,
+  showLabel = true,
+}: {
+  accounts: MailAccount[];
+  value: string;
+  onChange: (accountId: string) => void;
+  saving?: boolean;
+  light: boolean;
+  showLabel?: boolean;
+}) {
+  return (
+    <label className="block">
+      {showLabel && (
+        <span
+          className={cn(
+            "mb-1.5 flex items-center gap-1.5 text-xs font-semibold",
+            light ? "text-slate-700" : "text-white/90"
+          )}
+        >
+          Send fra
+          {saving && <Loader2 className="h-3 w-3 animate-spin opacity-60" aria-hidden />}
+        </span>
+      )}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={saving}
+        className={cn(
+          "w-full rounded-lg border px-3 py-2.5 text-xs font-medium",
+          light
+            ? "border-slate-200 bg-white text-slate-900"
+            : "scan-input border-white/15 text-sm"
+        )}
+      >
+        {accounts.map((account) => (
+          <option key={account.id} value={account.id}>
+            {providerLabel(account.provider)} — {account.email}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -577,17 +688,20 @@ function ProviderRow({
 
 export function useConnectedEmail(): {
   accounts: MailAccount[];
+  defaultAccountId: string | null;
   email: string | null;
   provider: MailProvider | null;
   loading: boolean;
   refresh: () => void;
 } {
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
+  const [defaultAccountId, setDefaultAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
     if (isDemoMode()) {
       setAccounts([]);
+      setDefaultAccountId(null);
       setLoading(false);
       return;
     }
@@ -595,7 +709,11 @@ export function useConnectedEmail(): {
     fetch("/api/email/accounts")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        setAccounts((data?.accounts ?? []) as MailAccount[]);
+        const nextAccounts = (data?.accounts ?? []) as MailAccount[];
+        setAccounts(nextAccounts);
+        setDefaultAccountId(
+          data?.defaultMailAccountId ?? nextAccounts[0]?.id ?? null
+        );
       })
       .finally(() => setLoading(false));
   }, []);
@@ -604,11 +722,13 @@ export function useConnectedEmail(): {
     refresh();
   }, [refresh]);
 
-  const first = accounts[0];
+  const selected =
+    accounts.find((a) => a.id === defaultAccountId) ?? accounts[0] ?? null;
   return {
     accounts,
-    email: first?.email ?? null,
-    provider: first?.provider ?? null,
+    defaultAccountId,
+    email: selected?.email ?? null,
+    provider: selected?.provider ?? null,
     loading,
     refresh,
   };
