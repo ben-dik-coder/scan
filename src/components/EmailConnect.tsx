@@ -36,7 +36,7 @@ export function EmailConnect({
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [providers, setProviders] = useState({ google: false, microsoft: false });
   const [loading, setLoading] = useState(true);
-  const [disconnecting, setDisconnecting] = useState<MailProvider | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [smtpOpen, setSmtpOpen] = useState(false);
   const [smtpEmail, setSmtpEmail] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
@@ -65,10 +65,10 @@ export function EmailConnect({
     void load();
   }, [load]);
 
-  async function disconnect(provider: MailProvider) {
-    setDisconnecting(provider);
+  async function disconnect(accountId: string) {
+    setDisconnecting(accountId);
     try {
-      await fetch(`/api/email/accounts?provider=${provider}`, { method: "DELETE" });
+      await fetch(`/api/email/accounts?id=${accountId}`, { method: "DELETE" });
       await load();
       if (accounts.length <= 1) setShowAllOptions(true);
     } finally {
@@ -136,10 +136,10 @@ export function EmailConnect({
     );
   }
 
-  const google = accounts.find((a) => a.provider === "google");
-  const microsoft = accounts.find((a) => a.provider === "microsoft");
-  const smtp = accounts.find((a) => a.provider === "smtp");
+  const oauthAccounts = accounts.filter((a) => a.provider !== "smtp");
+  const smtpAccounts = accounts.filter((a) => a.provider === "smtp");
   const hasConnected = accounts.length > 0;
+  const oauthAvailable = providers.google || providers.microsoft;
   const collapseOptions =
     hasConnected && !showAllOptions && (embedded || compact);
 
@@ -170,45 +170,79 @@ export function EmailConnect({
   function renderProviderOptions() {
     return (
       <div className="space-y-2">
-        <ProviderRow
-          label="Outlook (OAuth)"
-          hint={
-            providers.microsoft
-              ? "Anbefalt for Hotmail når app-passord feiler"
-              : "Krever Azure-oppsett — se docs/OUTLOOK_SETUP.md"
-          }
-          connected={microsoft}
-          configured={providers.microsoft}
-          connectHref="/api/email/connect/microsoft"
-          onDisconnect={() => disconnect("microsoft")}
-          disconnecting={disconnecting === "microsoft"}
-          light={light}
-          muted={!providers.microsoft}
-        />
-
-        <ProviderRow
-          label="Gmail"
-          hint="Anbefalt — ett klikk"
-          connected={google}
-          configured={providers.google}
-          connectHref="/api/email/connect/google"
-          onDisconnect={() => disconnect("google")}
-          disconnecting={disconnecting === "google"}
-          light={light}
-        />
-
-        {smtp ? (
+        {oauthAccounts.map((account) => (
           <ProviderRow
-            label="Outlook / Hotmail"
-            hint="App-passord"
-            connected={smtp}
+            key={account.id}
+            label={providerLabel(account.provider)}
+            connected={account}
             configured
             connectHref="#"
-            onDisconnect={() => disconnect("smtp")}
-            disconnecting={disconnecting === "smtp"}
+            onDisconnect={() => disconnect(account.id)}
+            disconnecting={disconnecting === account.id}
             light={light}
           />
-        ) : (
+        ))}
+
+        {providers.microsoft && (
+          <ProviderRow
+            label="Outlook (OAuth)"
+            hint={
+              oauthAccounts.some((a) => a.provider === "microsoft")
+                ? "Legg til en til Outlook-konto"
+                : "Anbefalt for Hotmail — ett klikk, ingen app-passord"
+            }
+            configured
+            connectHref="/api/email/connect/microsoft"
+            onDisconnect={() => {}}
+            disconnecting={false}
+            light={light}
+          />
+        )}
+
+        {providers.google && (
+          <ProviderRow
+            label="Gmail"
+            hint={
+              oauthAccounts.some((a) => a.provider === "google")
+                ? "Legg til en til Gmail-konto"
+                : "Anbefalt — ett klikk"
+            }
+            configured
+            connectHref="/api/email/connect/google"
+            onDisconnect={() => {}}
+            disconnecting={false}
+            light={light}
+          />
+        )}
+
+        {!providers.microsoft && (
+          <ProviderRow
+            label="Outlook (OAuth)"
+            hint="Krever Azure-oppsett — se docs/OUTLOOK_SETUP.md"
+            configured={false}
+            connectHref="#"
+            onDisconnect={() => {}}
+            disconnecting={false}
+            light={light}
+            muted
+          />
+        )}
+
+        {smtpAccounts.map((account) => (
+          <ProviderRow
+            key={account.id}
+            label="Outlook / Hotmail"
+            hint="App-passord"
+            connected={account}
+            configured
+            connectHref="#"
+            onDisconnect={() => disconnect(account.id)}
+            disconnecting={disconnecting === account.id}
+            light={light}
+          />
+        ))}
+
+        {!oauthAvailable && smtpAccounts.length === 0 && (
           <SmtpAccordion
             smtpOpen={smtpOpen}
             setSmtpOpen={setSmtpOpen}
@@ -221,6 +255,33 @@ export function EmailConnect({
             onSubmit={saveSmtp}
             light={light}
           />
+        )}
+
+        {oauthAvailable && smtpAccounts.length === 0 && (
+          <details className="group">
+            <summary
+              className={cn(
+                "cursor-pointer list-none text-[11px] underline transition",
+                light ? "text-slate-400 hover:text-slate-600" : "text-white/35 hover:text-white/55"
+              )}
+            >
+              Trenger du app-passord i stedet? (sjelden nødvendig)
+            </summary>
+            <div className="mt-2">
+              <SmtpAccordion
+                smtpOpen={smtpOpen || true}
+                setSmtpOpen={setSmtpOpen}
+                smtpEmail={smtpEmail}
+                setSmtpEmail={setSmtpEmail}
+                smtpPassword={smtpPassword}
+                setSmtpPassword={setSmtpPassword}
+                smtpSaving={smtpSaving}
+                smtpError={smtpError}
+                onSubmit={saveSmtp}
+                light={light}
+              />
+            </div>
+          </details>
         )}
       </div>
     );
@@ -261,13 +322,13 @@ export function EmailConnect({
         <div className={cn(!embedded && "mt-4", "space-y-2")}>
           {accounts.map((account) => (
             <ProviderRow
-              key={account.provider}
+              key={account.id}
               label={providerLabel(account.provider)}
               connected={account}
               configured
               connectHref="#"
-              onDisconnect={() => disconnect(account.provider)}
-              disconnecting={disconnecting === account.provider}
+              onDisconnect={() => disconnect(account.id)}
+              disconnecting={disconnecting === account.id}
               light={light}
             />
           ))}
@@ -302,8 +363,9 @@ export function EmailConnect({
 
       {!compact && !embedded && (
         <p className={cn("mt-3 text-xs", light ? "text-slate-400" : "text-white/35")}>
-          Privat Hotmail som ikke tar app-passord? Bruk <strong>Outlook (OAuth)</strong> over
-          (plattform-eier må sette opp Azure én gang).
+          {providers.microsoft
+            ? "Du kan koble flere Gmail- og Outlook-kontoer — velg hvilken som sender når du sender kampanje."
+            : "Privat Hotmail? Be plattform-eier sette opp Outlook (OAuth) — da trenger du ikke app-passord."}
         </p>
       )}
     </div>

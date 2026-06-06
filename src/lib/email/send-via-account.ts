@@ -11,9 +11,15 @@ export async function sendEmailViaUserAccount(
     subject: string;
     html: string;
     preferredProvider?: MailProvider;
+    mailAccountId?: string;
   }
 ): Promise<{ fromEmail: string; provider: MailProvider }> {
-  const account = await getPreferredMailAccount(userId, input.preferredProvider);
+  const account = await getPreferredMailAccount(
+    userId,
+    input.mailAccountId
+      ? { accountId: input.mailAccountId }
+      : input.preferredProvider
+  );
   if (!account) {
     throw new Error(
       "Ingen e-post koblet. Gå til Innstillinger og koble Gmail eller Outlook (eller SMTP app-passord)."

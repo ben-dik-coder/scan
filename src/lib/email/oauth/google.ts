@@ -13,7 +13,7 @@ export function googleAuthUrl(state: string) {
     response_type: "code",
     scope: GOOGLE_SCOPES,
     access_type: "offline",
-    prompt: "consent",
+    prompt: "select_account consent",
     state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;

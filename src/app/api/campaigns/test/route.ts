@@ -21,11 +21,13 @@ export async function POST(request: Request) {
     body: emailBody,
     previewOrgnr,
     mailProvider,
+    mailAccountId,
   } = body as {
     subject?: string;
     body?: string;
     previewOrgnr?: string;
     mailProvider?: "google" | "microsoft" | "smtp";
+    mailAccountId?: string;
   };
 
   if (!subject?.trim() || !emailBody?.trim() || !previewOrgnr?.trim()) {
@@ -59,9 +61,13 @@ export async function POST(request: Request) {
 
   const userMail = await getPreferredMailAccount(
     user.id,
-    mailProvider === "google" || mailProvider === "microsoft" || mailProvider === "smtp"
-      ? mailProvider
-      : undefined
+    typeof mailAccountId === "string" && mailAccountId.trim()
+      ? { accountId: mailAccountId.trim() }
+      : mailProvider === "google" ||
+          mailProvider === "microsoft" ||
+          mailProvider === "smtp"
+        ? mailProvider
+        : undefined
   );
 
   if (!userMail) {

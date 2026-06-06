@@ -61,7 +61,7 @@ export function SendCampaignForm({
     templates[0];
 
   const { accounts, email: connectedEmail, loading: emailLoading } = useConnectedEmail();
-  const [mailProvider, setMailProvider] = useState<"google" | "microsoft" | "smtp" | null>(null);
+  const [mailAccountId, setMailAccountId] = useState<string | null>(null);
   const [subject, setSubject] = useState(
     websiteTemplate?.subject ?? DEFAULT_WEBSITE_PITCH.subject
   );
@@ -88,7 +88,7 @@ export function SendCampaignForm({
   const [selectedSequenceId, setSelectedSequenceId] = useState(defaultSequenceId);
 
   const selectedAccount =
-    accounts.find((a) => a.provider === mailProvider) ?? accounts[0] ?? null;
+    accounts.find((a) => a.id === mailAccountId) ?? accounts[0] ?? null;
   const sendEmail = selectedAccount?.email ?? connectedEmail;
   const hasMultipleAccounts = accounts.length > 1;
 
@@ -105,11 +105,11 @@ export function SendCampaignForm({
 
   useEffect(() => {
     if (accounts.length === 0) {
-      setMailProvider(null);
+      setMailAccountId(null);
       return;
     }
-    setMailProvider((prev) =>
-      prev && accounts.some((a) => a.provider === prev) ? prev : accounts[0].provider
+    setMailAccountId((prev) =>
+      prev && accounts.some((a) => a.id === prev) ? prev : accounts[0].id
     );
   }, [accounts]);
 
@@ -173,7 +173,7 @@ export function SendCampaignForm({
           subject,
           body,
           previewOrgnr,
-          mailProvider: selectedAccount?.provider,
+          mailAccountId: selectedAccount?.id,
         }),
       });
       const data = await res.json();
@@ -240,7 +240,7 @@ export function SendCampaignForm({
           body,
           recipients,
           allowPersonal,
-          mailProvider: selectedAccount?.provider,
+          mailAccountId: selectedAccount?.id,
         }),
       });
       const data = await res.json();
@@ -405,14 +405,12 @@ export function SendCampaignForm({
         <label className="block text-sm">
           <span className={labelClass}>Send fra</span>
           <select
-            value={mailProvider ?? ""}
-            onChange={(e) =>
-              setMailProvider(e.target.value as "google" | "microsoft" | "smtp")
-            }
+            value={mailAccountId ?? ""}
+            onChange={(e) => setMailAccountId(e.target.value)}
             className={inputClass}
           >
             {accounts.map((a) => (
-              <option key={a.provider} value={a.provider}>
+              <option key={a.id} value={a.id}>
                 {providerLabel(a.provider)} — {a.email}
               </option>
             ))}

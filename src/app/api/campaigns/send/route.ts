@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     recipients: clientRecipients,
     allowPersonal,
     mailProvider,
+    mailAccountId,
   } = body as {
     subject?: string;
     subjectB?: string;
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
     recipients?: Array<{ orgnr: string; email: string; name: string }>;
     allowPersonal?: boolean;
     mailProvider?: "google" | "microsoft" | "smtp";
+    mailAccountId?: string;
   };
 
   const hasClientRecipients = Boolean(clientRecipients?.length);
@@ -121,6 +123,10 @@ export async function POST(request: Request) {
       body: emailBody,
       recipients,
       allowPersonal: Boolean(allowPersonal),
+      mailAccountId:
+        typeof mailAccountId === "string" && mailAccountId.trim()
+          ? mailAccountId.trim()
+          : undefined,
       mailProvider:
         mailProvider === "google" ||
         mailProvider === "microsoft" ||

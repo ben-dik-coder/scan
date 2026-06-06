@@ -24,12 +24,20 @@ function getResend() {
 
 export async function sendCampaign(
   userId: string,
-  input: SendCampaignInput & { mailProvider?: MailProvider }
+  input: SendCampaignInput & {
+    mailProvider?: MailProvider;
+    mailAccountId?: string;
+  }
 ): Promise<SendCampaignResult & { campaignId: string | null; fromEmail?: string }> {
   const supabase = createServiceClient();
   const resend = getResend();
   const from = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
-  const userMail = await getPreferredMailAccount(userId, input.mailProvider);
+  const userMail = await getPreferredMailAccount(
+    userId,
+    input.mailAccountId
+      ? { accountId: input.mailAccountId }
+      : input.mailProvider
+  );
 
   const { data: unsubRows } = await supabase
     .from("email_unsubscribes")
