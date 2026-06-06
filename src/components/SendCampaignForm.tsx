@@ -33,13 +33,16 @@ const DEFAULT_WEBSITE_PITCH = {
 
 Gratulerer med nyregistrering!
 
-Jeg heter [ditt navn] og lager nettsider for nye bedrifter i [ditt område]. Mange starter uten nettside — jeg hjelper med en enkel, profesjonell side til en fornuftig pris.
+Jeg heter [ditt navn] og jobber med [din tjeneste] for nye bedrifter i [ditt område]. Mange i oppstartsfasen bruker mye tid på det som må gjøres — og lite på det som gjør at nye kunder faktisk finner dem.
 
-Har dere tenkt på nettside ennå? Jeg tar gjerne en uforpliktende prat.
+Vi hjelper firma som dere med [kort verdi] uten at det blir komplisert eller dyrt.
+
+Har dere 15 minutter til en uforpliktende prat denne eller neste uke?
 
 Med vennlig hilsen
 [ditt navn]
-[ditt firma]`,
+[ditt firma]
+[telefon] · [e-post]`,
 };
 
 export function SendCampaignForm({
@@ -556,7 +559,7 @@ export function SendCampaignForm({
                   : "rounded-lg border border-white/10 bg-white/[0.02] p-3 font-sans text-xs text-white/45"
               }
             >
-              Automatisk oppfølging (dag 3, 7) finner du under Sekvenser i menyen.
+              Automatisk 6-stegs oppfølging finner du under Sekvenser i menyen.
             </p>
           )}
         </div>

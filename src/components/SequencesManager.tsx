@@ -30,7 +30,7 @@ export function SequencesManager({ sequences }: { sequences: Sequence[] }) {
     <div className="space-y-8">
       <PageHeader
         title="E-postsekvenser"
-        description="Automatisk oppfølging — dag 0, 3, 7"
+        description="Automatisk oppfølging — 6 steg over 25 dager"
         action={
           <button
             type="button"

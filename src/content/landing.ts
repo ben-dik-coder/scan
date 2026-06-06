@@ -156,7 +156,7 @@ export const PLATFORM_PILLARS: PlatformPillar[] = [
       "Velg 20, 50 eller 100 firma og send én felles melding",
       "Koble Gmail, Outlook eller SMTP — det er din adresse som står på",
       "Maler du kan gjenbruke: «Gratulerer med oppstart — kan vi hjelpe?»",
-      "Oppfølging på dag 3 og 7 hvis du vil det",
+      "Automatisk oppfølging over 6 steg — dag 0, 2, 5, 10, 16 og 25",
       "Pipeline så du ser hvem som er ny, kontaktet, svarte eller booket møte",
     ],
   },
@@ -452,6 +452,6 @@ export const WORKFLOW_DETAILED = [
     step: 4,
     title: "Send og følg opp",
     description:
-      "Én mal med {firmanavn}, send til alle du valgte — fra din Gmail eller Outlook. Vil du, tar sekvensen over på dag 3 og 7.",
+      "Én mal med {firmanavn}, send til alle du valgte — fra din Gmail eller Outlook. Vil du, tar en 6-stegs sekvens over automatisk.",
   },
 ];

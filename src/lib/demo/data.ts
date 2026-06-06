@@ -6,6 +6,7 @@ import type {
   UserLead,
 } from "@/types/database";
 import { computeLeadScore } from "@/lib/sales/lead-score";
+import { DEFAULT_SEQUENCES, DEFAULT_TEMPLATES } from "@/lib/sales/default-content";
 
 const today = new Date();
 
@@ -265,90 +266,34 @@ export function buildDemoCompanies(): CompanyWithLead[] {
   }));
 }
 
-export const DEMO_TEMPLATES: EmailTemplate[] = [
-  {
-    id: "tpl-1",
-    user_id: "demo-user",
-    name: "Tilbud nettside — nyoppstart",
-    subject: "Gratulerer med oppstart, {firmanavn}!",
-    body: `Hei {firmanavn},
+export const DEMO_TEMPLATES: EmailTemplate[] = DEFAULT_TEMPLATES.map((t, i) => ({
+  id: `tpl-${i + 1}`,
+  user_id: "demo-user",
+  name: t.name,
+  subject: t.subject,
+  body: t.body,
+  is_default: i === 0,
+  created_at: daysAgo(30),
+  updated_at: daysAgo(30),
+}));
 
-Gratulerer med nyregistrering!
-
-Jeg lager nettsider for nye bedrifter i området. Mange starter uten nettside — jeg hjelper med en enkel, profesjonell side til en fornuftig pris.
-
-Har dere tenkt på nettside ennå? Jeg tar gjerne en uforpliktende prat.
-
-Med vennlig hilsen`,
-    is_default: true,
+export const DEMO_SEQUENCES = DEFAULT_SEQUENCES.map((sequence, seqIndex) => ({
+  id: `seq-${seqIndex + 1}`,
+  user_id: "demo-user",
+  name: sequence.name,
+  active: seqIndex === 0,
+  created_at: daysAgo(30),
+  updated_at: daysAgo(30),
+  steps: sequence.steps.map((s, i) => ({
+    id: `step-${seqIndex + 1}-${i + 1}`,
+    sequence_id: `seq-${seqIndex + 1}`,
+    step_order: s.step_order,
+    delay_days: s.delay_days,
+    subject: s.subject,
+    body: s.body,
     created_at: daysAgo(30),
-    updated_at: daysAgo(30),
-  },
-  {
-    id: "tpl-2",
-    user_id: "demo-user",
-    name: "Kort intro — webdesign",
-    subject: "Kort spørsmål til {firmanavn}",
-    body: `Hei {firmanavn},
-
-Vi så at dere nettopp har registrert firma. Jeg er webdesigner og lager nettsider for nye bedrifter — er det noe dere vurderer?
-
-Med vennlig hilsen`,
-    is_default: false,
-    created_at: daysAgo(30),
-    updated_at: daysAgo(30),
-  },
-  {
-    id: "tpl-3",
-    user_id: "demo-user",
-    name: "Oppfølging — dag 3",
-    subject: "Re: tilbud til {firmanavn}",
-    body: "Hei {firmanavn},\n\nJeg sendte en mail for noen dager siden. Er det fortsatt aktuelt?\n\nMed vennlig hilsen",
-    is_default: false,
-    created_at: daysAgo(30),
-    updated_at: daysAgo(30),
-  },
-];
-
-export const DEMO_SEQUENCES = [
-  {
-    id: "seq-1",
-    user_id: "demo-user",
-    name: "Standard 3-stegs oppfølging",
-    active: true,
-    created_at: daysAgo(30),
-    updated_at: daysAgo(30),
-    steps: [
-      {
-        id: "step-1",
-        sequence_id: "seq-1",
-        step_order: 0,
-        delay_days: 0,
-        subject: "Gratulerer med oppstart, {firmanavn}!",
-        body: DEMO_TEMPLATES[1].body,
-        created_at: daysAgo(30),
-      },
-      {
-        id: "step-2",
-        sequence_id: "seq-1",
-        step_order: 1,
-        delay_days: 3,
-        subject: "Re: kort spørsmål til {firmanavn}",
-        body: DEMO_TEMPLATES[2].body,
-        created_at: daysAgo(30),
-      },
-      {
-        id: "step-3",
-        sequence_id: "seq-1",
-        step_order: 2,
-        delay_days: 7,
-        subject: "Siste forsøk — {firmanavn}",
-        body: "Hei {firmanavn},\n\nDette er siste gang jeg tar kontakt. Lykke til videre!\n\nMed vennlig hilsen",
-        created_at: daysAgo(30),
-      },
-    ],
-  },
-];
+  })),
+}));
 
 export const DEMO_CAMPAIGNS: EmailCampaign[] = [
   {

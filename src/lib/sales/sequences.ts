@@ -197,7 +197,7 @@ export async function seedDefaultSalesAssets(userId: string) {
 
   if ((count ?? 0) > 0) return;
 
-  const { DEFAULT_TEMPLATES, DEFAULT_SEQUENCE } = await import("./constants");
+  const { DEFAULT_TEMPLATES, DEFAULT_SEQUENCES } = await import("./constants");
 
   await supabase.from("email_templates").insert(
     DEFAULT_TEMPLATES.map((t, i) => ({
@@ -209,18 +209,20 @@ export async function seedDefaultSalesAssets(userId: string) {
     }))
   );
 
-  const { data: seq } = await supabase
-    .from("email_sequences")
-    .insert({ user_id: userId, name: DEFAULT_SEQUENCE.name, active: true })
-    .select("id")
-    .single();
+  for (const [index, sequence] of DEFAULT_SEQUENCES.entries()) {
+    const { data: seq } = await supabase
+      .from("email_sequences")
+      .insert({ user_id: userId, name: sequence.name, active: index === 0 })
+      .select("id")
+      .single();
 
-  if (seq) {
-    await supabase.from("email_sequence_steps").insert(
-      DEFAULT_SEQUENCE.steps.map((s) => ({
-        sequence_id: seq.id,
-        ...s,
-      }))
-    );
+    if (seq) {
+      await supabase.from("email_sequence_steps").insert(
+        sequence.steps.map((s) => ({
+          sequence_id: seq.id,
+          ...s,
+        }))
+      );
+    }
   }
 }
