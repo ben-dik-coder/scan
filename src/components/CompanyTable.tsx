@@ -237,6 +237,7 @@ const PLATFORM_SOURCE_LABELS: Record<string, string> = {
   website: "nettside",
   facebook: "Facebook",
   instagram: "Instagram",
+  google_places: "Google",
 };
 
 function PhoneCell({

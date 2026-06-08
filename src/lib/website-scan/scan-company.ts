@@ -160,6 +160,28 @@ function fromPick(
 }
 
 /** Berik eksisterende delt cache med kontakt fra alle plattformer — uten full ny Google-skann. */
+function placesSeedContactsFromPhone(
+  places: GooglePlacesDiscovery,
+  orgnr: string
+): PlatformContactRecord[] | undefined {
+  if (
+    !places.phone ||
+    !phonePlausibleForCompany(places.phone, orgnr)
+  ) {
+    return undefined;
+  }
+
+  return [
+    {
+      source: "google_places",
+      url: "https://www.google.com/maps",
+      phone: places.phone,
+      email: null,
+      externalWebsite: places.websiteUrl ?? null,
+    },
+  ];
+}
+
 export async function enrichScanContacts(
   company: WebsiteScanCompanyInput,
   scan: WebsiteScanResult,
@@ -167,11 +189,16 @@ export async function enrichScanContacts(
     skipFetch?: boolean;
     allowSocialProfileEnrichment?: boolean;
     seedContacts?: PlatformContactRecord[];
+    userId?: string;
   }
 ): Promise<WebsiteScanResult> {
+  const needsPlacesPhone =
+    !scan.enrichedPhone && isSerperPlacesEnabled() && !options?.seedContacts?.length;
+
   if (
     scan.contactsEnriched &&
-    (scan.contactEnrichmentVersion ?? 1) >= CONTACT_ENRICHMENT_VERSION
+    (scan.contactEnrichmentVersion ?? 1) >= CONTACT_ENRICHMENT_VERSION &&
+    !needsPlacesPhone
   ) {
     return scan;
   }
@@ -217,12 +244,40 @@ export async function enrichScanContacts(
     link: h.link,
   }));
 
+  let seedContacts = options?.seedContacts;
+  if (!seedContacts?.length && needsPlacesPhone) {
+    if (!isSerperPlacesEnabled()) {
+      seedContacts = undefined;
+    } else {
+      try {
+        const places = await discoverFromGooglePlaces(company, options?.userId);
+        seedContacts =
+          (places && placesSeedContactsFromPhone(places, company.orgnr)) ?? [
+            {
+              source: "google_places",
+              url: "https://www.google.com/maps",
+              phone: null,
+              email: null,
+              externalWebsite: places?.websiteUrl ?? null,
+            },
+          ];
+      } catch (err) {
+        if (err instanceof SerperLimitReachedError) throw err;
+        logScan(
+          company.orgnr,
+          "Serper Places under kontakt-berikelse feilet",
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+  }
+
   const enrichment = await enrichPlatformContacts(company, workingScan, {
     hits,
     runDirectorySearch: false,
     fetchHitsForQueries: undefined,
     skipFetch: options?.skipFetch,
-    seedContacts: options?.seedContacts,
+    seedContacts,
   });
 
   return applyPlatformContactEnrichment(workingScan, enrichment);
@@ -1217,20 +1272,16 @@ export async function scanCompanyWebsite(
           confidence: placesDiscovery.confidence,
         });
 
-        if (
-          placesDiscovery.phone &&
-          phonePlausibleForCompany(placesDiscovery.phone, company.orgnr)
-        ) {
-          placesSeedContacts = [
+        placesSeedContacts =
+          placesSeedContactsFromPhone(placesDiscovery, company.orgnr) ?? [
             {
               source: "google_places",
               url: "https://www.google.com/maps",
-              phone: placesDiscovery.phone,
+              phone: null,
               email: null,
               externalWebsite: placesDiscovery.websiteUrl ?? null,
             },
           ];
-        }
 
         if (placesDiscovery.websiteUrl) {
           const hintMeta = await fetchWebsitePageMetadata(

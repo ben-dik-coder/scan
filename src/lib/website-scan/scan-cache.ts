@@ -12,15 +12,24 @@ export const CONTACT_ENRICHMENT_VERSION = 4;
  * Alle innloggede brukere leser samme rad — ny skann kjøres bare når data mangler
  * eller bruker trykker «Sjekk på nytt».
  */
+function hasGooglePlacesContactLookup(scan: WebsiteScanResult): boolean {
+  return (
+    scan.platformContacts?.some((contact) => contact.source === "google_places") ??
+    false
+  );
+}
+
 export function isWebsiteScanCacheComplete(
   scan: WebsiteScanResult,
   social: ScanSocialOptions
 ): boolean {
   if (!isSocialScanComplete(scan, social)) return false;
-  return (
+  const contactsOk =
     scan.contactsEnriched === true &&
-    (scan.contactEnrichmentVersion ?? 1) >= CONTACT_ENRICHMENT_VERSION
-  );
+    (scan.contactEnrichmentVersion ?? 1) >= CONTACT_ENRICHMENT_VERSION;
+  if (!contactsOk) return false;
+  if (!scan.enrichedPhone && !hasGooglePlacesContactLookup(scan)) return false;
+  return true;
 }
 
 export function needsContactEnrichment(scan: WebsiteScanResult): boolean {

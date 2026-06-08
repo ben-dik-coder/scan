@@ -522,6 +522,73 @@ await test("finalizePhoneWithApi1881 uten API-nøkkel beholder kandidat", async 
   assert.equal(result.from1881, false);
 });
 
+await test("Cache uten telefon mangler Google Maps-oppslag", () => {
+  const scan = {
+    orgnr: "927534150",
+    hasWebsite: false,
+    websiteKind: "none" as const,
+    websiteUrl: null,
+    websiteDomain: null,
+    bookingPlatform: null,
+    source: "serpapi" as const,
+    confidence: "low" as const,
+    query: "",
+    scannedAt: new Date().toISOString(),
+    contactsEnriched: true,
+    contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
+    enrichedPhone: null,
+    socialScan: {
+      includeFacebook: false,
+      includeInstagram: false,
+      includeLinkedIn: true,
+      version: SOCIAL_SCAN_VERSION,
+    },
+    linkedinUrl: null,
+  };
+  assert.equal(
+    isWebsiteScanCacheComplete(scan, DEFAULT_SCAN_SOCIAL_OPTIONS),
+    false
+  );
+});
+
+await test("Cache uten telefon er komplett etter Google Maps-oppslag", () => {
+  const scan = {
+    orgnr: "927534150",
+    hasWebsite: false,
+    websiteKind: "none" as const,
+    websiteUrl: null,
+    websiteDomain: null,
+    bookingPlatform: null,
+    source: "serpapi" as const,
+    confidence: "low" as const,
+    query: "",
+    scannedAt: new Date().toISOString(),
+    contactsEnriched: true,
+    contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
+    enrichedPhone: null,
+    socialScan: {
+      includeFacebook: false,
+      includeInstagram: false,
+      includeLinkedIn: true,
+      version: SOCIAL_SCAN_VERSION,
+    },
+    linkedinUrl: null,
+    platformContacts: [
+      {
+        source: "google_places",
+        url: "https://www.google.com/maps",
+        phone: null,
+        email: null,
+        externalWebsite: null,
+      },
+    ],
+  };
+  assert.equal(
+    isWebsiteScanCacheComplete(scan, DEFAULT_SCAN_SOCIAL_OPTIONS),
+    true
+  );
+});
+
 await test("Gammel cache med contactsEnriched v1 trenger re-berikelse", () => {
   assert.equal(
     needsContactEnrichment({
@@ -593,6 +660,15 @@ await test("Skann med Facebook er cache-gyldig når Facebook fortsatt er valgt",
     },
     facebookUrl: null,
     linkedinUrl: null,
+    platformContacts: [
+      {
+        source: "google_places",
+        url: "https://www.google.com/maps",
+        phone: null,
+        email: null,
+        externalWebsite: null,
+      },
+    ],
   };
   const withFacebook = { ...DEFAULT_SCAN_SOCIAL_OPTIONS, includeFacebook: true };
   assert.equal(needsSocialRescan(scan, withFacebook), false);
