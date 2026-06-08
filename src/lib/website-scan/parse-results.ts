@@ -348,6 +348,8 @@ export function companyMatchesResult(
       titleHay && tokens.every((t) => titleHay.includes(compactAlnum(t)));
     if (titleMatch) {
       if (!link) return true;
+      // Katalog/Facebook i tittel-treff — brukes bl.a. Google Maps der «nettside» ofte er Facebook.
+      if (fullDomain && isNonOwnWebsiteDomain(fullDomain)) return true;
       return domainSimilarToCompany(fullDomain, companyName);
     }
     if (allTokensInHaystack(tokens, domainHay)) return true;

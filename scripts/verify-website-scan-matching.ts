@@ -113,6 +113,39 @@ await test("URL alene kan ikke matche på path-tokens", () => {
   );
 });
 
+await test("Google Maps-tittel matcher selv når nettside er Facebook", () => {
+  assert.equal(
+    companyMatchesResult(
+      "Nita Spa&Massasje",
+      "https://www.facebook.com/profile.php?id=61576058440821",
+      "NITAS SPA & MASSASJE AS"
+    ),
+    true
+  );
+});
+
+await test("Proff-treff matcher tittel men velges ikke som nettside", () => {
+  assert.equal(
+    companyMatchesResult(
+      "Nitas Spa & Massasje AS - Org.nr. 926 440 179 - Bodø",
+      "https://www.proff.no/selskap/nitas-spa-massasje-as/bodo",
+      "NITAS SPA & MASSASJE AS"
+    ),
+    true
+  );
+  const pick = pickBestWebsite(
+    [
+      {
+        title: "Nitas Spa & Massasje AS - Org.nr. 926 440 179 - Bodø",
+        link: "https://www.proff.no/selskap/nitas-spa-massasje-as/bodo",
+      },
+    ],
+    "NITAS SPA & MASSASJE AS",
+    { municipalityName: "Bodø" }
+  );
+  assert.equal(pick.hasWebsite, false);
+});
+
 await test("Nettside avviser delvis domene-treff (narvik-spa ≠ frisør)", () => {
   const pick = pickBestWebsite(
     [
