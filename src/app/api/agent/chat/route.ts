@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: Record<string, unknown>) => {
+        if (request.signal.aborted) return;
         controller.enqueue(encoder.encode(sseLine(data)));
       };
 
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest) {
           history,
           { userId: user?.id ?? "demo", runId: run.id },
           async (event) => {
+            if (request.signal.aborted) return;
             if (event.type === "text") {
               send({ type: "text", content: event.content });
             } else if (event.type === "tool_start") {
@@ -154,8 +156,16 @@ export async function POST(request: NextRequest) {
                 listName: event.listName,
               });
             }
-          }
+          },
+          request.signal
         );
+
+        if (request.signal.aborted) {
+          if (user && !isDemoMode()) {
+            await finishRun(run.id, null, "failed", "Stoppet av bruker");
+          }
+          return;
+        }
 
         if (user && !isDemoMode() && assistantText) {
           await saveMessage(conversationId!, "assistant", assistantText);
@@ -169,6 +179,15 @@ export async function POST(request: NextRequest) {
           );
         }
       } catch (err) {
+        if (
+          request.signal.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          if (user && !isDemoMode()) {
+            await finishRun(run.id, null, "failed", "Stoppet av bruker");
+          }
+          return;
+        }
         const errMsg = err instanceof Error ? err.message : "Ukjent feil";
         send({ type: "error", message: errMsg });
         if (user && !isDemoMode()) {

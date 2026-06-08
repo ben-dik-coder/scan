@@ -6,7 +6,8 @@ import { notifySavedListChanged } from "@/lib/agent/saved-list-bus";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
-import { Loader2, Send } from "lucide-react";
+import { AGENT_MAX_TOOL_LOOPS } from "@/lib/agent/constants";
+import { Loader2, Send, Square } from "lucide-react";
 
 type ChatMessage = {
   id: string;
@@ -53,7 +54,9 @@ export function AgentChatPanel({
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [toolStep, setToolStep] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
   const scrollToBottom = useCallback(() => {
@@ -73,15 +76,24 @@ export function AgentChatPanel({
     [scrollToBottom]
   );
 
+  const stopRequest = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || loading) return;
 
+      abortRef.current?.abort();
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+
       setInput("");
       appendMessage({ role: "user", content: trimmed });
       setLoading(true);
       setActiveTool(null);
+      setToolStep(0);
 
       try {
         const res = await fetch("/api/agent/chat", {
@@ -91,6 +103,7 @@ export function AgentChatPanel({
             message: trimmed,
             conversationId: conversationId ?? undefined,
           }),
+          signal: abortController.signal,
         });
 
         if (!res.ok) {
@@ -138,6 +151,7 @@ export function AgentChatPanel({
               assistantText = event.content;
             } else if (event.type === "tool_start" && typeof event.tool === "string") {
               setActiveTool(event.tool);
+              setToolStep((n) => n + 1);
             } else if (
               event.type === "tool_end" &&
               typeof event.summary === "string"
@@ -174,14 +188,22 @@ export function AgentChatPanel({
             listName: savedListName,
           });
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          appendMessage({ role: "status", content: "Stoppet av deg" });
+          return;
+        }
         appendMessage({
           role: "assistant",
           content: "Kunne ikke nå agenten. Sjekk nettverket og prøv igjen.",
         });
       } finally {
+        if (abortRef.current === abortController) {
+          abortRef.current = null;
+        }
         setLoading(false);
         setActiveTool(null);
+        setToolStep(0);
       }
     },
     [appendMessage, conversationId, loading]
@@ -215,18 +237,26 @@ export function AgentChatPanel({
             disabled={loading}
             className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-sky-400/50 focus:outline-none"
           />
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white transition hover:bg-sky-400 disabled:opacity-40"
-            aria-label="Send"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
+          {loading ? (
+            <button
+              type="button"
+              onClick={stopRequest}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-500/20 px-3 text-sm font-medium text-red-200 transition hover:bg-red-500/30"
+              aria-label="Stopp"
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
+              Stopp
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white transition hover:bg-sky-400 disabled:opacity-40"
+              aria-label="Send"
+            >
               <Send className="h-4 w-4" />
-            )}
-          </button>
+            </button>
+          )}
         </form>
       }
     >
@@ -287,10 +317,12 @@ export function AgentChatPanel({
           </div>
         ))}
 
-        {loading && activeTool && (
+        {loading && (
           <p className="flex items-center gap-2 text-xs text-slate-400">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {activeTool.replace(/_/g, " ")}…
+            {activeTool
+              ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+              : "Tenker…"}
           </p>
         )}
       </div>

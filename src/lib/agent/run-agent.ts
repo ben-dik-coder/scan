@@ -52,10 +52,17 @@ function getAgentModel(): string {
   return normalizeAgentModel(raw);
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
 export async function runAgentChat(
   history: AgentChatMessage[],
   ctx: AgentToolContext,
-  onEvent: (event: AgentStreamEvent) => void | Promise<void>
+  onEvent: (event: AgentStreamEvent) => void | Promise<void>,
+  signal?: AbortSignal
 ): Promise<{ assistantText: string; link?: string }> {
   if (!isAgentEnabled()) {
     const msg = AGENT_DISABLED_MESSAGE;
@@ -86,6 +93,8 @@ export async function runAgentChat(
   let loops = 0;
 
   while (loops < AGENT_MAX_TOOL_LOOPS) {
+    throwIfAborted(signal);
+
     const response = await client.chat.completions.create({
       model: getAgentModel(),
       messages,
@@ -111,6 +120,7 @@ export async function runAgentChat(
     });
 
     for (const tc of toolCalls) {
+      throwIfAborted(signal);
       if (tc.type !== "function") continue;
       const toolName = tc.function.name;
       let parsedArgs: Record<string, unknown> = {};
