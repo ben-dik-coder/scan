@@ -51,7 +51,7 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "scan_websites",
       description:
-        "Skann nettside for en liste med orgnr (maks 50). Søker også etter Facebook-side. Må kjøres før filter_no_website.",
+        "Skann nettside for en liste med orgnr (maks 100). Søker også etter Facebook-side. Må kjøres før filter_no_website.",
       parameters: {
         type: "object",
         properties: {

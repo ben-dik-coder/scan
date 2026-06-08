@@ -117,6 +117,8 @@ const BOOKING_PLATFORM_DOMAINS = [
   "setmore.com",
   "appointedd.com",
   "bestilltime.no",
+  "bestille.no",
+  "easy-booking.no",
   "vagaro.com",
   "resengo.com",
   "g.page",

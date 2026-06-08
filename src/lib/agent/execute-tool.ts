@@ -4,6 +4,7 @@ import {
   hasContactInfo,
 } from "@/lib/billing/usage";
 import { AGENT_MAX_COMPANIES_PER_JOB, AGENT_SCAN_DELAY_MS } from "@/lib/agent/constants";
+import { resolveAgentSearchIndustryFilters } from "@/lib/agent/search-filters";
 import { buildAgentScanUrl } from "@/lib/agent/build-scan-url";
 import {
   isBookingOnlyScan,
@@ -120,7 +121,7 @@ export async function executeAgentTool(
     case "enrich_contacts":
       return executeEnrichContacts(ctx, args);
     case "filter_no_website":
-      return executeFilterNoWebsite(args);
+      return executeFilterNoWebsite(ctx, args);
     case "save_list":
       return executeSaveList(ctx, args);
     default:
@@ -153,10 +154,16 @@ async function executeSearchCompanies(
   const municipalityCode =
     typeof args.municipalityCode === "string" ? args.municipalityCode : undefined;
   const regionId = typeof args.regionId === "string" ? args.regionId : undefined;
-  const industryGroup =
-    typeof args.industryGroup === "string" ? args.industryGroup : undefined;
-  const professionId =
-    typeof args.professionId === "string" ? args.professionId : undefined;
+  const {
+    industryGroup,
+    professionId,
+    mappedFromProfession,
+  } = resolveAgentSearchIndustryFilters({
+    industryGroup:
+      typeof args.industryGroup === "string" ? args.industryGroup : undefined,
+    professionId:
+      typeof args.professionId === "string" ? args.professionId : undefined,
+  });
   const defaultDays = industryGroup || professionId ? 0 : 30;
   const days =
     typeof args.days === "number" && Number.isFinite(args.days)
@@ -206,7 +213,14 @@ async function executeSearchCompanies(
       returned: companies.length,
       truncated,
       orgnrs: companies.map((c) => c.orgnr),
-      filters: { municipalityCode, regionId, industryGroup, professionId, days },
+      filters: {
+        municipalityCode,
+        regionId,
+        industryGroup,
+        professionId,
+        mappedFromProfession,
+        days,
+      },
     },
   };
 }
@@ -379,6 +393,7 @@ async function executeEnrichContacts(
 }
 
 async function executeFilterNoWebsite(
+  ctx: AgentToolContext,
   args: Record<string, unknown>
 ): Promise<ToolExecutionResult> {
   const orgnrs = capOrgnrs(
@@ -388,8 +403,18 @@ async function executeFilterNoWebsite(
     return { summary: "Ingen firma å filtrere", data: { orgnrs: [] } };
   }
 
-  const scans = await loadCachedWebsiteScans(orgnrs);
-  const scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
+  let scans = await loadCachedWebsiteScans(orgnrs);
+  let scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
+  const pendingBeforeScan = orgnrs.filter((o) => !scanByOrgnr.has(o));
+  let autoScanned = 0;
+
+  if (pendingBeforeScan.length > 0) {
+    await executeScanWebsites(ctx, { orgnrs: pendingBeforeScan });
+    autoScanned = pendingBeforeScan.length;
+    scans = await loadCachedWebsiteScans(orgnrs);
+    scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
+  }
+
   const notScanned = orgnrs.filter((o) => !scanByOrgnr.has(o));
   const without = orgnrs.filter((o) =>
     isLeadWithoutOwnSite(scanByOrgnr.get(o))
@@ -401,6 +426,9 @@ async function executeFilterNoWebsite(
   ]);
 
   const summaryParts = [`${without.length} uten nettside`];
+  if (autoScanned > 0) {
+    summaryParts.unshift(`Skannet ${autoScanned} firma automatisk før filtrering`);
+  }
   if (notScanned.length > 0) {
     summaryParts.push(
       `${notScanned.length} utelatt fordi de ikke er skannet — kjør scan_websites på disse orgnr først`
@@ -412,6 +440,7 @@ async function executeFilterNoWebsite(
     data: {
       orgnrs: without,
       count: without.length,
+      autoScanned,
       notScanned,
       excludedNotScanned: notScanned.length,
       companies: confirmedCompanies.map((c) => ({

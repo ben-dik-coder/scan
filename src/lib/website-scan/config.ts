@@ -11,6 +11,11 @@ export function hasSerpApi(): boolean {
   if (process.env.SERPAPI_DISABLED === "true" || process.env.SERPAPI_DISABLED === "1") {
     return false;
   }
+  const enabled =
+    process.env.SERPAPI_ENABLED === "true" || process.env.SERPAPI_ENABLED === "1";
+  if (!enabled) {
+    return false;
+  }
   return Boolean(process.env.SERPAPI_API_KEY?.trim());
 }
 

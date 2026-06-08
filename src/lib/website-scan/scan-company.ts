@@ -803,47 +803,54 @@ async function fetchHitsForQuery(
   query: string,
   options?: { serpNum?: number; orgnr?: string }
 ): Promise<SearchHit[]> {
-  if (hasSerpApi()) {
+  if (hasSerper()) {
     try {
-      return await searchSerpApi(query, { num: options?.serpNum });
+      return await trySerperSearch(query, options);
     } catch (err) {
       logScan(
         options?.orgnr ?? "?",
-        `SerpAPI feilet: ${query}`,
+        `Serper feilet: ${query}`,
         err instanceof Error ? err.message : err
       );
-      if (hasGoogleCse()) {
-        return await searchGoogleCse(query);
-      }
-      if (hasSerper()) {
-        return await trySerperSearch(query, options);
-      }
-      if (hasFreeWebSearch()) {
-        return await searchDuckDuckGo(query);
-      }
-      throw err;
+    }
+  }
+
+  if (hasFreeWebSearch()) {
+    try {
+      return await searchDuckDuckGo(query);
+    } catch (err) {
+      logScan(
+        options?.orgnr ?? "?",
+        `DuckDuckGo feilet: ${query}`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 
   if (hasGoogleCse()) {
-    return await searchGoogleCse(query);
+    try {
+      return await searchGoogleCse(query);
+    } catch (err) {
+      logScan(
+        options?.orgnr ?? "?",
+        `Google CSE feilet: ${query}`,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
-  if (hasSerper()) {
-    return await trySerperSearch(query, options);
-  }
-
-  if (hasFreeWebSearch()) {
-    return await searchDuckDuckGo(query);
+  if (hasSerpApi()) {
+    return await searchSerpApi(query, { num: options?.serpNum });
   }
 
   return [];
 }
 
 function resolveSearchSource(): WebsiteScanSource {
-  if (hasSerpApi()) return "serpapi";
-  if (hasGoogleCse()) return "google_cse";
   if (hasSerper()) return "serper";
+  if (hasFreeWebSearch()) return "google_cse";
+  if (hasGoogleCse()) return "google_cse";
+  if (hasSerpApi()) return "serpapi";
   return "google_cse";
 }
 

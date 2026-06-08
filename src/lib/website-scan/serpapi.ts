@@ -1,3 +1,4 @@
+import { hasSerpApi } from "./config";
 import type { SearchHit } from "./parse-results";
 
 type SerpOrganic = {
@@ -16,6 +17,9 @@ export async function searchSerpApi(
   query: string,
   options?: { num?: number }
 ): Promise<SearchHit[]> {
+  if (!hasSerpApi()) {
+    throw new Error("SerpAPI er ikke aktivert (sett SERPAPI_ENABLED=true)");
+  }
   const apiKey = process.env.SERPAPI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("SerpAPI er ikke konfigurert");
