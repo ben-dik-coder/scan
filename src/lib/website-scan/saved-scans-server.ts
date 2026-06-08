@@ -12,7 +12,8 @@ type ScanRow = {
 /**
  * Delt plattform-cache: én rad per orgnr i `company_website_scans`.
  * Når bruker A har sjekket et firma, gjenbruker bruker B samme resultat uten nye API-kall.
- * Re-skanning skjer bare ved «Sjekk på nytt» eller når cache mangler felt (f.eks. Gulesider).
+ * Re-skanning skjer ved «Sjekk på nytt», når sosial-valg endres (f.eks. +Facebook),
+ * eller når cache mangler felt (f.eks. Gulesider).
  */
 export const WEBSITE_SCAN_CACHE_POLICY = "shared_per_orgnr" as const;
 

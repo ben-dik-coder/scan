@@ -26,8 +26,15 @@ import {
 import { resolveCompanyPhone } from "../src/lib/website-scan/resolve-company-contact";
 import {
   CONTACT_ENRICHMENT_VERSION,
+  isWebsiteScanCacheComplete,
   needsContactEnrichment,
 } from "../src/lib/website-scan/scan-cache";
+import {
+  DEFAULT_SCAN_SOCIAL_OPTIONS,
+  isSocialScanComplete,
+  needsSocialRescan,
+  SOCIAL_SCAN_VERSION,
+} from "../src/lib/website-scan/scan-social-options";
 import {
   enrichFacebookWithSerpApi,
   profileMatchesCompany,
@@ -527,6 +534,64 @@ await test("Gammel cache med contactsEnriched v1 trenger re-berikelse", () => {
     }),
     true
   );
+});
+
+await test("Skann uten Facebook trenger nytt søk når Facebook hukes av", () => {
+  const scan = {
+    orgnr: "937510179",
+    hasWebsite: true,
+    websiteKind: "own" as const,
+    websiteUrl: "https://example.no",
+    websiteDomain: "example.no",
+    bookingPlatform: null,
+    source: "serpapi" as const,
+    confidence: "high" as const,
+    query: "test",
+    scannedAt: new Date().toISOString(),
+    contactsEnriched: true,
+    contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
+    socialScan: {
+      includeFacebook: false,
+      includeInstagram: false,
+      includeLinkedIn: true,
+      version: SOCIAL_SCAN_VERSION,
+    },
+    facebookUrl: null,
+    linkedinUrl: null,
+  };
+  const withFacebook = { ...DEFAULT_SCAN_SOCIAL_OPTIONS, includeFacebook: true };
+  assert.equal(needsSocialRescan(scan, withFacebook), true);
+  assert.equal(isSocialScanComplete(scan, withFacebook), false);
+  assert.equal(isWebsiteScanCacheComplete(scan, withFacebook), false);
+});
+
+await test("Skann med Facebook er cache-gyldig når Facebook fortsatt er valgt", () => {
+  const scan = {
+    orgnr: "937510179",
+    hasWebsite: true,
+    websiteKind: "own" as const,
+    websiteUrl: "https://example.no",
+    websiteDomain: "example.no",
+    bookingPlatform: null,
+    source: "serpapi" as const,
+    confidence: "high" as const,
+    query: "test",
+    scannedAt: new Date().toISOString(),
+    contactsEnriched: true,
+    contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
+    socialScan: {
+      includeFacebook: true,
+      includeInstagram: false,
+      includeLinkedIn: true,
+      version: SOCIAL_SCAN_VERSION,
+    },
+    facebookUrl: null,
+    linkedinUrl: null,
+  };
+  const withFacebook = { ...DEFAULT_SCAN_SOCIAL_OPTIONS, includeFacebook: true };
+  assert.equal(needsSocialRescan(scan, withFacebook), false);
+  assert.equal(isSocialScanComplete(scan, withFacebook), true);
+  assert.equal(isWebsiteScanCacheComplete(scan, withFacebook), true);
 });
 
 console.log(`\n${passed} bestått, ${failed} feilet`);

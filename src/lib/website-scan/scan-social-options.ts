@@ -18,6 +18,21 @@ export const DEFAULT_SCAN_SOCIAL_OPTIONS: ScanSocialOptions = {
 /** Øk når sosialsøk forbedres — gamle cache-rader skannes på nytt automatisk */
 export const SOCIAL_SCAN_VERSION = 4;
 
+/**
+ * True når bruker ba om sosial-funksjon som forrige skann ikke kjørte
+ * (f.eks. glemte å huke av Facebook første gang).
+ */
+export function needsSocialRescan(
+  scan: WebsiteScanResult,
+  social: ScanSocialOptions
+): boolean {
+  const done: SocialScanMeta | undefined = scan.socialScan;
+  if ((done?.version ?? 1) < SOCIAL_SCAN_VERSION) return true;
+  if (social.includeFacebook && !done?.includeFacebook) return true;
+  if (social.includeInstagram && !done?.includeInstagram) return true;
+  return false;
+}
+
 /** Full SerpAPI-sosialsjekk — skiller fra hurtig e-postskann uten FB/IG-felt */
 export function isSocialScanComplete(
   scan: WebsiteScanResult,
@@ -25,14 +40,12 @@ export function isSocialScanComplete(
 ): boolean {
   const done: SocialScanMeta | undefined = scan.socialScan;
 
-  if ((done?.version ?? 1) < SOCIAL_SCAN_VERSION) return false;
+  if (needsSocialRescan(scan, social)) return false;
 
   if (social.includeFacebook) {
-    if (!done?.includeFacebook) return false;
     if (!("facebookUrl" in scan)) return false;
   }
   if (social.includeInstagram) {
-    if (!done?.includeInstagram) return false;
     if (!("instagramUrl" in scan)) return false;
   }
   if (social.includeLinkedIn) {

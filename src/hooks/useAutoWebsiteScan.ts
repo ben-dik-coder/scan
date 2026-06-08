@@ -11,6 +11,7 @@ import { sanitizeScanPhone } from "@/lib/website-scan/sanitize-scan-phone";
 import { isDemoMode } from "@/lib/demo/config";
 import {
   DEFAULT_SCAN_SOCIAL_OPTIONS,
+  needsSocialRescan,
   type ScanSocialOptions,
 } from "@/lib/website-scan/scan-social-options";
 import type { Company } from "@/types/database";
@@ -336,7 +337,10 @@ export function useAutoWebsiteScan(
    * Manuelt valg: behold rekkefølgen brukeren valgte.
    */
   const scanCompanies = useCallback(
-    (targets: Company[], options?: { preserveOrder?: boolean }) => {
+    (
+      targets: Company[],
+      options?: { preserveOrder?: boolean; forceRescan?: boolean }
+    ) => {
       if (targets.length === 0) {
         return {
           ok: false as const,
@@ -346,12 +350,18 @@ export function useAutoWebsiteScan(
 
       const saved = websiteScansRef.current;
       const social = socialOptionsRef.current;
+      const forceRescan = options?.forceRescan === true;
       const needsScan = targets.filter((c) => {
         const scan = saved.get(c.orgnr);
         if (!scan) return true;
+        if (forceRescan) return true;
         return !isWebsiteScanCacheComplete(scan, social);
       });
       const cachedCount = targets.length - needsScan.length;
+      const socialRescanCount = targets.filter((c) => {
+        const scan = saved.get(c.orgnr);
+        return scan ? needsSocialRescan(scan, social) : false;
+      }).length;
 
       if (needsScan.length === 0) {
         return {
@@ -359,6 +369,7 @@ export function useAutoWebsiteScan(
           scanned: 0,
           skipped: cachedCount,
           cachedOnly: true as const,
+          socialRescanCount,
         };
       }
 
@@ -370,12 +381,19 @@ export function useAutoWebsiteScan(
       setTruncated(needsScan.length > MAX_WEBSITE_SCAN_BATCH);
 
       const gen = ++scanGenRef.current;
-      void runScan(toScan, gen, { merge: true });
+      const bypassCache =
+        forceRescan ||
+        toScan.some((c) => {
+          const scan = saved.get(c.orgnr);
+          return scan ? needsSocialRescan(scan, social) : false;
+        });
+      void runScan(toScan, gen, { merge: true, forceRescan: bypassCache });
       return {
         ok: true as const,
         scanned: toScan.length,
         skipped: targets.length - toScan.length,
         cachedCount,
+        socialRescanCount,
       };
     },
     [runScan]

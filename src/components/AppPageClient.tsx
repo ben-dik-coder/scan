@@ -26,6 +26,7 @@ import { ScanQueueHint } from "@/components/scan/ScanQueueHint";
 import { useAutoWebsiteScan } from "@/hooks/useAutoWebsiteScan";
 import {
   loadScanSocialOptions,
+  needsSocialRescan,
   saveScanSocialOptions,
   type ScanSocialOptions,
 } from "@/lib/website-scan/scan-social-options";
@@ -607,6 +608,26 @@ export function AppPageClient(props: Props) {
     return buildLeadGoogleSearchQuery(selectedCompanies[0]);
   }, [selectedCompanies]);
 
+  function handleSocialOptionsChange(next: ScanSocialOptions) {
+    const addedFacebook = next.includeFacebook && !socialOptions.includeFacebook;
+    const addedInstagram = next.includeInstagram && !socialOptions.includeInstagram;
+    setSocialOptions(next);
+
+    if ((addedFacebook || addedInstagram) && selected.size > 0) {
+      const targets = companies.filter((c) => selected.has(c.orgnr));
+      const missingSocial = targets.filter((c) => {
+        const scan = websiteScans.get(c.orgnr);
+        return scan && needsSocialRescan(scan, next);
+      });
+      if (missingSocial.length > 0) {
+        const label = addedFacebook ? "Facebook" : "Instagram";
+        setScanSelectionMessage(
+          `${missingSocial.length} valgte er sjekket uten ${label} — trykk «Sjekk valgte» for nytt søk.`
+        );
+      }
+    }
+  }
+
   function scanSelectedWithGoogle() {
     setScanSelectionMessage(null);
     const result = scanCompanies(selectedCompanies, { preserveOrder: true });
@@ -615,6 +636,12 @@ export function AppPageClient(props: Props) {
       return result;
     }
     if ("cachedOnly" in result && result.cachedOnly) {
+      if (result.socialRescanCount && result.socialRescanCount > 0) {
+        setScanSelectionMessage(
+          "Valgte firma trenger nytt sosialt søk — huk av Facebook/Instagram og trykk «Sjekk valgte» igjen."
+        );
+        return result;
+      }
       setScanSelectionMessage("Alle valgte er allerede sjekket — ingen nytt Google-søk.");
       if (noWebsiteCount > 0) {
         setListFilter("no_website");
@@ -637,6 +664,18 @@ export function AppPageClient(props: Props) {
       setScanSelectionMessage(msg.charAt(0).toUpperCase() + msg.slice(1));
     }
     return result;
+  }
+
+  function rescanSelectedOrVisible() {
+    if (selected.size > 0) {
+      setScanSelectionMessage(null);
+      scanCompanies(selectedCompanies, {
+        preserveOrder: true,
+        forceRescan: true,
+      });
+      return;
+    }
+    rescan();
   }
 
   function checkAndAddToQueue() {
@@ -961,7 +1000,7 @@ export function AppPageClient(props: Props) {
               scanning={scanning}
               onScanSelected={scanSelectedWithGoogle}
               socialOptions={socialOptions}
-              onSocialOptionsChange={setSocialOptions}
+              onSocialOptionsChange={handleSocialOptionsChange}
               scanSelectionMessage={scanSelectionMessage}
               googleSearchQuery={googleSearchQuery}
               scanComplete={scanComplete}
@@ -981,7 +1020,7 @@ export function AppPageClient(props: Props) {
               withLinkedInCount={withLinkedInCount}
               listFilter={listFilter}
               notScannedCount={notScannedCount}
-              onRescan={rescan}
+              onRescan={rescanSelectedOrVisible}
               websiteScans={websiteScans}
             />
             </div>
