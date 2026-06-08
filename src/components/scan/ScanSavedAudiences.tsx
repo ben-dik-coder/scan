@@ -14,6 +14,7 @@ import { DEFAULT_MARKET_FILTERS, OSLO_MUNICIPALITY_CODE } from "@/lib/constants/
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
+import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -221,7 +222,10 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
               >
                 {l.name}
                 {isAgent && (
-                  <span className="ml-1 text-[10px] text-violet-300">AI</span>
+                  <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-violet-300">
+                    <AgentRobotIcon size={12} />
+                    AI
+                  </span>
                 )}
               </button>
             );

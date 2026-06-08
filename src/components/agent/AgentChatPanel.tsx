@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { notifySavedListChanged } from "@/lib/agent/saved-list-bus";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, Sparkles } from "lucide-react";
+import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
+import { Loader2, Send } from "lucide-react";
 
 type ChatMessage = {
   id: string;
@@ -35,7 +36,7 @@ export function AgentChatFab({ onOpen }: { onOpen: () => void }) {
       aria-label="Åpne AI-assistent"
       title="AI-assistent"
     >
-      <Sparkles className="h-6 w-6" />
+      <AgentRobotIcon size={32} className="drop-shadow-sm" />
     </button>
   );
 }
@@ -192,7 +193,7 @@ export function AgentChatPanel({
       onClose={onClose}
       title={
         <span className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-sky-400" />
+          <AgentRobotIcon size={20} />
           AI-assistent
         </span>
       }
