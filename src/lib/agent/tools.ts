@@ -28,15 +28,18 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
           },
           industryGroup: {
             type: "string",
-            description: "Bransje-id, f.eks. frisor, bygg, eiendom",
+            description:
+              "Bransje-id — foretrekk dette fremfor professionId (f.eks. frisor gir flere treff enn yrke frisor)",
           },
           professionId: {
             type: "string",
-            description: "Yrke-id, f.eks. frisor, rorlegger",
+            description:
+              "Yrke-id — smalere enn bransje; bruk industryGroup når mulig (f.eks. frisor)",
           },
           days: {
             type: "number",
-            description: "Antall dager tilbake (0 = alle tider, standard 30)",
+            description:
+              "Antall dager tilbake (0 = alle tider). Standard 30, men 0 når industryGroup/professionId er satt",
           },
         },
         additionalProperties: false,
@@ -87,7 +90,7 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "filter_no_website",
       description:
-        "Filtrer orgnr til de uten egen nettside (krever ferdig scan_websites)",
+        "Filtrer orgnr til de uten egen nettside. Krever scan_websites — uskannede orgnr utelates og returneres i pendingScan/notScanned",
       parameters: {
         type: "object",
         properties: {

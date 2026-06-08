@@ -157,8 +157,11 @@ async function executeSearchCompanies(
     typeof args.industryGroup === "string" ? args.industryGroup : undefined;
   const professionId =
     typeof args.professionId === "string" ? args.professionId : undefined;
+  const defaultDays = industryGroup || professionId ? 0 : 30;
   const days =
-    typeof args.days === "number" && Number.isFinite(args.days) ? args.days : 30;
+    typeof args.days === "number" && Number.isFinite(args.days)
+      ? args.days
+      : defaultDays;
 
   const result = await fetchCompaniesFromDb({
     municipalityCode,
@@ -392,22 +395,37 @@ async function executeFilterNoWebsite(
     isLeadWithoutOwnSite(scanByOrgnr.get(o))
   );
 
-  const companies = await loadCompaniesByOrgnr(without);
+  const [confirmedCompanies, pendingCompanies] = await Promise.all([
+    loadCompaniesByOrgnr(without),
+    loadCompaniesByOrgnr(notScanned),
+  ]);
+
+  const summaryParts = [`${without.length} uten nettside`];
+  if (notScanned.length > 0) {
+    summaryParts.push(
+      `${notScanned.length} utelatt fordi de ikke er skannet — kjør scan_websites på disse orgnr først`
+    );
+  }
 
   return {
-    summary:
-      notScanned.length > 0
-        ? `${without.length} uten nettside (${notScanned.length} mangler skann — kjør scan_websites først)`
-        : `${without.length} firma uten egen nettside`,
+    summary: summaryParts.join(". "),
     data: {
       orgnrs: without,
       count: without.length,
       notScanned,
-      companies: companies.map((c) => ({
+      excludedNotScanned: notScanned.length,
+      companies: confirmedCompanies.map((c) => ({
         orgnr: c.orgnr,
         name: c.name,
         phone: c.phone ?? c.mobile,
         email: c.email,
+      })),
+      pendingScan: pendingCompanies.map((c) => ({
+        orgnr: c.orgnr,
+        name: c.name,
+        phone: c.phone ?? c.mobile,
+        email: c.email,
+        needsScan: true,
       })),
     },
   };
