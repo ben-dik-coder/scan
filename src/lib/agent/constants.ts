@@ -4,11 +4,10 @@ export const AGENT_DISABLED_MESSAGE =
 
 export function isAgentEnabled(): boolean {
   if (process.env.AGENT_DISABLED === "true") return false;
-  if (process.env.AGENT_ENABLED !== "true") return false;
   if (typeof window !== "undefined") {
     return process.env.NEXT_PUBLIC_AGENT_ENABLED === "true";
   }
-  return true;
+  return process.env.AGENT_ENABLED === "true";
 }
 
 /** Maks firma agenten behandler per jobb (MVP) */

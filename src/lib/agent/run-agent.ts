@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { AGENT_MAX_TOOL_LOOPS } from "@/lib/agent/constants";
+import { AGENT_DISABLED_MESSAGE, AGENT_MAX_TOOL_LOOPS, isAgentEnabled } from "@/lib/agent/constants";
 import { executeAgentTool } from "@/lib/agent/execute-tool";
 import type { AgentToolContext } from "@/lib/agent/execute-tool";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
@@ -57,6 +57,12 @@ export async function runAgentChat(
   ctx: AgentToolContext,
   onEvent: (event: AgentStreamEvent) => void | Promise<void>
 ): Promise<{ assistantText: string; link?: string }> {
+  if (!isAgentEnabled()) {
+    const msg = AGENT_DISABLED_MESSAGE;
+    await onEvent({ type: "error", message: msg });
+    return { assistantText: msg };
+  }
+
   const client = getOpenAIClient();
   if (!client) {
     const msg =
@@ -167,6 +173,13 @@ export async function runAgentChat(
     }
 
     loops++;
+  }
+
+  if (loops >= AGENT_MAX_TOOL_LOOPS) {
+    const msg =
+      "Agenten stoppet etter for mange steg. Prøv en enklere forespørsel.";
+    await onEvent({ type: "error", message: msg });
+    if (!assistantText) assistantText = msg;
   }
 
   await onEvent({ type: "done", link, listId, listName });
