@@ -38,8 +38,7 @@ import {
   persistScanAudienceFilters,
   type ScanLeadMode,
 } from "@/lib/scan/lead-modes";
-import { isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
-import { agentOrgnrsFromFilters } from "@/lib/agent/saved-list-filters";
+import { agentOrgnrsFromFilters, matchesAgentListNoWebsiteTab } from "@/lib/agent/saved-list-filters";
 import { buildLeadGoogleSearchQuery } from "@/lib/scan/google-search-query";
 import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
@@ -109,6 +108,10 @@ export function AppPageClient(props: Props) {
   const [addingToQueue, setAddingToQueue] = useState(false);
   const emailSectionRef = useRef<HTMLDetailsElement>(null);
   const wasScanningRef = useRef(false);
+  const [pinnedOrgnrs, setPinnedOrgnrs] = useState<Set<string> | null>(null);
+  const [activeListName, setActiveListName] = useState<string | null>(null);
+  const [agentListCompanies, setAgentListCompanies] = useState<CompanyWithLead[]>([]);
+  const [agentListLoading, setAgentListLoading] = useState(false);
 
   const activeLeadMode = useMemo((): ScanLeadMode | null => {
     const m = searchParams.get("modus");
@@ -147,6 +150,14 @@ export function AppPageClient(props: Props) {
   const companies =
     props.dataSource === "brreg" ? localCompanies : props.companies;
 
+  const isAgentListActive = Boolean(pinnedOrgnrs && pinnedOrgnrs.size > 0);
+
+  const visibleCompanies = useMemo(() => {
+    if (!isAgentListActive || !pinnedOrgnrs) return companies;
+    if (agentListCompanies.length > 0) return agentListCompanies;
+    return companies.filter((c) => pinnedOrgnrs.has(c.orgnr));
+  }, [isAgentListActive, pinnedOrgnrs, agentListCompanies, companies]);
+
   const {
     websiteScans,
     scanning,
@@ -162,68 +173,108 @@ export function AppPageClient(props: Props) {
     scanPending,
     scanTargetCount,
     scanningName,
-  } = useAutoWebsiteScan(companies, { autoScan: false, socialOptions });
+  } = useAutoWebsiteScan(visibleCompanies, { autoScan: false, socialOptions });
 
   const [scanSelectionMessage, setScanSelectionMessage] = useState<string | null>(
     null
   );
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
-  const [pinnedOrgnrs, setPinnedOrgnrs] = useState<Set<string> | null>(null);
-  const [activeListName, setActiveListName] = useState<string | null>(null);
 
-  const companyWithoutOwnSite = (orgnr: string) =>
-    isLeadWithoutOwnSite(websiteScans.get(orgnr));
+  useEffect(() => {
+    if (!pinnedOrgnrs?.size) {
+      setAgentListCompanies([]);
+      setAgentListLoading(false);
+      return;
+    }
+
+    if (isDemoMode()) {
+      setAgentListCompanies(demo.companies.filter((c) => pinnedOrgnrs.has(c.orgnr)));
+      setAgentListLoading(false);
+      return;
+    }
+
+    const orgnrs = Array.from(pinnedOrgnrs);
+    const controller = new AbortController();
+    setAgentListLoading(true);
+
+    fetch(`/api/companies/by-orgnrs?orgnrs=${encodeURIComponent(orgnrs.join(","))}`, {
+      signal: controller.signal,
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Kunne ikke hente AI-liste"))))
+      .then((data: { companies?: CompanyWithLead[] }) => {
+        setAgentListCompanies(data.companies ?? []);
+      })
+      .catch((err) => {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setAgentListCompanies([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAgentListLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [pinnedOrgnrs, demo.companies]);
+
+  const matchesNoWebsiteTab = (orgnr: string) =>
+    matchesAgentListNoWebsiteTab(websiteScans.get(orgnr), isAgentListActive);
 
   const noWebsiteOrgnrs = useMemo(() => {
-    return companies.filter((c) => companyWithoutOwnSite(c.orgnr)).map((c) => c.orgnr);
-  }, [companies, websiteScans]);
+    return visibleCompanies
+      .filter((c) => matchesNoWebsiteTab(c.orgnr))
+      .map((c) => c.orgnr);
+  }, [visibleCompanies, websiteScans, isAgentListActive]);
 
   const noWebsiteCount = noWebsiteOrgnrs.length;
   const withWebsiteCount = useMemo(
     () =>
-      companies.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true).length,
-    [companies, websiteScans]
+      visibleCompanies.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true)
+        .length,
+    [visibleCompanies, websiteScans]
   );
 
   const withFacebookCount = useMemo(
     () =>
-      companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.facebookUrl)).length,
-    [companies, websiteScans]
+      visibleCompanies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.facebookUrl))
+        .length,
+    [visibleCompanies, websiteScans]
   );
 
   const withGulesiderCount = useMemo(
     () =>
-      companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.gulesiderListed)).length,
-    [companies, websiteScans]
+      visibleCompanies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.gulesiderListed))
+        .length,
+    [visibleCompanies, websiteScans]
   );
 
   const withInstagramCount = useMemo(
     () =>
-      companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.instagramUrl)).length,
-    [companies, websiteScans]
+      visibleCompanies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.instagramUrl))
+        .length,
+    [visibleCompanies, websiteScans]
   );
 
   const withLinkedInCount = useMemo(
     () =>
-      companies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.linkedinUrl)).length,
-    [companies, websiteScans]
+      visibleCompanies.filter((c) => Boolean(websiteScans.get(c.orgnr)?.linkedinUrl))
+        .length,
+    [visibleCompanies, websiteScans]
   );
 
   const notScannedCount = useMemo(
     () =>
-      companies.filter((c) => c.has_email && !websiteScans.has(c.orgnr)).length,
-    [companies, websiteScans]
+      visibleCompanies.filter((c) => c.has_email && !websiteScans.has(c.orgnr)).length,
+    [visibleCompanies, websiteScans]
   );
 
   const withEmailCount = useMemo(
-    () => companies.filter((c) => c.has_email).length,
-    [companies]
+    () => visibleCompanies.filter((c) => c.has_email).length,
+    [visibleCompanies]
   );
 
   const withContactCount = useMemo(
     () =>
-      companies.filter((c) => {
+      visibleCompanies.filter((c) => {
         const scan = websiteScans.get(c.orgnr);
         return Boolean(
           c.has_email ||
@@ -235,12 +286,12 @@ export function AppPageClient(props: Props) {
             scan?.instagramProfile?.email
         );
       }).length,
-    [companies, websiteScans]
+    [visibleCompanies, websiteScans]
   );
 
   const companyListKey = useMemo(
-    () => props.companies.map((c) => c.orgnr).join(","),
-    [props.companies]
+    () => visibleCompanies.map((c) => c.orgnr).join(","),
+    [visibleCompanies]
   );
 
   useEffect(() => {
@@ -249,8 +300,10 @@ export function AppPageClient(props: Props) {
 
   useEffect(() => {
     setSelected(new Set());
-    setListFilter("all");
-  }, [companyListKey]);
+    if (!isAgentListActive) {
+      setListFilter("all");
+    }
+  }, [companyListKey, isAgentListActive]);
 
   const activeFilterCount = countActiveMarketFilters(
     filters,
@@ -263,7 +316,7 @@ export function AppPageClient(props: Props) {
     const scan = websiteScans.get(c.orgnr);
     const web = filters.websitePresence;
     if (web === "with" && scan?.hasWebsite !== true) return false;
-    if (web === "without" && !companyWithoutOwnSite(c.orgnr)) return false;
+    if (web === "without" && !matchesNoWebsiteTab(c.orgnr)) return false;
     if (web === "not_scanned" && (scan || !c.has_email)) return false;
 
     const fb = filters.facebookPresence;
@@ -288,12 +341,9 @@ export function AppPageClient(props: Props) {
   };
 
   const displayCompanies = useMemo(() => {
-    let list = companies;
-    if (pinnedOrgnrs?.size) {
-      list = list.filter((c) => pinnedOrgnrs.has(c.orgnr));
-    }
+    let list = visibleCompanies;
     if (listFilter === "no_website") {
-      list = list.filter((c) => companyWithoutOwnSite(c.orgnr));
+      list = list.filter((c) => matchesNoWebsiteTab(c.orgnr));
     } else if (listFilter === "with_website") {
       list = list.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true);
     } else if (listFilter === "not_scanned") {
@@ -301,10 +351,10 @@ export function AppPageClient(props: Props) {
     }
     return list.filter(matchesPresenceFilters);
   }, [
-    companies,
+    visibleCompanies,
     listFilter,
     websiteScans,
-    pinnedOrgnrs,
+    isAgentListActive,
     filters.websitePresence,
     filters.facebookPresence,
     filters.instagramPresence,
@@ -312,14 +362,14 @@ export function AppPageClient(props: Props) {
 
   const queueScores = useMemo(() => {
     const map = new Map<string, number>();
-    for (const c of companies) {
+    for (const c of visibleCompanies) {
       map.set(
         c.orgnr,
         computeQueueScore(c, c.user_lead ?? null, websiteScans.get(c.orgnr) ?? null)
       );
     }
     return map;
-  }, [companies, websiteScans]);
+  }, [visibleCompanies, websiteScans]);
 
   const rankedDisplayCompanies = useMemo(() => {
     return [...displayCompanies].sort(
@@ -397,7 +447,7 @@ export function AppPageClient(props: Props) {
   function applySavedAudience(payload: SavedAudienceApply) {
     applyFilters(payload.filters, {
       preserveListFilter: true,
-      listFilter: "no_website",
+      listFilter: payload.agentOrgnrs?.length ? "no_website" : "all",
       listId: payload.listId ?? null,
       agentOrgnrs: payload.agentOrgnrs ?? null,
       listName: payload.listName ?? null,
@@ -455,11 +505,11 @@ export function AppPageClient(props: Props) {
   }
 
   function noWebsiteOrgnrsInSelection(orgnrFilter?: Set<string>) {
-    return companies
+    return visibleCompanies
       .filter(
         (c) =>
           (!orgnrFilter || orgnrFilter.has(c.orgnr)) &&
-          companyWithoutOwnSite(c.orgnr) &&
+          matchesNoWebsiteTab(c.orgnr) &&
           c.has_email
       )
       .map((c) => c.orgnr);
@@ -601,7 +651,7 @@ export function AppPageClient(props: Props) {
     persistScanAudienceFilters(filters);
   }
 
-  const selectedCompanies = companies.filter((c) => selected.has(c.orgnr));
+  const selectedCompanies = visibleCompanies.filter((c) => selected.has(c.orgnr));
 
   const googleSearchQuery = useMemo(() => {
     if (selectedCompanies.length !== 1) return "";
@@ -614,7 +664,7 @@ export function AppPageClient(props: Props) {
     setSocialOptions(next);
 
     if ((addedFacebook || addedInstagram) && selected.size > 0) {
-      const targets = companies.filter((c) => selected.has(c.orgnr));
+      const targets = visibleCompanies.filter((c) => selected.has(c.orgnr));
       const missingSocial = targets.filter((c) => {
         const scan = websiteScans.get(c.orgnr);
         return scan && needsSocialRescan(scan, next);
@@ -679,7 +729,7 @@ export function AppPageClient(props: Props) {
   }
 
   function checkAndAddToQueue() {
-    const ranked = [...companies]
+    const ranked = [...visibleCompanies]
       .filter((c) => c.has_email)
       .sort((a, b) => (queueScores.get(b.orgnr) ?? 0) - (queueScores.get(a.orgnr) ?? 0))
       .slice(0, MAX_WEBSITE_SCAN_BATCH);
@@ -727,7 +777,7 @@ export function AppPageClient(props: Props) {
         "Ingen uten nettside med e-post i valget — velg firma og bruk «Legg valgte i kø»."
       );
     }
-  }, [queueAfterScan, scanning, scanComplete, companies, selected, websiteScans]);
+  }, [queueAfterScan, scanning, scanComplete, visibleCompanies, selected, websiteScans]);
 
   function handleListTabChange(tabId: typeof listFilter) {
     if (filters.websitePresence !== "all") {
@@ -741,7 +791,13 @@ export function AppPageClient(props: Props) {
   }
 
   const listTabs = [
-    { id: "all" as const, label: "Alle", shortLabel: "Alle", count: companies.length, icon: List },
+    {
+      id: "all" as const,
+      label: "Alle",
+      shortLabel: "Alle",
+      count: visibleCompanies.length,
+      icon: List,
+    },
     {
       id: "no_website" as const,
       label: "Uten nettside",
@@ -776,7 +832,11 @@ export function AppPageClient(props: Props) {
       : 0;
   const showExactTotal = pagination && !pagination.truncated;
 
-  const listSummary = pagination
+  const listSummary = isAgentListActive
+    ? `AI-liste: ${rankedDisplayCompanies.length} av ${visibleCompanies.length}${
+        listFilter !== "all" ? ` · ${rankedDisplayCompanies.length} i valgt fane` : ""
+      }${agentListLoading ? " · henter firma…" : ""} · sortert etter score`
+    : pagination
     ? `Viser ${pageStart > 0 ? `${pageStart}–${pageEnd}` : "0"} ${
         showExactTotal
           ? `av ${pagination.total}`
@@ -926,8 +986,15 @@ export function AppPageClient(props: Props) {
                 className="mx-2.5 mb-2 rounded-xl border border-violet-400/35 bg-violet-500/15 px-3 py-2 text-xs text-violet-100 lg:mx-3"
                 role="status"
               >
-                <strong>AI-liste: {activeListName}</strong> — viser {pinnedOrgnrs.size}{" "}
-                firma fra agenten.
+                <strong>AI-liste: {activeListName}</strong> — viser{" "}
+                {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
+                firma fra agenten
+                {visibleCompanies.length < pinnedOrgnrs.size ? (
+                  <span className="text-violet-200/80">
+                    {" "}
+                    ({pinnedOrgnrs.size - visibleCompanies.length} finnes ikke i registeret)
+                  </span>
+                ) : null}
               </div>
             )}
 

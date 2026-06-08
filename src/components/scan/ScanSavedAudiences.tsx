@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FilterState } from "@/components/CompanyFilters";
 import {
   agentOrgnrsFromFilters,
+  mergeAgentListFilters,
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
 import {
@@ -88,6 +89,12 @@ function resolveProfessionId(
 function mergeFilters(
   partial: AgentSavedListFilters & { professionSearch?: string }
 ): FilterState {
+  const agentOrgnrs = agentOrgnrsFromFilters(partial);
+  const base =
+    agentOrgnrs.length > 0 || partial.createdBy === "agent"
+      ? mergeAgentListFilters(partial)
+      : null;
+
   return {
     regionId: partial.regionId ?? "",
     municipalityCode: partial.municipalityCode ?? "",
@@ -96,7 +103,10 @@ function mergeFilters(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId: resolveProfessionId(partial),
-    websitePresence: partial.websitePresence ?? "all",
+    websitePresence:
+      base?.websitePresence ??
+      partial.websitePresence ??
+      "all",
     facebookPresence: partial.facebookPresence ?? "all",
     instagramPresence: partial.instagramPresence ?? "all",
   };
