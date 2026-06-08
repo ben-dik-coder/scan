@@ -8,7 +8,7 @@ import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import { AGENT_MAX_TOOL_LOOPS } from "@/lib/agent/constants";
-import { Loader2, Send, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
 
 type ChatMessage = {
   id: string;
@@ -274,42 +274,52 @@ export function AgentChatPanel({
       maxWidth="md"
       panelClassName="flex flex-col"
       footer={
-        <form
-          className="flex gap-2 border-t border-white/10 p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void sendMessage(input);
-          }}
-        >
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="F.eks. Finn frisører uten nettside i Narvik…"
-            disabled={loading}
-            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-sky-400/50 focus:outline-none"
-          />
-          {loading ? (
-            <button
-              type="button"
-              onClick={stopRequest}
-              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-500/20 px-3 text-sm font-medium text-red-200 transition hover:bg-red-500/30"
-              aria-label="Stopp"
+        <>
+          {loading && (
+            <div
+              className="agent-thinking-wave agent-thinking-wave--footer shrink-0"
+              aria-hidden="true"
             >
-              <Square className="h-3.5 w-3.5 fill-current" />
-              Stopp
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white transition hover:bg-sky-400 disabled:opacity-40"
-              aria-label="Send"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+              <div className="agent-thinking-wave__bar" />
+            </div>
           )}
-        </form>
+          <form
+            className="flex gap-2 border-t border-white/10 p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendMessage(input);
+            }}
+          >
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="F.eks. Finn frisører uten nettside i Narvik…"
+              disabled={loading}
+              className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-sky-400/50 focus:outline-none"
+            />
+            {loading ? (
+              <button
+                type="button"
+                onClick={stopRequest}
+                className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-500/20 px-3 text-sm font-medium text-red-200 transition hover:bg-red-500/30"
+                aria-label="Stopp"
+              >
+                <Square className="h-3.5 w-3.5 fill-current" />
+                Stopp
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white transition hover:bg-sky-400 disabled:opacity-40"
+                aria-label="Send"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
+          </form>
+        </>
       }
     >
       <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
@@ -393,13 +403,22 @@ export function AgentChatPanel({
           </p>
         )}
 
-        {loading && (
-          <p className="flex items-center gap-2 text-xs text-slate-400">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {activeTool
-              ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
-              : "Tenker…"}
-          </p>
+        {(loading || activeTool) && (
+          <div
+            className="agent-thinking-wave"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="agent-thinking-wave__glow" aria-hidden="true" />
+            <div className="agent-thinking-wave__bar" aria-hidden="true" />
+            <p className="agent-thinking-wave__status">
+              <span className="agent-thinking-wave__dot" aria-hidden="true" />
+              {activeTool
+                ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+                : "Tenker…"}
+            </p>
+          </div>
         )}
       </div>
     </AppSideDrawer>
