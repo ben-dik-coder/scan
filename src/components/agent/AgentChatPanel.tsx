@@ -32,11 +32,11 @@ export function AgentChatFab({ onOpen }: { onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="agent-chat-fab fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-sky-400/40 bg-sky-500/90 text-white shadow-lg shadow-sky-900/30 transition hover:bg-sky-400 hover:scale-105 active:scale-95"
+      className="agent-chat-fab fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-sky-400/40 bg-sky-500/90 text-white shadow-lg shadow-sky-900/30 transition hover:bg-sky-400 hover:scale-105 active:scale-95"
       aria-label="Åpne AI-assistent"
       title="AI-assistent"
     >
-      <AgentRobotIcon size={32} className="drop-shadow-sm" />
+      <AgentRobotIcon size={40} className="scale-125 drop-shadow-sm" />
     </button>
   );
 }
