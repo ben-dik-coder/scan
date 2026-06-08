@@ -11,6 +11,11 @@ import {
 import { isBrregLive, isDemoMode } from "@/lib/demo/config";
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 import { buildMarketShuffleSeed } from "@/lib/shuffle/seeded-shuffle";
+import {
+  loadContactOverrides,
+  loadDbContactPatches,
+  mergeContactOverride,
+} from "@/lib/company-contact-overrides";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -84,7 +89,19 @@ export async function GET(request: NextRequest) {
           sortSeed: shuffleSeed,
         });
 
-    let companies = result.companies;
+    const orgnrs = result.companies.map((c) => c.orgnr);
+    const [overrideMap, dbPatchMap] = await Promise.all([
+      loadContactOverrides(orgnrs),
+      loadDbContactPatches(orgnrs),
+    ]);
+    let companies = result.companies.map((company) => {
+      const brregMissingContact =
+        !(company.mobile ?? "").trim() && !(company.phone ?? "").trim();
+      const override =
+        overrideMap.get(company.orgnr) ??
+        (brregMissingContact ? dbPatchMap.get(company.orgnr) : undefined);
+      return mergeContactOverride(company, override);
+    });
     let contactUsage:
       | {
           used: number;

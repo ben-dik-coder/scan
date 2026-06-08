@@ -103,6 +103,7 @@ export type WebsiteScanResult = {
     | "brreg"
     | "google"
     | "email"
+    | "domain_guess"
     | "facebook_link"
     | "instagram_external"
     | null;

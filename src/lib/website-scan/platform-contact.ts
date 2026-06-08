@@ -181,15 +181,6 @@ export function build1881SearchQuery(company: {
     : `site:1881.no "${name}"`;
 }
 
-function isDirectorySource(source: PlatformContactSource): boolean {
-  return (
-    source === "directory" ||
-    source === "proff" ||
-    source === "gulesider" ||
-    source === "1881"
-  );
-}
-
 function pickPhoneFromSerpApiText(
   orgnr: string,
   direct: string | null | undefined,
@@ -197,9 +188,13 @@ function pickPhoneFromSerpApiText(
 ): string | null {
   const candidates: string[] = [];
   const trimmed = direct?.trim();
-  if (trimmed) candidates.push(...extractPhonesFromHtml(trimmed));
+  if (trimmed && phonePlausibleForCompany(trimmed, orgnr)) {
+    candidates.push(trimmed);
+  }
   for (const text of texts) {
-    candidates.push(...extractPhonesFromHtml(text ?? ""));
+    candidates.push(
+      ...extractPhonesFromHtml(text ?? "", { trustTextRegex: false })
+    );
   }
   return pickPlausiblePhone(candidates, orgnr);
 }
@@ -384,9 +379,7 @@ async function fetchPlatformRecord(
 
   const domain = normalizeDomain(url);
   const source = classifyPlatform(url);
-  const phones = extractPhonesFromHtml(html, {
-    trustTextRegex: !isDirectorySource(source),
-  });
+  const phones = extractPhonesFromHtml(html, { trustTextRegex: false });
   const phone = pickPlausiblePhone(phones, orgnr);
   const emails = filterEmailsForSource(extractEmailsFromHtml(html), url, source);
   const external =

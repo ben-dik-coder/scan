@@ -41,10 +41,108 @@ function stripOrgnrBlocks(text: string): string {
   return text.replace(ORGNR_BLOCK, " ");
 }
 
+function walkJsonLdNodes(
+  value: unknown,
+  visit: (node: Record<string, unknown>) => void,
+  seen = new Set<unknown>()
+) {
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value) walkJsonLdNodes(item, visit, seen);
+    return;
+  }
+
+  const node = value as Record<string, unknown>;
+  visit(node);
+
+  for (const key of ["@graph", "mainEntity", "hasPart", "subOrganization"]) {
+    walkJsonLdNodes(node[key], visit, seen);
+  }
+}
+
+function collectPhonesFromJsonLd(json: unknown): string[] {
+  const found = new Set<string>();
+  walkJsonLdNodes(json, (node) => {
+    const tel = node.telephone ?? node.phone;
+    if (typeof tel === "string") {
+      const p = normalizePhone(tel);
+      if (p) found.add(p);
+    }
+    const contactPoints = node.contactPoint;
+    const points = Array.isArray(contactPoints)
+      ? contactPoints
+      : contactPoints
+        ? [contactPoints]
+        : [];
+    for (const point of points) {
+      if (!point || typeof point !== "object") continue;
+      const row = point as Record<string, unknown>;
+      const cpTel = row.telephone ?? row.phone;
+      if (typeof cpTel === "string") {
+        const p = normalizePhone(cpTel);
+        if (p) found.add(p);
+      }
+    }
+  });
+  return [...found];
+}
+
+function collectEmailsFromJsonLd(json: unknown): string[] {
+  const found = new Set<string>();
+  walkJsonLdNodes(json, (node) => {
+    const em = node.email;
+    if (typeof em === "string") {
+      const e = parseEmailFromText(em);
+      if (e) found.add(e);
+    }
+    const contactPoints = node.contactPoint;
+    const points = Array.isArray(contactPoints)
+      ? contactPoints
+      : contactPoints
+        ? [contactPoints]
+        : [];
+    for (const point of points) {
+      if (!point || typeof point !== "object") continue;
+      const row = point as Record<string, unknown>;
+      const cpEmail = row.email;
+      if (typeof cpEmail === "string") {
+        const e = parseEmailFromText(cpEmail);
+        if (e) found.add(e);
+      }
+    }
+  });
+  return [...found];
+}
+
 export type ExtractPhonesOptions = {
   /** Fri regex på brødtekst — skru av for katalog/proff (bruk kun tel: og JSON-LD). */
   trustTextRegex?: boolean;
 };
+
+/** 1881 person-side — telefon i knapp og ofte i <title>. */
+export function extract1881PersonPhonesFromHtml(html: string): string[] {
+  const found = new Set<string>();
+  const decoded = decodeHtmlEntities(html);
+
+  for (const m of decoded.matchAll(
+    /listing-main-buttons__phone-number[^>]*>\s*([^<]+)/gi
+  )) {
+    const p = normalizePhone(m[1] ?? "");
+    if (p) found.add(p);
+  }
+
+  const title = decoded.match(/<title>([^<]+)/i)?.[1] ?? "";
+  const titlePhone = title.match(/,\s*(\d{8})\s*,/);
+  if (titlePhone) {
+    const p = normalizePhone(titlePhone[1] ?? "");
+    if (p) found.add(p);
+  }
+
+  return [...found];
+}
 
 export function extractPhonesFromHtml(
   html: string,
@@ -63,11 +161,8 @@ export function extractPhonesFromHtml(
     /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
   )) {
     try {
-      const json = JSON.parse(block[1] ?? "") as Record<string, unknown>;
-      const tel = json.telephone ?? json.phone;
-      if (typeof tel === "string") {
-        const p = normalizePhone(tel);
-        if (p) found.add(p);
+      for (const phone of collectPhonesFromJsonLd(JSON.parse(block[1] ?? ""))) {
+        found.add(phone);
       }
     } catch {
       /* ignore */
@@ -105,11 +200,8 @@ export function extractEmailsFromHtml(html: string): string[] {
     /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
   )) {
     try {
-      const json = JSON.parse(block[1] ?? "") as Record<string, unknown>;
-      const em = json.email;
-      if (typeof em === "string") {
-        const e = parseEmailFromText(em);
-        if (e) found.add(e);
+      for (const email of collectEmailsFromJsonLd(JSON.parse(block[1] ?? ""))) {
+        found.add(email);
       }
     } catch {
       /* ignore */

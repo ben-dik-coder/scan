@@ -48,6 +48,15 @@ export type Company = {
   email_is_generic: boolean;
   brreg_updated_at: string | null;
   daglig_leder: string | null;
+  contact_override?: {
+    orgnr: string;
+    mobile: string | null;
+    phone: string | null;
+    owner_name: string | null;
+    source: string | null;
+    notes: string | null;
+    updated_at: string;
+  } | null;
   created_at: string;
   updated_at: string;
 };
@@ -219,6 +228,44 @@ export type SavedList = {
   name: string;
   filters: Record<string, unknown>;
   created_at: string;
+};
+
+export type AgentConversationStatus = "active" | "archived";
+
+export type AgentConversation = {
+  id: string;
+  user_id: string;
+  title: string;
+  status: AgentConversationStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentMessageRole = "user" | "assistant" | "tool";
+
+export type AgentMessage = {
+  id: string;
+  conversation_id: string;
+  role: AgentMessageRole;
+  content: string;
+  tool_calls: Record<string, unknown> | null;
+  tool_name: string | null;
+  created_at: string;
+};
+
+export type AgentRunStatus = "running" | "done" | "failed";
+
+export type AgentRun = {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  status: AgentRunStatus;
+  params: Record<string, unknown>;
+  progress: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CompanyWithLead = Company & {

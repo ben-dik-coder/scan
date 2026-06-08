@@ -219,6 +219,11 @@ export async function enrichFacebookWithSerpApi(
     return { facebookUrl, facebookProfile: null };
   }
 
+  // Kun hent profil når Facebook ble funnet i Google — spar SerpAPI-kall.
+  if (options?.verifiedViaSearch !== true) {
+    return { facebookUrl, facebookProfile: null };
+  }
+
   const profileId = extractFacebookProfileId(facebookUrl);
   if (!profileId) {
     return { facebookUrl, facebookProfile: null };

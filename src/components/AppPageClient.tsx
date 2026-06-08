@@ -16,7 +16,10 @@ import { ScanFilterSheet } from "@/components/scan/ScanFilterSheet";
 import { ScanGoogleSection } from "@/components/scan/ScanGoogleSection";
 import { ScanLeadModes } from "@/components/scan/ScanLeadModes";
 import { ScanListToolbar } from "@/components/scan/ScanListToolbar";
-import { ScanSavedAudiences } from "@/components/scan/ScanSavedAudiences";
+import {
+  ScanSavedAudiences,
+  type SavedAudienceApply,
+} from "@/components/scan/ScanSavedAudiences";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
 import { ScanQuickBar } from "@/components/scan/ScanQuickBar";
 import { ScanQueueHint } from "@/components/scan/ScanQueueHint";
@@ -34,6 +37,8 @@ import {
   persistScanAudienceFilters,
   type ScanLeadMode,
 } from "@/lib/scan/lead-modes";
+import { isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
+import { agentOrgnrsFromFilters } from "@/lib/agent/saved-list-filters";
 import { buildLeadGoogleSearchQuery } from "@/lib/scan/google-search-query";
 import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
@@ -121,6 +126,22 @@ export function AppPageClient(props: Props) {
     else if (web === "not_scanned") setListFilter("not_scanned");
   }, [searchParams]);
 
+  useEffect(() => {
+    const listId = searchParams.get("liste");
+    if (!listId || isDemoMode()) return;
+
+    fetch(`/api/saved-lists?id=${encodeURIComponent(listId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((row: { name?: string; filters?: Record<string, unknown> } | null) => {
+        if (!row) return;
+        const orgnrs = agentOrgnrsFromFilters(row.filters);
+        setPinnedOrgnrs(orgnrs.length ? new Set(orgnrs) : null);
+        setActiveListName(row.name ?? null);
+        if (orgnrs.length) setListFilter("no_website");
+      })
+      .catch(() => undefined);
+  }, [searchParams]);
+
   const filters = props.initialFilters;
   const companies =
     props.dataSource === "brreg" ? localCompanies : props.companies;
@@ -146,19 +167,14 @@ export function AppPageClient(props: Props) {
   );
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [pinnedOrgnrs, setPinnedOrgnrs] = useState<Set<string> | null>(null);
+  const [activeListName, setActiveListName] = useState<string | null>(null);
 
-  const isLeadWithoutOwnSite = (orgnr: string) => {
-    const scan = websiteScans.get(orgnr);
-    if (!scan) return false;
-    if (scan.websiteKind === "none") return true;
-    if (scan.websiteKind === "booking_only") {
-      return scan.confidence === "high" || scan.confidence === "medium";
-    }
-    return false;
-  };
+  const companyWithoutOwnSite = (orgnr: string) =>
+    isLeadWithoutOwnSite(websiteScans.get(orgnr));
 
   const noWebsiteOrgnrs = useMemo(() => {
-    return companies.filter((c) => isLeadWithoutOwnSite(c.orgnr)).map((c) => c.orgnr);
+    return companies.filter((c) => companyWithoutOwnSite(c.orgnr)).map((c) => c.orgnr);
   }, [companies, websiteScans]);
 
   const noWebsiteCount = noWebsiteOrgnrs.length;
@@ -245,7 +261,7 @@ export function AppPageClient(props: Props) {
     const scan = websiteScans.get(c.orgnr);
     const web = filters.websitePresence;
     if (web === "with" && scan?.hasWebsite !== true) return false;
-    if (web === "without" && !isLeadWithoutOwnSite(c.orgnr)) return false;
+    if (web === "without" && !companyWithoutOwnSite(c.orgnr)) return false;
     if (web === "not_scanned" && (scan || !c.has_email)) return false;
 
     const fb = filters.facebookPresence;
@@ -271,15 +287,26 @@ export function AppPageClient(props: Props) {
 
   const displayCompanies = useMemo(() => {
     let list = companies;
+    if (pinnedOrgnrs?.size) {
+      list = list.filter((c) => pinnedOrgnrs.has(c.orgnr));
+    }
     if (listFilter === "no_website") {
-      list = list.filter((c) => isLeadWithoutOwnSite(c.orgnr));
+      list = list.filter((c) => companyWithoutOwnSite(c.orgnr));
     } else if (listFilter === "with_website") {
       list = list.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true);
     } else if (listFilter === "not_scanned") {
       list = list.filter((c) => c.has_email && !websiteScans.has(c.orgnr));
     }
     return list.filter(matchesPresenceFilters);
-  }, [companies, listFilter, websiteScans, filters.websitePresence, filters.facebookPresence, filters.instagramPresence]);
+  }, [
+    companies,
+    listFilter,
+    websiteScans,
+    pinnedOrgnrs,
+    filters.websitePresence,
+    filters.facebookPresence,
+    filters.instagramPresence,
+  ]);
 
   const queueScores = useMemo(() => {
     const map = new Map<string, number>();
@@ -303,6 +330,9 @@ export function AppPageClient(props: Props) {
     options?: {
       preserveListFilter?: boolean;
       listFilter?: typeof listFilter;
+      listId?: string | null;
+      agentOrgnrs?: string[] | null;
+      listName?: string | null;
     }
   ) {
     if (
@@ -339,14 +369,37 @@ export function AppPageClient(props: Props) {
     if (next.instagramPresence !== "all") params.set("ig", next.instagramPresence);
     else params.delete("ig");
     params.delete("page");
+    if (options?.listId) params.set("liste", options.listId);
+    else params.delete("liste");
     persistScanAudienceFilters(next);
     setSelected(new Set());
+    if (options?.agentOrgnrs !== undefined) {
+      setPinnedOrgnrs(
+        options.agentOrgnrs?.length ? new Set(options.agentOrgnrs) : null
+      );
+    } else if (!options?.preserveListFilter) {
+      setPinnedOrgnrs(null);
+      setActiveListName(null);
+    }
+    if (options?.listName !== undefined) {
+      setActiveListName(options.listName);
+    }
     if (options?.preserveListFilter && options.listFilter) {
       setListFilter(options.listFilter);
     } else if (!options?.preserveListFilter) {
       setListFilter("all");
     }
     router.push(`/app?${params.toString()}`);
+  }
+
+  function applySavedAudience(payload: SavedAudienceApply) {
+    applyFilters(payload.filters, {
+      preserveListFilter: true,
+      listFilter: "no_website",
+      listId: payload.listId ?? null,
+      agentOrgnrs: payload.agentOrgnrs ?? null,
+      listName: payload.listName ?? null,
+    });
   }
 
   function applyLeadMode(mode: ScanLeadMode) {
@@ -404,7 +457,7 @@ export function AppPageClient(props: Props) {
       .filter(
         (c) =>
           (!orgnrFilter || orgnrFilter.has(c.orgnr)) &&
-          isLeadWithoutOwnSite(c.orgnr) &&
+          companyWithoutOwnSite(c.orgnr) &&
           c.has_email
       )
       .map((c) => c.orgnr);
@@ -828,6 +881,16 @@ export function AppPageClient(props: Props) {
               exportMessage={exportMessage}
             />
 
+            {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
+              <div
+                className="mx-2.5 mb-2 rounded-xl border border-violet-400/35 bg-violet-500/15 px-3 py-2 text-xs text-violet-100 lg:mx-3"
+                role="status"
+              >
+                <strong>AI-liste: {activeListName}</strong> — viser {pinnedOrgnrs.size}{" "}
+                firma fra agenten.
+              </div>
+            )}
+
             {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
               <div
                 className="mx-2.5 mb-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 lg:mx-3"
@@ -968,7 +1031,7 @@ export function AppPageClient(props: Props) {
         </summary>
         <div className="mt-3">
           <ScanSavedAudiences
-            onApply={(next) => applyFilters(next)}
+            onApply={applySavedAudience}
             onSaveCurrent={saveAudience}
             saveMessage={saveMessage}
           />

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { loadConversationMessages } from "@/lib/agent/conversations";
 import { createClient } from "@/lib/supabase/server";
+import type { AgentConversation } from "@/types/database";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const user = await getSessionUser();
@@ -8,37 +12,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const listId = new URL(request.url).searchParams.get("id");
+  const { searchParams } = new URL(request.url);
+  const conversationId = searchParams.get("id");
+
   const supabase = await createClient();
 
-  if (listId) {
-    const { data, error } = await supabase
-      .from("saved_lists")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("id", listId)
-      .maybeSingle();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    if (!data) {
-      return NextResponse.json({ error: "Listen finnes ikke" }, { status: 404 });
-    }
-    return NextResponse.json(data);
+  if (conversationId) {
+    const messages = await loadConversationMessages(conversationId, user.id);
+    return NextResponse.json({ messages });
   }
 
   const { data, error } = await supabase
-    .from("saved_lists")
+    .from("agent_conversations")
     .select("*")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .limit(20);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({ conversations: (data ?? []) as AgentConversation[] });
 }
 
 export async function POST(request: Request) {
@@ -47,21 +42,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { name, filters } = await request.json();
-  if (!name?.trim()) {
-    return NextResponse.json({ error: "Navn er påkrevd" }, { status: 400 });
+  let body: { title?: string };
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("saved_lists")
-    .insert({ user_id: user.id, name, filters: filters ?? {} })
-    .select()
+    .from("agent_conversations")
+    .insert({
+      user_id: user.id,
+      title: body.title?.trim() || "Ny samtale",
+    })
+    .select("*")
     .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json(data as AgentConversation);
 }

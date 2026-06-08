@@ -19,6 +19,7 @@ import {
 import { extractPhonesFromHtml } from "../src/lib/website-scan/parse-page-contact";
 import {
   phonePlausibleForCompany,
+  phoneLooksLikeDate,
   phoneLooksLikeOrgnr,
 } from "../src/lib/website-scan/phone-plausible";
 import { resolveCompanyPhone } from "../src/lib/website-scan/resolve-company-contact";
@@ -26,7 +27,10 @@ import {
   CONTACT_ENRICHMENT_VERSION,
   needsContactEnrichment,
 } from "../src/lib/website-scan/scan-cache";
-import { profileMatchesCompany } from "../src/lib/website-scan/serpapi-facebook-profile";
+import {
+  enrichFacebookWithSerpApi,
+  profileMatchesCompany,
+} from "../src/lib/website-scan/serpapi-facebook-profile";
 import {
   api1881ContactMatchesCompany,
   extractPhonesFromApi1881Contact,
@@ -108,7 +112,7 @@ await test("URL alene kan ikke matche på path-tokens", () => {
   );
 });
 
-await test("Nettside krever tittel-treff — ikke bare domene", () => {
+await test("Nettside avviser delvis domene-treff (narvik-spa ≠ frisør)", () => {
   const pick = pickBestWebsite(
     [
       {
@@ -120,6 +124,69 @@ await test("Nettside krever tittel-treff — ikke bare domene", () => {
     { municipalityName: "Narvik" }
   );
   assert.equal(pick.hasWebsite, false);
+});
+
+const RECALL_FIXTURES = [
+  { name: "AQ PARTNER QUESADA", domain: "aqpartner.no", place: "KRISTIANSAND" },
+  { name: "RAVINE SYKLER AS", domain: "ravine.no", place: "KRISTIANSAND" },
+  { name: "LUCKY CUTS BY ARIANA HAVNEVIK RIISE", domain: "luckycuts.no", place: "ÅLESUND" },
+  { name: "POLI-MAP", domain: "poli-map.org", place: "OSLO" },
+  { name: "MASSIVO AS", domain: "massivo.no", place: "OSLO" },
+  { name: "SEEME CARE AS", domain: "seemecare.no", place: "FREDRIKSTAD" },
+] as const;
+
+for (const fx of RECALL_FIXTURES) {
+  await test(`Recall: ${fx.domain} med generisk tittel`, () => {
+    const pick = pickBestWebsite(
+      [{ title: "Hjem", link: `https://www.${fx.domain}/` }],
+      fx.name,
+      { municipalityName: fx.place }
+    );
+    assert.equal(pick.hasWebsite, true, fx.name);
+    assert.equal(pick.websiteDomain, fx.domain);
+  });
+}
+
+await test("Poli-Map avviser thepolimap.com (annet domene)", () => {
+  const pick = pickBestWebsite(
+    [{ title: "The Poli Map", link: "https://thepolimap.com/" }],
+    "POLI-MAP",
+    { municipalityName: "OSLO" }
+  );
+  assert.equal(pick.hasWebsite, false);
+});
+
+await test("Seeme Care avviser seeme.no (kort prefiks ≠ seemecare)", () => {
+  const pick = pickBestWebsite(
+    [{ title: "Seeme", link: "https://seeme.no/" }],
+    "SEEME CARE AS",
+    { municipalityName: "FREDRIKSTAD" }
+  );
+  assert.equal(pick.hasWebsite, false);
+});
+
+await test("EF AUTO avviser eidangerauto.no (generisk «auto»)", () => {
+  const pick = pickBestWebsite(
+    [{ title: "Eidanger Auto", link: "https://eidangerauto.no/" }],
+    "EF AUTO AS",
+    { municipalityName: "PORSGRUNN" }
+  );
+  assert.equal(pick.hasWebsite, false);
+});
+
+await test("Nettside godtar riktig domene selv med generisk tittel", () => {
+  const pick = pickBestWebsite(
+    [
+      {
+        title: "Hjem",
+        link: "https://www.narvikfrisor.no/",
+      },
+    ],
+    NARVIK_FRISOR,
+    { municipalityName: "Narvik" }
+  );
+  assert.equal(pick.hasWebsite, true);
+  assert.equal(pick.websiteDomain, "narvikfrisor.no");
 });
 
 await test("Facebook-profil Headline avvises for Narvik Frisør", () => {
@@ -143,6 +210,16 @@ await test("Facebook-profil Headline avvises for Narvik Frisør", () => {
     linkedWebsiteUrl: null,
   };
   assert.equal(profileMatchesCompany(profile, NARVIK_FRISOR, "Narvik"), false);
+});
+
+await test("facebook_profile kalles ikke uten Google-treff", async () => {
+  const result = await enrichFacebookWithSerpApi(
+    "https://www.facebook.com/narvikfrisor",
+    NARVIK_FRISOR,
+    { verifiedViaSearch: false }
+  );
+  assert.equal(result.facebookUrl, "https://www.facebook.com/narvikfrisor");
+  assert.equal(result.facebookProfile, null);
 });
 
 const SALONGEN = "SALONGEN DAME OG HERREFRISØR Tone Saboh";
@@ -236,6 +313,31 @@ await test("Barauske nesten-org.nr 93742994 avvises (fuzzy)", () => {
 
 await test("Nails by Marit 17047328 avvises (ugyldig norsk prefiks)", () => {
   assert.equal(phonePlausibleForCompany("17047328", "937359276"), false);
+});
+
+await test("Dato-lignende tall 20230930 avvises", () => {
+  assert.equal(phoneLooksLikeDate("20230930"), true);
+  assert.equal(phonePlausibleForCompany("20230930", "937796803"), false);
+});
+
+await test("Dato-lignende tall 20260522 avvises", () => {
+  assert.equal(phoneLooksLikeDate("20260522"), true);
+  assert.equal(phonePlausibleForCompany("20260522", "937802471"), false);
+});
+
+await test("Nettside-HTML med løs tekst gir ingen telefon uten tel:/JSON-LD", () => {
+  const html = `
+    <p>Stiftet 20230930</p>
+    <p>Kontakt oss på 56623002 eller 63438899</p>
+  `;
+  const phones = extractPhonesFromHtml(html, { trustTextRegex: false });
+  assert.equal(phones.length, 0);
+});
+
+await test("Nettside-HTML med tel:-lenke godtas", () => {
+  const html = `<a href="tel:+4748853389">Ring</a>`;
+  const phones = extractPhonesFromHtml(html, { trustTextRegex: false });
+  assert.equal(phones.includes("488 53 389"), true);
 });
 
 const PROFF_HTML = `

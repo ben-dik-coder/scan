@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FilterState } from "@/components/CompanyFilters";
+import {
+  agentOrgnrsFromFilters,
+  type AgentSavedListFilters,
+} from "@/lib/agent/saved-list-filters";
+import {
+  SAVED_LIST_CHANGED_EVENT,
+  type SavedListChangedDetail,
+} from "@/lib/agent/saved-list-bus";
 import { DEFAULT_MARKET_FILTERS, OSLO_MUNICIPALITY_CODE } from "@/lib/constants/market";
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 import { isDemoMode } from "@/lib/demo/config";
@@ -12,7 +20,7 @@ import { Loader2 } from "lucide-react";
 type SavedListRow = {
   id: string;
   name: string;
-  filters: Partial<FilterState>;
+  filters: AgentSavedListFilters;
 };
 
 const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
@@ -54,8 +62,15 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
   },
 ];
 
+export type SavedAudienceApply = {
+  filters: FilterState;
+  agentOrgnrs?: string[];
+  listId?: string;
+  listName?: string;
+};
+
 type Props = {
-  onApply: (filters: FilterState) => void;
+  onApply: (payload: SavedAudienceApply) => void;
   onSaveCurrent: (name: string) => Promise<void>;
   saveMessage: string | null;
 };
@@ -70,7 +85,7 @@ function resolveProfessionId(
 }
 
 function mergeFilters(
-  partial: Partial<FilterState> & { professionSearch?: string }
+  partial: AgentSavedListFilters & { professionSearch?: string }
 ): FilterState {
   return {
     regionId: partial.regionId ?? "",
@@ -92,34 +107,59 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
   const [loading, setLoading] = useState(!isDemoMode());
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reloadSaved = useCallback(async () => {
     if (isDemoMode()) {
       setSaved(
         demo.savedLists.map((l) => ({
           id: l.id,
           name: l.name,
-          filters: (l.filters ?? {}) as Partial<FilterState>,
+          filters: (l.filters ?? {}) as AgentSavedListFilters,
         }))
       );
       setLoading(false);
       return;
     }
-    fetch("/api/saved-lists")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => {
-        setSaved(
-          (rows as SavedListRow[]).map((l) => ({
-            id: l.id,
-            name: l.name,
-            filters: (l.filters ?? {}) as Partial<FilterState>,
-          }))
-        );
-      })
-      .catch(() => setSaved([]))
-      .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when demo lists change
-  }, [demo.savedLists.length]);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/saved-lists");
+      if (!res.ok) {
+        setSaved([]);
+        return;
+      }
+      const rows = (await res.json()) as SavedListRow[];
+      setSaved(
+        rows.map((l) => ({
+          id: l.id,
+          name: l.name,
+          filters: (l.filters ?? {}) as AgentSavedListFilters,
+        }))
+      );
+    } catch {
+      setSaved([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [demo.savedLists]);
+
+  useEffect(() => {
+    void reloadSaved();
+  }, [reloadSaved]);
+
+  useEffect(() => {
+    function onListChanged(e: Event) {
+      const detail = (e as CustomEvent<SavedListChangedDetail>).detail;
+      if (detail?.id) {
+        setHighlightId(detail.id);
+        window.setTimeout(() => setHighlightId(null), 4000);
+      }
+      void reloadSaved();
+    }
+    window.addEventListener(SAVED_LIST_CHANGED_EVENT, onListChanged);
+    return () =>
+      window.removeEventListener(SAVED_LIST_CHANGED_EVENT, onListChanged);
+  }, [reloadSaved]);
 
   async function handleSave() {
     if (!name.trim()) return;
@@ -127,19 +167,7 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
     try {
       await onSaveCurrent(name.trim());
       setName("");
-      if (!isDemoMode()) {
-        const res = await fetch("/api/saved-lists");
-        if (res.ok) {
-          const rows = await res.json();
-          setSaved(
-            (rows as SavedListRow[]).map((l) => ({
-              id: l.id,
-              name: l.name,
-              filters: (l.filters ?? {}) as Partial<FilterState>,
-            }))
-          );
-        }
-      }
+      await reloadSaved();
     } finally {
       setSaving(false);
     }
@@ -152,7 +180,7 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
           <button
             key={p.id}
             type="button"
-            onClick={() => onApply(p.filters)}
+            onClick={() => onApply({ filters: p.filters })}
             className="scan-chip cursor-pointer hover:border-sky-400/40"
           >
             {p.name}
@@ -165,16 +193,39 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
           </span>
         )}
         {!loading &&
-          saved.map((l) => (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => onApply(mergeFilters(l.filters))}
-              className="scan-chip cursor-pointer hover:border-sky-400/40"
-            >
-              {l.name}
-            </button>
-          ))}
+          saved.map((l) => {
+            const agentOrgnrs = agentOrgnrsFromFilters(l.filters);
+            const isAgent = l.filters.createdBy === "agent" || agentOrgnrs.length > 0;
+            return (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() =>
+                  onApply({
+                    filters: mergeFilters(l.filters),
+                    agentOrgnrs: agentOrgnrs.length ? agentOrgnrs : undefined,
+                    listId: l.id,
+                    listName: l.name,
+                  })
+                }
+                className={cn(
+                  "scan-chip cursor-pointer hover:border-sky-400/40",
+                  highlightId === l.id && "border-sky-400/60 bg-sky-400/15",
+                  isAgent && "border-violet-400/30"
+                )}
+                title={
+                  agentOrgnrs.length
+                    ? `${agentOrgnrs.length} firma fra AI-agent`
+                    : undefined
+                }
+              >
+                {l.name}
+                {isAgent && (
+                  <span className="ml-1 text-[10px] text-violet-300">AI</span>
+                )}
+              </button>
+            );
+          })}
       </div>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <input

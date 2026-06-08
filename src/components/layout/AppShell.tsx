@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { AgentChatFab, AgentChatPanel } from "@/components/agent/AgentChatPanel";
 import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
 import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
@@ -79,6 +80,7 @@ export function AppShell({
   const router = useRouter();
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const isGlassShell = isAppRoute(pathname);
   const isScanPage = pathname === "/app";
 
@@ -302,6 +304,13 @@ export function AppShell({
             {children}
           </div>
         </main>
+
+        {isGlassShell && (
+          <>
+            <AgentChatFab onOpen={() => setAgentOpen(true)} />
+            <AgentChatPanel open={agentOpen} onClose={() => setAgentOpen(false)} />
+          </>
+        )}
       </div>
     </div>
     </OnboardingProvider>

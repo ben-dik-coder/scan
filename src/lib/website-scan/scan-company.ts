@@ -1,4 +1,8 @@
-import { hasGoogleCse, hasSerpApi } from "./config";
+import { hasFreeWebSearch, hasGoogleCse, hasSerpApi } from "./config";
+import {
+  discoverWebsiteByDomainGuess,
+  preferredTldFromPlace,
+} from "./domain-guess";
 import { websiteFromBrreg } from "./brreg-website-hint";
 import { websiteFromCrossLink } from "./cross-link-website";
 import { websiteFromEmail } from "./email-hint";
@@ -17,6 +21,7 @@ import {
 } from "./platform-contact";
 import {
   buildSearchQueries,
+  buildSearchQuery,
   dedupeHits,
   displayNameDiffersFromLegal,
   normalizeDomain,
@@ -25,11 +30,13 @@ import {
   websiteUrlPlausibleForCompany,
   type SearchHit,
 } from "./parse-results";
+import { discoverFacebookFromDirectoriesFree } from "./discover-social-free";
+import { searchDuckDuckGo } from "./duckduckgo-search";
 import { searchSerpApi } from "./serpapi";
 import {
+  ENABLE_GULESIDER_SERP_SEARCH,
   GOOGLE_SERP_NUM,
   MAX_FALLBACK_SOCIAL_QUERIES,
-  MAX_WEBSITE_SEARCH_QUERIES,
   SOCIAL_SERP_NUM,
 } from "./scan-api-budget";
 import { CONTACT_ENRICHMENT_VERSION } from "./scan-cache";
@@ -219,6 +226,7 @@ async function resolveGulesiderPresence(
   let presence = pickGulesiderFromHits(hits, company.name);
 
   if (
+    ENABLE_GULESIDER_SERP_SEARCH &&
     !presence.gulesiderListed &&
     options.canSearch &&
     options.ranGoogleSearch &&
@@ -303,6 +311,68 @@ const EMPTY_WEBSITE_PICK: PickResult = {
   confidence: "low",
 };
 
+type WebsiteDiscovery = {
+  pick: PickResult;
+  displayName: string | null;
+  websiteFacebookUrl: string | null;
+  websiteInstagramUrl: string | null;
+  websiteLinkedInUrl: string | null;
+  effectiveQuery: string;
+  websiteDiscoverySource: WebsiteScanResult["websiteDiscoverySource"];
+};
+
+async function discoverWebsiteFromDomainGuess(
+  company: WebsiteScanCompanyInput,
+  options?: { preferredTld?: string | null }
+): Promise<WebsiteDiscovery | null> {
+  const guessed = await discoverWebsiteByDomainGuess(company.name, {
+    preferredTld:
+      options?.preferredTld ?? preferredTldFromPlace(primaryGeoPlace(company)),
+  });
+  if (!guessed) return null;
+
+  const meta = await fetchWebsitePageMetadata(guessed.websiteUrl).catch(() => ({
+    displayName: null,
+    facebookUrl: null,
+    instagramUrl: null,
+    linkedinUrl: null,
+  }));
+
+  if (
+    !websiteUrlPlausibleForCompany(
+      guessed.websiteUrl,
+      company.name,
+      meta.displayName
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    pick: {
+      hasWebsite: true,
+      websiteKind: "own",
+      websiteUrl: guessed.websiteUrl,
+      websiteDomain: guessed.websiteDomain,
+      bookingPlatform: null,
+      topHits: [
+        {
+          title: company.name,
+          link: guessed.websiteUrl,
+          domain: guessed.websiteDomain,
+        },
+      ],
+      confidence: "high",
+    },
+    displayName: meta.displayName,
+    websiteFacebookUrl: meta.facebookUrl,
+    websiteInstagramUrl: meta.instagramUrl,
+    websiteLinkedInUrl: meta.linkedinUrl,
+    effectiveQuery: `Domene-gjetning @${guessed.websiteDomain}`,
+    websiteDiscoverySource: "domain_guess",
+  };
+}
+
 function applyCrossLinkWebsiteFallback(
   pick: PickResult,
   options: {
@@ -374,38 +444,36 @@ async function resolveFacebook(
   const geoPlaces = options?.geoPlaces ?? companyGeoPlaces(company);
   const geoLabel = primaryGeoPlace(company);
 
-  let facebookUrl = options?.websiteUrl ?? null;
+  let facebookUrl: string | null = null;
+  let facebookConfidence: SocialLinkConfidence | undefined;
   let pickedFromSearch = false;
-  if (facebookUrl && !socialUrlMatchesCompany(facebookUrl, company.name)) {
-    facebookUrl = null;
+
+  const mergedHits = dedupeHits([...hits, ...fbHits]);
+  const picked = pickFacebookFromHits(mergedHits, company.name, geoLabel, {
+    alternateNames: options?.alternateNames,
+    geoPlaces,
+  });
+  facebookUrl = picked.url;
+  facebookConfidence = picked.confidence;
+  pickedFromSearch = Boolean(picked.url);
+
+  for (const altName of options?.alternateNames ?? []) {
+    if (facebookUrl) break;
+    const altPick = pickFacebookFromHits(mergedHits, altName, geoLabel, {
+      geoPlaces,
+    });
+    facebookUrl = altPick.url;
+    facebookConfidence = altPick.confidence;
+    pickedFromSearch = Boolean(altPick.url);
   }
-  let facebookConfidence: SocialLinkConfidence | undefined =
-    facebookUrl ? (options?.websiteConfidence ?? "medium") : undefined;
 
-  if (!facebookUrl) {
-    const mergedHits = dedupeHits([...hits, ...fbHits]);
-    const picked = pickFacebookFromHits(
-      mergedHits,
-      company.name,
-      geoLabel,
-      { alternateNames: options?.alternateNames, geoPlaces }
-    );
-    facebookUrl = picked.url;
-    facebookConfidence = picked.confidence;
-    pickedFromSearch = Boolean(picked.url);
-
-    for (const altName of options?.alternateNames ?? []) {
-      if (facebookUrl) break;
-      const altPick = pickFacebookFromHits(
-        mergedHits,
-        altName,
-        geoLabel,
-        { geoPlaces }
-      );
-      facebookUrl = altPick.url;
-      facebookConfidence = altPick.confidence;
-      pickedFromSearch = Boolean(altPick.url);
-    }
+  if (
+    !facebookUrl &&
+    options?.websiteUrl &&
+    socialUrlMatchesCompany(options.websiteUrl, company.name)
+  ) {
+    facebookUrl = options.websiteUrl;
+    facebookConfidence = options.websiteConfidence ?? "medium";
   }
 
   if (!facebookUrl && options?.demo) {
@@ -426,6 +494,14 @@ async function resolveFacebook(
       facebookUrl,
       facebookConfidence: facebookConfidence ?? "medium",
       facebookProfile: demoFacebookProfile(company, facebookUrl),
+    };
+  }
+
+  if (!pickedFromSearch) {
+    return {
+      facebookUrl,
+      facebookConfidence: facebookConfidence ?? "medium",
+      facebookProfile: null,
     };
   }
 
@@ -595,6 +671,10 @@ async function resolveSocial(
   return { facebookUrl, facebookConfidence, facebookProfile, ...ig };
 }
 
+function hasPaidWebSearch(): boolean {
+  return hasGoogleCse() || hasSerpApi();
+}
+
 async function fetchHitsForQuery(
   query: string,
   options?: { serpNum?: number; orgnr?: string }
@@ -611,12 +691,19 @@ async function fetchHitsForQuery(
       if (hasGoogleCse()) {
         return await searchGoogleCse(query);
       }
+      if (hasFreeWebSearch()) {
+        return await searchDuckDuckGo(query);
+      }
       throw err;
     }
   }
 
   if (hasGoogleCse()) {
     return await searchGoogleCse(query);
+  }
+
+  if (hasFreeWebSearch()) {
+    return await searchDuckDuckGo(query);
   }
 
   return [];
@@ -669,38 +756,15 @@ function socialFoundInHits(
 
 async function fetchWebsiteSearchHits(
   company: WebsiteScanCompanyInput,
-  queries: string[],
   options: { canSearch: boolean }
 ): Promise<SearchHit[]> {
   if (!options.canSearch) return [];
 
-  const limit = Math.min(queries.length, MAX_WEBSITE_SEARCH_QUERIES);
-  let allHits: SearchHit[] = [];
-  const geoLabel = primaryGeoPlace(company);
-
-  for (let i = 0; i < limit; i++) {
-    const query = queries[i]!;
-    const batch = await fetchHitsForQuery(query, {
-      orgnr: company.orgnr,
-      serpNum: GOOGLE_SERP_NUM,
-    }).catch(() => [] as SearchHit[]);
-    allHits = dedupeHits([...allHits, ...batch]);
-
-    const pick = pickBestWebsite(allHits, company.name, {
-      municipalityName: geoLabel,
-    });
-
-    if (pick.hasWebsite && pick.confidence !== "low") {
-      logScan(company.orgnr, "Nettside-søk stoppet tidlig", {
-        queriesUsed: i + 1,
-        confidence: pick.confidence,
-        url: pick.websiteUrl,
-      });
-      break;
-    }
-  }
-
-  return allHits;
+  const query = buildSearchQuery(company);
+  return fetchHitsForQuery(query, {
+    orgnr: company.orgnr,
+    serpNum: GOOGLE_SERP_NUM,
+  }).catch(() => [] as SearchHit[]);
 }
 
 async function fetchHitsForQueries(
@@ -802,7 +866,7 @@ async function fetchSocialSerpHits(
     alternateNames: string[];
   }
 ): Promise<{ fbHits: SearchHit[]; igHits: SearchHit[] }> {
-  const canSearch = hasGoogleCse() || hasSerpApi();
+  const canSearch = hasPaidWebSearch() || hasFreeWebSearch();
   if (!canSearch) return { fbHits: [], igHits: [] };
 
   const serpOpts = { serpNum: SOCIAL_SERP_NUM, orgnr: company.orgnr };
@@ -879,9 +943,9 @@ export async function scanCompanyWebsite(
   const brregHint = websiteFromBrreg(company.website, company.name);
   const emailHint = brregHint ? null : websiteFromEmail(company.email, company.name);
   const websiteHint = brregHint ?? emailHint;
-  const canSearch = hasGoogleCse() || hasSerpApi();
+  const canSearch = hasPaidWebSearch() || hasFreeWebSearch();
 
-  if (options?.demo || (!hasGoogleCse() && !hasSerpApi())) {
+  if (options?.demo) {
     const base = demoScan(company);
     const socialResult = await resolveSocial(company, [], [], [], {
       demo: true,
@@ -964,48 +1028,87 @@ export async function scanCompanyWebsite(
   }
 
   if (!usedVerifiedHint) {
-    try {
-      hits = await fetchWebsiteSearchHits(company, searchQueries, {
-        canSearch,
+    const domainDiscovery = await discoverWebsiteFromDomainGuess(company);
+    if (domainDiscovery) {
+      finalPick = domainDiscovery.pick;
+      displayName = domainDiscovery.displayName;
+      websiteFacebookUrl = domainDiscovery.websiteFacebookUrl;
+      websiteInstagramUrl = domainDiscovery.websiteInstagramUrl;
+      websiteLinkedInUrl = domainDiscovery.websiteLinkedInUrl;
+      effectiveQuery = domainDiscovery.effectiveQuery;
+      websiteDiscoverySource = domainDiscovery.websiteDiscoverySource;
+      source = resolveSearchSource();
+      hits = domainDiscovery.pick.topHits?.map((h) => ({
+        title: h.title,
+        link: h.link,
+      })) ?? [];
+      logScan(company.orgnr, "Nettside via domene-gjetning (før Google)", {
+        url: finalPick.websiteUrl,
       });
-      finalPick = pickBestWebsite(hits, company.name, {
-        municipalityName: primaryGeoPlace(company),
-      });
-    } catch {
-      hits = [];
-      finalPick = EMPTY_WEBSITE_PICK;
-    }
-
-    source = resolveSearchSource();
-    websiteDiscoverySource = finalPick.hasWebsite ? "google" : null;
-
-    if (finalPick.hasWebsite && finalPick.websiteUrl) {
-      const meta = await fetchWebsitePageMetadata(finalPick.websiteUrl).catch(
-        () => ({
-          displayName: null,
-          facebookUrl: null,
-          instagramUrl: null,
-          linkedinUrl: null,
-        })
-      );
-      displayName = meta.displayName;
-      websiteFacebookUrl = meta.facebookUrl;
-      websiteInstagramUrl = meta.instagramUrl;
-      websiteLinkedInUrl = meta.linkedinUrl;
-
-      if (
-        !websiteUrlPlausibleForCompany(
-          finalPick.websiteUrl,
-          company.name,
-          displayName
-        )
-      ) {
-        logScan(company.orgnr, "Google-treff avvist", {
-          url: finalPick.websiteUrl,
-          displayName,
+    } else {
+      try {
+        hits = await fetchWebsiteSearchHits(company, { canSearch });
+        finalPick = pickBestWebsite(hits, company.name, {
+          municipalityName: primaryGeoPlace(company),
         });
+      } catch {
+        hits = [];
         finalPick = EMPTY_WEBSITE_PICK;
-        websiteDiscoverySource = null;
+      }
+
+      source = resolveSearchSource();
+      effectiveQuery = buildSearchQuery(company);
+      websiteDiscoverySource = finalPick.hasWebsite ? "google" : null;
+
+      if (finalPick.hasWebsite && finalPick.websiteUrl) {
+        const meta = await fetchWebsitePageMetadata(finalPick.websiteUrl).catch(
+          () => ({
+            displayName: null,
+            facebookUrl: null,
+            instagramUrl: null,
+            linkedinUrl: null,
+          })
+        );
+        displayName = meta.displayName;
+        websiteFacebookUrl = meta.facebookUrl;
+        websiteInstagramUrl = meta.instagramUrl;
+        websiteLinkedInUrl = meta.linkedinUrl;
+
+        if (
+          !websiteUrlPlausibleForCompany(
+            finalPick.websiteUrl,
+            company.name,
+            displayName
+          )
+        ) {
+          logScan(company.orgnr, "Google-treff avvist", {
+            url: finalPick.websiteUrl,
+            displayName,
+          });
+          finalPick = EMPTY_WEBSITE_PICK;
+          websiteDiscoverySource = null;
+        }
+      }
+
+      const prefTld = preferredTldFromPlace(primaryGeoPlace(company));
+      if (
+        finalPick.hasWebsite &&
+        prefTld &&
+        finalPick.websiteDomain &&
+        !finalPick.websiteDomain.endsWith(prefTld.slice(1))
+      ) {
+        const tldDiscovery = await discoverWebsiteFromDomainGuess(company, {
+          preferredTld: prefTld,
+        });
+        if (tldDiscovery) {
+          finalPick = tldDiscovery.pick;
+          displayName = tldDiscovery.displayName;
+          websiteFacebookUrl = tldDiscovery.websiteFacebookUrl;
+          websiteInstagramUrl = tldDiscovery.websiteInstagramUrl;
+          websiteLinkedInUrl = tldDiscovery.websiteLinkedInUrl;
+          websiteDiscoverySource = tldDiscovery.websiteDiscoverySource;
+          effectiveQuery = tldDiscovery.effectiveQuery;
+        }
       }
     }
 
@@ -1023,6 +1126,24 @@ export async function scanCompanyWebsite(
     websiteDomain: finalPick.websiteDomain ?? undefined,
   };
 
+  const earlyGulesider = pickGulesiderFromHits(hits, company.name);
+  const directoryHtmlCache = new Map<string, string>();
+
+  let freeFbHits: SearchHit[] = [];
+  if (social.includeFacebook) {
+    freeFbHits = await discoverFacebookFromDirectoriesFree(company, {
+      gulesiderUrl: earlyGulesider.gulesiderUrl,
+      alternateNames: alts,
+      cachedHtml: directoryHtmlCache,
+    }).catch(() => [] as SearchHit[]);
+    if (freeFbHits.length) {
+      logScan(company.orgnr, "Facebook via katalog (gratis)", {
+        hits: freeFbHits.length,
+        urls: freeFbHits.map((h) => h.link),
+      });
+    }
+  }
+
   const { fbHits, igHits } = await fetchSocialSerpHits(company, social, {
     ...socialContext,
     mainHits: hits,
@@ -1031,7 +1152,9 @@ export async function scanCompanyWebsite(
     alternateNames: alts,
   });
 
-  const socialResult = await resolveSocial(company, hits, fbHits, igHits, {
+  const mergedFbHits = dedupeHits([...freeFbHits, ...fbHits]);
+
+  const socialResult = await resolveSocial(company, hits, mergedFbHits, igHits, {
     demo: options?.demo,
     social,
     alternateNames: alts,

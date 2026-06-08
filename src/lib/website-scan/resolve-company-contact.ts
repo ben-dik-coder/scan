@@ -14,11 +14,16 @@ type CompanyContactInput = {
   has_email?: boolean;
   phone?: string | null;
   mobile?: string | null;
+  contact_override?: {
+    mobile?: string | null;
+    phone?: string | null;
+    source?: string | null;
+  } | null;
 };
 
 export type ResolvedCompanyPhone = {
   phone: string;
-  source: "brreg" | "mobile" | "platform";
+  source: "brreg" | "mobile" | "platform" | "manual";
   platformSource?: string | null;
 };
 
@@ -61,6 +66,16 @@ export function resolveCompanyPhone(
   const phone = company.phone?.trim();
   if (phone && isAcceptablePhone(phone, orgnr)) {
     return { phone: normalizeDisplayPhone(phone), source: "brreg" };
+  }
+
+  const manualMobile = company.contact_override?.mobile?.trim();
+  if (manualMobile && isAcceptablePhone(manualMobile, orgnr)) {
+    return { phone: normalizeDisplayPhone(manualMobile), source: "manual" };
+  }
+
+  const manualPhone = company.contact_override?.phone?.trim();
+  if (manualPhone && isAcceptablePhone(manualPhone, orgnr)) {
+    return { phone: normalizeDisplayPhone(manualPhone), source: "manual" };
   }
 
   if (scan?.enrichedPhone && isAcceptablePhone(scan.enrichedPhone, orgnr)) {

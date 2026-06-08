@@ -142,6 +142,41 @@ const LISTING_PATH_RE =
 /** Korte ord som «bø» matcher feil (Bønes Spa ≠ Bø Pæng) */
 const MIN_TOKEN_LEN = 3;
 
+/** For generiske enkeltord — «auto» i eidangerauto.no er ikke EF AUTO */
+const GENERIC_DOMAIN_TOKENS = new Set([
+  "auto",
+  "bygg",
+  "care",
+  "cleantech",
+  "consult",
+  "energy",
+  "group",
+  "process",
+  "holding",
+  "partner",
+  "service",
+  "solutions",
+  "system",
+  "systems",
+  "tech",
+  "transport",
+]);
+
+/** Yrkes-/bransjeord i navn — «Ravine Sykler» kan ha domene bare «ravine» */
+const DESCRIPTIVE_DOMAIN_TOKENS = new Set([
+  "sykler",
+  "sykkel",
+  "frisor",
+  "frisør",
+  "bygg",
+  "auto",
+  "taxi",
+  "transport",
+  "renhold",
+  "consulting",
+  "holding",
+]);
+
 export type WebsiteKind = "own" | "booking_only" | "none";
 
 export type SearchHit = { title: string; link: string };
@@ -189,7 +224,7 @@ export function isNonOwnWebsiteDomain(domain: string): boolean {
 export function stripCompanySuffix(name: string): string {
   return name
     .trim()
-    .replace(/\s+(as|asa|da|sa|enk|ans|nuf|ba|sf)\s*$/i, "")
+    .replace(/\s+(as|asa|aps|da|sa|enk|ans|nuf|ba|sf)\s*$/i, "")
     .trim();
 }
 
@@ -271,6 +306,25 @@ function linkMatchHaystack(link: string): string {
   }
 }
 
+/** Kun domenenavn (ikke URL-sti) — tryggere enn path for flerords-match. */
+function domainMatchHaystack(link: string): string {
+  try {
+    const u = new URL(link.startsWith("http") ? link : `https://${link}`);
+    const host = u.hostname.replace(/^www\./i, "");
+    const base = host.split(".")[0] ?? host;
+    return compactAlnum(base);
+  } catch {
+    return "";
+  }
+}
+
+function allTokensInHaystack(tokens: string[], hay: string): boolean {
+  return (
+    hay.length >= 5 &&
+    tokens.every((t) => hay.includes(compactAlnum(t)))
+  );
+}
+
 export function companyMatchesResult(
   title: string,
   link: string,
@@ -279,17 +333,39 @@ export function companyMatchesResult(
   const tokens = nameTokens(companyName);
   const titleHay = compactAlnum(title);
   const linkHay = link ? linkMatchHaystack(link) : "";
+  const domainHay = link ? domainMatchHaystack(link) : "";
+  const fullDomain = link ? normalizeDomain(link) : "";
+
+  if (fullDomain && domainSimilarToCompany(fullDomain, companyName)) {
+    return true;
+  }
 
   if (tokens.length >= 2) {
-    if (titleHay && tokens.every((t) => titleHay.includes(t))) return true;
+    const titleMatch =
+      titleHay && tokens.every((t) => titleHay.includes(compactAlnum(t)));
+    if (titleMatch) {
+      if (!link) return true;
+      return domainSimilarToCompany(fullDomain, companyName);
+    }
+    if (allTokensInHaystack(tokens, domainHay)) return true;
     return false;
   }
 
   if (tokens.length === 1) {
-    const t = tokens[0]!;
+    const t = compactAlnum(tokens[0]!);
     if (t.length < 4) return false;
-    if (titleHay.includes(t)) return true;
-    return linkHay.includes(t);
+    if (GENERIC_DOMAIN_TOKENS.has(t)) {
+      return Boolean(fullDomain && domainSimilarToCompany(fullDomain, companyName));
+    }
+    if (titleHay.includes(t)) {
+      if (!link) return true;
+      return domainSimilarToCompany(fullDomain, companyName);
+    }
+    if (t.length < 5) return false;
+    if (!link) return linkHay.includes(t);
+    return (
+      domainSimilarToCompany(fullDomain, companyName) && linkHay.includes(t)
+    );
   }
 
   const compact = compactAlnum(stripCompanySuffix(companyName));
@@ -302,24 +378,106 @@ export function domainSimilarToCompany(
   domain: string,
   companyName: string
 ): boolean {
-  const base = (domain.split(".")[0] ?? "").replace(/[^a-z0-9æøå]/gi, "");
-  if (base.length < 4) return false;
+  const rawBase = (domain.split(".")[0] ?? "").toLowerCase();
+  const base = rawBase.replace(/[^a-z0-9æøå]/gi, "");
+  const baseWithHyphen = rawBase.replace(/[^a-z0-9æøå-]/gi, "");
+  if (base.length < 4 && baseWithHyphen.length < 4) return false;
 
-  const companyCompact = compactAlnum(companyName);
-  if (companyCompact.length >= 5 && base.includes(companyCompact)) {
+  const stripped = stripCompanySuffix(companyName);
+  const companyCompact = compactAlnum(stripped);
+  const strippedSlug = stripped
+    .toLowerCase()
+    .replace(/[^a-z0-9æøå-]+/gi, "-")
+    .replace(/^-|-$/g, "");
+
+  if (strippedSlug.includes("-") && baseWithHyphen === strippedSlug) return true;
+
+  if (/\bIT\s*$/i.test(stripped) && nameTokens(companyName).length === 1) {
+    if (base !== companyCompact) return false;
+  }
+  if (base === companyCompact) return true;
+  if (
+    companyCompact.length >= 5 &&
+    Math.abs(base.length - companyCompact.length) <= 2 &&
+    (base.includes(companyCompact) || companyCompact.includes(base))
+  ) {
     return true;
   }
-  if (companyCompact.length >= 6 && companyCompact.includes(base)) {
-    return true;
+  if (companyCompact.startsWith(base)) {
+    if (base.length >= 8 && base.length >= companyCompact.length * 0.5) {
+      return true;
+    }
+    if (base.length >= 10 && base.length >= companyCompact.length * 0.4) {
+      return true;
+    }
   }
 
   const tokens = nameTokens(companyName);
-  if (tokens.length >= 2) {
-    return tokens.every((t) => base.includes(t));
+  const significant = tokens.filter(
+    (t) => !GENERIC_DOMAIN_TOKENS.has(compactAlnum(t))
+  );
+  if (significant.length === 1) {
+    const sig = compactAlnum(significant[0]!);
+    if (sig.length >= 6 && base === sig) return true;
+    if (base === companyCompact) return true;
+  }
+
+  const first = compactAlnum(tokens[0] ?? "");
+  if (first.length >= 6 && base === first) {
+    const suffix = companyCompact.slice(first.length);
+    if (!suffix || suffix.length <= 4) return true;
+  }
+
+  const matchTokens = tokens.length > 3 ? primarySearchTokens(companyName, 2) : tokens;
+  const matchSignificant = matchTokens.filter(
+    (t) => !GENERIC_DOMAIN_TOKENS.has(compactAlnum(t))
+  );
+  if (matchSignificant.length >= 2) {
+    if (matchSignificant.every((t) => base.includes(compactAlnum(t)))) {
+      return true;
+    }
+  }
+  if (matchTokens.length >= 2) {
+    if (matchTokens.every((t) => base.includes(compactAlnum(t)))) return true;
+
+    const first = compactAlnum(matchTokens[0]!);
+    if (
+      first.length >= 5 &&
+      base === first &&
+      companyCompact.startsWith(first) &&
+      companyCompact.length > first.length
+    ) {
+      const suffix = companyCompact.slice(first.length);
+      const suffixTokens = nameTokens(suffix);
+      if (
+        suffixTokens.length > 0 &&
+        suffixTokens.every(
+          (t) =>
+            DESCRIPTIVE_DOMAIN_TOKENS.has(t) ||
+            GENERIC_DOMAIN_TOKENS.has(compactAlnum(t))
+        ) &&
+        suffixTokens.some((t) => DESCRIPTIVE_DOMAIN_TOKENS.has(t))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }
   if (tokens.length === 1) {
-    const t = tokens[0]!;
-    return t.length >= 4 && base.includes(t);
+    const t = compactAlnum(tokens[0]!);
+    if (t.length < 5) return false;
+    if (GENERIC_DOMAIN_TOKENS.has(t)) {
+      return base === t || (base.startsWith(t) && base.length <= t.length + 2);
+    }
+    if (base === t) return true;
+    if (
+      Math.abs(base.length - t.length) <= 2 &&
+      (base.includes(t) || t.includes(base))
+    ) {
+      return true;
+    }
+    return false;
   }
 
   return false;
@@ -397,7 +555,8 @@ function scoreHit(
   }
 
   for (const token of tokens) {
-    if (domainBase.includes(token)) {
+    const tc = compactAlnum(token);
+    if (tc && domainBase.includes(tc)) {
       nameInDomain = true;
       score += 4;
     }
@@ -411,12 +570,18 @@ function scoreHit(
   if (domain.endsWith(".no")) score += 2;
   else if (domain.endsWith(".com")) score += 1;
 
+  const primaryTokens = primarySearchTokens(companyName, 3);
   const titleHit = matchesLegal || matchesStripped;
+  const allTokensInDomain =
+    primaryTokens.length >= 2 &&
+    allTokensInHaystack(primaryTokens, compactAlnum(domainBase));
   const acceptAsOwn =
     (titleHit && looksLikeHomepage(link)) ||
-    (nameInDomain && titleHit);
+    (nameInDomain && titleHit) ||
+    (allTokensInDomain && looksLikeHomepage(link)) ||
+    (domainMatch && looksLikeHomepage(link));
 
-  const minScore = 10;
+  const minScore = domainMatch ? 8 : 10;
   if (!acceptAsOwn || score < minScore) return null;
 
   return { title, link, domain, score, nameInDomain };
@@ -538,11 +703,21 @@ export function buildSearchQueries(company: {
 
   if (places.length > 0) {
     for (const place of places) {
+      const brandTokens = nameTokens(name).filter((t) => t.length >= 5);
+      for (const token of brandTokens.slice(0, 2)) {
+        add(`${token} ${place}`);
+        add(`${token} ${place} nettside`);
+      }
+      add(`${stripped} ${place}`);
+      add(`${stripped} ${place} nettside`);
+      const brandCompact = compactAlnum(stripped);
+      if (brandCompact.length >= 5) {
+        add(`${brandCompact} ${place}`);
+      }
       add(`"${name}" ${place}`);
       add(`${name} ${place} nettside`);
       if (stripped !== name) {
         add(`"${stripped}" ${place}`);
-        add(`${stripped} ${place} nettside`);
       }
       if (tokens.length > 0) {
         add(`${tokens.join(" ")} ${place}${industryKw ? ` ${industryKw}` : ""}`);
@@ -563,7 +738,7 @@ export function buildSearchQueries(company: {
     }
   }
 
-  return queries.slice(0, 6);
+  return queries.slice(0, 8);
 }
 
 export function displayNameDiffersFromLegal(
