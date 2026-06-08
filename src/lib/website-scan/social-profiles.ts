@@ -6,7 +6,6 @@ import {
 } from "@/lib/website-scan/facebook-geo";
 import {
   companyMatchesProfileName,
-  companyMatchesResult,
   compactAlnum,
   nameTokens,
   normalizeDomain,

@@ -376,7 +376,7 @@ export async function lookup1881Contact(company: {
     const links = extract1881ListingLinks(searchHtml);
     const ordered = [
       ...links.filter((url) => slugMatchesCompany(url, company.name)),
-      ...links.filter((url) => orgnrInHtml(searchHtml, company.orgnr)),
+      ...links.filter(() => orgnrInHtml(searchHtml, company.orgnr)),
       ...links,
     ];
 

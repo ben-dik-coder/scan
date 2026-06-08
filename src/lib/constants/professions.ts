@@ -438,7 +438,6 @@ export function resolveProfessionQuery(raw: string): ProfessionMatch | null {
   if (!query) return null;
 
   const best = findBestProfession(query);
-  const keywords = new Set<string>([normalizeText(query)]);
 
   if (best) {
     return { ...buildProfessionMatch(best.profession), query };
