@@ -28,6 +28,14 @@ function newId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function cancelAgentRuns(): Promise<void> {
+  try {
+    await fetch("/api/agent/runs/cancel", { method: "POST" });
+  } catch {
+    // Best-effort: server may still mark run finished on disconnect.
+  }
+}
+
 export function AgentChatFab({ onOpen }: { onOpen: () => void }) {
   return (
     <button
@@ -53,6 +61,8 @@ export function AgentChatPanel({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+  const [pendingRetryText, setPendingRetryText] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolStep, setToolStep] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -78,10 +88,14 @@ export function AgentChatPanel({
 
   const stopRequest = useCallback(() => {
     abortRef.current?.abort();
+    void cancelAgentRuns();
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (
+      text: string,
+      options?: { cancelPrevious?: boolean; skipUserAppend?: boolean }
+    ) => {
       const trimmed = text.trim();
       if (!trimmed || loading) return;
 
@@ -90,7 +104,11 @@ export function AgentChatPanel({
       abortRef.current = abortController;
 
       setInput("");
-      appendMessage({ role: "user", content: trimmed });
+      setBlockedMessage(null);
+      setPendingRetryText(null);
+      if (!options?.skipUserAppend) {
+        appendMessage({ role: "user", content: trimmed });
+      }
       setLoading(true);
       setActiveTool(null);
       setToolStep(0);
@@ -102,18 +120,31 @@ export function AgentChatPanel({
           body: JSON.stringify({
             message: trimmed,
             conversationId: conversationId ?? undefined,
+            cancelPrevious: options?.cancelPrevious ?? false,
           }),
           signal: abortController.signal,
         });
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
+          const errorText =
+            typeof err.error === "string"
+              ? err.error
+              : "Noe gikk galt. Prøv igjen.";
+
+          if (res.status === 409 && err.canCancel) {
+            setBlockedMessage(errorText);
+            setPendingRetryText(trimmed);
+            appendMessage({
+              role: "assistant",
+              content: errorText,
+            });
+            return;
+          }
+
           appendMessage({
             role: "assistant",
-            content:
-              typeof err.error === "string"
-                ? err.error
-                : "Noe gikk galt. Prøv igjen.",
+            content: errorText,
           });
           return;
         }
@@ -208,6 +239,15 @@ export function AgentChatPanel({
     },
     [appendMessage, conversationId, loading]
   );
+
+  const retryAfterCancel = useCallback(async () => {
+    if (!pendingRetryText || loading) return;
+    await cancelAgentRuns();
+    void sendMessage(pendingRetryText, {
+      cancelPrevious: true,
+      skipUserAppend: true,
+    });
+  }, [loading, pendingRetryText, sendMessage]);
 
   return (
     <AppSideDrawer
@@ -316,6 +356,19 @@ export function AgentChatPanel({
             )}
           </div>
         ))}
+
+        {blockedMessage && pendingRetryText && !loading && (
+          <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            <p>En gammel jobb blokkerer chatten. Du kan avbryte den og prøve på nytt.</p>
+            <button
+              type="button"
+              onClick={() => void retryAfterCancel()}
+              className="rounded-lg border border-amber-300/40 bg-amber-400/20 px-3 py-1.5 text-xs font-medium text-amber-50 transition hover:bg-amber-400/30"
+            >
+              Avbryt og start på nytt
+            </button>
+          </div>
+        )}
 
         {loading && (
           <p className="flex items-center gap-2 text-xs text-slate-400">

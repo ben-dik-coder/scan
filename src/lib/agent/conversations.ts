@@ -1,6 +1,54 @@
+import { AGENT_RUN_STALE_MS } from "@/lib/agent/constants";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { AgentConversation, AgentMessage, AgentRun } from "@/types/database";
+
+export function isRunStale(run: AgentRun): boolean {
+  const updatedAt = new Date(run.updated_at).getTime();
+  if (Number.isNaN(updatedAt)) return true;
+  return Date.now() - updatedAt > AGENT_RUN_STALE_MS;
+}
+
+export async function cancelRun(
+  runId: string,
+  errorMessage = "Avbrutt"
+): Promise<void> {
+  const supabase = createServiceClient();
+  await supabase
+    .from("agent_runs")
+    .update({
+      status: "failed",
+      error_message: errorMessage,
+    })
+    .eq("id", runId)
+    .eq("status", "running");
+}
+
+export async function cancelRunningRunsForUser(
+  userId: string,
+  errorMessage = "Avbrutt av bruker"
+): Promise<number> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("agent_runs")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "running");
+
+  const runIds = (data ?? []).map((row) => row.id as string);
+  if (runIds.length === 0) return 0;
+
+  await supabase
+    .from("agent_runs")
+    .update({
+      status: "failed",
+      error_message: errorMessage,
+    })
+    .in("id", runIds)
+    .eq("status", "running");
+
+  return runIds.length;
+}
 
 export async function getActiveRunForUser(
   userId: string
@@ -14,7 +62,16 @@ export async function getActiveRunForUser(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return (data as AgentRun | null) ?? null;
+
+  const run = (data as AgentRun | null) ?? null;
+  if (!run) return null;
+
+  if (isRunStale(run)) {
+    await cancelRun(run.id, "Utløpt (ingen respons)");
+    return null;
+  }
+
+  return run;
 }
 
 export async function createConversation(

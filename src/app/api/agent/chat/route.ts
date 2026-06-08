@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import {
+  cancelRun,
   createConversation,
   createRun,
   deriveConversationTitle,
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  let body: { message?: string; conversationId?: string };
+  let body: { message?: string; conversationId?: string; cancelPrevious?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -68,12 +69,18 @@ export async function POST(request: NextRequest) {
   if (user && !isDemoMode()) {
     const active = await getActiveRunForUser(user.id);
     if (active) {
-      return new Response(
-        JSON.stringify({
-          error: "En agent-jobb kjører allerede. Vent til den er ferdig.",
-        }),
-        { status: 409, headers: { "Content-Type": "application/json" } }
-      );
+      if (body.cancelPrevious) {
+        await cancelRun(active.id, "Avbrutt for å starte ny melding");
+      } else {
+        return new Response(
+          JSON.stringify({
+            error: "En agent-jobb kjører allerede. Vent til den er ferdig.",
+            runId: active.id,
+            canCancel: true,
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } }
+        );
+      }
     }
   }
 
@@ -115,12 +122,29 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let runFinished = false;
+      const completeRun = async (
+        status: "done" | "failed",
+        result: Record<string, unknown> | null = null,
+        errorMessage?: string
+      ) => {
+        if (runFinished || !user || isDemoMode()) return;
+        runFinished = true;
+        await finishRun(run.id, result, status, errorMessage);
+      };
+
+      const onAbort = () => {
+        void completeRun("failed", null, "Stoppet av bruker");
+      };
+      request.signal.addEventListener("abort", onAbort, { once: true });
+
       const send = (data: Record<string, unknown>) => {
         if (request.signal.aborted) return;
         controller.enqueue(encoder.encode(sseLine(data)));
       };
 
       send({ type: "conversation", conversationId });
+      send({ type: "run", runId: run.id });
 
       try {
         const { assistantText, link } = await runAgentChat(
@@ -161,9 +185,7 @@ export async function POST(request: NextRequest) {
         );
 
         if (request.signal.aborted) {
-          if (user && !isDemoMode()) {
-            await finishRun(run.id, null, "failed", "Stoppet av bruker");
-          }
+          await completeRun("failed", null, "Stoppet av bruker");
           return;
         }
 
@@ -172,10 +194,9 @@ export async function POST(request: NextRequest) {
         }
 
         if (user && !isDemoMode()) {
-          await finishRun(
-            run.id,
-            { assistantText, link: link ?? null },
-            "done"
+          await completeRun(
+            "done",
+            { assistantText, link: link ?? null }
           );
         }
       } catch (err) {
@@ -183,17 +204,14 @@ export async function POST(request: NextRequest) {
           request.signal.aborted ||
           (err instanceof DOMException && err.name === "AbortError")
         ) {
-          if (user && !isDemoMode()) {
-            await finishRun(run.id, null, "failed", "Stoppet av bruker");
-          }
+          await completeRun("failed", null, "Stoppet av bruker");
           return;
         }
         const errMsg = err instanceof Error ? err.message : "Ukjent feil";
         send({ type: "error", message: errMsg });
-        if (user && !isDemoMode()) {
-          await finishRun(run.id, null, "failed", errMsg);
-        }
+        await completeRun("failed", null, errMsg);
       } finally {
+        request.signal.removeEventListener("abort", onAbort);
         controller.close();
       }
     },
