@@ -57,6 +57,7 @@ const DIRECTORY_DOMAINS = [
   "eniro.se",
   "firmanett.no",
   "kart.gulesider.no",
+  "kommune.no",
 ];
 
 const HOSTED_PLATFORM_DOMAINS = [
@@ -522,6 +523,15 @@ function municipalityInText(text: string, municipalityName?: string | null): boo
   return compactAlnum(text).includes(place);
 }
 
+function domainOnlyMatchesMunicipality(
+  domain: string,
+  municipalityName?: string | null
+): boolean {
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  const place = municipalityName ? compactAlnum(municipalityName) : "";
+  return place.length >= 4 && base === place;
+}
+
 function scoreHit(
   domain: string,
   title: string,
@@ -543,6 +553,10 @@ function scoreHit(
     domainSimilarToCompany(domain, strippedName);
   const domainMatch = domainMatchLegal || domainMatchStripped;
   const placeMatch = municipalityInText(`${title} ${link}`, context?.municipalityName);
+
+  if (domainMatch && domainOnlyMatchesMunicipality(domain, context?.municipalityName)) {
+    return null;
+  }
 
   if (!matchesLegal && !matchesStripped && !domainMatch) return null;
 
@@ -596,7 +610,13 @@ function findBookingOnlyHit(
   for (const h of hits) {
     const domain = normalizeDomain(h.link);
     if (!isBookingPlatformDomain(domain)) continue;
-    if (!companyMatchesResult(h.title, h.link, companyName)) continue;
+    // Booking-URL har ofte ikke firmanavn i domenet — stol på tittel når den matcher.
+    if (
+      !strongTitleMatch(h.title, companyName) &&
+      !companyMatchesResult(h.title, h.link, companyName)
+    ) {
+      continue;
+    }
 
     const slugMatch =
       /timma\.no\/salong\/([^/?#]+)/i.test(h.link) &&
@@ -763,7 +783,7 @@ export function buildSearchQuery(company: {
   return buildSearchQueries(company)[0]!;
 }
 
-/** Nettside-spørringer — «Firmanavn Kommune nettside» først for Serper /search. */
+/** Nettside-spørringer for Serper — enkle «Firmanavn Kommune»-søk først (som manuelt Google). */
 export function buildWebsiteSearchQueries(company: {
   name: string;
   municipality_name?: string | null;
@@ -775,7 +795,7 @@ export function buildWebsiteSearchQueries(company: {
   const places = companyGeoPlaces(company);
   const all = buildSearchQueries(company);
   const withNettside = all.filter((q) => /\bnettside\b/i.test(q));
-  const without = all.filter((q) => !/\bnettside\b/i.test(q));
+  const withoutNettside = all.filter((q) => !/\bnettside\b/i.test(q));
 
   const queries: string[] = [];
   const seen = new Set<string>();
@@ -788,16 +808,16 @@ export function buildWebsiteSearchQueries(company: {
 
   if (places.length > 0) {
     for (const place of places) {
-      add(`${stripped} ${place} nettside`);
-      add(`${name} ${place} nettside`);
+      add(`${stripped} ${place}`);
+      if (name !== stripped) add(`${name} ${place}`);
     }
   } else {
-    add(`${stripped} nettside`);
-    add(`${name} nettside`);
+    add(stripped);
+    if (name !== stripped) add(name);
   }
 
+  for (const q of withoutNettside) add(q);
   for (const q of withNettside) add(q);
-  for (const q of without) add(q);
 
   return queries;
 }

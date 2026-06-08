@@ -2,6 +2,7 @@ import { SerperLimitReachedError } from "@/lib/billing/serper-usage";
 import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper, isSerperPlacesEnabled } from "./config";
 import {
   discoverWebsiteByDomainGuess,
+  isWeakDomainGuess,
   preferredTldFromPlace,
 } from "./domain-guess";
 import { websiteFromBrreg } from "./brreg-website-hint";
@@ -912,7 +913,7 @@ async function fetchWebsiteSearchHits(
       const { hits } = await searchSerperForWebsite(company, {
         userId: options.userId,
       });
-      return hits;
+      if (hits.length) return hits;
     } catch (err) {
       if (err instanceof SerperLimitReachedError) throw err;
       logScan(
@@ -923,7 +924,8 @@ async function fetchWebsiteSearchHits(
     }
   }
 
-  const query = buildWebsiteSearchQueries(company)[0] ?? buildSearchQuery(company);
+  const query =
+    buildWebsiteSearchQueries(company)[0] ?? buildSearchQuery(company);
   return fetchHitsForQuery(query, {
     orgnr: company.orgnr,
     serpNum: GOOGLE_SERP_NUM,
@@ -1284,7 +1286,16 @@ export async function scanCompanyWebsite(
     let organicSearchNeeded = false;
 
     const domainDiscovery = await discoverWebsiteFromDomainGuess(company);
-    if (domainDiscovery) {
+    const weakDomainGuess = Boolean(
+      domainDiscovery &&
+        isWeakDomainGuess(
+          company.name,
+          domainDiscovery.pick.websiteDomain,
+          primaryGeoPlace(company)
+        )
+    );
+
+    if (domainDiscovery && !weakDomainGuess) {
       finalPick = domainDiscovery.pick;
       displayName = domainDiscovery.displayName;
       websiteFacebookUrl = domainDiscovery.websiteFacebookUrl;
@@ -1331,6 +1342,12 @@ export async function scanCompanyWebsite(
       }
     } else {
       organicSearchNeeded = true;
+    }
+
+    if (weakDomainGuess) {
+      logScan(company.orgnr, "Svak domene-gjetning — prøver Serper organisk", {
+        url: domainDiscovery?.pick.websiteUrl,
+      });
     }
 
     if (organicSearchNeeded) {

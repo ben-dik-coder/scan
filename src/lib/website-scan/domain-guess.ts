@@ -126,6 +126,22 @@ async function tryDomain(
   return null;
 }
 
+/** Kommunenavn som domene (f.eks. narvik.com for «Narvik Frisør AS») — prøv Serper også. */
+export function isWeakDomainGuess(
+  companyName: string,
+  domain: string | null | undefined,
+  municipalityName?: string | null
+): boolean {
+  if (!domain) return true;
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  if (base.length < 4) return true;
+
+  const place = municipalityName ? compactAlnum(municipalityName) : "";
+  if (place.length >= 4 && base === place) return true;
+
+  return false;
+}
+
 export function preferredTldFromPlace(place: string | null | undefined): string | null {
   if (!place) return null;
   const p = place.toUpperCase();

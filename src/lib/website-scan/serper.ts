@@ -1,6 +1,7 @@
 import {
   assertSerperQuota,
   recordSerperApiCall,
+  SerperLimitReachedError,
 } from "@/lib/billing/serper-usage";
 import {
   buildWebsiteSearchQueries,
@@ -13,7 +14,13 @@ import type { WebsiteScanCompanyInput } from "./types";
 type SerperOrganic = {
   title?: string;
   link?: string;
+  url?: string;
 };
+
+function serperOrganicLink(item: SerperOrganic): string | null {
+  const link = item.link?.trim() || item.url?.trim();
+  return link || null;
+}
 
 type SerperResponse = {
   organic?: SerperOrganic[];
@@ -75,11 +82,13 @@ export async function searchSerper(
   }
 
   return (data.organic ?? [])
-    .filter((item) => item.title && item.link)
-    .map((item) => ({
-      title: item.title!,
-      link: item.link!,
-    }));
+    .map((item) => {
+      const link = serperOrganicLink(item);
+      const title = item.title?.trim();
+      if (!title || !link) return null;
+      return { title, link };
+    })
+    .filter((item): item is SearchHit => item !== null);
 }
 
 export type SerperWebsiteSearchResult = {
@@ -104,9 +113,17 @@ export async function searchSerperForWebsite(
   }
 
   const batches = await Promise.all(
-    queries.map((q) =>
-      searchSerper(q, { num: GOOGLE_SERP_NUM, userId: options?.userId })
-    )
+    queries.map(async (q) => {
+      try {
+        return await searchSerper(q, {
+          num: GOOGLE_SERP_NUM,
+          userId: options?.userId,
+        });
+      } catch (err) {
+        if (err instanceof SerperLimitReachedError) throw err;
+        return [] as SearchHit[];
+      }
+    })
   );
 
   return { hits: dedupeHits(batches.flat()), queries };

@@ -7,6 +7,7 @@ import {
   companyMatchesProfileName,
   companyMatchesResult,
   pickBestWebsite,
+  buildWebsiteSearchQueries,
 } from "../src/lib/website-scan/parse-results";
 import {
   socialUrlMatchesCompany,
@@ -172,6 +173,32 @@ await test("EF AUTO avviser eidangerauto.no (generisk «auto»)", () => {
     { municipalityName: "PORSGRUNN" }
   );
   assert.equal(pick.hasWebsite, false);
+});
+
+await test("Booking-plattform godtas når tittel matcher firmanavn", () => {
+  const pick = pickBestWebsite(
+    [
+      {
+        title: "VIRVEL NARVIK AS",
+        link: "https://frisorvirvel.bestille.no/",
+      },
+    ],
+    "VIRVEL NARVIK AS",
+    { municipalityName: "Narvik" }
+  );
+  assert.equal(pick.websiteKind, "booking_only");
+  assert.equal(pick.websiteDomain, "frisorvirvel.bestille.no");
+});
+
+await test("Nettside-spørringer prioriterer firmanavn+sted uten nettside", () => {
+  const queries = buildWebsiteSearchQueries({
+    name: "RAVINE SYKLER AS",
+    municipality_name: "KRISTIANSAND S",
+    city: "KRISTIANSAND",
+  });
+  assert.ok(!/\bnettside\b/i.test(queries[0] ?? ""));
+  assert.match(queries[0] ?? "", /RAVINE SYKLER/i);
+  assert.match(queries[0] ?? "", /Kristiansand/i);
 });
 
 await test("Nettside godtar riktig domene selv med generisk tittel", () => {
