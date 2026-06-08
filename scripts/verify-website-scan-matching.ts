@@ -9,6 +9,7 @@ import {
   pickBestWebsite,
   buildWebsiteSearchQueries,
 } from "../src/lib/website-scan/parse-results";
+import { discoverWebsiteByDomainGuess } from "../src/lib/website-scan/domain-guess";
 import {
   socialUrlMatchesCompany,
   pickFacebookFromHits,
@@ -228,6 +229,11 @@ await test("Booking-plattform godtas når tittel matcher firmanavn", () => {
   );
   assert.equal(pick.websiteKind, "booking_only");
   assert.equal(pick.websiteDomain, "frisorvirvel.bestille.no");
+});
+
+await test("Domene-gjetning finner glowbyelena.com for GLOW BY ELENA AS", async () => {
+  const guessed = await discoverWebsiteByDomainGuess("GLOW BY ELENA AS");
+  assert.equal(guessed?.websiteDomain, "glowbyelena.com");
 });
 
 await test("Nettside-spørringer prioriterer firmanavn+sted uten nettside", () => {

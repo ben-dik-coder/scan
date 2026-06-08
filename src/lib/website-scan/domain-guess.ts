@@ -49,6 +49,9 @@ function domainBases(companyName: string): string[] {
     .replace(/^-|-$/g, "");
   if (hyphenSlug.includes("-")) add(hyphenSlug);
 
+  // Hele navnet uten mellomrom (glowbyelena) — ofte riktig domene, må prøves tidlig.
+  if (compact.length >= 5 && compact.length <= 24) add(compact);
+
   if (brandTokens.length >= 2) add(brandTokens.slice(0, 2).join(""));
   for (let i = 0; i < rawTokens.length - 1; i++) {
     const a = rawTokens[i]!;
@@ -57,8 +60,6 @@ function domainBases(companyName: string): string[] {
   }
 
   for (const token of brandTokens) add(token);
-
-  if (compact.length >= 5 && compact.length <= 24) add(compact);
 
   for (const len of [14, 12, 11, 10, 9, 8]) {
     if (compact.length > len) add(compact.slice(0, len));
@@ -173,7 +174,8 @@ export async function discoverWebsiteByDomainGuess(
     if (noHit) return noHit;
   }
 
-  for (const base of bases.slice(0, 4)) {
+  // .com m.m. for alle kandidater — slice(0, 4) hoppet over f.eks. glowbyelena.com.
+  for (const base of bases) {
     for (const tld of EXTRA_TLDS) {
       if (tld === preferred) continue;
       const hit = await tryDomain(base, tld, companyName);
