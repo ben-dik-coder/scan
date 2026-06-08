@@ -24,6 +24,7 @@ import {
 import {
   buildSearchQueries,
   buildSearchQuery,
+  buildWebsiteSearchQueries,
   dedupeHits,
   displayNameDiffersFromLegal,
   normalizeDomain,
@@ -35,7 +36,7 @@ import {
 import { discoverFacebookFromDirectoriesFree } from "./discover-social-free";
 import { searchDuckDuckGo } from "./duckduckgo-search";
 import { searchSerpApi } from "./serpapi";
-import { searchSerper } from "./serper";
+import { searchSerper, searchSerperForWebsite } from "./serper";
 import {
   discoverFromGooglePlaces,
   placesDiscoveryEnoughToSkipOrganic,
@@ -906,7 +907,23 @@ async function fetchWebsiteSearchHits(
 ): Promise<SearchHit[]> {
   if (!options.canSearch) return [];
 
-  const query = buildSearchQuery(company);
+  if (hasSerper()) {
+    try {
+      const { hits } = await searchSerperForWebsite(company, {
+        userId: options.userId,
+      });
+      return hits;
+    } catch (err) {
+      if (err instanceof SerperLimitReachedError) throw err;
+      logScan(
+        company.orgnr,
+        "Serper nettside-søk feilet — prøver fallback",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  const query = buildWebsiteSearchQueries(company)[0] ?? buildSearchQuery(company);
   return fetchHitsForQuery(query, {
     orgnr: company.orgnr,
     serpNum: GOOGLE_SERP_NUM,
@@ -1243,8 +1260,11 @@ export async function scanCompanyWebsite(
           }
         }
 
+        const placesWebsiteRejected =
+          Boolean(placesDiscovery.websiteUrl) && !usedVerifiedHint;
         if (
           !usedVerifiedHint &&
+          !placesWebsiteRejected &&
           placesDiscoveryEnoughToSkipOrganic(placesDiscovery)
         ) {
           skipOrganicGoogleSearch = true;
@@ -1261,6 +1281,8 @@ export async function scanCompanyWebsite(
   }
 
   if (!usedVerifiedHint) {
+    let organicSearchNeeded = false;
+
     const domainDiscovery = await discoverWebsiteFromDomainGuess(company);
     if (domainDiscovery) {
       finalPick = domainDiscovery.pick;
@@ -1301,15 +1323,17 @@ export async function scanCompanyWebsite(
           url: finalPick.websiteUrl,
         });
       } else {
-        source = "serper";
-        effectiveQuery = `Google Maps (telefon funnet, nettside usikker)`;
-        websiteDiscoverySource = placesDiscovery.phone ? "google_places" : null;
-        logScan(company.orgnr, "Google Maps — hopper over organisk Google", {
+        logScan(company.orgnr, "Google Maps uten nettside — prøver Serper organisk", {
           phone: placesDiscovery.phone,
           website: placesDiscovery.websiteUrl,
         });
+        organicSearchNeeded = true;
       }
     } else {
+      organicSearchNeeded = true;
+    }
+
+    if (organicSearchNeeded) {
       try {
         hits = await fetchWebsiteSearchHits(company, { canSearch, userId });
         finalPick = pickBestWebsite(hits, company.name, {
@@ -1322,7 +1346,7 @@ export async function scanCompanyWebsite(
       }
 
       source = resolveSearchSource();
-      effectiveQuery = buildSearchQuery(company);
+      effectiveQuery = buildWebsiteSearchQueries(company).slice(0, 2).join(" | ");
       websiteDiscoverySource = finalPick.hasWebsite ? "google" : null;
 
       if (finalPick.hasWebsite && finalPick.websiteUrl) {

@@ -763,6 +763,45 @@ export function buildSearchQuery(company: {
   return buildSearchQueries(company)[0]!;
 }
 
+/** Nettside-spørringer — «Firmanavn Kommune nettside» først for Serper /search. */
+export function buildWebsiteSearchQueries(company: {
+  name: string;
+  municipality_name?: string | null;
+  city?: string | null;
+  industry_code?: string | null;
+}): string[] {
+  const name = company.name.trim();
+  const stripped = stripCompanySuffix(name);
+  const places = companyGeoPlaces(company);
+  const all = buildSearchQueries(company);
+  const withNettside = all.filter((q) => /\bnettside\b/i.test(q));
+  const without = all.filter((q) => !/\bnettside\b/i.test(q));
+
+  const queries: string[] = [];
+  const seen = new Set<string>();
+  const add = (q: string) => {
+    const key = q.toLowerCase().replace(/\s+/g, " ");
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    queries.push(q);
+  };
+
+  if (places.length > 0) {
+    for (const place of places) {
+      add(`${stripped} ${place} nettside`);
+      add(`${name} ${place} nettside`);
+    }
+  } else {
+    add(`${stripped} nettside`);
+    add(`${name} nettside`);
+  }
+
+  for (const q of withNettside) add(q);
+  for (const q of without) add(q);
+
+  return queries;
+}
+
 /** Sjekker om URL faktisk hører til firmaet (domene eller sidetittel). */
 export function websiteUrlPlausibleForCompany(
   websiteUrl: string,

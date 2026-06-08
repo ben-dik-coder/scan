@@ -2,7 +2,13 @@ import {
   assertSerperQuota,
   recordSerperApiCall,
 } from "@/lib/billing/serper-usage";
-import type { SearchHit } from "./parse-results";
+import {
+  buildWebsiteSearchQueries,
+  dedupeHits,
+  type SearchHit,
+} from "./parse-results";
+import { GOOGLE_SERP_NUM, SERPER_WEBSITE_MAX_QUERIES } from "./scan-api-budget";
+import type { WebsiteScanCompanyInput } from "./types";
 
 type SerperOrganic = {
   title?: string;
@@ -74,4 +80,34 @@ export async function searchSerper(
       title: item.title!,
       link: item.link!,
     }));
+}
+
+export type SerperWebsiteSearchResult = {
+  hits: SearchHit[];
+  queries: string[];
+};
+
+/** Organisk Serper /search optimalisert for å finne firmets offisielle nettside. */
+export async function searchSerperForWebsite(
+  company: Pick<
+    WebsiteScanCompanyInput,
+    "name" | "municipality_name" | "city" | "industry_code"
+  >,
+  options?: { userId?: string; maxQueries?: number }
+): Promise<SerperWebsiteSearchResult> {
+  const queries = buildWebsiteSearchQueries(company).slice(
+    0,
+    options?.maxQueries ?? SERPER_WEBSITE_MAX_QUERIES
+  );
+  if (!queries.length) {
+    return { hits: [], queries: [] };
+  }
+
+  const batches = await Promise.all(
+    queries.map((q) =>
+      searchSerper(q, { num: GOOGLE_SERP_NUM, userId: options?.userId })
+    )
+  );
+
+  return { hits: dedupeHits(batches.flat()), queries };
 }
