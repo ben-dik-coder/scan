@@ -682,6 +682,44 @@ await test("Skann uten Facebook trenger nytt søk når Facebook hukes av", () =>
   assert.equal(isWebsiteScanCacheComplete(scan, withFacebook), false);
 });
 
+await test("Gammel Facebook-cache (v4) med null URL trenger nytt søk", () => {
+  const scan = {
+    orgnr: "913213440",
+    hasWebsite: false,
+    websiteKind: "none" as const,
+    websiteUrl: null,
+    websiteDomain: null,
+    bookingPlatform: null,
+    source: "serper" as const,
+    confidence: "low" as const,
+    query: "test",
+    scannedAt: new Date().toISOString(),
+    contactsEnriched: true,
+    contactEnrichmentVersion: CONTACT_ENRICHMENT_VERSION,
+    socialScan: {
+      includeFacebook: true,
+      includeInstagram: false,
+      includeLinkedIn: true,
+      version: 4,
+    },
+    facebookUrl: null,
+    linkedinUrl: null,
+    platformContacts: [
+      {
+        source: "google_places",
+        url: "https://www.google.com/maps",
+        phone: null,
+        email: null,
+        externalWebsite: null,
+      },
+    ],
+  };
+  const withFacebook = { ...DEFAULT_SCAN_SOCIAL_OPTIONS, includeFacebook: true };
+  assert.equal(needsSocialRescan(scan, withFacebook), true);
+  assert.equal(isSocialScanComplete(scan, withFacebook), false);
+  assert.equal(isWebsiteScanCacheComplete(scan, withFacebook), false);
+});
+
 await test("Skann med Facebook er cache-gyldig når Facebook fortsatt er valgt", () => {
   const scan = {
     orgnr: "937510179",

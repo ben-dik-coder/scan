@@ -16,7 +16,7 @@ export const DEFAULT_SCAN_SOCIAL_OPTIONS: ScanSocialOptions = {
 };
 
 /** Øk når sosialsøk forbedres — gamle cache-rader skannes på nytt automatisk */
-export const SOCIAL_SCAN_VERSION = 4;
+export const SOCIAL_SCAN_VERSION = 5;
 
 /**
  * True når bruker ba om sosial-funksjon som forrige skann ikke kjørte
