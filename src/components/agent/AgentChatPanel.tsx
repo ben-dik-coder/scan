@@ -272,32 +272,11 @@ export function AgentChatPanel({
         </span>
       }
       maxWidth="md"
-      panelClassName={cn("flex flex-col overflow-hidden", loading && "agent-panel--thinking")}
+      panelClassName="flex flex-col overflow-hidden"
       footer={
         <>
-          {loading && (
-            <div
-              className="agent-thinking-wave-band shrink-0"
-              role="status"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              <div className="agent-thinking-wave-band__aurora" aria-hidden="true" />
-              <div className="agent-thinking-wave-band__flow" aria-hidden="true" />
-              <div className="agent-thinking-wave-band__ripple" aria-hidden="true" />
-              <p className="agent-thinking-wave__status">
-                <span className="agent-thinking-wave__dot" aria-hidden="true" />
-                {activeTool
-                  ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
-                  : "Tenker…"}
-              </p>
-            </div>
-          )}
           <form
-            className={cn(
-              "flex gap-2 p-3",
-              !loading && "border-t border-white/10"
-            )}
+            className="flex gap-2 border-t border-white/10 p-3"
             onSubmit={(e) => {
               e.preventDefault();
               void sendMessage(input);
@@ -335,7 +314,18 @@ export function AgentChatPanel({
         </>
       }
     >
-      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <div className={cn("agent-aurora-field", loading && "agent-aurora-field--active")}>
+        {loading && (
+          <div className="agent-aurora-overlay" aria-hidden="true">
+            <div className="agent-aurora-overlay__ribbon agent-aurora-overlay__ribbon--1" />
+            <div className="agent-aurora-overlay__ribbon agent-aurora-overlay__ribbon--2" />
+            <div className="agent-aurora-overlay__ribbon agent-aurora-overlay__ribbon--3" />
+            <div className="agent-aurora-overlay__shimmer" />
+            <div className="agent-aurora-overlay__veil" />
+          </div>
+        )}
+
+        <div ref={listRef} className="agent-aurora-content flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {messages.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-slate-300">
@@ -416,6 +406,21 @@ export function AgentChatPanel({
           </p>
         )}
 
+        {loading && (
+          <div
+            className="agent-thinking-status"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <span className="agent-thinking-status__dot" aria-hidden="true" />
+            {activeTool
+              ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+              : "Tenker…"}
+          </div>
+        )}
+
+        </div>
       </div>
     </AppSideDrawer>
   );
