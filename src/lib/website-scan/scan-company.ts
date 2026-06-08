@@ -1,4 +1,4 @@
-import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper } from "./config";
+import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper, isSerperPlacesEnabled } from "./config";
 import {
   discoverWebsiteByDomainGuess,
   preferredTldFromPlace,
@@ -18,6 +18,7 @@ import {
 import {
   applyPlatformContactEnrichment,
   enrichPlatformContacts,
+  type PlatformContactRecord,
 } from "./platform-contact";
 import {
   buildSearchQueries,
@@ -34,6 +35,12 @@ import { discoverFacebookFromDirectoriesFree } from "./discover-social-free";
 import { searchDuckDuckGo } from "./duckduckgo-search";
 import { searchSerpApi } from "./serpapi";
 import { searchSerper } from "./serper";
+import {
+  discoverFromGooglePlaces,
+  placesDiscoveryEnoughToSkipOrganic,
+  type GooglePlacesDiscovery,
+} from "./serper-places";
+import { phonePlausibleForCompany } from "./phone-plausible";
 import {
   ENABLE_GULESIDER_SERP_SEARCH,
   GOOGLE_SERP_NUM,
@@ -152,7 +159,11 @@ function fromPick(
 export async function enrichScanContacts(
   company: WebsiteScanCompanyInput,
   scan: WebsiteScanResult,
-  options?: { skipFetch?: boolean; allowSocialProfileEnrichment?: boolean }
+  options?: {
+    skipFetch?: boolean;
+    allowSocialProfileEnrichment?: boolean;
+    seedContacts?: PlatformContactRecord[];
+  }
 ): Promise<WebsiteScanResult> {
   if (
     scan.contactsEnriched &&
@@ -207,6 +218,7 @@ export async function enrichScanContacts(
     runDirectorySearch: false,
     fetchHitsForQueries: undefined,
     skipFetch: options?.skipFetch,
+    seedContacts: options?.seedContacts,
   });
 
   return applyPlatformContactEnrichment(workingScan, enrichment);
@@ -371,6 +383,98 @@ async function discoverWebsiteFromDomainGuess(
     websiteLinkedInUrl: meta.linkedinUrl,
     effectiveQuery: `Domene-gjetning @${guessed.websiteDomain}`,
     websiteDiscoverySource: "domain_guess",
+  };
+}
+
+async function applyPlacesWebsiteDiscovery(
+  company: WebsiteScanCompanyInput,
+  places: GooglePlacesDiscovery
+): Promise<WebsiteDiscovery | null> {
+  if (!places.websiteUrl || !places.websiteDomain) return null;
+
+  const meta = await fetchWebsitePageMetadata(places.websiteUrl).catch(() => ({
+    displayName: null,
+    facebookUrl: null,
+    instagramUrl: null,
+    linkedinUrl: null,
+  }));
+
+  if (
+    !websiteUrlPlausibleForCompany(
+      places.websiteUrl,
+      company.name,
+      meta.displayName
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    pick: {
+      hasWebsite: true,
+      websiteKind: "own",
+      websiteUrl: places.websiteUrl,
+      websiteDomain: places.websiteDomain,
+      bookingPlatform: null,
+      topHits: [
+        {
+          title: places.placeTitle ?? company.name,
+          link: places.websiteUrl,
+          domain: places.websiteDomain,
+        },
+      ],
+      confidence: places.confidence,
+    },
+    displayName: meta.displayName,
+    websiteFacebookUrl: meta.facebookUrl,
+    websiteInstagramUrl: meta.instagramUrl,
+    websiteLinkedInUrl: meta.linkedinUrl,
+    effectiveQuery: `Google Maps @${places.websiteDomain}`,
+    websiteDiscoverySource: "google_places",
+  };
+}
+
+function applyPlacesHint(
+  company: WebsiteScanCompanyInput,
+  places: GooglePlacesDiscovery,
+  hintMeta: Awaited<ReturnType<typeof fetchWebsitePageMetadata>>
+): {
+  hits: SearchHit[];
+  finalPick: PickResult;
+  source: WebsiteScanSource;
+  effectiveQuery: string;
+  websiteDiscoverySource: WebsiteScanResult["websiteDiscoverySource"];
+  displayName: string | null;
+  websiteFacebookUrl: string | null;
+  websiteInstagramUrl: string | null;
+  websiteLinkedInUrl: string | null;
+} {
+  const websiteUrl = places.websiteUrl!;
+  const websiteDomain = places.websiteDomain!;
+  return {
+    hits: [{ title: places.placeTitle ?? company.name, link: websiteUrl }],
+    finalPick: {
+      hasWebsite: true,
+      websiteKind: "own",
+      websiteUrl,
+      websiteDomain,
+      bookingPlatform: null,
+      topHits: [
+        {
+          title: places.placeTitle ?? company.name,
+          link: websiteUrl,
+          domain: websiteDomain,
+        },
+      ],
+      confidence: places.confidence === "low" ? "medium" : places.confidence,
+    },
+    source: "serper",
+    effectiveQuery: `Google Maps @${websiteDomain}`,
+    websiteDiscoverySource: "google_places",
+    displayName: hintMeta.displayName,
+    websiteFacebookUrl: hintMeta.facebookUrl,
+    websiteInstagramUrl: hintMeta.instagramUrl,
+    websiteLinkedInUrl: hintMeta.linkedinUrl,
   };
 }
 
@@ -1004,6 +1108,9 @@ export async function scanCompanyWebsite(
   let websiteLinkedInUrl: string | null = null;
   let websiteDiscoverySource: WebsiteScanResult["websiteDiscoverySource"] = null;
   let usedVerifiedHint = false;
+  let placesDiscovery: GooglePlacesDiscovery | null = null;
+  let skipOrganicGoogleSearch = false;
+  let placesSeedContacts: PlatformContactRecord[] | undefined;
 
   if (websiteHint) {
     const hintMeta = await fetchWebsitePageMetadata(websiteHint.websiteUrl).catch(
@@ -1055,6 +1162,78 @@ export async function scanCompanyWebsite(
     }
   }
 
+  if (!usedVerifiedHint && isSerperPlacesEnabled()) {
+    try {
+      placesDiscovery = await discoverFromGooglePlaces(company);
+      if (placesDiscovery) {
+        logScan(company.orgnr, "Google Maps (Serper Places)", {
+          placeTitle: placesDiscovery.placeTitle,
+          website: placesDiscovery.websiteUrl,
+          phone: placesDiscovery.phone,
+          confidence: placesDiscovery.confidence,
+        });
+
+        if (
+          placesDiscovery.phone &&
+          phonePlausibleForCompany(placesDiscovery.phone, company.orgnr)
+        ) {
+          placesSeedContacts = [
+            {
+              source: "google_places",
+              url: "https://www.google.com/maps",
+              phone: placesDiscovery.phone,
+              email: null,
+              externalWebsite: placesDiscovery.websiteUrl ?? null,
+            },
+          ];
+        }
+
+        if (placesDiscovery.websiteUrl) {
+          const hintMeta = await fetchWebsitePageMetadata(
+            placesDiscovery.websiteUrl
+          ).catch(() => ({
+            displayName: null,
+            facebookUrl: null,
+            instagramUrl: null,
+            linkedinUrl: null,
+          }));
+          if (
+            websiteUrlPlausibleForCompany(
+              placesDiscovery.websiteUrl,
+              company.name,
+              hintMeta.displayName
+            )
+          ) {
+            usedVerifiedHint = true;
+            const applied = applyPlacesHint(company, placesDiscovery, hintMeta);
+            hits = applied.hits;
+            finalPick = applied.finalPick;
+            source = applied.source;
+            effectiveQuery = applied.effectiveQuery;
+            websiteDiscoverySource = applied.websiteDiscoverySource;
+            displayName = applied.displayName;
+            websiteFacebookUrl = applied.websiteFacebookUrl;
+            websiteInstagramUrl = applied.websiteInstagramUrl;
+            websiteLinkedInUrl = applied.websiteLinkedInUrl;
+          }
+        }
+
+        if (
+          !usedVerifiedHint &&
+          placesDiscoveryEnoughToSkipOrganic(placesDiscovery)
+        ) {
+          skipOrganicGoogleSearch = true;
+        }
+      }
+    } catch (err) {
+      logScan(
+        company.orgnr,
+        "Serper Places feilet",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
   if (!usedVerifiedHint) {
     const domainDiscovery = await discoverWebsiteFromDomainGuess(company);
     if (domainDiscovery) {
@@ -1073,6 +1252,37 @@ export async function scanCompanyWebsite(
       logScan(company.orgnr, "Nettside via domene-gjetning (før Google)", {
         url: finalPick.websiteUrl,
       });
+    } else if (skipOrganicGoogleSearch && placesDiscovery) {
+      const placesWebsite = await applyPlacesWebsiteDiscovery(
+        company,
+        placesDiscovery
+      );
+      if (placesWebsite) {
+        finalPick = placesWebsite.pick;
+        displayName = placesWebsite.displayName;
+        websiteFacebookUrl = placesWebsite.websiteFacebookUrl;
+        websiteInstagramUrl = placesWebsite.websiteInstagramUrl;
+        websiteLinkedInUrl = placesWebsite.websiteLinkedInUrl;
+        effectiveQuery = placesWebsite.effectiveQuery;
+        websiteDiscoverySource = placesWebsite.websiteDiscoverySource;
+        source = "serper";
+        hits =
+          placesWebsite.pick.topHits?.map((h) => ({
+            title: h.title,
+            link: h.link,
+          })) ?? [];
+        logScan(company.orgnr, "Nettside via Google Maps (uten organisk Google)", {
+          url: finalPick.websiteUrl,
+        });
+      } else {
+        source = "serper";
+        effectiveQuery = `Google Maps (telefon funnet, nettside usikker)`;
+        websiteDiscoverySource = placesDiscovery.phone ? "google_places" : null;
+        logScan(company.orgnr, "Google Maps — hopper over organisk Google", {
+          phone: placesDiscovery.phone,
+          website: placesDiscovery.websiteUrl,
+        });
+      }
     } else {
       try {
         hits = await fetchWebsiteSearchHits(company, { canSearch });
@@ -1220,7 +1430,7 @@ export async function scanCompanyWebsite(
 
   const gulesider = await resolveGulesiderPresence(company, hits, {
     canSearch,
-    ranGoogleSearch: !usedVerifiedHint,
+    ranGoogleSearch: !usedVerifiedHint && !skipOrganicGoogleSearch,
     hasConfidentWebsite:
       finalPick.hasWebsite && finalPick.confidence !== "low",
   });
@@ -1237,7 +1447,9 @@ export async function scanCompanyWebsite(
     { websiteDiscoverySource, gulesider }
   );
 
-  return enrichScanContacts(company, base);
+  return enrichScanContacts(company, base, {
+    seedContacts: placesSeedContacts,
+  });
 }
 
 export function sleep(ms: number) {

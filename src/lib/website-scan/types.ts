@@ -103,6 +103,7 @@ export type WebsiteScanResult = {
   websiteDiscoverySource?:
     | "brreg"
     | "google"
+    | "google_places"
     | "email"
     | "domain_guess"
     | "facebook_link"

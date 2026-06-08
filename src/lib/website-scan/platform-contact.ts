@@ -45,7 +45,8 @@ export type PlatformContactSource =
   | "gulesider"
   | "1881"
   | "directory"
-  | "proff";
+  | "proff"
+  | "google_places";
 
 export type PlatformContactRecord = {
   source: PlatformContactSource;
@@ -400,6 +401,7 @@ async function fetchPlatformRecord(
 
 const PHONE_PRIORITY: PlatformContactSource[] = [
   "website",
+  "google_places",
   "facebook",
   "instagram",
   "booking",
@@ -445,6 +447,8 @@ export type EnrichPlatformContactsOptions = {
   ) => Promise<SearchHit[]>;
   /** Demo-modus — ikke hent HTML */
   skipFetch?: boolean;
+  /** Kontakt funnet tidlig (f.eks. Google Maps) — merges før plattform-henting */
+  seedContacts?: PlatformContactRecord[];
 };
 
 export async function enrichPlatformContacts(
@@ -491,7 +495,7 @@ export async function enrichPlatformContacts(
     }
   }
 
-  const contacts: PlatformContactRecord[] = [];
+  const contacts: PlatformContactRecord[] = [...(options?.seedContacts ?? [])];
 
   const fb = recordFromFacebook(scan, company.name, company.orgnr);
   if (fb) contacts.push(fb);

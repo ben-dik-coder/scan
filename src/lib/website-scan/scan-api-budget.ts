@@ -9,6 +9,11 @@ export const MAX_WEBSITE_SEARCH_QUERIES = 1;
 /** Ekstra site:gulesider.no-søk koster 1 SerpAPI — bruk treff fra hovedsøk */
 export const ENABLE_GULESIDER_SERP_SEARCH = false;
 
+/** Google Maps via Serper /places — 1 API-kall per firma, før organisk Google */
+export const ENABLE_SERPER_PLACES =
+  process.env.SERPER_PLACES_ENABLED !== "false" &&
+  process.env.SERPER_PLACES_ENABLED !== "0";
+
 /** Ekstra site:-søk kun når hovedsøk ikke fant profil */
 export const MAX_FALLBACK_SOCIAL_QUERIES = 1;
 
