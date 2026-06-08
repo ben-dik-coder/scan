@@ -231,6 +231,125 @@ export function stripCompanySuffix(name: string): string {
     .trim();
 }
 
+/** Bransjeord som ofte avslutter merkenavn før eiernavn i Brreg (tattoo, frisør …). */
+const BRAND_OWNER_INDUSTRY_WORDS = new Set([
+  "tattoo",
+  "tattoos",
+  "frisor",
+  "frisør",
+  "salon",
+  "salong",
+  "barber",
+  "barbershop",
+  "spa",
+  "massasje",
+  "studio",
+  "beauty",
+  "skjonnhet",
+  "skjønnhet",
+  "negler",
+  "nails",
+  "klinikk",
+  "velvaere",
+  "velvære",
+  "cuts",
+  "ink",
+]);
+
+function normalizeNameToken(token: string): string {
+  return token.toLowerCase().replace(/[^a-z0-9æøå]/gi, "");
+}
+
+function rawNameTokens(name: string): string[] {
+  return stripCompanySuffix(name)
+    .split(/\s+/)
+    .map((w) => w.replace(/["']/g, ""))
+    .filter(Boolean);
+}
+
+/** Brreg-navn som «SHIP O HOI TATTOO REMY ANDRE …» → merkenavn «SHIP O HOI TATTOO». */
+export function extractBrandPortion(companyName: string): string | null {
+  const tokens = rawNameTokens(companyName);
+  if (tokens.length < 5) return null;
+
+  const normalized = tokens.map(normalizeNameToken);
+
+  let industryIdx = -1;
+  for (let i = 0; i < normalized.length; i++) {
+    if (BRAND_OWNER_INDUSTRY_WORDS.has(normalized[i]!)) {
+      industryIdx = i;
+    }
+  }
+  if (industryIdx >= 0 && industryIdx < tokens.length - 2) {
+    return tokens.slice(0, industryIdx + 1).join(" ");
+  }
+
+  const byIdx = normalized.indexOf("by");
+  if (byIdx >= 1 && byIdx < tokens.length - 2) {
+    return tokens.slice(0, byIdx).join(" ");
+  }
+
+  if (tokens.length >= 6) {
+    const tailLen = Math.min(4, Math.floor(tokens.length / 2));
+    const headLen = tokens.length - tailLen;
+    const headHasIndustry = normalized
+      .slice(0, headLen)
+      .some((t) => BRAND_OWNER_INDUSTRY_WORDS.has(t));
+    const tailIsPlain = normalized
+      .slice(headLen)
+      .every((t) => t.length >= 2 && !BRAND_OWNER_INDUSTRY_WORDS.has(t));
+    if (headHasIndustry && tailIsPlain && headLen >= 2) {
+      return tokens.slice(0, headLen).join(" ");
+    }
+  }
+
+  return null;
+}
+
+export function toTitleCaseName(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => {
+      if (/^(og|i|o|og|av|by|the|and)$/i.test(word)) {
+        return word.toLowerCase();
+      }
+      if (word.length <= 2 && /^[a-zæøå]+$/i.test(word)) {
+        return word.toUpperCase();
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+/** Søkevarianter for sosiale profiler — merkenavn, uten AS, title case. */
+export function companySearchNameVariants(companyName: string): string[] {
+  const stripped = stripCompanySuffix(companyName.trim());
+  const brand = extractBrandPortion(companyName);
+  const brandTitle = brand ? toTitleCaseName(brand) : null;
+  const variants: string[] = [];
+  const seen = new Set<string>();
+  const add = (v: string) => {
+    const key = v.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    variants.push(v.trim());
+  };
+
+  if (brand) add(brand);
+  if (brandTitle && brandTitle !== brand) add(brandTitle);
+  add(stripped);
+  if (stripped !== companyName.trim()) add(companyName.trim());
+
+  const tokens = nameTokens(companyName);
+  if (tokens.length >= 4) {
+    add(tokens.slice(0, 3).join(" "));
+    add(tokens.slice(0, 4).join(" "));
+  }
+
+  return variants;
+}
+
 export function nameTokens(companyName: string): string[] {
   return stripCompanySuffix(companyName)
     .toLowerCase()
@@ -271,6 +390,21 @@ export function companyMatchesProfileName(
   const strippedCompact = compactAlnum(stripped);
   if (strippedCompact.length >= 5 && profileHay.includes(strippedCompact)) {
     return true;
+  }
+
+  const brand = extractBrandPortion(companyName);
+  if (brand) {
+    const brandCompact = compactAlnum(brand);
+    if (brandCompact.length >= 5 && profileHay.includes(brandCompact)) {
+      return true;
+    }
+    const brandTokens = nameTokens(brand);
+    if (
+      brandTokens.length >= 2 &&
+      brandTokens.every((t) => profileHay.includes(compactAlnum(t)))
+    ) {
+      return true;
+    }
   }
 
   const tokens = nameTokens(companyName);

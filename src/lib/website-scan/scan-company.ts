@@ -26,6 +26,7 @@ import {
   buildSearchQueries,
   buildSearchQuery,
   buildWebsiteSearchQueries,
+  companySearchNameVariants,
   dedupeHits,
   displayNameDiffersFromLegal,
   normalizeDomain,
@@ -1003,6 +1004,40 @@ async function fetchHitsForQueries(
   return dedupeHits(batches.flat());
 }
 
+async function fetchSocialSerpHitsUntilFound(
+  queries: string[],
+  maxQueries: number,
+  platform: "facebook" | "instagram",
+  company: WebsiteScanCompanyInput,
+  context: {
+    alternateNames: string[];
+    websiteUrl?: string | null;
+  },
+  serpOpts: { serpNum?: number; orgnr?: string; userId?: string }
+): Promise<{ hits: SearchHit[]; queriesRun: number }> {
+  const allHits: SearchHit[] = [];
+  let queriesRun = 0;
+
+  for (const q of queries.slice(0, maxQueries)) {
+    queriesRun++;
+    const batch = await fetchHitsForQuery(q, serpOpts).catch(
+      () => [] as SearchHit[]
+    );
+    allHits.push(...batch);
+    const merged = dedupeHits(allHits);
+    if (
+      socialFoundInHits(merged, company, platform, {
+        alternateNames: context.alternateNames,
+        websiteUrl: context.websiteUrl,
+      })
+    ) {
+      return { hits: merged, queriesRun };
+    }
+  }
+
+  return { hits: dedupeHits(allHits), queriesRun };
+}
+
 function alternateCompanyNames(
   company: WebsiteScanCompanyInput,
   displayName?: string | null
@@ -1013,6 +1048,11 @@ function alternateCompanyNames(
     displayNameDiffersFromLegal(displayName, company.name)
   ) {
     alts.push(displayName.trim());
+  }
+  for (const variant of companySearchNameVariants(company.name)) {
+    if (variant !== company.name.trim() && !alts.includes(variant)) {
+      alts.push(variant);
+    }
   }
   return alts;
 }
@@ -1116,14 +1156,17 @@ async function fetchSocialSerpHits(
       { ...socialContext, websiteUrl: context.websiteFacebookUrl }
     );
     if (!hasFb) {
-      const fbQueries = buildFacebookSearchQueries(company, context).slice(
-        0,
-        MAX_FALLBACK_SOCIAL_QUERIES
+      const fbQueries = buildFacebookSearchQueries(company, context);
+      const fbResult = await fetchSocialSerpHitsUntilFound(
+        fbQueries,
+        MAX_FALLBACK_SOCIAL_QUERIES,
+        "facebook",
+        company,
+        { ...socialContext, websiteUrl: context.websiteFacebookUrl },
+        serpOpts
       );
-      fbQueriesRun = fbQueries.length;
-      fbHits = await fetchHitsForQueries(fbQueries, serpOpts).catch(
-        () => [] as SearchHit[]
-      );
+      fbQueriesRun = fbResult.queriesRun;
+      fbHits = fbResult.hits;
     }
   }
 
@@ -1135,14 +1178,17 @@ async function fetchSocialSerpHits(
       { ...socialContext, websiteUrl: context.websiteInstagramUrl }
     );
     if (!hasIg) {
-      const igQueries = buildInstagramSearchQueries(company, context).slice(
-        0,
-        MAX_FALLBACK_SOCIAL_QUERIES
+      const igQueries = buildInstagramSearchQueries(company, context);
+      const igResult = await fetchSocialSerpHitsUntilFound(
+        igQueries,
+        MAX_FALLBACK_SOCIAL_QUERIES,
+        "instagram",
+        company,
+        { ...socialContext, websiteUrl: context.websiteInstagramUrl },
+        serpOpts
       );
-      igQueriesRun = igQueries.length;
-      igHits = await fetchHitsForQueries(igQueries, serpOpts).catch(
-        () => [] as SearchHit[]
-      );
+      igQueriesRun = igResult.queriesRun;
+      igHits = igResult.hits;
     }
   }
 

@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   companyMatchesProfileName,
   companyMatchesResult,
+  extractBrandPortion,
   pickBestWebsite,
   buildWebsiteSearchQueries,
 } from "../src/lib/website-scan/parse-results";
@@ -13,6 +14,7 @@ import { discoverWebsiteByDomainGuess } from "../src/lib/website-scan/domain-gue
 import {
   socialUrlMatchesCompany,
   pickFacebookFromHits,
+  buildFacebookSearchQueries,
 } from "../src/lib/website-scan/social-profiles";
 import {
   emailPlausibleForCompany,
@@ -112,6 +114,48 @@ await test("Google-treff Headline Frisør velges ikke for Narvik Frisør", () =>
     "Narvik"
   );
   assert.equal(pick.url, "https://www.facebook.com/narvikfrisor");
+});
+
+const SHIP_O_HOI =
+  "SHIP O HOI TATTOO REMY ANDRE MYRENG OTTESEN";
+
+await test("Merkenavn skilles fra eiernavn (tattoo)", () => {
+  assert.equal(
+    extractBrandPortion(SHIP_O_HOI),
+    "SHIP O HOI TATTOO"
+  );
+});
+
+await test("Facebook-profil Ship O Hoi Tattoo matcher langt Brreg-navn", () => {
+  assert.equal(
+    companyMatchesProfileName("Ship O Hoi Tattoo", SHIP_O_HOI),
+    true
+  );
+});
+
+await test("Google-treff Ship O Hoi Tattoo velges for tattoo-firma", () => {
+  const pick = pickFacebookFromHits(
+    [
+      {
+        title: "Ship O Hoi Tattoo",
+        link: "https://www.facebook.com/shipohoitattoo",
+      },
+    ],
+    SHIP_O_HOI,
+    "Bodø"
+  );
+  assert.equal(pick.url, "https://www.facebook.com/shipohoitattoo");
+});
+
+await test("Facebook-søk prioriterer merkenavn + sted", () => {
+  const queries = buildFacebookSearchQueries({
+    name: SHIP_O_HOI,
+    municipality_name: "BODØ",
+    city: "BODØ",
+  });
+  assert.match(queries[0] ?? "", /SHIP O HOI TATTOO/i);
+  assert.match(queries[0] ?? "", /Bodø/i);
+  assert.match(queries[0] ?? "", /facebook/i);
 });
 
 await test("URL alene kan ikke matche på path-tokens", () => {

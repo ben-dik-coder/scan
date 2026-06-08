@@ -7,14 +7,17 @@ import {
 import {
   companyMatchesProfileName,
   compactAlnum,
+  companySearchNameVariants,
+  extractBrandPortion,
   nameTokens,
   normalizeDomain,
   primarySearchTokens,
   stripCompanySuffix,
+  toTitleCaseName,
   type SearchHit,
 } from "@/lib/website-scan/parse-results";
 
-const MAX_SOCIAL_SEARCH_QUERIES = 8;
+const MAX_SOCIAL_SEARCH_QUERIES = 12;
 
 export type SocialLinkConfidence = "high" | "medium" | "low";
 
@@ -327,6 +330,9 @@ export function buildFacebookSearchQueries(
   const name = company.name.trim();
   const places = companyGeoPlaces(company);
   const stripped = stripCompanySuffix(name);
+  const brand = extractBrandPortion(name);
+  const brandTitle = brand ? toTitleCaseName(brand) : null;
+  const nameVariants = companySearchNameVariants(name);
   const tokens = primarySearchTokens(name, 3);
   const domainHint = emailDomainSearchHint(company.email, name);
   const websiteSlug = context?.websiteDomain?.split(".")[0]?.trim();
@@ -334,35 +340,48 @@ export function buildFacebookSearchQueries(
   const queries: string[] = [];
   const seen = new Set<string>();
 
-  const addPlaceQueries = (place: string) => {
-    addUniqueQuery(queries, seen, `${name} ${place} site:facebook.com`);
-    addUniqueQuery(queries, seen, `${stripped} ${place} site:facebook.com`);
-    if (tokens.length > 0) {
-      addUniqueQuery(
-        queries,
-        seen,
-        `${tokens.join(" ")} ${place} site:facebook.com`
-      );
+  const addFacebookLabel = (label: string, place?: string) => {
+    if (place) {
+      addUniqueQuery(queries, seen, `${label} ${place} facebook`);
+      addUniqueQuery(queries, seen, `${label} ${place} site:facebook.com`);
+      addUniqueQuery(queries, seen, `"${label}" ${place} facebook side`);
+    } else {
+      addUniqueQuery(queries, seen, `${label} facebook`);
+      addUniqueQuery(queries, seen, `${label} site:facebook.com`);
     }
-    addUniqueQuery(queries, seen, `${stripped} ${place} facebook`);
-    addUniqueQuery(queries, seen, `"${stripped}" ${place} facebook side`);
   };
 
-  if (places.length > 0) {
-    for (const place of places) addPlaceQueries(place);
-  } else {
-    addUniqueQuery(queries, seen, `${name} site:facebook.com`);
-    addUniqueQuery(queries, seen, `${stripped} site:facebook.com`);
-    addUniqueQuery(queries, seen, `${stripped} facebook Norge`);
+  const variantLabels = [
+    ...(brand ? [brand] : []),
+    ...(brandTitle && brandTitle !== brand ? [brandTitle] : []),
+    ...nameVariants,
+    stripped,
+    name,
+  ];
+
+  for (const label of variantLabels) {
+    if (places.length > 0) {
+      for (const place of places) addFacebookLabel(label, place);
+    } else {
+      addFacebookLabel(label);
+    }
   }
 
-  if (stripped !== name) {
-    addUniqueQuery(queries, seen, `"${stripped}" site:facebook.com`);
+  if (tokens.length > 0) {
+    for (const place of places.length > 0 ? places : [null]) {
+      const tokenQuery = `${tokens.join(" ")}${place ? ` ${place}` : ""} site:facebook.com`;
+      addUniqueQuery(queries, seen, tokenQuery);
+    }
+  }
+
+  if (places.length === 0) {
+    addUniqueQuery(queries, seen, `${stripped} facebook Norge`);
   }
 
   if (display && display !== name && display !== stripped) {
     for (const place of places) {
       addUniqueQuery(queries, seen, `${display} ${place} site:facebook.com`);
+      addUniqueQuery(queries, seen, `${display} ${place} facebook`);
     }
     addUniqueQuery(queries, seen, `"${display}" site:facebook.com`);
   }
@@ -497,6 +516,9 @@ export function buildInstagramSearchQueries(
   const name = company.name.trim();
   const places = companyGeoPlaces(company);
   const stripped = stripCompanySuffix(name);
+  const brand = extractBrandPortion(name);
+  const brandTitle = brand ? toTitleCaseName(brand) : null;
+  const nameVariants = companySearchNameVariants(name);
   const tokens = primarySearchTokens(name, 3);
   const domainHint = emailDomainSearchHint(company.email, name);
   const websiteSlug = context?.websiteDomain?.split(".")[0]?.trim();
@@ -504,25 +526,38 @@ export function buildInstagramSearchQueries(
   const queries: string[] = [];
   const seen = new Set<string>();
 
-  const addPlaceQueries = (place: string) => {
-    addUniqueQuery(queries, seen, `${name} ${place} site:instagram.com`);
-    addUniqueQuery(queries, seen, `${stripped} ${place} site:instagram.com`);
-    if (tokens.length > 0) {
-      addUniqueQuery(
-        queries,
-        seen,
-        `${tokens.join(" ")} ${place} site:instagram.com`
-      );
+  const addInstagramLabel = (label: string, place?: string) => {
+    if (place) {
+      addUniqueQuery(queries, seen, `${label} ${place} instagram`);
+      addUniqueQuery(queries, seen, `${label} ${place} site:instagram.com`);
+      addUniqueQuery(queries, seen, `"${label}" ${place} instagram`);
+    } else {
+      addUniqueQuery(queries, seen, `${label} instagram`);
+      addUniqueQuery(queries, seen, `${label} site:instagram.com`);
     }
-    addUniqueQuery(queries, seen, `${stripped} ${place} instagram`);
-    addUniqueQuery(queries, seen, `"${stripped}" ${place} instagram`);
   };
 
-  if (places.length > 0) {
-    for (const place of places) addPlaceQueries(place);
-  } else {
-    addUniqueQuery(queries, seen, `${name} site:instagram.com`);
-    addUniqueQuery(queries, seen, `${stripped} site:instagram.com`);
+  const variantLabels = [
+    ...(brand ? [brand] : []),
+    ...(brandTitle && brandTitle !== brand ? [brandTitle] : []),
+    ...nameVariants,
+    stripped,
+    name,
+  ];
+
+  for (const label of variantLabels) {
+    if (places.length > 0) {
+      for (const place of places) addInstagramLabel(label, place);
+    } else {
+      addInstagramLabel(label);
+    }
+  }
+
+  if (tokens.length > 0) {
+    for (const place of places.length > 0 ? places : [null]) {
+      const tokenQuery = `${tokens.join(" ")}${place ? ` ${place}` : ""} site:instagram.com`;
+      addUniqueQuery(queries, seen, tokenQuery);
+    }
   }
 
   if (display && display !== name && display !== stripped) {
