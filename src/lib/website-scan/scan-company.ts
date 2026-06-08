@@ -1,4 +1,4 @@
-import { hasFreeWebSearch, hasGoogleCse, hasSerpApi } from "./config";
+import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper } from "./config";
 import {
   discoverWebsiteByDomainGuess,
   preferredTldFromPlace,
@@ -33,6 +33,7 @@ import {
 import { discoverFacebookFromDirectoriesFree } from "./discover-social-free";
 import { searchDuckDuckGo } from "./duckduckgo-search";
 import { searchSerpApi } from "./serpapi";
+import { searchSerper } from "./serper";
 import {
   ENABLE_GULESIDER_SERP_SEARCH,
   GOOGLE_SERP_NUM,
@@ -672,7 +673,26 @@ async function resolveSocial(
 }
 
 function hasPaidWebSearch(): boolean {
-  return hasGoogleCse() || hasSerpApi();
+  return hasGoogleCse() || hasSerpApi() || hasSerper();
+}
+
+async function trySerperSearch(
+  query: string,
+  options?: { serpNum?: number; orgnr?: string }
+): Promise<SearchHit[]> {
+  try {
+    return await searchSerper(query, { num: options?.serpNum });
+  } catch (err) {
+    logScan(
+      options?.orgnr ?? "?",
+      `Serper feilet: ${query}`,
+      err instanceof Error ? err.message : err
+    );
+    if (hasFreeWebSearch()) {
+      return await searchDuckDuckGo(query);
+    }
+    throw err;
+  }
 }
 
 async function fetchHitsForQuery(
@@ -691,6 +711,9 @@ async function fetchHitsForQuery(
       if (hasGoogleCse()) {
         return await searchGoogleCse(query);
       }
+      if (hasSerper()) {
+        return await trySerperSearch(query, options);
+      }
       if (hasFreeWebSearch()) {
         return await searchDuckDuckGo(query);
       }
@@ -700,6 +723,10 @@ async function fetchHitsForQuery(
 
   if (hasGoogleCse()) {
     return await searchGoogleCse(query);
+  }
+
+  if (hasSerper()) {
+    return await trySerperSearch(query, options);
   }
 
   if (hasFreeWebSearch()) {
@@ -712,6 +739,7 @@ async function fetchHitsForQuery(
 function resolveSearchSource(): WebsiteScanSource {
   if (hasSerpApi()) return "serpapi";
   if (hasGoogleCse()) return "google_cse";
+  if (hasSerper()) return "serper";
   return "google_cse";
 }
 

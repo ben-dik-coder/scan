@@ -12,6 +12,7 @@ export type SocialScanMeta = {
 export type WebsiteScanSource =
   | "google_cse"
   | "serpapi"
+  | "serper"
   | "both"
   | "demo"
   | "email_domain"

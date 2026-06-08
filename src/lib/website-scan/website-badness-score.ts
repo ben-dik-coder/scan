@@ -49,6 +49,7 @@ export function computeWebsiteBadnessScore(
 
   if (
     (scan.source === "serpapi" ||
+      scan.source === "serper" ||
       scan.source === "google_cse" ||
       scan.source === "both") &&
     scan.confidence === "high" &&

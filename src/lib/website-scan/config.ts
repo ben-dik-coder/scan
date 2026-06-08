@@ -13,13 +13,17 @@ export function hasSerpApi(): boolean {
   return Boolean(process.env.SERPAPI_API_KEY?.trim());
 }
 
+export function hasSerper(): boolean {
+  return Boolean(process.env.SERPER_API_KEY?.trim());
+}
+
 /** Gratis nettsøk via DuckDuckGo HTML — alltid tilgjengelig uten API-nøkkel. */
 export function hasFreeWebSearch(): boolean {
   return true;
 }
 
 export function hasAnyWebsiteScanProvider(): boolean {
-  return hasGoogleCse() || hasSerpApi() || hasFreeWebSearch();
+  return hasGoogleCse() || hasSerpApi() || hasSerper() || hasFreeWebSearch();
 }
 
 export function getWebsiteScanProviders(): string[] {
@@ -30,7 +34,8 @@ export function getWebsiteScanProviders(): string[] {
     providers.push("SerpAPI Facebook Profile");
     providers.push("SerpAPI Instagram Profile");
   }
-  if (hasFreeWebSearch() && !hasGoogleCse() && !hasSerpApi()) {
+  if (hasSerper()) providers.push("Serper Google");
+  if (hasFreeWebSearch() && !hasGoogleCse() && !hasSerpApi() && !hasSerper()) {
     providers.push("DuckDuckGo (gratis)");
   }
   if (hasApi1881()) providers.push("1881 API");
