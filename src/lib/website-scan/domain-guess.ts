@@ -2,7 +2,9 @@ import { fetchWebsitePageMetadata } from "./fetch-website-metadata";
 import {
   compactAlnum,
   domainSimilarToCompany,
+  isGenericDomainBase,
   isNonOwnWebsiteDomain,
+  isStrongDomainMatch,
   nameTokens,
   normalizeDomain,
   stripCompanySuffix,
@@ -15,17 +17,23 @@ const EXTRA_TLDS = [".com", ".dk", ".org", ".tech", ".art", ".fi", ".se"];
 
 const GENERIC = new Set([
   "auto",
+  "beauty",
   "bygg",
   "care",
   "consult",
   "consulting",
+  "design",
+  "digital",
   "energy",
   "group",
   "holding",
+  "media",
   "partner",
+  "salong",
   "service",
   "services",
   "solutions",
+  "studio",
   "systems",
   "system",
   "tech",
@@ -127,7 +135,7 @@ async function tryDomain(
   return null;
 }
 
-/** Kommunenavn som domene (f.eks. narvik.com for «Narvik Frisør AS») — prøv Serper også. */
+/** Svak gjetning — prøv Serper/Google i stedet for å stole på domenet alene. */
 export function isWeakDomainGuess(
   companyName: string,
   domain: string | null | undefined,
@@ -139,6 +147,11 @@ export function isWeakDomainGuess(
 
   const place = municipalityName ? compactAlnum(municipalityName) : "";
   if (place.length >= 4 && base === place) return true;
+
+  if (isGenericDomainBase(domain)) return true;
+  if (domainSimilarToCompany(domain, companyName) && !isStrongDomainMatch(domain, companyName)) {
+    return true;
+  }
 
   return false;
 }

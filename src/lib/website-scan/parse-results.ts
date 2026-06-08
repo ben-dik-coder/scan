@@ -148,17 +148,23 @@ const MIN_TOKEN_LEN = 3;
 /** For generiske enkeltord — «auto» i eidangerauto.no er ikke EF AUTO */
 const GENERIC_DOMAIN_TOKENS = new Set([
   "auto",
+  "beauty",
   "bygg",
   "care",
   "cleantech",
   "consult",
+  "design",
+  "digital",
   "energy",
   "group",
-  "process",
   "holding",
+  "media",
   "partner",
+  "process",
+  "salong",
   "service",
   "solutions",
+  "studio",
   "system",
   "systems",
   "tech",
@@ -654,10 +660,10 @@ export function domainSimilarToCompany(
   if (tokens.length === 1) {
     const t = compactAlnum(tokens[0]!);
     if (t.length < 5) return false;
-    if (GENERIC_DOMAIN_TOKENS.has(t)) {
-      return base === t || (base.startsWith(t) && base.length <= t.length + 2);
+    if (GENERIC_DOMAIN_TOKENS.has(t)) return false;
+    if (base === t) {
+      return companyCompact === t || companyCompact.length <= t.length + 2;
     }
-    if (base === t) return true;
     if (
       Math.abs(base.length - t.length) <= 2 &&
       (base.includes(t) || t.includes(base))
@@ -1006,6 +1012,91 @@ export function buildWebsiteSearchQueries(company: {
   return queries;
 }
 
+/** Ettordsdomener som ofte tilhører helt andre firma (studio.no, design.no …). */
+export function isGenericDomainBase(domain: string): boolean {
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  return base.length >= 4 && GENERIC_DOMAIN_TOKENS.has(base);
+}
+
+/** Sterk match — alle navneord (inkl. bransje) finnes i domenet, eller hele navnet. */
+export function isStrongDomainMatch(
+  domain: string,
+  companyName: string
+): boolean {
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  if (base.length < 4) return false;
+
+  const companyCompact = compactAlnum(stripCompanySuffix(companyName));
+  if (base === companyCompact) return true;
+
+  const tokens = nameTokens(companyName);
+  if (tokens.length >= 2) {
+    return tokens.every((t) => base.includes(compactAlnum(t)));
+  }
+
+  const brandTokens = tokens.filter(
+    (t) =>
+      !DESCRIPTIVE_DOMAIN_TOKENS.has(t) &&
+      !GENERIC_DOMAIN_TOKENS.has(compactAlnum(t))
+  );
+  if (brandTokens.length === 1) {
+    const t = compactAlnum(brandTokens[0]!);
+    return t.length >= 6 && base === t && companyCompact === t;
+  }
+
+  return false;
+}
+
+/** Merkenavn (uten bransjeord) må finnes helt i domenet — «martinsen» ≠ «martins». */
+export function domainCoversBrandTokens(
+  domain: string,
+  companyName: string
+): boolean {
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  const brandTokens = nameTokens(companyName).filter(
+    (t) => !BRAND_OWNER_INDUSTRY_WORDS.has(normalizeNameToken(t))
+  );
+  if (brandTokens.length === 0) return true;
+  return brandTokens.every((t) => {
+    const tc = compactAlnum(t);
+    return tc.length < 4 || base.includes(tc);
+  });
+}
+
+const GENERIC_PAGE_TITLES = new Set([
+  "forside",
+  "hjem",
+  "home",
+  "index",
+  "start",
+  "welcome",
+]);
+
+function isGenericPageTitle(title: string): boolean {
+  return GENERIC_PAGE_TITLES.has(title.trim().toLowerCase());
+}
+
+/** Domene er bare første ord + bransjeord som mangler (harstra ≠ hårstrå+frisør). */
+function isFirstTokenOnlyDomainMatch(
+  domain: string,
+  companyName: string
+): boolean {
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  const tokens = nameTokens(companyName);
+  if (tokens.length < 2) return false;
+
+  const first = compactAlnum(tokens[0]!);
+  if (base !== first && !base.startsWith(first)) return false;
+
+  const rest = tokens.slice(1);
+  const industryRest = rest.some((t) =>
+    BRAND_OWNER_INDUSTRY_WORDS.has(normalizeNameToken(t))
+  );
+  if (!industryRest) return false;
+
+  return !rest.every((t) => base.includes(compactAlnum(t)));
+}
+
 /** Sjekker om URL faktisk hører til firmaet (domene eller sidetittel). */
 export function websiteUrlPlausibleForCompany(
   websiteUrl: string,
@@ -1014,11 +1105,38 @@ export function websiteUrlPlausibleForCompany(
 ): boolean {
   const domain = normalizeDomain(websiteUrl);
   if (!domain || isNonOwnWebsiteDomain(domain)) return false;
-  if (domainSimilarToCompany(domain, companyName)) return true;
-  if (pageTitle?.trim() && companyMatchesResult(pageTitle, websiteUrl, companyName)) {
-    return true;
+
+  const strongDomain = isStrongDomainMatch(domain, companyName);
+  const domainMatch = domainSimilarToCompany(domain, companyName);
+  const title = pageTitle?.trim() ?? "";
+
+  if (isGenericDomainBase(domain) && !strongDomain) return false;
+
+  if (
+    title &&
+    !isGenericPageTitle(title) &&
+    !companyMatchesProfileName(title, companyName) &&
+    !strongDomain
+  ) {
+    return false;
   }
-  return companyMatchesResult("", websiteUrl, companyName);
+
+  if (strongDomain) return true;
+
+  if (!domainMatch || !domainCoversBrandTokens(domain, companyName)) {
+    if (title && companyMatchesResult(title, websiteUrl, companyName)) return true;
+    return companyMatchesResult("", websiteUrl, companyName);
+  }
+
+  if (
+    !title &&
+    !strongDomain &&
+    isFirstTokenOnlyDomainMatch(domain, companyName)
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 export function hasUncertainWebsiteHits(

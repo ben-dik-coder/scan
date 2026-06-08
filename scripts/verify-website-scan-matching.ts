@@ -8,13 +8,18 @@ import {
   companyMatchesResult,
   companySearchNameVariants,
   extractBrandPortion,
+  isStrongDomainMatch,
   nameTokens,
   normalizePossessiveSpacing,
   pickBestWebsite,
   buildWebsiteSearchQueries,
   toTitleCaseName,
+  websiteUrlPlausibleForCompany,
 } from "../src/lib/website-scan/parse-results";
-import { discoverWebsiteByDomainGuess } from "../src/lib/website-scan/domain-guess";
+import {
+  discoverWebsiteByDomainGuess,
+  isWeakDomainGuess as isWeakDomainGuessFromGuess,
+} from "../src/lib/website-scan/domain-guess";
 import {
   socialUrlMatchesCompany,
   pickFacebookFromHits,
@@ -374,6 +379,49 @@ await test("Booking-plattform godtas når tittel matcher firmanavn", () => {
 await test("Domene-gjetning finner glowbyelena.com for GLOW BY ELENA AS", async () => {
   const guessed = await discoverWebsiteByDomainGuess("GLOW BY ELENA AS");
   assert.equal(guessed?.websiteDomain, "glowbyelena.com");
+});
+
+await test("HÅRSTRÅ FRISØR avviser harstra.eu (instrumentfirma)", () => {
+  assert.equal(
+    websiteUrlPlausibleForCompany(
+      "https://harstra.eu",
+      "HÅRSTRÅ FRISØR AS",
+      "Harstra Instruments"
+    ),
+    false
+  );
+  assert.equal(isWeakDomainGuessFromGuess("HÅRSTRÅ FRISØR AS", "harstra.eu", "Vågan"), true);
+});
+
+await test("STUDIO L AS avviser generisk studio.no", () => {
+  assert.equal(
+    websiteUrlPlausibleForCompany("https://studio.no", "STUDIO L AS", "Studio"),
+    false
+  );
+  assert.equal(isWeakDomainGuessFromGuess("STUDIO L AS", "studio.no", "Vågan"), true);
+});
+
+await test("LINDA MARTINSEN SALONG avviser lindamartins.com uten salong i domene", () => {
+  assert.equal(
+    websiteUrlPlausibleForCompany(
+      "https://lindamartins.com",
+      "LINDA MARTINSEN SALONG",
+      "Linda Martins"
+    ),
+    false
+  );
+  assert.equal(
+    isStrongDomainMatch("lindamartins.com", "LINDA MARTINSEN SALONG"),
+    false
+  );
+});
+
+await test("Narvik Frisør har sterk match på narvikfrisor.no", () => {
+  assert.equal(isStrongDomainMatch("narvikfrisor.no", NARVIK_FRISOR), true);
+  assert.equal(
+    websiteUrlPlausibleForCompany("https://narvikfrisor.no", NARVIK_FRISOR, "Hjem"),
+    true
+  );
 });
 
 await test("Nettside-spørringer prioriterer firmanavn+sted uten nettside", () => {
