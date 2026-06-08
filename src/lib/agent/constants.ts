@@ -17,3 +17,6 @@ export const AGENT_MAX_COMPANIES_PER_JOB = 100;
 export const AGENT_MAX_TOOL_LOOPS = 8;
 
 export const AGENT_SCAN_DELAY_MS = 200;
+
+/** Kjøringer uten oppdatering lenger enn dette regnes som hengende og avbrytes automatisk. */
+export const AGENT_RUN_STALE_MS = 10 * 60 * 1000;
