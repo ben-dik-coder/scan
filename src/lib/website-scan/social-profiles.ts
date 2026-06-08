@@ -50,10 +50,29 @@ function partialCompanyMatch(
   return matched >= required;
 }
 
+function facebookSlugHandleFromLink(link: string): string | null {
+  try {
+    const parts = new URL(link.startsWith("http") ? link : `https://${link}`)
+      .pathname.split("/")
+      .filter(Boolean);
+    if (parts[0]?.toLowerCase() !== "p" || !parts[1]) return null;
+    const segment = decodeURIComponent(parts[1]!);
+    const slug = segment.replace(/-\d{10,}$/, "").toLowerCase();
+    return slug.length >= 2 ? slug : null;
+  } catch {
+    return null;
+  }
+}
+
 function socialHandleFromLink(
   link: string,
   platform: "facebook" | "instagram"
 ): string | null {
+  if (platform === "facebook") {
+    const slugHandle = facebookSlugHandleFromLink(link);
+    if (slugHandle) return slugHandle;
+  }
+
   const normalized =
     platform === "facebook"
       ? normalizeFacebookUrl(link)
@@ -66,13 +85,6 @@ function socialHandleFromLink(
     if (first === "pages" && parts[1]) return parts[1]!.toLowerCase();
     if (first === "people" && parts[1]) return parts[1]!.toLowerCase();
     if (first === "profile.php") return null;
-    if (first === "p" && parts[1]) {
-      const segment = decodeURIComponent(parts[1]!);
-      const idMatch = segment.match(/(\d{10,})$/);
-      if (idMatch) return idMatch[1]!;
-      const slug = segment.replace(/-\d{10,}$/, "").toLowerCase();
-      return slug.length >= 2 ? slug : null;
-    }
     return first;
   } catch {
     return null;

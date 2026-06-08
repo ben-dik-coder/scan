@@ -239,6 +239,13 @@ export const FACEBOOK_EVAL_CASES: TestCase[] = [
     city: "NARVIK",
     expectedFacebook: "BallangenSvommehall",
   },
+  {
+    name: "SUNDBY 'S RØRLEGGERBEDRIFT",
+    municipality_name: "BARDU",
+    city: "BARDU",
+    orgnr: "931443429",
+    expectedFacebook: "100093686296313",
+  },
 ];
 
 function normalizeExpected(expected: string): string {

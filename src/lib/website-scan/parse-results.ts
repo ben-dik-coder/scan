@@ -256,15 +256,66 @@ const BRAND_OWNER_INDUSTRY_WORDS = new Set([
   "ink",
 ]);
 
+const APOSTROPHE_CHARS = /[''`´]/g;
+
+/** Brreg bruker ofte rette apostrofer — normaliser til ASCII. */
+export function normalizeApostropheChars(text: string): string {
+  return text.replace(APOSTROPHE_CHARS, "'");
+}
+
+/**
+ * Brreg «SUNDBY 'S» / «ANGELL'S» → «SUNDBY'S» før søk og matching.
+ * Beholder O'Brien-stil (bokstav + apostrof + navn).
+ */
+export function normalizePossessiveSpacing(name: string): string {
+  let s = normalizeApostropheChars(name);
+  s = s.replace(/(\S)\s+'s\b/gi, "$1's");
+  return s;
+}
+
+function mergePossessiveTokens(words: string[]): string[] {
+  const merged: string[] = [];
+  for (const word of words) {
+    if (/^'s$/i.test(word) && merged.length > 0) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]!}s`;
+      continue;
+    }
+    merged.push(word);
+  }
+  return merged;
+}
+
 function normalizeNameToken(token: string): string {
   return token.toLowerCase().replace(/[^a-z0-9æøå]/gi, "");
 }
 
 function rawNameTokens(name: string): string[] {
-  return stripCompanySuffix(name)
+  const words = normalizePossessiveSpacing(stripCompanySuffix(name))
     .split(/\s+/)
-    .map((w) => w.replace(/["']/g, ""))
+    .map((w) => w.replace(/"/g, ""))
     .filter(Boolean);
+  return mergePossessiveTokens(words).map((w) => w.replace(/'/g, ""));
+}
+
+function titleCaseWord(word: string): string {
+  if (word.includes("'")) {
+    return word
+      .split("'")
+      .map((part, i) => {
+        if (!part) return part;
+        if (i > 0 && /^s$/i.test(part)) return "s";
+        if (part.length === 1) return part.toUpperCase();
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+      })
+      .join("'");
+  }
+  if (/^(og|i|o|og|av|by|the|and)$/i.test(word)) {
+    return word.toLowerCase();
+  }
+  if (word.length <= 2 && /^[a-zæøå]+$/i.test(word)) {
+    return word.toUpperCase();
+  }
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
 /** Brreg-navn som «SHIP O HOI TATTOO REMY ANDRE …» → merkenavn «SHIP O HOI TATTOO». */
@@ -307,25 +358,19 @@ export function extractBrandPortion(companyName: string): string | null {
 }
 
 export function toTitleCaseName(name: string): string {
-  return name
+  return normalizePossessiveSpacing(name)
     .trim()
     .split(/\s+/)
-    .map((word) => {
-      if (/^(og|i|o|og|av|by|the|and)$/i.test(word)) {
-        return word.toLowerCase();
-      }
-      if (word.length <= 2 && /^[a-zæøå]+$/i.test(word)) {
-        return word.toUpperCase();
-      }
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    })
+    .map((word) => titleCaseWord(word))
     .join(" ");
 }
 
 /** Søkevarianter for sosiale profiler — merkenavn, uten AS, title case. */
 export function companySearchNameVariants(companyName: string): string[] {
-  const stripped = stripCompanySuffix(companyName.trim());
-  const brand = extractBrandPortion(companyName);
+  const trimmed = normalizePossessiveSpacing(companyName.trim());
+  const stripped = stripCompanySuffix(trimmed);
+  const strippedTitle = toTitleCaseName(stripped);
+  const brand = extractBrandPortion(trimmed);
   const brandTitle = brand ? toTitleCaseName(brand) : null;
   const variants: string[] = [];
   const seen = new Set<string>();
@@ -338,8 +383,9 @@ export function companySearchNameVariants(companyName: string): string[] {
 
   if (brand) add(brand);
   if (brandTitle && brandTitle !== brand) add(brandTitle);
+  if (strippedTitle !== stripped) add(strippedTitle);
   add(stripped);
-  if (stripped !== companyName.trim()) add(companyName.trim());
+  if (stripped !== trimmed) add(trimmed);
 
   const tokens = nameTokens(companyName);
   if (tokens.length >= 4) {
@@ -351,11 +397,13 @@ export function companySearchNameVariants(companyName: string): string[] {
 }
 
 export function nameTokens(companyName: string): string[] {
-  return stripCompanySuffix(companyName)
+  const words = normalizePossessiveSpacing(stripCompanySuffix(companyName))
     .toLowerCase()
-    .replace(/["']/g, "")
     .split(/\s+/)
-    .map((w) => w.replace(/[^a-z0-9æøå]/gi, ""))
+    .map((w) => w.replace(/"/g, ""))
+    .filter(Boolean);
+  return mergePossessiveTokens(words)
+    .map((w) => w.replace(/'/g, "").replace(/[^a-z0-9æøå]/gi, ""))
     .filter((w) => w.length >= MIN_TOKEN_LEN && !COMPANY_SUFFIXES.has(w));
 }
 

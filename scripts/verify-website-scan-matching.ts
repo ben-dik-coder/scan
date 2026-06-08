@@ -6,9 +6,13 @@ import assert from "node:assert/strict";
 import {
   companyMatchesProfileName,
   companyMatchesResult,
+  companySearchNameVariants,
   extractBrandPortion,
+  nameTokens,
+  normalizePossessiveSpacing,
   pickBestWebsite,
   buildWebsiteSearchQueries,
+  toTitleCaseName,
 } from "../src/lib/website-scan/parse-results";
 import { discoverWebsiteByDomainGuess } from "../src/lib/website-scan/domain-guess";
 import {
@@ -202,6 +206,52 @@ await test("Facebook-søk bruker title case i siterte spørringer", () => {
     city: "NARVIK",
   });
   assert.ok(queries.some((q) => q.includes('"Narvik Frisør"')));
+});
+
+const SUNDBY_ROR = "SUNDBY 'S RØRLEGGERBEDRIFT";
+
+await test("Brreg SUNDBY 'S normaliseres til Sundby's", () => {
+  assert.equal(
+    normalizePossessiveSpacing(SUNDBY_ROR),
+    "SUNDBY's RØRLEGGERBEDRIFT"
+  );
+  assert.equal(toTitleCaseName(SUNDBY_ROR), "Sundby's Rørleggerbedrift");
+});
+
+await test("Possessiv 's beholdes i navnetokens", () => {
+  assert.deepEqual(nameTokens(SUNDBY_ROR), ["sundbys", "rørleggerbedrift"]);
+});
+
+await test("Sundby's matcher Facebook-profilnavn", () => {
+  assert.equal(
+    companyMatchesProfileName(
+      "Sundby's Rørleggerbedrift | Setermoen",
+      SUNDBY_ROR
+    ),
+    true
+  );
+});
+
+await test("Facebook /p/-URL matcher Sundby uten tittel", () => {
+  assert.equal(
+    socialUrlMatchesCompany(
+      "https://www.facebook.com/p/Sundbys-R%C3%B8rleggerbedrift-100093686296313/",
+      SUNDBY_ROR
+    ),
+    true
+  );
+});
+
+await test("Facebook-søk for Sundby bruker Sundby's i spørringer", () => {
+  const queries = buildFacebookSearchQueries({
+    name: SUNDBY_ROR,
+    municipality_name: "BARDU",
+    city: "BARDU",
+  });
+  assert.ok(queries.some((q) => q.includes("Sundby's")));
+  assert.ok(
+    companySearchNameVariants(SUNDBY_ROR).some((v) => v.includes("Sundby's"))
+  );
 });
 
 await test("URL alene kan ikke matche på path-tokens", () => {
