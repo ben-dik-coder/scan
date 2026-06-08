@@ -18,7 +18,7 @@ export const ENABLE_SERPER_PLACES =
   process.env.SERPER_PLACES_ENABLED !== "0";
 
 /** Ekstra site:-søk kun når hovedsøk ikke fant profil — prøv flere navnevarianter */
-export const MAX_FALLBACK_SOCIAL_QUERIES = 4;
+export const MAX_FALLBACK_SOCIAL_QUERIES = 6;
 
 /** Treff per Google-søk — 10 er nok for nettside + sosiale lenker */
 export const GOOGLE_SERP_NUM = 15;

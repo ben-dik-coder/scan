@@ -66,6 +66,13 @@ function socialHandleFromLink(
     if (first === "pages" && parts[1]) return parts[1]!.toLowerCase();
     if (first === "people" && parts[1]) return parts[1]!.toLowerCase();
     if (first === "profile.php") return null;
+    if (first === "p" && parts[1]) {
+      const segment = decodeURIComponent(parts[1]!);
+      const idMatch = segment.match(/(\d{10,})$/);
+      if (idMatch) return idMatch[1]!;
+      const slug = segment.replace(/-\d{10,}$/, "").toLowerCase();
+      return slug.length >= 2 ? slug : null;
+    }
     return first;
   } catch {
     return null;
@@ -75,6 +82,58 @@ function socialHandleFromLink(
 function handleMatchesCompany(handle: string, companyName: string): boolean {
   const normalized = handle.replace(/[._-]+/g, " ");
   return companyMatchesProfileName(normalized, companyName);
+}
+
+/** Innlegg/bilder på andres side — tittel kan nevne riktig firma (f.eks. «at Qahrhom Frisør»). */
+function isFacebookContentSubpath(link: string): boolean {
+  try {
+    const parts = new URL(link.startsWith("http") ? link : `https://${link}`)
+      .pathname.split("/")
+      .filter(Boolean);
+    if (parts.length < 2) return false;
+    return [
+      "photos",
+      "posts",
+      "videos",
+      "mentions",
+      "reels",
+      "albums",
+      "live",
+    ].includes(parts[1]!.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function foreignHandleContentMention(
+  hit: SearchHit,
+  companyName: string
+): boolean {
+  const handle = socialHandleFromLink(hit.link, "facebook");
+  if (!handle || /^\d+$/.test(handle)) {
+    if (/^\d+$/.test(handle ?? "") && titleNamesForeignPage(hit.title, companyName)) {
+      return isFacebookContentSubpath(hit.link);
+    }
+    return false;
+  }
+  if (handleMatchesCompany(handle, companyName)) return false;
+  return isFacebookContentSubpath(hit.link);
+}
+
+/** «Innleggstekst | Annen Bedrift AS» — lenken peker på annen side. */
+function titleNamesForeignPage(title: string, companyName: string): boolean {
+  const parts = title
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return false;
+  const pageLabel = parts[parts.length - 1]!
+    .replace(/\s*-\s*Facebook\s*$/i, "")
+    .replace(/\(@[^)]+\)/g, "")
+    .trim();
+  if (pageLabel.length < 5) return false;
+  if (!/\s/.test(pageLabel) && pageLabel.length < 10) return false;
+  return !companyMatchesProfileName(pageLabel, companyName);
 }
 
 function socialHitMatchesCompany(
@@ -108,6 +167,10 @@ function socialHitMatchesCompany(
   }
 
   const hadTitleMatch = titleMatch || strippedTitleMatch;
+
+  if (foreignHandleContentMention(hit, companyName)) {
+    return { match: false, strength: 0, hadTitleMatch: false };
+  }
 
   if (!legal && !strippedMatch && !partial && !slug && !altMatch) {
     return { match: false, strength: 0, hadTitleMatch: false };
@@ -205,6 +268,8 @@ const FB_BLOCKED_SEGMENTS = new Set([
   "notes",
   "photo.php",
   "story.php",
+  "media",
+  "photo",
 ]);
 
 /** Gjør Facebook-URL om til side-profil (ikke enkeltinnlegg). */
@@ -221,6 +286,13 @@ export function normalizeFacebookUrl(link: string): string | null {
     if (parts.length === 0) return null;
 
     const first = parts[0]!.toLowerCase();
+
+    if (first === "media") {
+      const vanity = u.searchParams.get("vanity")?.trim();
+      if (vanity) return `https://www.facebook.com/${vanity}`;
+      return null;
+    }
+
     if (FB_BLOCKED_SEGMENTS.has(first)) return null;
 
     if (first === "pages" && parts.length >= 2) {
@@ -234,7 +306,21 @@ export function normalizeFacebookUrl(link: string): string | null {
       return id ? `https://www.facebook.com/profile.php?id=${id}` : null;
     }
 
-    if (first === "p" || first === "posts" || first === "photos") return null;
+    /** Nytt FB-format: /p/Sidenavn-100077243748335/ */
+    if (first === "p" && parts.length >= 2) {
+      const segment = decodeURIComponent(parts[1]!);
+      const idMatch = segment.match(/(\d{10,})$/);
+      if (idMatch) {
+        return `https://www.facebook.com/${idMatch[1]}`;
+      }
+      const slug = segment.replace(/-\d{10,}$/, "");
+      if (slug.length >= 2) {
+        return `https://www.facebook.com/${slug}`;
+      }
+      return null;
+    }
+
+    if (first === "posts" || first === "photos") return null;
 
     const pageSlug = parts[0]!;
     const sub = parts[1]?.toLowerCase();
@@ -330,6 +416,7 @@ export function buildFacebookSearchQueries(
   const name = company.name.trim();
   const places = companyGeoPlaces(company);
   const stripped = stripCompanySuffix(name);
+  const strippedTitle = toTitleCaseName(stripped);
   const brand = extractBrandPortion(name);
   const brandTitle = brand ? toTitleCaseName(brand) : null;
   const nameVariants = companySearchNameVariants(name);
@@ -342,18 +429,27 @@ export function buildFacebookSearchQueries(
 
   const addFacebookLabel = (label: string, place?: string) => {
     if (place) {
-      addUniqueQuery(queries, seen, `${label} ${place} facebook`);
+      addUniqueQuery(queries, seen, `"${label}" ${place} facebook`);
       addUniqueQuery(queries, seen, `${label} ${place} site:facebook.com`);
-      addUniqueQuery(queries, seen, `"${label}" ${place} facebook side`);
+      addUniqueQuery(queries, seen, `${label} ${place} facebook`);
     } else {
-      addUniqueQuery(queries, seen, `${label} facebook`);
+      addUniqueQuery(queries, seen, `"${label}" facebook`);
       addUniqueQuery(queries, seen, `${label} site:facebook.com`);
     }
   };
 
+  /** Title case + sitat finner ofte riktig side (Brreg-navn er ofte STORE BOKSTAVER). */
+  if (places.length > 0 && strippedTitle !== stripped) {
+    for (const place of places) {
+      addUniqueQuery(queries, seen, `"${strippedTitle}" ${place} facebook`);
+      addUniqueQuery(queries, seen, `"${strippedTitle}" ${place} site:facebook.com`);
+    }
+  }
+
   const variantLabels = [
     ...(brand ? [brand] : []),
     ...(brandTitle && brandTitle !== brand ? [brandTitle] : []),
+    ...(strippedTitle !== stripped ? [strippedTitle] : []),
     ...nameVariants,
     stripped,
     name,

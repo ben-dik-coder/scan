@@ -15,6 +15,7 @@ import {
   socialUrlMatchesCompany,
   pickFacebookFromHits,
   buildFacebookSearchQueries,
+  normalizeFacebookUrl,
 } from "../src/lib/website-scan/social-profiles";
 import {
   emailPlausibleForCompany,
@@ -156,6 +157,51 @@ await test("Facebook-søk prioriterer merkenavn + sted", () => {
   assert.match(queries[0] ?? "", /SHIP O HOI TATTOO/i);
   assert.match(queries[0] ?? "", /Bodø/i);
   assert.match(queries[0] ?? "", /facebook/i);
+});
+
+await test("Facebook /p/-URL normaliseres til side-ID", () => {
+  assert.equal(
+    normalizeFacebookUrl(
+      "https://www.facebook.com/p/Virvel-Fris%C3%B8r-100077243748335/"
+    ),
+    "https://www.facebook.com/100077243748335"
+  );
+});
+
+await test("Facebook media/vanity normaliseres til side-slug", () => {
+  assert.equal(
+    normalizeFacebookUrl(
+      "https://www.facebook.com/media/set/?vanity=TaraldsvikAS&set=a.123"
+    ),
+    "https://www.facebook.com/TaraldsvikAS"
+  );
+});
+
+await test("Innlegg på andres side velges ikke for Qahrhom Frisør", () => {
+  const pick = pickFacebookFromHits(
+    [
+      {
+        title: "PRO:Narvik added a new photo — at Qahrhom Frisør.",
+        link: "https://www.facebook.com/scanmarknarvik/photos/1175691091224970/",
+      },
+      {
+        title: "Qahrhom Frisør",
+        link: "https://www.facebook.com/p/Qahrhom-Fris%C3%B8r-100066430936342/",
+      },
+    ],
+    "QAHRHOM FRISØR AS",
+    "Narvik"
+  );
+  assert.equal(pick.url, "https://www.facebook.com/100066430936342");
+});
+
+await test("Facebook-søk bruker title case i siterte spørringer", () => {
+  const queries = buildFacebookSearchQueries({
+    name: "NARVIK FRISØR AS",
+    municipality_name: "NARVIK",
+    city: "NARVIK",
+  });
+  assert.ok(queries.some((q) => q.includes('"Narvik Frisør"')));
 });
 
 await test("URL alene kan ikke matche på path-tokens", () => {
