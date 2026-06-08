@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { FilterState } from "@/components/CompanyFilters";
 import {
   agentOrgnrsFromFilters,
-  mergeAgentListFilters,
+  filtersForAgentListApplication,
+  isAgentSavedListFilters,
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
 import {
@@ -72,6 +73,7 @@ export type SavedAudienceApply = {
 };
 
 type Props = {
+  currentFilters: FilterState;
   onApply: (payload: SavedAudienceApply) => void;
   onSaveCurrent: (name: string) => Promise<void>;
   saveMessage: string | null;
@@ -87,13 +89,12 @@ function resolveProfessionId(
 }
 
 function mergeFilters(
-  partial: AgentSavedListFilters & { professionSearch?: string }
+  partial: AgentSavedListFilters & { professionSearch?: string },
+  current: FilterState
 ): FilterState {
-  const agentOrgnrs = agentOrgnrsFromFilters(partial);
-  const base =
-    agentOrgnrs.length > 0 || partial.createdBy === "agent"
-      ? mergeAgentListFilters(partial)
-      : null;
+  if (isAgentSavedListFilters(partial)) {
+    return filtersForAgentListApplication(partial, current);
+  }
 
   return {
     regionId: partial.regionId ?? "",
@@ -103,16 +104,18 @@ function mergeFilters(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId: resolveProfessionId(partial),
-    websitePresence:
-      base?.websitePresence ??
-      partial.websitePresence ??
-      "all",
+    websitePresence: partial.websitePresence ?? "all",
     facebookPresence: partial.facebookPresence ?? "all",
     instagramPresence: partial.instagramPresence ?? "all",
   };
 }
 
-export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Props) {
+export function ScanSavedAudiences({
+  currentFilters,
+  onApply,
+  onSaveCurrent,
+  saveMessage,
+}: Props) {
   const demo = useDemo();
   const [saved, setSaved] = useState<SavedListRow[]>([]);
   const [loading, setLoading] = useState(!isDemoMode());
@@ -213,7 +216,7 @@ export function ScanSavedAudiences({ onApply, onSaveCurrent, saveMessage }: Prop
                 type="button"
                 onClick={() =>
                   onApply({
-                    filters: mergeFilters(l.filters),
+                    filters: mergeFilters(l.filters, currentFilters),
                     agentOrgnrs: agentOrgnrs.length ? agentOrgnrs : undefined,
                     listId: l.id,
                     listName: l.name,

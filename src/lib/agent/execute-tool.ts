@@ -5,6 +5,7 @@ import {
   hasContactInfo,
 } from "@/lib/billing/usage";
 import { AGENT_MAX_COMPANIES_PER_JOB, AGENT_SCAN_DELAY_MS } from "@/lib/agent/constants";
+import { AGENT_LIST_PERIOD_DAYS } from "@/lib/agent/saved-list-filters";
 import { resolveAgentSearchIndustryFilters } from "@/lib/agent/search-filters";
 import { buildAgentScanUrl } from "@/lib/agent/build-scan-url";
 import {
@@ -545,7 +546,7 @@ async function executeSaveList(
       typeof args.industryGroup === "string" ? args.industryGroup : "",
     professionId:
       typeof args.professionId === "string" ? args.professionId : "",
-    days: typeof args.days === "number" ? args.days : 30,
+    days: AGENT_LIST_PERIOD_DAYS,
     websitePresence: "without",
     modus: "websites",
     agentOrgnrs: orgnrs,

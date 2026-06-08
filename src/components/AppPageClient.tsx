@@ -38,7 +38,12 @@ import {
   persistScanAudienceFilters,
   type ScanLeadMode,
 } from "@/lib/scan/lead-modes";
-import { agentOrgnrsFromFilters, matchesAgentListNoWebsiteTab } from "@/lib/agent/saved-list-filters";
+import {
+  agentOrgnrsFromFilters,
+  AGENT_LIST_PERIOD_DAYS,
+  filtersForAgentListApplication,
+  matchesAgentListNoWebsiteTab,
+} from "@/lib/agent/saved-list-filters";
 import { buildLeadGoogleSearchQuery } from "@/lib/scan/google-search-query";
 import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
@@ -141,10 +146,30 @@ export function AppPageClient(props: Props) {
         const orgnrs = agentOrgnrsFromFilters(row.filters);
         setPinnedOrgnrs(orgnrs.length ? new Set(orgnrs) : null);
         setActiveListName(row.name ?? null);
-        if (orgnrs.length) setListFilter("no_website");
+        if (!orgnrs.length) return;
+
+        setListFilter("no_website");
+        setNoWebsiteBanner(false);
+
+        const currentDays = searchParams.get("dager");
+        const needsPeriodFix =
+          currentDays !== "0" && currentDays !== "alle";
+        const hasPresenceFilter =
+          searchParams.has("web") ||
+          searchParams.has("fb") ||
+          searchParams.has("ig");
+
+        if (needsPeriodFix || hasPresenceFilter) {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set("dager", String(AGENT_LIST_PERIOD_DAYS));
+          params.delete("web");
+          params.delete("fb");
+          params.delete("ig");
+          router.replace(`/app?${params.toString()}`);
+        }
       })
       .catch(() => undefined);
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const filters = props.initialFilters;
   const companies =
@@ -154,8 +179,7 @@ export function AppPageClient(props: Props) {
 
   const visibleCompanies = useMemo(() => {
     if (!isAgentListActive || !pinnedOrgnrs) return companies;
-    if (agentListCompanies.length > 0) return agentListCompanies;
-    return companies.filter((c) => pinnedOrgnrs.has(c.orgnr));
+    return agentListCompanies;
   }, [isAgentListActive, pinnedOrgnrs, agentListCompanies, companies]);
 
   const {
@@ -302,6 +326,7 @@ export function AppPageClient(props: Props) {
     setSelected(new Set());
     if (!isAgentListActive) {
       setListFilter("all");
+      setNoWebsiteBanner(false);
     }
   }, [companyListKey, isAgentListActive]);
 
@@ -313,6 +338,8 @@ export function AppPageClient(props: Props) {
   const scanQueueCount = Math.min(selected.size, MAX_WEBSITE_SCAN_BATCH);
 
   const matchesPresenceFilters = (c: CompanyWithLead) => {
+    if (isAgentListActive) return true;
+
     const scan = websiteScans.get(c.orgnr);
     const web = filters.websitePresence;
     if (web === "with" && scan?.hasWebsite !== true) return false;
@@ -340,25 +367,38 @@ export function AppPageClient(props: Props) {
     return true;
   };
 
-  const displayCompanies = useMemo(() => {
-    let list = visibleCompanies;
-    if (listFilter === "no_website") {
-      list = list.filter((c) => matchesNoWebsiteTab(c.orgnr));
-    } else if (listFilter === "with_website") {
-      list = list.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true);
-    } else if (listFilter === "not_scanned") {
-      list = list.filter((c) => c.has_email && !websiteScans.has(c.orgnr));
-    }
-    return list.filter(matchesPresenceFilters);
+  const companiesByListTab = useMemo(() => {
+    const applyTab = (tabId: typeof listFilter) => {
+      let list = visibleCompanies;
+      if (tabId === "no_website") {
+        list = list.filter((c) => matchesNoWebsiteTab(c.orgnr));
+      } else if (tabId === "with_website") {
+        list = list.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true);
+      } else if (tabId === "not_scanned") {
+        list = list.filter((c) => c.has_email && !websiteScans.has(c.orgnr));
+      }
+      return list.filter(matchesPresenceFilters);
+    };
+
+    return {
+      all: applyTab("all"),
+      no_website: applyTab("no_website"),
+      with_website: applyTab("with_website"),
+      not_scanned: applyTab("not_scanned"),
+    };
   }, [
     visibleCompanies,
-    listFilter,
     websiteScans,
     isAgentListActive,
     filters.websitePresence,
     filters.facebookPresence,
     filters.instagramPresence,
   ]);
+
+  const displayCompanies = useMemo(
+    () => companiesByListTab[listFilter],
+    [companiesByListTab, listFilter]
+  );
 
   const queueScores = useMemo(() => {
     const map = new Map<string, number>();
@@ -400,6 +440,16 @@ export function AppPageClient(props: Props) {
       next.days !== 0
     ) {
       next = { ...next, days: 0 };
+    }
+    if (options?.agentOrgnrs?.length) {
+      next = filtersForAgentListApplication(
+        {
+          agentOrgnrs: options.agentOrgnrs,
+          createdBy: "agent",
+        },
+        next
+      );
+      setNoWebsiteBanner(false);
     }
 
     const params = new URLSearchParams(searchParams.toString());
@@ -795,28 +845,28 @@ export function AppPageClient(props: Props) {
       id: "all" as const,
       label: "Alle",
       shortLabel: "Alle",
-      count: visibleCompanies.length,
+      count: companiesByListTab.all.length,
       icon: List,
     },
     {
       id: "no_website" as const,
       label: "Uten nettside",
       shortLabel: "Uten web",
-      count: noWebsiteCount,
+      count: companiesByListTab.no_website.length,
       icon: Globe,
     },
     {
       id: "with_website" as const,
       label: "Med nettside",
       shortLabel: "Med web",
-      count: withWebsiteCount,
+      count: companiesByListTab.with_website.length,
       icon: Globe2,
     },
     {
       id: "not_scanned" as const,
       label: "Ikke sjekket",
       shortLabel: "Ujekket",
-      count: notScannedCount,
+      count: companiesByListTab.not_scanned.length,
       icon: Radar,
     },
   ];
@@ -998,6 +1048,17 @@ export function AppPageClient(props: Props) {
               </div>
             )}
 
+            {isAgentListActive && filters.days !== AGENT_LIST_PERIOD_DAYS && (
+              <div className="scan-glass-notice mx-2.5 mb-2 flex gap-2 lg:mx-3">
+                <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <p>
+                  AI-listen viser valgte firma uavhengig av når de ble registrert.{" "}
+                  <strong>Siste 30 dager</strong> gjelder bare bakgrunnslisten — ikke disse{" "}
+                  {pinnedOrgnrs?.size ?? 0} firmaene.
+                </p>
+              </div>
+            )}
+
             {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
               <div
                 className="mx-2.5 mb-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 lg:mx-3"
@@ -1139,6 +1200,7 @@ export function AppPageClient(props: Props) {
         </summary>
         <div className="mt-3">
           <ScanSavedAudiences
+            currentFilters={filters}
             onApply={applySavedAudience}
             onSaveCurrent={saveAudience}
             saveMessage={saveMessage}

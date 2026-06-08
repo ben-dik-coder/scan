@@ -17,7 +17,9 @@ export function buildAgentScanUrl(filters: AgentListFilters): string {
   if (filters.regionId) params.set("omrade", filters.regionId);
   if (filters.industryGroup) params.set("bransje", filters.industryGroup);
   if (filters.professionId) params.set("yrke", filters.professionId);
-  if (filters.days !== undefined) {
+  if (filters.savedListId) {
+    params.set("dager", "0");
+  } else if (filters.days !== undefined) {
     params.set("dager", filters.days === 0 ? "alle" : String(filters.days));
   }
   return `/app?${params.toString()}`;

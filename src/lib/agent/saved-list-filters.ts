@@ -26,13 +26,24 @@ export function matchesAgentListNoWebsiteTab(
   return isLeadWithoutOwnSite(scan);
 }
 
+/** AI-lister skal alltid vise orgnr uavhengig av registreringsdato. */
+export const AGENT_LIST_PERIOD_DAYS = 0;
+
+export function isAgentSavedListFilters(
+  filters: AgentSavedListFilters | Record<string, unknown> | null | undefined
+): boolean {
+  if (!filters) return false;
+  if (filters.createdBy === "agent") return true;
+  return agentOrgnrsFromFilters(filters).length > 0;
+}
+
 export function mergeAgentListFilters(
   partial: AgentSavedListFilters & { professionSearch?: string }
 ): FilterState {
   return {
     regionId: partial.regionId ?? "",
     municipalityCode: partial.municipalityCode ?? "",
-    days: partial.days ?? 30,
+    days: AGENT_LIST_PERIOD_DAYS,
     hasEmail: partial.hasEmail ?? false,
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
@@ -41,5 +52,21 @@ export function mergeAgentListFilters(
       (partial.websitePresence as FilterState["websitePresence"]) ?? "without",
     facebookPresence: partial.facebookPresence ?? "all",
     instagramPresence: partial.instagramPresence ?? "all",
+  };
+}
+
+/** Filter som brukes når bruker åpner en AI-liste — uten tidsvindu som kan skjule firma. */
+export function filtersForAgentListApplication(
+  partial: AgentSavedListFilters & { professionSearch?: string },
+  current: FilterState
+): FilterState {
+  const merged = mergeAgentListFilters(partial);
+  return {
+    ...current,
+    ...merged,
+    days: AGENT_LIST_PERIOD_DAYS,
+    websitePresence: "all",
+    facebookPresence: "all",
+    instagramPresence: "all",
   };
 }
