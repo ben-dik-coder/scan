@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
-import { loadConversationMessages } from "@/lib/agent/conversations";
+import {
+  enforceConversationLimit,
+  listUserConversations,
+  loadConversationMessages,
+} from "@/lib/agent/conversations";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentConversation } from "@/types/database";
 
@@ -20,25 +24,19 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get("id");
 
-  const supabase = await createClient();
-
   if (conversationId) {
     const messages = await loadConversationMessages(conversationId, user.id);
     return NextResponse.json({ messages });
   }
 
-  const { data, error } = await supabase
-    .from("agent_conversations")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("updated_at", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const conversations = await listUserConversations(user.id);
+    return NextResponse.json({ conversations });
+  } catch (listError) {
+    const message =
+      listError instanceof Error ? listError.message : "Kunne ikke hente samtaler";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json({ conversations: (data ?? []) as AgentConversation[] });
 }
 
 export async function POST(request: Request) {
@@ -57,6 +55,8 @@ export async function POST(request: Request) {
   } catch {
     body = {};
   }
+
+  await enforceConversationLimit(user.id);
 
   const supabase = await createClient();
   const { data, error } = await supabase

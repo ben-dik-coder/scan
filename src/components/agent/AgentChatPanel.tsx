@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SerperUsage } from "@/lib/billing/serper-usage";
 import { useRouter } from "next/navigation";
 import { notifySavedListChanged } from "@/lib/agent/saved-list-bus";
+import {
+  setStoredAgentConversationId,
+} from "@/lib/agent/agent-chat-bus";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
@@ -55,9 +58,11 @@ export function AgentChatFab({ onOpen }: { onOpen: () => void }) {
 export function AgentChatPanel({
   open,
   onClose,
+  initialConversationId = null,
 }: {
   open: boolean;
   onClose: () => void;
+  initialConversationId?: string | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -69,6 +74,7 @@ export function AgentChatPanel({
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolStep, setToolStep] = useState(0);
   const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
@@ -82,6 +88,75 @@ export function AgentChatPanel({
       })
       .catch(() => {});
   }, [open, loading]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    async function bootstrapConversation() {
+      setBlockedMessage(null);
+      setPendingRetryText(null);
+      setShowResumeButton(false);
+      setInput("");
+
+      if (!initialConversationId) {
+        setConversationId(null);
+        setMessages([]);
+        setStoredAgentConversationId(null);
+        return;
+      }
+
+      setConversationId(initialConversationId);
+      setStoredAgentConversationId(initialConversationId);
+      setLoadingHistory(true);
+
+      try {
+        const res = await fetch(
+          `/api/agent/conversations?id=${encodeURIComponent(initialConversationId)}`
+        );
+        if (!res.ok || cancelled) return;
+
+        const data = (await res.json()) as {
+          messages?: Array<{
+            id: string;
+            role: string;
+            content: string;
+          }>;
+        };
+
+        if (cancelled) return;
+
+        const loaded = (data.messages ?? [])
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }));
+
+        setMessages(loaded);
+        requestAnimationFrame(() => {
+          listRef.current?.scrollTo({
+            top: listRef.current.scrollHeight,
+            behavior: "auto",
+          });
+        });
+      } catch {
+        if (!cancelled) {
+          setMessages([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingHistory(false);
+      }
+    }
+
+    void bootstrapConversation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, initialConversationId]);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -197,6 +272,7 @@ export function AgentChatPanel({
 
             if (event.type === "conversation" && typeof event.conversationId === "string") {
               setConversationId(event.conversationId);
+              setStoredAgentConversationId(event.conversationId);
             } else if (event.type === "text" && typeof event.content === "string") {
               assistantText = event.content;
             } else if (event.type === "tool_start" && typeof event.tool === "string") {
@@ -356,7 +432,11 @@ export function AgentChatPanel({
         )}
 
         <div ref={listRef} className="agent-aurora-content flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {messages.length === 0 && (
+        {loadingHistory && (
+          <p className="text-center text-sm text-slate-400">Laster samtale…</p>
+        )}
+
+        {!loadingHistory && messages.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-slate-300">
               Jeg kan finne firma, sjekke nettside, berike kontaktinfo og lage

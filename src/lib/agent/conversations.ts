@@ -1,4 +1,4 @@
-import { AGENT_RUN_STALE_MS } from "@/lib/agent/constants";
+import { AGENT_RUN_STALE_MS, MAX_AGENT_CONVERSATIONS } from "@/lib/agent/constants";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { AgentConversation, AgentMessage, AgentRun } from "@/types/database";
@@ -74,10 +74,40 @@ export async function getActiveRunForUser(
   return run;
 }
 
+export type AgentConversationSummary = AgentConversation & {
+  preview: string | null;
+};
+
+export async function enforceConversationLimit(userId: string): Promise<void> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("agent_conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("updated_at", { ascending: true });
+
+  const active = data ?? [];
+  if (active.length < MAX_AGENT_CONVERSATIONS) return;
+
+  const toArchive = active
+    .slice(0, active.length - MAX_AGENT_CONVERSATIONS + 1)
+    .map((row) => row.id as string);
+
+  if (toArchive.length === 0) return;
+
+  await supabase
+    .from("agent_conversations")
+    .update({ status: "archived" })
+    .in("id", toArchive);
+}
+
 export async function createConversation(
   userId: string,
   title = "Ny samtale"
 ): Promise<AgentConversation> {
+  await enforceConversationLimit(userId);
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("agent_conversations")
@@ -86,6 +116,45 @@ export async function createConversation(
     .single();
   if (error) throw new Error(error.message);
   return data as AgentConversation;
+}
+
+export async function listUserConversations(
+  userId: string
+): Promise<AgentConversationSummary[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("agent_conversations")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(MAX_AGENT_CONVERSATIONS);
+
+  if (error) throw new Error(error.message);
+
+  const conversations = (data ?? []) as AgentConversation[];
+  if (conversations.length === 0) return [];
+
+  const ids = conversations.map((c) => c.id);
+  const { data: messages } = await supabase
+    .from("agent_messages")
+    .select("conversation_id, content, role, created_at")
+    .in("conversation_id", ids)
+    .in("role", ["user", "assistant"])
+    .order("created_at", { ascending: false });
+
+  const previewByConv = new Map<string, string>();
+  for (const msg of messages ?? []) {
+    const convId = msg.conversation_id as string;
+    if (previewByConv.has(convId)) continue;
+    const content = String(msg.content ?? "").trim();
+    if (content) previewByConv.set(convId, content.slice(0, 120));
+  }
+
+  return conversations.map((conv) => ({
+    ...conv,
+    preview: previewByConv.get(conv.id) ?? null,
+  }));
 }
 
 export async function createRun(

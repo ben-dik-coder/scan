@@ -20,3 +20,6 @@ export const AGENT_SCAN_DELAY_MS = 200;
 
 /** Kjøringer uten oppdatering lenger enn dette regnes som hengende og avbrytes automatisk. */
 export const AGENT_RUN_STALE_MS = 10 * 60 * 1000;
+
+/** Maks lagrede AI-samtaler per bruker */
+export const MAX_AGENT_CONVERSATIONS = 5;

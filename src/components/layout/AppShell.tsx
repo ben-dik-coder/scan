@@ -8,6 +8,10 @@ import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { cn } from "@/lib/utils";
 import { isAgentEnabled } from "@/lib/agent/constants";
+import {
+  AGENT_CHAT_OPEN_EVENT,
+  type AgentChatOpenDetail,
+} from "@/lib/agent/agent-chat-bus";
 import { isDemoMode } from "@/lib/demo/config";
 import {
   Building2,
@@ -20,6 +24,7 @@ import {
   LogOut,
   Mail,
   Menu,
+  MessageSquare,
   Send,
   Shield,
   Sparkles,
@@ -82,6 +87,9 @@ export function AppShell({
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentConversationId, setAgentConversationId] = useState<string | null>(
+    null
+  );
   const isGlassShell = isAppRoute(pathname);
   const isScanPage = pathname === "/app";
 
@@ -105,6 +113,22 @@ export function AppShell({
       document.body.style.overflow = prevOverflow;
     };
   }, [drawerOpen]);
+
+  useEffect(() => {
+    function onOpenAgent(event: Event) {
+      const detail = (event as CustomEvent<AgentChatOpenDetail>).detail;
+      setAgentConversationId(detail?.conversationId ?? null);
+      setAgentOpen(true);
+    }
+
+    window.addEventListener(AGENT_CHAT_OPEN_EVENT, onOpenAgent);
+    return () => window.removeEventListener(AGENT_CHAT_OPEN_EVENT, onOpenAgent);
+  }, []);
+
+  function openNewAgentChat() {
+    setAgentConversationId(null);
+    setAgentOpen(true);
+  }
 
   async function logout() {
     const { createClient } = await import("@/lib/supabase/client");
@@ -173,6 +197,16 @@ export function AppShell({
             ))}
           </div>
         ))}
+        {isAgentEnabled() && (
+          <div className="space-y-1">
+            <p className={groupLabelClass}>AI</p>
+            <NavLink
+              href="/app/ai-samtaler"
+              label="AI samtaler"
+              icon={MessageSquare}
+            />
+          </div>
+        )}
         <div className="space-y-1 border-t border-white/10 pt-3">
           <p className={groupLabelClass}>Hjelp</p>
           <TutorialMenuButton onOpen={() => setDrawerOpen(false)} />
@@ -310,8 +344,12 @@ export function AppShell({
 
         {isGlassShell && isAgentEnabled() && (
           <>
-            <AgentChatFab onOpen={() => setAgentOpen(true)} />
-            <AgentChatPanel open={agentOpen} onClose={() => setAgentOpen(false)} />
+            <AgentChatFab onOpen={openNewAgentChat} />
+            <AgentChatPanel
+              open={agentOpen}
+              onClose={() => setAgentOpen(false)}
+              initialConversationId={agentConversationId}
+            />
           </>
         )}
       </div>
