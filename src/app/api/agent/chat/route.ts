@@ -13,7 +13,12 @@ import {
   saveMessage,
 } from "@/lib/agent/conversations";
 import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
-import { isAgentResumeIntent, buildAgentResumePrompt } from "@/lib/agent/prompt";
+import {
+  isAgentResumeIntent,
+  isAgentPostCancelFollowUp,
+  buildAgentResumePrompt,
+  buildAgentCancelledRunContextPrompt,
+} from "@/lib/agent/prompt";
 import { runAgentChat } from "@/lib/agent/run-agent";
 import { isDemoMode } from "@/lib/demo/config";
 
@@ -122,18 +127,17 @@ export async function POST(request: NextRequest) {
   }
 
   let systemPromptExtra: string | undefined;
-  if (
-    user &&
-    !isDemoMode() &&
-    conversationId &&
-    isAgentResumeIntent(message)
-  ) {
+  if (user && !isDemoMode() && conversationId) {
     const lastRun = await getLastResumableRunForConversation(
       conversationId,
       user.id
     );
     if (lastRun) {
-      systemPromptExtra = buildAgentResumePrompt(lastRun);
+      if (isAgentResumeIntent(message)) {
+        systemPromptExtra = buildAgentResumePrompt(lastRun);
+      } else if (isAgentPostCancelFollowUp(message)) {
+        systemPromptExtra = buildAgentCancelledRunContextPrompt(lastRun);
+      }
     }
   }
 

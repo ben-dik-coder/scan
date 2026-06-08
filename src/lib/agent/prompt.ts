@@ -1,17 +1,31 @@
 import { AGENT_MAX_COMPANIES_PER_JOB } from "@/lib/agent/constants";
 import type { AgentRun } from "@/types/database";
 
+export function isAgentPostCancelFollowUp(message: string): boolean {
+  if (isAgentResumeIntent(message)) return false;
+  const normalized = message.trim();
+  if (!normalized) return false;
+  if (normalized.includes("?")) return true;
+
+  const lower = normalized.toLowerCase();
+  if (/^(finn|søk|sok|lag|hent)\s/.test(lower)) return false;
+
+  return /^(hvor|hva|kan|skal|har|fortell|status)/.test(lower);
+}
+
 export function isAgentResumeIntent(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   return (
     /start\s+s[øo]k\s+igjen/.test(normalized) ||
     /\bfortsett\b/.test(normalized) ||
+    /fortsett\s+s[øo]ket/.test(normalized) ||
     /pr[øo]v\s+igjen/.test(normalized) ||
-    /start\s+p[åa]\s+nytt/.test(normalized)
+    /start\s+p[åa]\s+nytt/.test(normalized) ||
+    /kj[øo]r\s+videre/.test(normalized)
   );
 }
 
-export function buildAgentResumePrompt(run: AgentRun): string {
+function readRunProgress(run: AgentRun) {
   const progress = run.progress ?? {};
   const orgnrs = Array.isArray(progress.orgnrs)
     ? (progress.orgnrs as string[])
@@ -25,6 +39,51 @@ export function buildAgentResumePrompt(run: AgentRun): string {
     {};
   const phase =
     typeof progress.phase === "string" ? progress.phase : "ukjent";
+  const scanned =
+    typeof progress.scanned === "number" ? progress.scanned : 0;
+  const total =
+    typeof progress.total === "number" ? progress.total : orgnrs.length;
+
+  return {
+    orgnrs,
+    remainingOrgnrs,
+    searchFilters,
+    phase,
+    scanned,
+    total,
+  };
+}
+
+export function buildAgentCancelledRunContextPrompt(run: AgentRun): string {
+  const {
+    orgnrs,
+    remainingOrgnrs,
+    searchFilters,
+    phase,
+    scanned,
+    total,
+  } = readRunProgress(run);
+
+  return `AVBRUTT JOBB — BRUKEREN STILLER SPØRSMÅL
+
+Forrige jobb ble avbrutt. Svar på brukerens spørsmål med statusen under.
+Ikke kjør scan_websites, search_companies eller andre verktøy nå — med mindre brukeren eksplisitt ber om å fortsette søket (f.eks. «start søk igjen»).
+
+Status fra avbrutt jobb:
+- Fase da jobben stoppet: ${phase}
+- Fant ${orgnrs.length} firma i søket
+- Skannet ${scanned} av ${total} firma
+- Gjenstår å skanne: ${remainingOrgnrs.length}
+- Søkefilter: ${JSON.stringify(searchFilters)}`;
+}
+
+export function buildAgentResumePrompt(run: AgentRun): string {
+  const {
+    orgnrs,
+    remainingOrgnrs,
+    searchFilters,
+    phase,
+  } = readRunProgress(run);
 
   return `GJENOPPTAK AV AVBRUTT JOBB
 
@@ -69,8 +128,9 @@ Regler:
 - Foreslå webbyrå-salg når kunden leter etter firma uten nettside
 - Avslutt ALLTID med save_list — listen lagres på siden under «Lagrede målgrupper» (merket AI)
 
-Gjenopptak:
-- Hvis brukeren sier «start søk igjen», «fortsett», «prøv igjen» eller «start på nytt», og du får GJENOPPTAK-kontekst: fortsett der jobben stoppet
+Gjenopptak og spørsmål etter avbrudd:
+- Hvis brukeren sier «start søk igjen», «fortsett», «fortsett søket», «prøv igjen», «start på nytt» eller «kjør videre», og du får GJENOPPTAK-kontekst: fortsett der jobben stoppet
+- Hvis du får AVBRUTT JOBB — BRUKEREN STILLER SPØRSMÅL: svar på spørsmålet med statusen, ikke start verktøy
 - Hopp over search_companies når søk allerede er gjort og orgnr finnes i gjenopptak-konteksten
 
 Bransje- og yrkesøk (f.eks. «finn alle frisører uten nettside»):

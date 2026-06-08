@@ -8,6 +8,7 @@ import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import { AGENT_MAX_TOOL_LOOPS } from "@/lib/agent/constants";
+import { isAgentResumeIntent } from "@/lib/agent/prompt";
 import { Send, Square } from "lucide-react";
 
 type ChatMessage = {
@@ -119,7 +120,9 @@ export function AgentChatPanel({
       setInput("");
       setBlockedMessage(null);
       setPendingRetryText(null);
-      setShowResumeButton(false);
+      if (isAgentResumeIntent(trimmed)) {
+        setShowResumeButton(false);
+      }
       if (!options?.skipUserAppend) {
         appendMessage({ role: "user", content: trimmed });
       }
@@ -423,7 +426,7 @@ export function AgentChatPanel({
         )}
 
         {showResumeButton && !loading && (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1.5">
             <button
               type="button"
               onClick={() => void sendMessage("Start søk igjen")}
@@ -431,6 +434,9 @@ export function AgentChatPanel({
             >
               Start søk igjen
             </button>
+            <p className="text-center text-[11px] text-slate-500">
+              Du kan også stille spørsmål før du fortsetter
+            </p>
           </div>
         )}
 
