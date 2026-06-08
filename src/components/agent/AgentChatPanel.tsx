@@ -272,19 +272,32 @@ export function AgentChatPanel({
         </span>
       }
       maxWidth="md"
-      panelClassName="flex flex-col"
+      panelClassName={cn("flex flex-col overflow-hidden", loading && "agent-panel--thinking")}
       footer={
         <>
           {loading && (
             <div
-              className="agent-thinking-wave agent-thinking-wave--footer shrink-0"
-              aria-hidden="true"
+              className="agent-thinking-wave-band shrink-0"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
             >
-              <div className="agent-thinking-wave__bar" />
+              <div className="agent-thinking-wave-band__aurora" aria-hidden="true" />
+              <div className="agent-thinking-wave-band__flow" aria-hidden="true" />
+              <div className="agent-thinking-wave-band__ripple" aria-hidden="true" />
+              <p className="agent-thinking-wave__status">
+                <span className="agent-thinking-wave__dot" aria-hidden="true" />
+                {activeTool
+                  ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+                  : "Tenker…"}
+              </p>
             </div>
           )}
           <form
-            className="flex gap-2 border-t border-white/10 p-3"
+            className={cn(
+              "flex gap-2 p-3",
+              !loading && "border-t border-white/10"
+            )}
             onSubmit={(e) => {
               e.preventDefault();
               void sendMessage(input);
@@ -403,23 +416,6 @@ export function AgentChatPanel({
           </p>
         )}
 
-        {(loading || activeTool) && (
-          <div
-            className="agent-thinking-wave"
-            role="status"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <div className="agent-thinking-wave__glow" aria-hidden="true" />
-            <div className="agent-thinking-wave__bar" aria-hidden="true" />
-            <p className="agent-thinking-wave__status">
-              <span className="agent-thinking-wave__dot" aria-hidden="true" />
-              {activeTool
-                ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
-                : "Tenker…"}
-            </p>
-          </div>
-        )}
       </div>
     </AppSideDrawer>
   );
