@@ -535,7 +535,7 @@ export async function enrichPlatformContacts(
     contacts: sanitized,
     gulesider,
     enrichedPhone: phoneResult.phone,
-    enrichedPhoneSource: phoneResult.source,
+    enrichedPhoneSource: phoneResult.source as PlatformContactSource | null,
     enrichedEmail: bestEmail?.value ?? null,
     enrichedEmailSource: bestEmail?.source ?? null,
     contactsEnriched: true,
