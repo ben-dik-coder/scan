@@ -64,6 +64,7 @@ export function AgentChatPanel({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [pendingRetryText, setPendingRetryText] = useState<string | null>(null);
+  const [showResumeButton, setShowResumeButton] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolStep, setToolStep] = useState(0);
   const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
@@ -118,6 +119,7 @@ export function AgentChatPanel({
       setInput("");
       setBlockedMessage(null);
       setPendingRetryText(null);
+      setShowResumeButton(false);
       if (!options?.skipUserAppend) {
         appendMessage({ role: "user", content: trimmed });
       }
@@ -170,6 +172,8 @@ export function AgentChatPanel({
         let resultLink: string | undefined;
         let savedListId: string | undefined;
         let savedListName: string | undefined;
+        let savedOrgnrCount: number | undefined;
+        const statusSummaries: string[] = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -200,6 +204,7 @@ export function AgentChatPanel({
               typeof event.summary === "string"
             ) {
               setActiveTool(null);
+              statusSummaries.push(event.summary);
               appendMessage({ role: "status", content: event.summary });
             } else if (event.type === "error" && typeof event.message === "string") {
               assistantText = event.message;
@@ -207,6 +212,9 @@ export function AgentChatPanel({
               if (typeof event.listId === "string") savedListId = event.listId;
               if (typeof event.listName === "string") savedListName = event.listName;
               if (typeof event.url === "string") resultLink = event.url;
+              if (typeof event.orgnrCount === "number") {
+                savedOrgnrCount = event.orgnrCount;
+              }
               notifySavedListChanged({
                 id: String(event.listId ?? ""),
                 name: String(event.listName ?? "Ny liste"),
@@ -218,11 +226,29 @@ export function AgentChatPanel({
               if (typeof event.link === "string") resultLink = event.link;
               if (typeof event.listId === "string") savedListId = event.listId;
               if (typeof event.listName === "string") savedListName = event.listName;
+              if (typeof event.orgnrCount === "number") {
+                savedOrgnrCount = event.orgnrCount;
+              }
+              if (typeof event.content === "string" && event.content.trim()) {
+                assistantText = event.content;
+              }
             }
           }
         }
 
-        if (assistantText) {
+        if (!assistantText.trim()) {
+          if (savedListName) {
+            const count =
+              typeof savedOrgnrCount === "number" && savedOrgnrCount > 0
+                ? ` med ${savedOrgnrCount} firma`
+                : "";
+            assistantText = `Ferdig! Lagret «${savedListName}»${count}. Åpne listen i Skann når du er klar.`;
+          } else if (statusSummaries.length > 0) {
+            assistantText = `Ferdig! ${statusSummaries.slice(-3).join(" ")}`;
+          }
+        }
+
+        if (assistantText.trim()) {
           appendMessage({
             role: "assistant",
             content: assistantText,
@@ -234,6 +260,7 @@ export function AgentChatPanel({
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           appendMessage({ role: "status", content: "Stoppet av deg" });
+          setShowResumeButton(true);
           return;
         }
         appendMessage({
@@ -391,6 +418,18 @@ export function AgentChatPanel({
               className="rounded-lg border border-amber-300/40 bg-amber-400/20 px-3 py-1.5 text-xs font-medium text-amber-50 transition hover:bg-amber-400/30"
             >
               Avbryt og start på nytt
+            </button>
+          </div>
+        )}
+
+        {showResumeButton && !loading && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => void sendMessage("Start søk igjen")}
+              className="rounded-lg border border-sky-400/40 bg-sky-500/20 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-500/30"
+            >
+              Start søk igjen
             </button>
           </div>
         )}

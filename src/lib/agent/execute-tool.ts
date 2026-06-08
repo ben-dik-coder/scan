@@ -98,12 +98,18 @@ function toScanInput(company: Company): WebsiteScanCompanyInput {
 
 async function updateRunProgress(
   runId: string,
-  progress: Record<string, unknown>
+  patch: Record<string, unknown>
 ) {
   const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("agent_runs")
+    .select("progress")
+    .eq("id", runId)
+    .single();
+  const current = (data?.progress as Record<string, unknown> | null) ?? {};
   await supabase
     .from("agent_runs")
-    .update({ progress })
+    .update({ progress: { ...current, ...patch } })
     .eq("id", runId);
 }
 
@@ -116,7 +122,7 @@ export async function executeAgentTool(
     case "get_entitlements":
       return executeGetEntitlements(ctx);
     case "search_companies":
-      return executeSearchCompanies(args);
+      return executeSearchCompanies(ctx, args);
     case "scan_websites":
       return executeScanWebsites(ctx, args);
     case "enrich_contacts":
@@ -150,6 +156,7 @@ async function executeGetEntitlements(
 }
 
 async function executeSearchCompanies(
+  ctx: AgentToolContext,
   args: Record<string, unknown>
 ): Promise<ToolExecutionResult> {
   const municipalityCode =
@@ -198,6 +205,23 @@ async function executeSearchCompanies(
   });
 
   const truncated = result.total > AGENT_MAX_COMPANIES_PER_JOB;
+  const searchFilters = {
+    municipalityCode,
+    regionId,
+    industryGroup,
+    professionId,
+    mappedFromProfession,
+    days,
+  };
+
+  await updateRunProgress(ctx.runId, {
+    phase: "search_done",
+    searchFilters,
+    orgnrs,
+    remainingOrgnrs: orgnrs,
+    scanned: 0,
+    total: orgnrs.length,
+  });
 
   return {
     summary: `Fant ${companies.length} firma${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}`,
@@ -214,14 +238,7 @@ async function executeSearchCompanies(
       returned: companies.length,
       truncated,
       orgnrs: companies.map((c) => c.orgnr),
-      filters: {
-        municipalityCode,
-        regionId,
-        industryGroup,
-        professionId,
-        mappedFromProfession,
-        days,
-      },
+      filters: searchFilters,
     },
   };
 }
@@ -240,6 +257,15 @@ async function executeScanWebsites(
   const companies = await loadCompaniesByOrgnr(orgnrs);
   const scans: WebsiteScanResult[] = [];
   let scanned = 0;
+
+  await updateRunProgress(ctx.runId, {
+    phase: "scan_websites",
+    orgnrs,
+    scanned: 0,
+    total: companies.length,
+    remainingOrgnrs: orgnrs,
+  });
+
   const social: ScanSocialOptions = {
     ...DEFAULT_SCAN_SOCIAL_OPTIONS,
     includeFacebook: true,
@@ -266,12 +292,22 @@ async function executeScanWebsites(
         }
       } catch (err) {
         if (err instanceof SerperLimitReachedError) {
+          const remainingOrgnrs = orgnrs.slice(scans.length);
+          await updateRunProgress(ctx.runId, {
+            phase: "scan_websites",
+            orgnrs,
+            scanned: scans.length,
+            total: companies.length,
+            remainingOrgnrs,
+            serperLimitReached: true,
+          });
           return {
             summary: err.message,
             data: {
               scanned: scans.length,
               serperLimitReached: true,
               serperUsage: err.usage,
+              remainingOrgnrs,
               scans: scans.map((s) => ({
                 orgnr: s.orgnr,
                 hasWebsite: s.hasWebsite,
@@ -285,8 +321,10 @@ async function executeScanWebsites(
       scanned++;
       await updateRunProgress(ctx.runId, {
         phase: "scan_websites",
+        orgnrs,
         scanned,
         total: companies.length,
+        remainingOrgnrs: orgnrs.slice(scanned),
       });
     }
 
@@ -297,6 +335,14 @@ async function executeScanWebsites(
 
   const withoutSite = scans.filter((s) => isLeadWithoutOwnSite(s)).length;
   const bookingOnly = scans.filter((s) => isBookingOnlyScan(s)).length;
+
+  await updateRunProgress(ctx.runId, {
+    phase: "scan_done",
+    orgnrs,
+    scanned: scans.length,
+    total: companies.length,
+    remainingOrgnrs: [],
+  });
 
   return {
     summary: `Skannet ${scans.length} firma — ${withoutSite} uten egen nettside (${bookingOnly} kun booking)`,

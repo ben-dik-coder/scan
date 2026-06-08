@@ -170,3 +170,27 @@ export function deriveConversationTitle(message: string): string {
   const trimmed = message.trim().slice(0, 60);
   return trimmed.length > 0 ? trimmed : "Ny samtale";
 }
+
+export async function getLastResumableRunForConversation(
+  conversationId: string,
+  userId: string
+): Promise<AgentRun | null> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("agent_runs")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .eq("status", "failed")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const run = (data as AgentRun | null) ?? null;
+  if (!run) return null;
+
+  const orgnrs = run.progress?.orgnrs;
+  if (!Array.isArray(orgnrs) || orgnrs.length === 0) return null;
+
+  return run;
+}

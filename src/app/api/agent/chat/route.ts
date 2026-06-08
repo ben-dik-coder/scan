@@ -8,10 +8,12 @@ import {
   deriveConversationTitle,
   finishRun,
   getActiveRunForUser,
+  getLastResumableRunForConversation,
   loadConversationMessages,
   saveMessage,
 } from "@/lib/agent/conversations";
 import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
+import { isAgentResumeIntent, buildAgentResumePrompt } from "@/lib/agent/prompt";
 import { runAgentChat } from "@/lib/agent/run-agent";
 import { isDemoMode } from "@/lib/demo/config";
 
@@ -119,6 +121,22 @@ export async function POST(request: NextRequest) {
     history.push({ role: "user", content: message });
   }
 
+  let systemPromptExtra: string | undefined;
+  if (
+    user &&
+    !isDemoMode() &&
+    conversationId &&
+    isAgentResumeIntent(message)
+  ) {
+    const lastRun = await getLastResumableRunForConversation(
+      conversationId,
+      user.id
+    );
+    if (lastRun) {
+      systemPromptExtra = buildAgentResumePrompt(lastRun);
+    }
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -178,10 +196,13 @@ export async function POST(request: NextRequest) {
                 link: event.link,
                 listId: event.listId,
                 listName: event.listName,
+                orgnrCount: event.orgnrCount,
+                content: event.content,
               });
             }
           },
-          request.signal
+          request.signal,
+          systemPromptExtra ? { systemPromptExtra } : undefined
         );
 
         if (request.signal.aborted) {

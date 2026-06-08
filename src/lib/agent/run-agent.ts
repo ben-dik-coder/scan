@@ -17,7 +17,14 @@ export type AgentStreamEvent =
       url: string;
       orgnrCount: number;
     }
-  | { type: "done"; link?: string; listId?: string; listName?: string };
+  | {
+      type: "done";
+      link?: string;
+      listId?: string;
+      listName?: string;
+      orgnrCount?: number;
+      content?: string;
+    };
 
 export type AgentChatMessage = {
   role: "user" | "assistant" | "system";
@@ -58,11 +65,54 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
+export type AgentChatOptions = {
+  systemPromptExtra?: string;
+};
+
+type AgentRunSummary = {
+  toolSummaries: string[];
+  listId?: string;
+  listName?: string;
+  orgnrCount?: number;
+  hitMaxLoops: boolean;
+};
+
+export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
+  const parts: string[] = [];
+
+  if (summary.listName) {
+    const count =
+      typeof summary.orgnrCount === "number" && summary.orgnrCount > 0
+        ? ` med ${summary.orgnrCount} firma`
+        : "";
+    parts.push(`Lagret listen «${summary.listName}»${count}.`);
+    parts.push("Du finner den under Lagrede målgrupper, eller åpne den i Skann.");
+  }
+
+  const usefulSummaries = summary.toolSummaries.filter((s) => s.trim().length > 0);
+  if (usefulSummaries.length > 0) {
+    parts.push(usefulSummaries.slice(-3).join(" "));
+  }
+
+  if (summary.hitMaxLoops) {
+    parts.unshift(
+      "Jobben tok mange steg og stoppet ved grensen. Her er det som ble gjort:"
+    );
+  } else if (parts.length === 0) {
+    return "Jobben er ferdig, men jeg fikk ikke skrevet et sammendrag. Sjekk statusmeldingene over.";
+  } else if (!summary.listName) {
+    parts.unshift("Ferdig! Her er resultatet:");
+  }
+
+  return parts.join("\n\n");
+}
+
 export async function runAgentChat(
   history: AgentChatMessage[],
   ctx: AgentToolContext,
   onEvent: (event: AgentStreamEvent) => void | Promise<void>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: AgentChatOptions
 ): Promise<{ assistantText: string; link?: string }> {
   if (!isAgentEnabled()) {
     const msg = AGENT_DISABLED_MESSAGE;
@@ -78,8 +128,12 @@ export async function runAgentChat(
     return { assistantText: msg };
   }
 
+  const systemPrompt = options?.systemPromptExtra
+    ? `${AGENT_SYSTEM_PROMPT}\n\n${options.systemPromptExtra}`
+    : AGENT_SYSTEM_PROMPT;
+
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...history.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -90,6 +144,8 @@ export async function runAgentChat(
   let link: string | undefined;
   let listId: string | undefined;
   let listName: string | undefined;
+  let orgnrCount: number | undefined;
+  const toolSummaries: string[] = [];
   let loops = 0;
 
   while (loops < AGENT_MAX_TOOL_LOOPS) {
@@ -143,6 +199,7 @@ export async function runAgentChat(
         result = { summary: `Feil: ${message}`, data: { error: message } };
       }
 
+      toolSummaries.push(result.summary);
       await onEvent({
         type: "tool_end",
         tool: toolName,
@@ -153,6 +210,11 @@ export async function runAgentChat(
         if (typeof result.data.url === "string") link = result.data.url;
         if (typeof result.data.savedListId === "string") {
           listId = result.data.savedListId;
+          const savedCount =
+            typeof result.data.orgnrCount === "number"
+              ? result.data.orgnrCount
+              : 0;
+          orgnrCount = savedCount;
           await onEvent({
             type: "list_saved",
             listId: result.data.savedListId,
@@ -161,10 +223,7 @@ export async function runAgentChat(
                 ? result.data.listName
                 : "Ny liste",
             url: typeof result.data.url === "string" ? result.data.url : "/app",
-            orgnrCount:
-              typeof result.data.orgnrCount === "number"
-                ? result.data.orgnrCount
-                : 0,
+            orgnrCount: savedCount,
           });
         }
         if (typeof result.data.listName === "string") {
@@ -185,13 +244,34 @@ export async function runAgentChat(
     loops++;
   }
 
-  if (loops >= AGENT_MAX_TOOL_LOOPS) {
-    const msg =
-      "Agenten stoppet etter for mange steg. Prøv en enklere forespørsel.";
-    await onEvent({ type: "error", message: msg });
-    if (!assistantText) assistantText = msg;
+  const hitMaxLoops = loops >= AGENT_MAX_TOOL_LOOPS;
+
+  if (hitMaxLoops && !assistantText.trim()) {
+    await onEvent({
+      type: "error",
+      message:
+        "Agenten stoppet etter for mange steg. Prøv en enklere forespørsel.",
+    });
   }
 
-  await onEvent({ type: "done", link, listId, listName });
+  if (!assistantText.trim()) {
+    assistantText = buildAgentCompletionSummary({
+      toolSummaries,
+      listId,
+      listName,
+      orgnrCount,
+      hitMaxLoops,
+    });
+    await onEvent({ type: "text", content: assistantText });
+  }
+
+  await onEvent({
+    type: "done",
+    link,
+    listId,
+    listName,
+    orgnrCount,
+    content: assistantText,
+  });
   return { assistantText, link };
 }

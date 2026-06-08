@@ -1,4 +1,46 @@
 import { AGENT_MAX_COMPANIES_PER_JOB } from "@/lib/agent/constants";
+import type { AgentRun } from "@/types/database";
+
+export function isAgentResumeIntent(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return (
+    /start\s+s[øo]k\s+igjen/.test(normalized) ||
+    /\bfortsett\b/.test(normalized) ||
+    /pr[øo]v\s+igjen/.test(normalized) ||
+    /start\s+p[åa]\s+nytt/.test(normalized)
+  );
+}
+
+export function buildAgentResumePrompt(run: AgentRun): string {
+  const progress = run.progress ?? {};
+  const orgnrs = Array.isArray(progress.orgnrs)
+    ? (progress.orgnrs as string[])
+    : [];
+  const remainingOrgnrs = Array.isArray(progress.remainingOrgnrs)
+    ? (progress.remainingOrgnrs as string[])
+    : orgnrs;
+  const searchFilters =
+    (progress.searchFilters as Record<string, unknown> | undefined) ??
+    (run.params?.searchFilters as Record<string, unknown> | undefined) ??
+    {};
+  const phase =
+    typeof progress.phase === "string" ? progress.phase : "ukjent";
+
+  return `GJENOPPTAK AV AVBRUTT JOBB
+
+Brukeren vil fortsette der du slapp. Ikke kjør search_companies på nytt med mindre brukeren ber om nye søkekriterier.
+
+Lagret tilstand:
+- Fase da jobben stoppet: ${phase}
+- Søkefilter: ${JSON.stringify(searchFilters)}
+- Alle orgnr fra søk (${orgnrs.length}): ${JSON.stringify(orgnrs)}
+- Gjenstår å skanne (${remainingOrgnrs.length}): ${JSON.stringify(remainingOrgnrs)}
+
+Fortsett slik:
+1. Hvis remainingOrgnrs ikke er tom: kjør scan_websites med remainingOrgnrs
+2. Kjør filter_no_website på alle orgnr fra søket (${orgnrs.length} stk)
+3. Avslutt med save_list og bruk searchFilters til filter-feltene i save_list`;
+}
 
 export const AGENT_SYSTEM_PROMPT = `Du er NyLead-assistenten — en hjelper for norske B2B-selgere som finner nye firma fra Brønnøysundregistret.
 
@@ -26,6 +68,10 @@ Regler:
 - Respekter kontakt-kvote (get_entitlements) før enrich_contacts
 - Foreslå webbyrå-salg når kunden leter etter firma uten nettside
 - Avslutt ALLTID med save_list — listen lagres på siden under «Lagrede målgrupper» (merket AI)
+
+Gjenopptak:
+- Hvis brukeren sier «start søk igjen», «fortsett», «prøv igjen» eller «start på nytt», og du får GJENOPPTAK-kontekst: fortsett der jobben stoppet
+- Hopp over search_companies når søk allerede er gjort og orgnr finnes i gjenopptak-konteksten
 
 Bransje- og yrkesøk (f.eks. «finn alle frisører uten nettside»):
 - Bruk days: 0 (alle tider) — ikke begrens til siste 30 dager
