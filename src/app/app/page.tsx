@@ -259,7 +259,7 @@ function FirmaPageBrreg() {
   const loadCompanies = useCallback(async () => {
     const gen = ++loadGenRef.current;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90_000);
+    const timeout = setTimeout(() => controller.abort(), 120_000);
 
     setLoading(true);
     setError(null);

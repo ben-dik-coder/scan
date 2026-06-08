@@ -175,6 +175,16 @@ async function fetchPagesBatch(
   );
 }
 
+/** Hvor mange Brreg-sider trengs for å fylle gjeldende side (100 firma per side). */
+function estimateBrregPagesNeeded(
+  neededCount: number,
+  wantsFiltered: boolean
+): number {
+  const perPage = 100;
+  const multiplier = wantsFiltered ? 2.5 : 1.15;
+  return Math.ceil((neededCount * multiplier) / perPage) + 1;
+}
+
 function sortCompanies(
   companies: CompanyWithLead[],
   sortSeed?: string
@@ -277,14 +287,13 @@ export async function fetchCompaniesFromBrreg(
   ingestEnheter(first._embedded?.enheter, filters, seen, companies);
 
   const fetchAllPages = industryAtBrreg;
+  const estimatedPages = estimateBrregPagesNeeded(neededCount, wantsFiltered);
   const pageAwareMaxPages = fetchAllPages
     ? totalPagesFromApi
     : Math.min(
         totalPagesFromApi,
-        Math.max(
-          filters.maxPages ?? defaultMaxPages,
-          Math.ceil(neededCount / 15) + 3
-        )
+        filters.maxPages ??
+          Math.min(defaultMaxPages, Math.max(estimatedPages, 2))
       );
 
   const pagesToFetch: number[] = [];
