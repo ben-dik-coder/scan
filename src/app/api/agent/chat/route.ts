@@ -10,6 +10,7 @@ import {
   loadConversationMessages,
   saveMessage,
 } from "@/lib/agent/conversations";
+import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
 import { runAgentChat } from "@/lib/agent/run-agent";
 import { isDemoMode } from "@/lib/demo/config";
 
@@ -21,6 +22,13 @@ function sseLine(data: Record<string, unknown>): string {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isAgentEnabled()) {
+    return new Response(JSON.stringify({ error: AGENT_DISABLED_MESSAGE }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const user = await getSessionUser();
   if (!user && !isDemoMode()) {
     return new Response(JSON.stringify({ error: "Du må være innlogget." }), {

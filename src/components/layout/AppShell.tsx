@@ -7,6 +7,7 @@ import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
 import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { cn } from "@/lib/utils";
+import { isAgentEnabled } from "@/lib/agent/constants";
 import { isDemoMode } from "@/lib/demo/config";
 import {
   Building2,
@@ -307,7 +308,7 @@ export function AppShell({
           </div>
         </main>
 
-        {isGlassShell && (
+        {isGlassShell && isAgentEnabled() && (
           <>
             <AgentChatFab onOpen={() => setAgentOpen(true)} />
             <AgentChatPanel open={agentOpen} onClose={() => setAgentOpen(false)} />

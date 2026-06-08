@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
 import { loadConversationMessages } from "@/lib/agent/conversations";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentConversation } from "@/types/database";
@@ -7,6 +8,10 @@ import type { AgentConversation } from "@/types/database";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  if (!isAgentEnabled()) {
+    return NextResponse.json({ error: AGENT_DISABLED_MESSAGE }, { status: 503 });
+  }
+
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -37,6 +42,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isAgentEnabled()) {
+    return NextResponse.json({ error: AGENT_DISABLED_MESSAGE }, { status: 503 });
+  }
+
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
