@@ -14,6 +14,7 @@ import {
   WorkflowDetailedSection,
 } from "@/components/marketing/LandingDeepContent";
 import { LandingFoldTransition } from "@/components/marketing/LandingFoldTransition";
+import { LandingThemeReset } from "@/components/marketing/LandingThemeReset";
 import { LandingSheet } from "@/components/marketing/LandingSheet";
 import { NyleadRoiCalculator } from "@/components/marketing/NyleadRoiCalculator";
 import { PricingSection } from "@/components/marketing/PricingSection";
@@ -103,6 +104,7 @@ const structuredData = {
 export default function HomePage() {
   return (
     <div className="landing-canvas min-h-screen">
+      <LandingThemeReset />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

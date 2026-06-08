@@ -91,6 +91,8 @@ export function AppShell({
     return () => {
       document.documentElement.classList.remove("app-glass-theme");
       document.body.classList.remove("app-glass-theme");
+      document.documentElement.style.backgroundColor = "";
+      document.body.style.color = "";
     };
   }, [isGlassShell]);
 
