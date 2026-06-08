@@ -19,6 +19,7 @@ import {
   loadSavedWebsiteScans,
   persistWebsiteScan,
 } from "@/lib/website-scan/saved-scans-client";
+import type { SerperUsage } from "@/lib/billing/serper-usage";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
 type Progress = {
@@ -65,6 +66,7 @@ export function useAutoWebsiteScan(
   const [progress, setProgress] = useState<Progress>({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [providers, setProviders] = useState<string[]>([]);
+  const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [scanningName, setScanningName] = useState<string | null>(null);
   const scanGenRef = useRef(0);
@@ -123,7 +125,9 @@ export function useAutoWebsiteScan(
         void fetch("/api/website-scan")
           .then((r) => r.json())
           .then((status) => {
-            if (isActive()) setProviders(status.providers ?? []);
+            if (!isActive()) return;
+            setProviders(status.providers ?? []);
+            if (status.serperUsage) setSerperUsage(status.serperUsage);
           })
           .catch((err) => {
             console.error("[website-scan] Kunne ikke hente provider-status:", err);
@@ -179,7 +183,15 @@ export function useAutoWebsiteScan(
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "Google-skanning feilet");
+            if (data.serperUsage && isActive()) {
+              setSerperUsage(data.serperUsage);
+            }
+            if (!res.ok) {
+              if (data.code === "serper_limit_reached") {
+                throw new Error(data.error ?? "Serper-kvoten er brukt opp");
+              }
+              throw new Error(data.error ?? "Google-skanning feilet");
+            }
 
             const batchResults = (data.results ?? []) as WebsiteScanResult[];
             const result = batchResults[0];
@@ -376,6 +388,7 @@ export function useAutoWebsiteScan(
     progress,
     error,
     providers,
+    serperUsage,
     truncated,
     rescan,
     scanCompanies,

@@ -1,3 +1,7 @@
+import {
+  assertSerperQuota,
+  recordSerperApiCall,
+} from "@/lib/billing/serper-usage";
 import { companyGeoPlaces, primaryGeoPlace } from "@/lib/brreg/geo-place";
 import {
   companyMatchesResult,
@@ -124,11 +128,16 @@ export function buildPlacesSearchQuery(company: WebsiteScanCompanyInput): string
 }
 
 export async function searchSerperPlaces(
-  query: string
+  query: string,
+  options?: { userId?: string }
 ): Promise<SerperPlaceHit[]> {
   const apiKey = process.env.SERPER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("Serper er ikke konfigurert");
+  }
+
+  if (options?.userId) {
+    await assertSerperQuota(options.userId);
   }
 
   const controller = new AbortController();
@@ -165,6 +174,10 @@ export async function searchSerperPlaces(
     throw new Error(data.message ?? `Serper Places feilet (${res.status})`);
   }
 
+  if (options?.userId) {
+    await recordSerperApiCall(options.userId);
+  }
+
   return (data.places ?? [])
     .filter((item) => item.title?.trim())
     .map((item) => ({
@@ -179,10 +192,11 @@ export async function searchSerperPlaces(
 }
 
 export async function discoverFromGooglePlaces(
-  company: WebsiteScanCompanyInput
+  company: WebsiteScanCompanyInput,
+  userId?: string
 ): Promise<GooglePlacesDiscovery | null> {
   const query = buildPlacesSearchQuery(company);
-  const places = await searchSerperPlaces(query);
+  const places = await searchSerperPlaces(query, { userId });
   if (!places.length) return null;
 
   const geoPlaces = companyGeoPlaces(company);

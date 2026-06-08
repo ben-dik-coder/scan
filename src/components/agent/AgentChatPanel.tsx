@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { SerperUsage } from "@/lib/billing/serper-usage";
 import { useRouter } from "next/navigation";
 import { notifySavedListChanged } from "@/lib/agent/saved-list-bus";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
@@ -65,9 +66,20 @@ export function AgentChatPanel({
   const [pendingRetryText, setPendingRetryText] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolStep, setToolStep] = useState(0);
+  const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!open) return;
+    void fetch("/api/serper-usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((usage) => {
+        if (usage) setSerperUsage(usage);
+      })
+      .catch(() => {});
+  }, [open, loading]);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -368,6 +380,17 @@ export function AgentChatPanel({
               Avbryt og start på nytt
             </button>
           </div>
+        )}
+
+        {serperUsage && (
+          <p
+            className={cn(
+              "text-center text-xs tabular-nums",
+              serperUsage.limitReached ? "text-amber-300" : "text-slate-500"
+            )}
+          >
+            Serper: {serperUsage.used} / {serperUsage.limit}
+          </p>
         )}
 
         {loading && (

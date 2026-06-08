@@ -1,3 +1,7 @@
+import {
+  assertSerperQuota,
+  recordSerperApiCall,
+} from "@/lib/billing/serper-usage";
 import type { SearchHit } from "./parse-results";
 
 type SerperOrganic = {
@@ -14,11 +18,15 @@ const SERPER_TIMEOUT_MS = 20_000;
 
 export async function searchSerper(
   query: string,
-  options?: { num?: number }
+  options?: { num?: number; userId?: string }
 ): Promise<SearchHit[]> {
   const apiKey = process.env.SERPER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("Serper er ikke konfigurert");
+  }
+
+  if (options?.userId) {
+    await assertSerperQuota(options.userId);
   }
 
   const controller = new AbortController();
@@ -54,6 +62,10 @@ export async function searchSerper(
 
   if (!res.ok) {
     throw new Error(data.message ?? `Serper feilet (${res.status})`);
+  }
+
+  if (options?.userId) {
+    await recordSerperApiCall(options.userId);
   }
 
   return (data.organic ?? [])

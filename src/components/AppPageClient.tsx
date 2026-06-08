@@ -153,6 +153,7 @@ export function AppPageClient(props: Props) {
     progress,
     error: scanError,
     providers,
+    serperUsage,
     truncated,
     rescan,
     scanCompanies,
@@ -970,6 +971,7 @@ export function AppPageClient(props: Props) {
               progress={progress}
               scanError={scanError}
               providers={providers}
+              serperUsage={serperUsage}
               truncated={truncated}
               noWebsiteCount={noWebsiteCount}
               withWebsiteCount={withWebsiteCount}

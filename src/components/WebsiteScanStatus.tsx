@@ -2,6 +2,7 @@
 
 import { Globe, Loader2, RefreshCw } from "lucide-react";
 import { useScanProgressAnimation } from "@/hooks/useScanProgressAnimation";
+import type { SerperUsage } from "@/lib/billing/serper-usage";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ type Props = {
   progress: { done: number; total: number };
   error: string | null;
   providers: string[];
+  serperUsage?: SerperUsage | null;
   truncated: boolean;
   noWebsiteCount: number;
   withWebsiteCount: number;
@@ -43,6 +45,7 @@ export function WebsiteScanStatus({
   progress,
   error,
   providers,
+  serperUsage,
   truncated,
   noWebsiteCount,
   withWebsiteCount,
@@ -149,6 +152,17 @@ export function WebsiteScanStatus({
                     {includeLinkedIn && ` · ${withLinkedInCount} LinkedIn`}
                   </span>
                 </>
+              )}
+              {serperUsage && (
+                <p
+                  className={cn(
+                    "mt-1 text-xs tabular-nums",
+                    serperUsage.limitReached ? "text-amber-200" : "opacity-70"
+                  )}
+                >
+                  Serper: {serperUsage.used} / {serperUsage.limit}
+                  {serperUsage.limitReached && " · kvoten er brukt opp"}
+                </p>
               )}
               {providers.length > 0 && !scanning && (
                 <p className="mt-1 text-xs opacity-70">{providers.join(" · ")}</p>

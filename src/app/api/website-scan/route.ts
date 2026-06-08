@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import {
+  getSerperUsage,
+  SerperLimitReachedError,
+} from "@/lib/billing/serper-usage";
+import {
   getWebsiteScanProviders,
   hasAnyWebsiteScanProvider,
 } from "@/lib/website-scan/config";
@@ -31,6 +35,9 @@ const DELAY_MS = 200;
 
 export async function GET() {
   const { hasSerpApi } = await import("@/lib/website-scan/config");
+  const user = await getSessionUser();
+  const serperUsage = user ? await getSerperUsage(user.id) : null;
+
   return NextResponse.json({
     configured: hasAnyWebsiteScanProvider(),
     providers: getWebsiteScanProviders(),
@@ -39,6 +46,7 @@ export async function GET() {
     instagramProfileApi: hasSerpApi(),
     demoFallback: isDemoMode() || !hasAnyWebsiteScanProvider(),
     maxPerSearch: MAX_WEBSITE_SCAN_BATCH,
+    serperUsage,
   });
 }
 
@@ -85,27 +93,49 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   const freshResults: WebsiteScanResult[] = [];
 
-  for (let i = 0; i < companies.length; i++) {
-    const company = companies[i]!;
-    const cached = cachedByOrgnr.get(company.orgnr);
-    if (cached && isWebsiteScanCacheComplete(cached, social)) {
-      results.push(cached);
-      continue;
-    }
+  try {
+    for (let i = 0; i < companies.length; i++) {
+      const company = companies[i]!;
+      const cached = cachedByOrgnr.get(company.orgnr);
+      if (cached && isWebsiteScanCacheComplete(cached, social)) {
+        results.push(cached);
+        continue;
+      }
 
-    if (cached && isSocialScanComplete(cached, social)) {
-      const enriched = await enrichScanContacts(company, cached);
-      results.push(enriched);
-      freshResults.push(enriched);
-      continue;
-    }
+      if (cached && isSocialScanComplete(cached, social)) {
+        const enriched = await enrichScanContacts(company, cached);
+        results.push(enriched);
+        freshResults.push(enriched);
+        continue;
+      }
 
-    const result = await scanCompanyWebsite(company, { demo: useDemo, social });
-    results.push(result);
-    freshResults.push(result);
-    if (companies.length > 1 && i < companies.length - 1) {
-      await sleep(DELAY_MS);
+      const result = await scanCompanyWebsite(company, {
+        demo: useDemo,
+        social,
+        userId: user?.id,
+      });
+      results.push(result);
+      freshResults.push(result);
+      if (companies.length > 1 && i < companies.length - 1) {
+        await sleep(DELAY_MS);
+      }
     }
+  } catch (err) {
+    if (err instanceof SerperLimitReachedError) {
+      const serperUsage = user
+        ? await getSerperUsage(user.id)
+        : err.usage;
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: "serper_limit_reached",
+          serperUsage,
+          results: results.map(sanitizeScanPhone),
+        },
+        { status: 429 }
+      );
+    }
+    throw err;
   }
 
   if (user && freshResults.length > 0) {
@@ -115,6 +145,8 @@ export async function POST(request: NextRequest) {
   const withoutWebsite = results.filter((r) => !r.hasWebsite).length;
   const withWebsite = results.filter((r) => r.hasWebsite).length;
 
+  const serperUsage = user ? await getSerperUsage(user.id) : null;
+
   return NextResponse.json({
     results: results.map(sanitizeScanPhone),
     summary: {
@@ -123,5 +155,6 @@ export async function POST(request: NextRequest) {
       withoutWebsite,
       providers: useDemo ? ["demo"] : getWebsiteScanProviders(),
     },
+    serperUsage,
   });
 }

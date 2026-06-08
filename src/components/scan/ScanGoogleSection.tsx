@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import { ScanGooglePanel } from "@/components/scan/ScanGooglePanel";
 import { WebsiteScanStatus } from "@/components/WebsiteScanStatus";
+import type { SerperUsage } from "@/lib/billing/serper-usage";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import type { ScanSocialOptions } from "@/lib/website-scan/scan-social-options";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ type Props = {
   progress: { done: number; total: number };
   scanError: string | null;
   providers: string[];
+  serperUsage?: SerperUsage | null;
   truncated: boolean;
   noWebsiteCount: number;
   withWebsiteCount: number;
@@ -55,6 +57,7 @@ export function ScanGoogleSection({
   progress,
   scanError,
   providers,
+  serperUsage,
   truncated,
   noWebsiteCount,
   withWebsiteCount,
@@ -158,6 +161,7 @@ export function ScanGoogleSection({
           progress={progress}
           error={scanError}
           providers={providers}
+          serperUsage={serperUsage}
           truncated={truncated}
           noWebsiteCount={noWebsiteCount}
           withWebsiteCount={withWebsiteCount}

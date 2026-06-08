@@ -1,3 +1,4 @@
+import { SerperLimitReachedError } from "@/lib/billing/serper-usage";
 import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper, isSerperPlacesEnabled } from "./config";
 import {
   discoverWebsiteByDomainGuess,
@@ -81,6 +82,7 @@ type PickResult = ReturnType<typeof pickBestWebsite>;
 export type ScanCompanyOptions = {
   demo?: boolean;
   social?: Partial<ScanSocialOptions>;
+  userId?: string;
 };
 
 type SocialFields = Pick<
@@ -782,11 +784,15 @@ function hasPaidWebSearch(): boolean {
 
 async function trySerperSearch(
   query: string,
-  options?: { serpNum?: number; orgnr?: string }
+  options?: { serpNum?: number; orgnr?: string; userId?: string }
 ): Promise<SearchHit[]> {
   try {
-    return await searchSerper(query, { num: options?.serpNum });
+    return await searchSerper(query, {
+      num: options?.serpNum,
+      userId: options?.userId,
+    });
   } catch (err) {
+    if (err instanceof SerperLimitReachedError) throw err;
     logScan(
       options?.orgnr ?? "?",
       `Serper feilet: ${query}`,
@@ -801,12 +807,13 @@ async function trySerperSearch(
 
 async function fetchHitsForQuery(
   query: string,
-  options?: { serpNum?: number; orgnr?: string }
+  options?: { serpNum?: number; orgnr?: string; userId?: string }
 ): Promise<SearchHit[]> {
   if (hasSerper()) {
     try {
       return await trySerperSearch(query, options);
     } catch (err) {
+      if (err instanceof SerperLimitReachedError) throw err;
       logScan(
         options?.orgnr ?? "?",
         `Serper feilet: ${query}`,
@@ -895,7 +902,7 @@ function socialFoundInHits(
 
 async function fetchWebsiteSearchHits(
   company: WebsiteScanCompanyInput,
-  options: { canSearch: boolean }
+  options: { canSearch: boolean; userId?: string }
 ): Promise<SearchHit[]> {
   if (!options.canSearch) return [];
 
@@ -903,12 +910,16 @@ async function fetchWebsiteSearchHits(
   return fetchHitsForQuery(query, {
     orgnr: company.orgnr,
     serpNum: GOOGLE_SERP_NUM,
-  }).catch(() => [] as SearchHit[]);
+    userId: options.userId,
+  }).catch((err) => {
+    if (err instanceof SerperLimitReachedError) throw err;
+    return [] as SearchHit[];
+  });
 }
 
 async function fetchHitsForQueries(
   queries: string[],
-  options?: { serpNum?: number; orgnr?: string }
+  options?: { serpNum?: number; orgnr?: string; userId?: string }
 ): Promise<SearchHit[]> {
   const batches = await Promise.all(
     queries.map((q) =>
@@ -1003,12 +1014,17 @@ async function fetchSocialSerpHits(
     websiteFacebookUrl?: string | null;
     websiteInstagramUrl?: string | null;
     alternateNames: string[];
+    userId?: string;
   }
 ): Promise<{ fbHits: SearchHit[]; igHits: SearchHit[] }> {
   const canSearch = hasPaidWebSearch() || hasFreeWebSearch();
   if (!canSearch) return { fbHits: [], igHits: [] };
 
-  const serpOpts = { serpNum: SOCIAL_SERP_NUM, orgnr: company.orgnr };
+  const serpOpts = {
+    serpNum: SOCIAL_SERP_NUM,
+    orgnr: company.orgnr,
+    userId: context.userId,
+  };
   const socialContext = {
     alternateNames: context.alternateNames,
   };
@@ -1169,9 +1185,11 @@ export async function scanCompanyWebsite(
     }
   }
 
+  const userId = options?.userId;
+
   if (!usedVerifiedHint && isSerperPlacesEnabled()) {
     try {
-      placesDiscovery = await discoverFromGooglePlaces(company);
+      placesDiscovery = await discoverFromGooglePlaces(company, userId);
       if (placesDiscovery) {
         logScan(company.orgnr, "Google Maps (Serper Places)", {
           placeTitle: placesDiscovery.placeTitle,
@@ -1233,6 +1251,7 @@ export async function scanCompanyWebsite(
         }
       }
     } catch (err) {
+      if (err instanceof SerperLimitReachedError) throw err;
       logScan(
         company.orgnr,
         "Serper Places feilet",
@@ -1292,11 +1311,12 @@ export async function scanCompanyWebsite(
       }
     } else {
       try {
-        hits = await fetchWebsiteSearchHits(company, { canSearch });
+        hits = await fetchWebsiteSearchHits(company, { canSearch, userId });
         finalPick = pickBestWebsite(hits, company.name, {
           municipalityName: primaryGeoPlace(company),
         });
-      } catch {
+      } catch (err) {
+        if (err instanceof SerperLimitReachedError) throw err;
         hits = [];
         finalPick = EMPTY_WEBSITE_PICK;
       }
@@ -1395,6 +1415,7 @@ export async function scanCompanyWebsite(
     websiteFacebookUrl,
     websiteInstagramUrl,
     alternateNames: alts,
+    userId,
   });
 
   const mergedFbHits = dedupeHits([...freeFbHits, ...fbHits]);

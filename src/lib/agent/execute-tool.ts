@@ -1,4 +1,5 @@
 import { getEntitlements } from "@/lib/billing/entitlements";
+import { SerperLimitReachedError } from "@/lib/billing/serper-usage";
 import {
   applyCompanyContactLimit,
   hasContactInfo,
@@ -252,15 +253,33 @@ async function executeScanWebsites(
     for (const company of batch) {
       const input = toScanInput(company);
       let scan = cachedByOrgnr.get(company.orgnr);
-      if (scan && isWebsiteScanCacheComplete(scan, social)) {
-        // bruk cache
-      } else if (scan && isSocialScanComplete(scan, social)) {
-        scan = await enrichScanContacts(input, scan);
-        await persistCachedWebsiteScans([scan], ctx.userId);
-      } else {
-        scan = await scanCompanyWebsite(input, { social });
-        scan = await enrichScanContacts(input, scan);
-        await persistCachedWebsiteScans([scan], ctx.userId);
+      try {
+        if (scan && isWebsiteScanCacheComplete(scan, social)) {
+          // bruk cache
+        } else if (scan && isSocialScanComplete(scan, social)) {
+          scan = await enrichScanContacts(input, scan);
+          await persistCachedWebsiteScans([scan], ctx.userId);
+        } else {
+          scan = await scanCompanyWebsite(input, { social, userId: ctx.userId });
+          scan = await enrichScanContacts(input, scan);
+          await persistCachedWebsiteScans([scan], ctx.userId);
+        }
+      } catch (err) {
+        if (err instanceof SerperLimitReachedError) {
+          return {
+            summary: err.message,
+            data: {
+              scanned: scans.length,
+              serperLimitReached: true,
+              serperUsage: err.usage,
+              scans: scans.map((s) => ({
+                orgnr: s.orgnr,
+                hasWebsite: s.hasWebsite,
+              })),
+            },
+          };
+        }
+        throw err;
       }
       scans.push(scan);
       scanned++;
