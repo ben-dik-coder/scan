@@ -1,4 +1,8 @@
-import { INDUSTRY_GROUPS } from "@/lib/constants/industries";
+import {
+  INDUSTRY_GROUPS,
+  industryGroupLabel,
+} from "@/lib/constants/industries";
+import { resolveProfessionQuery } from "@/lib/constants/professions";
 
 const INDUSTRY_GROUP_IDS = new Set(
   INDUSTRY_GROUPS.map((g) => g.id).filter(Boolean)
@@ -114,7 +118,98 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     pattern: /\b(reklame|reklamebyra|reklamebyrå|markedsforing|markedsføring)\b/,
     match: { label: "reklamefirma", filters: { industryGroup: "reklame" } },
   },
+  {
+    pattern: /\b(kultur|underholdning|artist|teater|musikk|museum)\b/,
+    match: { label: "kulturfirma", filters: { industryGroup: "kultur" } },
+  },
+  {
+    pattern: /\b(negler|nails|manikyr|pedikyr|vipper)\b/,
+    match: {
+      label: "neglesalonger",
+      filters: { industryGroup: "skjonnhet", nameQuery: "negler" },
+    },
+  },
+  {
+    pattern: /\b(spa|velvære|velvaere|skjønnhet|skjonnhet)\b/,
+    match: {
+      label: "spa og skjønnhet",
+      filters: { industryGroup: "skjonnhet", nameQuery: "spa" },
+    },
+  },
+  {
+    pattern: /\b(industri|produksjon|fabrikk)\b/,
+    match: { label: "industrifirma", filters: { industryGroup: "industri" } },
+  },
+  {
+    pattern: /\b(landbruk|bonde|gård|gard|skog|fiske)\b/,
+    match: { label: "landbruksfirma", filters: { industryGroup: "landbruk" } },
+  },
 ];
+
+const PROFESSION_NAME_QUERY_RULES: Array<{
+  professionId: string;
+  pattern: RegExp;
+  nameQuery: string;
+}> = [
+  {
+    professionId: "frisor_spa",
+    pattern: /\b(negler|nails|manikyr|pedikyr|vipper)\b/,
+    nameQuery: "negler",
+  },
+  {
+    professionId: "frisor_spa",
+    pattern: /\b(spa|velvære|velvaere)\b/,
+    nameQuery: "spa",
+  },
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchIndustryGroupInMessage(message: string): (typeof INDUSTRY_GROUPS)[number] | null {
+  for (const group of INDUSTRY_GROUPS) {
+    if (!group.id) continue;
+    const pattern = new RegExp(
+      `\\b${escapeRegExp(group.id)}(?:firma|firmaer|bedrift|bedrifter|selskap|foretak|handlere?|handler)?\\b`,
+      "i"
+    );
+    if (pattern.test(message)) return group;
+  }
+  return null;
+}
+
+function pickNameQueryForProfession(
+  professionId: string,
+  message: string
+): string | undefined {
+  for (const rule of PROFESSION_NAME_QUERY_RULES) {
+    if (rule.professionId === professionId && rule.pattern.test(message)) {
+      return rule.nameQuery;
+    }
+  }
+  return undefined;
+}
+
+function resolveFromProfession(message: string): IndustryKeywordMatch | null {
+  const profession = resolveProfessionQuery(message);
+  if (!profession?.professionId) return null;
+
+  const industryGroup = mapProfessionToIndustryGroup(profession.professionId);
+  if (!industryGroup) return null;
+
+  const nameQuery = pickNameQueryForProfession(profession.professionId, message);
+  const label =
+    profession.label?.toLowerCase() ?? industryGroupLabel(industryGroup).toLowerCase();
+
+  return {
+    label,
+    filters: {
+      industryGroup,
+      ...(nameQuery ? { nameQuery } : {}),
+    },
+  };
+}
 
 export function resolveIndustryKeyword(message: string): IndustryKeywordMatch | null {
   const normalized = message.trim().toLowerCase();
@@ -124,6 +219,17 @@ export function resolveIndustryKeyword(message: string): IndustryKeywordMatch | 
     if (rule.pattern.test(normalized)) {
       return rule.match;
     }
+  }
+
+  const fromProfession = resolveFromProfession(normalized);
+  if (fromProfession) return fromProfession;
+
+  const group = matchIndustryGroupInMessage(normalized);
+  if (group) {
+    return {
+      label: group.label.toLowerCase(),
+      filters: { industryGroup: group.id },
+    };
   }
 
   return null;

@@ -2,6 +2,7 @@ import {
   AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_SCAN_PER_CALL,
 } from "@/lib/agent/constants";
+import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
 import type { AgentRun } from "@/types/database";
 
 /** Bruker ber bare om å finne/liste firma — ikke full nettside-pipeline. */
@@ -18,9 +19,7 @@ export function isSimpleSearchIntent(message: string): boolean {
   return (
     /^(finn|søk|sok|list|vis|hent|gi|nye)\b/.test(normalized) ||
     /\bfirma\b/.test(normalized) ||
-    /\b(byggevare|bygg|handverk|frisør|frisor|servering|transport|eiendom|helse)\b/.test(
-      normalized
-    )
+    resolveIndustryKeyword(normalized) !== null
   );
 }
 
@@ -146,13 +145,14 @@ SVARSTIL (viktig — brukeren hater generiske svar):
 
 Før du starter: én kort setning om planen, deretter kjør verktøy.
 
-HURTIGLISTE (f.eks. «finn meg 5 byggevarehandlere i Bodø»):
+HURTIGLISTE — alle enkle «finn N [yrke/bransje] i [sted]» (f.eks. frisør, byggvare, kultur, helse, transport, eiendom, reklame):
 1. ÉN search_companies med limit = antall brukeren ba om (maks 20)
-2. Bruk riktig bransje: byggevare/byggevarehandler → industryGroup bygg (+ nameQuery byggevare ved behov)
-3. List navn, orgnr og telefon fra databasen — svar med en gang
-4. IKKE skann alle — IKKE kjør scan_websites, filter_no_website, get_usage eller enrich med mindre brukeren eksplisitt ber om det
+2. Bruk riktig bransje via industryGroup (frisor, bygg, kultur, helse, transport, eiendom, reklame, osv.)
+3. Smale søk: legg til nameQuery (f.eks. byggevare, negler, spa) — brede bransjer trenger bare industryGroup
+4. List navn, orgnr og telefon fra databasen — svar med en gang
+5. IKKE skann — IKKE kjør scan_websites, filter_no_website, get_usage eller enrich med mindre brukeren eksplisitt ber om det
 
-Enkelt søk (f.eks. «finn frisører i Narvik», «nye byggfirma i Oslo»):
+Enkelt søk uten eksplisitt antall (f.eks. «finn frisører i Narvik», «nye byggfirma i Oslo»):
 1. search_companies — finn firma (sett limit hvis brukeren ba om et antall)
 2. Svar med tall, sted og 2–3 firmanavn fra resultatet
 3. STOPP — ikke kjør scan_websites, filter_no_website eller get_usage med mindre brukeren eksplisitt ber om nettside-skann eller «uten nettside»
@@ -204,8 +204,8 @@ Bransje- og yrkesøk (f.eks. «finn alle frisører uten nettside»):
 - Typisk flyt for «uten nettside»: search_companies → scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL}) → filter_no_website → save_list
 - Typisk flyt for enkelt søk: search_companies → svar — ferdig
 
-Vanlige bransje-id: bygg, servering, handel, frisor, eiendom, helse, it, reklame, transport, kultur.
+Vanlige bransje-id: bygg, servering, handel, frisor, skjonnhet, eiendom, helse, it, reklame, transport, kultur, industri, landbruk.
 Vanlige yrke-id: frisor, rorlegger, elektriker, regnskap, advokat.
-Byggevarehandler → industryGroup bygg (ev. nameQuery byggevare).
+Smale søk med nameQuery: byggevare → bygg + nameQuery byggevare; negler/spa → skjonnhet + nameQuery.
 
 Bodø = 1804. Narvik = 1806. Oslo = 0301.`;

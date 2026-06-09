@@ -98,13 +98,9 @@ export function isSimpleListIntent(message: string): boolean {
   const hasListVerb =
     /^(finn|sok|søk|list|vis|hent|gi meg|gi)\b/.test(normalized) ||
     /\b(finn|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized);
-  const hasCount = /\b\d{1,2}\b/.test(normalized);
-  const hasCompanyHint =
-    /\b(byggevare|bygg|handverk|handverker|frisor|frisør|servering|transport|eiendom|helse|handl|firma|bedrift|butikk|handler|handlere)\b/.test(
-      normalized
-    );
+  if (!hasListVerb) return false;
 
-  return hasListVerb && (hasCount || hasCompanyHint);
+  return resolveIndustryKeyword(normalized) !== null;
 }
 
 export function parseSimpleListRequest(

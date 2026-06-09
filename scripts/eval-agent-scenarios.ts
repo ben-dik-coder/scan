@@ -96,6 +96,8 @@ function testSimpleSearchIntent() {
 function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn meg 5 byggevarehandlere"), true);
   assert.equal(isSimpleListIntent("finn 5 byggevarehandler i Bodø"), true);
+  assert.equal(isSimpleListIntent("finn 5 frisører i Bodø"), true);
+  assert.equal(isSimpleListIntent("finn 3 kulturfirma i Narvik"), true);
   assert.equal(isSimpleListIntent("finn frisører uten nettside"), false);
   assert.equal(isSimpleListIntent("skann nettside for disse"), false);
 
@@ -107,8 +109,22 @@ function testSimpleListIntent() {
   assert.equal(parsed.searchArgs.nameQuery, "byggevare");
   assert.equal(parsed.searchArgs.days, 0);
 
+  const frisor = parseSimpleListRequest("finn 5 frisører i Bodø");
+  assert.ok(frisor);
+  assert.equal(frisor.limit, 5);
+  assert.equal(frisor.searchArgs.municipalityCode, "1804");
+  assert.equal(frisor.searchArgs.industryGroup, "frisor");
+  assert.equal(frisor.searchArgs.nameQuery, undefined);
+  assert.equal(frisor.searchArgs.days, 0);
+
+  const kultur = parseSimpleListRequest("finn 3 kulturfirma i Narvik");
+  assert.ok(kultur);
+  assert.equal(kultur.searchArgs.industryGroup, "kultur");
+  assert.equal(kultur.searchArgs.municipalityCode, "1806");
+
   const bygg = resolveIndustryKeyword("byggevarehandler i norge");
   assert.equal(bygg?.filters.industryGroup, "bygg");
+  assert.equal(bygg?.filters.nameQuery, "byggevare");
 }
 
 function testConcreteSummaryGate() {
