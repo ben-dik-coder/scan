@@ -115,6 +115,7 @@ function needsFullProfile(
     withFacebook && (facebookByOrgnr.get(c.orgnr) ?? null) === null;
   return (
     !hasPhone(c) ||
+    !hasEmail(c) ||
     !(c.daglig_leder ?? "").trim() ||
     missingFacebook
   );
@@ -248,15 +249,22 @@ async function loadMunicipalityIndustry(
   if (!codeFilters.length) {
     throw new Error(`Ukjent bransje "${industry}" — bruk f.eks. bygg eller frisor`);
   }
-  const { data, error } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("municipality_code", kommune)
-    .or(codeFilters.join(","))
-    .order("orgnr")
-    .limit(5000);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Company[];
+  const pageSize = 1000;
+  const rows: Company[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("companies")
+      .select("*")
+      .eq("municipality_code", kommune)
+      .or(codeFilters.join(","))
+      .order("orgnr")
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    if (!data?.length) break;
+    rows.push(...(data as Company[]));
+    if (data.length < pageSize) break;
+  }
+  return rows;
 }
 
 async function main() {
@@ -303,7 +311,7 @@ async function main() {
   console.log(`${slug} (${kommune}) ${industryLabel} (${industry}) i DB: ${all.length}`);
   console.log(
     profile === "full"
-      ? `Mangler telefon, daglig leder eller Facebook: ${totalMissing}`
+      ? `Mangler telefon, e-post, daglig leder eller Facebook: ${totalMissing}`
       : `Mangler telefon eller e-post: ${totalMissing}`
   );
   if (shard !== null) {

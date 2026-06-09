@@ -12,12 +12,14 @@ import {
   WeeklyAlertFilters,
 } from "@/components/settings/WeeklyAlertFilters";
 import { loadScanAudienceFilters } from "@/lib/scan/lead-modes";
+import { ThemeSelector } from "@/components/theme/ThemeSelector";
 import {
   Bell,
   BookOpen,
   CreditCard,
   Headphones,
   Mail,
+  Palette,
   Phone,
   Sparkles,
   User,
@@ -184,6 +186,13 @@ export default function InnstillingerClient({
           Abonnement
         </Link>
       </div>
+
+      <SettingsCard title="Utseende" icon={Palette}>
+        <p className="scan-glass-muted text-xs leading-relaxed">
+          Velg mellom klassisk blå glass-stil og ny Apple-stil. Valget lagres i nettleseren din.
+        </p>
+        <ThemeSelector />
+      </SettingsCard>
 
       <SettingsCard title="E-post" icon={Mail}>
         <p className="scan-glass-muted text-xs leading-relaxed">

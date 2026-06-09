@@ -83,16 +83,16 @@ export function ScanGoogleSection({
       open={isOpen}
       onToggle={(e) => setManualOpen((e.target as HTMLDetailsElement).open)}
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2.5 text-sm font-semibold text-white/80 hover:text-white lg:px-3 [&::-webkit-details-marker]:hidden">
+      <summary className="scan-glass-muted flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium hover:text-white lg:px-5 [&::-webkit-details-marker]:hidden">
         <span className="inline-flex items-center gap-2">
-          <Search className="h-4 w-4 text-sky-300" />
+          <Search className="h-4 w-4 opacity-60" />
           Google-sjekk (valgfritt)
         </span>
-        <ChevronDown className="h-4 w-4 text-white/40" />
+        <ChevronDown className="h-4 w-4 opacity-40" />
       </summary>
 
-      <div className="space-y-2 px-2.5 pb-2.5 lg:px-3 lg:pb-3">
-        <p className="text-xs text-white/45">
+      <div className="space-y-3 px-4 pb-4 lg:px-5 lg:pb-5">
+        <p className="scan-glass-muted text-xs">
           Sjekk om firma har nettside. Du kan også ringe eller sende uten dette steget.
         </p>
 

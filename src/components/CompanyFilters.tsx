@@ -42,6 +42,8 @@ type Props = {
   onChange: (filters: FilterState) => void;
   /** sidebar = desktop-panel, mobile-bar = alltid synlig på mobil, stack = full rad */
   layout?: "stack" | "sidebar" | "mobile-bar";
+  /** Skjul navnesøk (brukes når søk vises andre steder, f.eks. mobil quick bar) */
+  hideNameSearch?: boolean;
 };
 
 function DebouncedNameQueryInput({
@@ -86,6 +88,7 @@ export function CompanyFilters({
   municipalities,
   onChange,
   layout = "stack",
+  hideNameSearch = false,
 }: Props) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -188,7 +191,7 @@ export function CompanyFilters({
   if (isMobileBar) {
     return (
       <div className={gridClass}>
-        {nameQueryField}
+        {!hideNameSearch && nameQueryField}
         {regionField}
         {municipalityField}
         {professionField}
@@ -199,9 +202,194 @@ export function CompanyFilters({
   const hasAdvancedSocial =
     filters.facebookPresence !== "all" || filters.instagramPresence !== "all";
 
+  if (isSidebar) {
+    return (
+      <div className="space-y-3">
+        {!hideNameSearch && (
+          <div className="scan-filter-section">
+            <p className="scan-filter-section-title">Søk</p>
+            <div className="scan-filter-section-body">{nameQueryField}</div>
+          </div>
+        )}
+
+        <div className="scan-filter-section">
+          <p className="scan-filter-section-title">Område</p>
+          <div className="scan-filter-section-body">
+            {regionField}
+            {municipalityField}
+          </div>
+        </div>
+
+        <div className="scan-filter-section">
+          <p className="scan-filter-section-title">Bransje og periode</p>
+          <div className="scan-filter-section-body">
+            <label className="flex flex-col gap-0.5">
+              <span className="scan-label">
+                <Scissors className="h-3.5 w-3.5 text-brand-gold" />
+                Bransje
+              </span>
+              <select
+                value={filters.industryGroup}
+                onChange={(e) => onChange({ ...filters, industryGroup: e.target.value })}
+                className="scan-input"
+              >
+                {INDUSTRY_GROUPS.map((g) => (
+                  <option key={g.id || "alle"} value={g.id}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="scan-label">
+                <Calendar className="h-3.5 w-3.5 text-brand-gold" />
+                Periode
+              </span>
+              <select
+                value={filters.days}
+                onChange={(e) => onChange({ ...filters, days: Number(e.target.value) })}
+                className="scan-input"
+              >
+                <option value={7}>Siste 7 dager</option>
+                <option value={30}>Siste 30 dager</option>
+                <option value={90}>Siste 90 dager</option>
+                <option value={0}>Alle firma</option>
+              </select>
+            </label>
+            {professionField}
+          </div>
+        </div>
+
+        <div className="scan-filter-section">
+          <p className="scan-filter-section-title">Presets</p>
+          <div className="scan-filter-section-body">
+            <button
+              type="button"
+              onClick={() =>
+                onChange({
+                  ...filters,
+                  industryGroup:
+                    filters.industryGroup === WEBBYRA_MARKET_PRESET.industryGroup
+                      ? ""
+                      : WEBBYRA_MARKET_PRESET.industryGroup,
+                  days:
+                    filters.industryGroup === WEBBYRA_MARKET_PRESET.industryGroup
+                      ? filters.days
+                      : WEBBYRA_MARKET_PRESET.days,
+                })
+              }
+              className={`scan-chip cursor-pointer ${
+                filters.industryGroup === WEBBYRA_MARKET_PRESET.industryGroup
+                  ? "scan-chip-active"
+                  : ""
+              }`}
+            >
+              <Layout className="h-3.5 w-3.5" />
+              Selger nettsider (Brreg)
+            </button>
+          </div>
+        </div>
+
+        <div className="scan-filter-section">
+          <p className="scan-filter-section-title">Kontakt</p>
+          <div className="scan-filter-section-body flex-row flex-wrap">
+            <label
+              className={`scan-chip cursor-pointer ${filters.hasEmail ? "scan-chip-active" : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={filters.hasEmail}
+                onChange={(e) => onChange({ ...filters, hasEmail: e.target.checked })}
+                className="sr-only"
+              />
+              <Mail className="h-3.5 w-3.5" />
+              Kun med e-post
+            </label>
+            <label
+              className={`scan-chip cursor-pointer ${filters.genericEmailOnly ? "scan-chip-active" : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={filters.genericEmailOnly}
+                onChange={(e) => {
+                  const genericEmailOnly = e.target.checked;
+                  onChange({
+                    ...filters,
+                    genericEmailOnly,
+                    hasEmail: genericEmailOnly ? true : filters.hasEmail,
+                  });
+                }}
+                className="sr-only"
+              />
+              <Mail className="h-3.5 w-3.5" />
+              Kun post@ / info@
+            </label>
+          </div>
+        </div>
+
+        <details
+          className="scan-filter-section"
+          open={advancedOpen}
+          onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary className="scan-filter-section-title flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition ${advancedOpen ? "rotate-180" : ""}`}
+            />
+            Avansert etter Google-sjekk
+            {hasAdvancedSocial && (
+              <span className="rounded-full bg-white/10 px-1.5 text-[9px] font-semibold normal-case">
+                aktiv
+              </span>
+            )}
+          </summary>
+          <div className="scan-filter-section-body">
+            <p className="scan-glass-muted text-[11px] leading-snug">
+              Nettside-status velger du med fanene under listen (Alle / Uten web / Med web).
+            </p>
+            <label className="flex flex-col gap-0.5">
+              <span className="scan-label">Facebook</span>
+              <select
+                value={filters.facebookPresence}
+                onChange={(e) =>
+                  onChange({
+                    ...filters,
+                    facebookPresence: e.target.value as SocialPresenceFilter,
+                  })
+                }
+                className="scan-input"
+              >
+                <option value="all">Alle</option>
+                <option value="with">Kun med Facebook</option>
+                <option value="without">Kun uten Facebook</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="scan-label">Instagram</span>
+              <select
+                value={filters.instagramPresence}
+                onChange={(e) =>
+                  onChange({
+                    ...filters,
+                    instagramPresence: e.target.value as SocialPresenceFilter,
+                  })
+                }
+                className="scan-input"
+              >
+                <option value="all">Alle</option>
+                <option value="with">Kun med Instagram</option>
+                <option value="without">Kun uten Instagram</option>
+              </select>
+            </label>
+          </div>
+        </details>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
-      {nameQueryField}
+      {!hideNameSearch && nameQueryField}
 
       <div className={gridClass}>
         {regionField}

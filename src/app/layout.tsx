@@ -5,8 +5,8 @@ import { barlow, inter } from "@/lib/fonts";
 import "./globals.css";
 import { site } from "@/lib/site";
 
-/** Aktiver glass-tema på /app før første paint (unngår hvit flash og rå layout) */
-const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;var onApp=p==='/app'||p.indexOf('/app/')===0;var el=document.documentElement;var body=document.body;if(onApp){el.classList.add('app-glass-theme');body.classList.add('app-glass-theme');}else{el.classList.remove('app-glass-theme');body.classList.remove('app-glass-theme');el.style.backgroundColor='';body.style.color='';}})();`;
+/** Aktiver app-tema på /app før første paint (unngår hvit flash og rå layout) */
+const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;var onApp=p==='/app'||p.indexOf('/app/')===0;var el=document.documentElement;var body=document.body;var theme='apple';var bg='#000000';try{var s=localStorage.getItem('nylead-app-theme');if(s==='classic'||s==='apple')theme=s;}catch(e){}if(theme==='classic')bg='#234a73';if(onApp){el.classList.add('app-glass-theme');body.classList.add('app-glass-theme');el.setAttribute('data-app-theme',theme);el.style.backgroundColor=bg;}else{el.classList.remove('app-glass-theme');body.classList.remove('app-glass-theme');el.removeAttribute('data-app-theme');el.style.backgroundColor='';body.style.color='';}})();`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),

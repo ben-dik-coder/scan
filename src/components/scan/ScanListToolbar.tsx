@@ -42,9 +42,9 @@ export function ScanListToolbar({
   exportMessage,
 }: Props) {
   return (
-    <div className="scan-glass-divider space-y-2 border-t px-2.5 py-2 lg:px-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="-mx-0.5 flex flex-wrap gap-1">
+    <div className="scan-glass-divider space-y-3 border-t px-3 py-3 lg:px-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="scan-segmented max-w-full overflow-x-auto">
           {tabs.map((tab) => {
             const TabIcon = tab.icon;
             return (
@@ -52,23 +52,26 @@ export function ScanListToolbar({
                 key={tab.id}
                 type="button"
                 onClick={() => onTabChange(tab.id)}
-                className={cn("scan-tab", activeTab === tab.id && "scan-tab-active")}
+                className={cn(
+                  "scan-segmented-item",
+                  activeTab === tab.id && "scan-segmented-item-active"
+                )}
               >
                 <TabIcon className="h-3 w-3" />
                 <span className="hidden sm:inline">{tab.label}</span>
                 <span className="sm:hidden">{tab.shortLabel}</span>
-                <span className="tabular-nums font-semibold">{tab.count}</span>
+                <span className="tabular-nums opacity-70">{tab.count}</span>
               </button>
             );
           })}
         </div>
-        <div className="hidden items-center gap-0.5 rounded-xl border border-white/15 p-0.5 md:flex">
+        <div className="scan-segmented hidden md:inline-flex">
           <button
             type="button"
             onClick={() => onViewModeChange("table")}
             className={cn(
-              "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium",
-              listViewMode === "table" && "bg-white/12 text-white"
+              "scan-segmented-item",
+              listViewMode === "table" && "scan-segmented-item-active"
             )}
             aria-pressed={listViewMode === "table"}
           >
@@ -79,8 +82,8 @@ export function ScanListToolbar({
             type="button"
             onClick={() => onViewModeChange("cards")}
             className={cn(
-              "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium",
-              listViewMode === "cards" && "bg-white/12 text-white"
+              "scan-segmented-item",
+              listViewMode === "cards" && "scan-segmented-item-active"
             )}
             aria-pressed={listViewMode === "cards"}
           >

@@ -1,0 +1,695 @@
+/* Apple (mørk iOS) tema */
+
+[data-app-theme="apple"] .scan-glass-shell,
+[data-app-theme="apple"] .scan-glass-kommand {
+  --scan-glass-text: #f5f5f7;
+  --scan-glass-muted: #98989d;
+  --scan-glass-accent: #0a84ff;
+  --scan-glass-accent-text: #ffffff;
+  --scan-glass-text-shadow: none;
+  --scan-glass-border: rgba(255, 255, 255, 0.08);
+  --scan-glass-surface: rgba(44, 44, 46, 0.78);
+  --scan-glass-surface-subtle: rgba(28, 28, 30, 0.55);
+  --scan-glass-chip: rgba(58, 58, 60, 0.55);
+  --scan-glass-radius: 12px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+}
+
+[data-app-theme="apple"] .scan-glass-kommand {
+  color: var(--scan-glass-text);
+}
+
+html[data-app-theme="apple"].app-glass-theme {
+  background-color: #000000;
+}
+
+html[data-app-theme="apple"].app-glass-theme::before {
+  background: linear-gradient(180deg, #1c1c1e 0%, #000000 42%, #0a0a0c 100%);
+}
+
+[data-app-theme="apple"] .scan-glass-shell-header {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(28, 28, 30, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+[data-app-theme="apple"] .scan-glass-shell-menu-btn {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(58, 58, 60, 0.55);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .scan-glass-drawer-backdrop {
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+
+[data-app-theme="apple"] .scan-glass-shell .scan-glass-mobile-drawer {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(44, 44, 46, 0.98) 0%, rgba(28, 28, 30, 0.98) 100%) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset, 0 24px 48px -12px rgba(0, 0, 0, 0.65);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .glass-nav-link-active {
+  border-color: rgba(10, 132, 255, 0.35);
+  background: rgba(10, 132, 255, 0.14);
+  box-shadow: none;
+}
+
+[data-app-theme="apple"] .scan-glass-shell .glass-nav-link-active svg {
+  color: #0a84ff;
+}
+
+[data-app-theme="apple"] .scan-glass-shell .app-settings-card {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(44, 44, 46, 0.92) !important;
+}
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-title {
+    @apply text-xl font-semibold tracking-tight;
+    color: var(--scan-glass-text);
+    text-shadow: none;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-subtitle,
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-muted {
+    @apply text-xs font-medium;
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-divider {
+    border-color: var(--scan-glass-border);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-header {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-guided-action {
+    border-color: rgba(56, 189, 248, 0.34);
+    background:
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 42%),
+      rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 40px -28px rgba(14, 165, 233, 0.7);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface,
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-full,
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad {
+    border-color: var(--scan-glass-border);
+    background: var(--scan-glass-surface);
+    color: var(--scan-glass-text);
+    box-shadow: none;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-full {
+    @apply mx-2 my-2 overflow-hidden sm:mx-3;
+    border-radius: calc(var(--scan-glass-radius) + 4px);
+    border: 1px solid var(--scan-glass-border);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad {
+    border-radius: var(--scan-glass-radius);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-label {
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-label svg,
+[data-app-theme="apple"] .scan-glass-kommand .scan-chip svg.text-brand-gold {
+    color: var(--scan-glass-accent);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-input {
+    border-color: var(--scan-glass-border);
+    border-radius: 10px;
+    background: rgba(28, 28, 30, 0.65);
+    color: var(--scan-glass-text);
+    box-shadow: none;
+    min-height: 2.5rem;
+    font-size: 16px;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand select.scan-input {
+    -webkit-appearance: menulist;
+    appearance: menulist;
+    padding-right: 1.75rem;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand select.scan-input option {
+    background: #0f172a;
+    color: #f8fafc;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-input::placeholder {
+    color: rgba(226, 232, 240, 0.85);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-input:focus {
+    border-color: rgba(10, 132, 255, 0.45);
+    --tw-ring-color: rgba(10, 132, 255, 0.18);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-chip {
+    border-color: var(--scan-glass-border);
+    border-radius: 999px;
+    background: var(--scan-glass-chip);
+    color: var(--scan-glass-text);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-chip-active {
+    border-color: rgba(10, 132, 255, 0.35);
+    background: rgba(10, 132, 255, 0.14);
+    color: var(--scan-glass-text);
+    --tw-ring-color: transparent;
+  }
+
+  /* iOS-style segmented control */
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 10px;
+    border: 1px solid var(--scan-glass-border);
+    background: rgba(28, 28, 30, 0.55);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--scan-glass-muted);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0.375rem 0.625rem;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented-item:hover:not(.scan-segmented-item-active) {
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented-item-active {
+    background: rgba(99, 99, 102, 0.72);
+    color: var(--scan-glass-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented-item-active svg {
+    color: var(--scan-glass-accent);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-tab {
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-tab:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-tab-active {
+    border: none;
+    background: rgba(99, 99, 102, 0.72);
+    color: var(--scan-glass-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-tab-active svg {
+    color: var(--scan-glass-accent);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-btn-ghost {
+    border-color: var(--scan-glass-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--scan-glass-text);
+    box-shadow: none;
+    font-weight: 500;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-btn-primary {
+    border-radius: 999px;
+    background: var(--scan-glass-accent);
+    color: var(--scan-glass-accent-text);
+    box-shadow: none;
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-btn-primary:hover {
+    filter: brightness(1.06);
+  }
+
+  /* Settings-app filter groups */
+[data-app-theme="apple"] .scan-glass-kommand .scan-filter-section {
+    border-radius: calc(var(--scan-glass-radius) + 2px);
+    border: 1px solid var(--scan-glass-border);
+    background: rgba(28, 28, 30, 0.45);
+    overflow: hidden;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-filter-section + .scan-filter-section {
+    margin-top: 0.75rem;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-filter-section-title {
+    padding: 0.5rem 0.75rem 0.25rem;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--scan-glass-muted);
+    text-transform: uppercase;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-filter-section-body {
+    padding: 0.25rem 0.75rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-filter-section-body.flex-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-stat-inline {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-stat-inline strong {
+    color: var(--scan-glass-text);
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-banner {
+    margin-inline: 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: calc(var(--scan-glass-radius) + 2px);
+    border: 1px solid var(--scan-glass-border);
+    background: rgba(28, 28, 30, 0.45);
+    padding: 0.625rem 0.875rem;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-banner strong {
+    color: var(--scan-glass-text);
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-banner-accent {
+    border-color: rgba(10, 132, 255, 0.2);
+    background: rgba(10, 132, 255, 0.08);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-banner-success {
+    border-color: rgba(48, 209, 88, 0.2);
+    background: rgba(48, 209, 88, 0.08);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-bar-active {
+    background-image: linear-gradient(
+      90deg,
+      #38bdf8 0%,
+      #7dd3fc 25%,
+      #38bdf8 50%,
+      #7dd3fc 75%,
+      #38bdf8 100%
+    );
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-accent-text {
+    color: var(--scan-glass-accent);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-strong {
+    color: var(--scan-glass-text);
+    font-weight: 600;
+    text-shadow: none;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-notice {
+    @apply border-t px-2.5 py-2 text-xs lg:px-3;
+    border-color: rgba(251, 191, 36, 0.25);
+    background: rgba(251, 191, 36, 0.08);
+    color: #fde68a;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-notice-warn {
+    border-color: rgba(251, 191, 36, 0.3);
+    background: rgba(251, 191, 36, 0.1);
+    color: #fcd34d;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-floating-bar {
+    border-color: var(--scan-glass-border);
+    border-radius: 999px;
+    background: rgba(28, 28, 30, 0.92);
+    color: var(--scan-glass-text);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status.is-scanning {
+    background: rgba(56, 189, 248, 0.08);
+    --tw-ring-color: rgba(56, 189, 248, 0.2);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status.is-complete {
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status .scan-glass-status-icon {
+    border-radius: calc(var(--scan-glass-radius) - 8px);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status .scan-glass-status-icon.is-scanning {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fcd34d;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status .scan-glass-status-icon.is-complete {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-scan-status .scan-glass-status-icon.is-idle {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-progress-track {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-progress-fill.is-complete {
+    background: #34d399;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-progress-fill.is-pending {
+    background: #fbbf24;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-status-footer {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-source-badge {
+    border-color: rgba(56, 189, 248, 0.3);
+    background: rgba(56, 189, 248, 0.12);
+    color: #bae6fd;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-source-badge.is-live {
+    border-color: rgba(52, 211, 153, 0.3);
+    background: rgba(52, 211, 153, 0.12);
+    color: #a7f3d0;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-toolbar-btn {
+    border-color: var(--scan-glass-border);
+    border-radius: calc(var(--scan-glass-radius) - 4px);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-toolbar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-toolbar-btn:disabled {
+    opacity: 0.5;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-empty-state {
+    border-color: var(--scan-glass-border);
+    border-radius: var(--scan-glass-radius);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-slate-900"],
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-brand-navy"] {
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-slate-500"],
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-slate-600"],
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-slate-700"],
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-slate-800"] {
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="border-slate-100"],
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="border-b"] {
+    border-color: var(--scan-glass-border);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="bg-amber-100"] {
+    background: rgba(56, 189, 248, 0.15);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="text-brand-gold"] {
+    color: var(--scan-glass-accent);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-surface-pad [class~="rounded-xl"][class~="border-dashed"] {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table {
+    --cv-bg: transparent;
+    --cv-surface: rgba(255, 255, 255, 0.04);
+    --cv-text: #f5f5f7;
+    --cv-muted: #98989d;
+    --cv-border: rgba(255, 255, 255, 0.06);
+    --cv-accent: #0a84ff;
+    --cv-link: #64b5ff;
+    --cv-radius: 8px;
+    --cv-row-height: 48px;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table thead tr {
+    background: transparent;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table th {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--scan-glass-muted);
+    border-bottom: 1px solid var(--scan-glass-border);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table td {
+    padding: 8px 12px;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table .cv-status-select {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-emerald-100.text-emerald-800 {
+    background: rgba(16, 185, 129, 0.18);
+    color: #6ee7b7;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-amber-100.text-amber-900,
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-amber-700,
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-amber-800 {
+    color: #fcd34d;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-amber-100.text-amber-900 {
+    background: rgba(251, 191, 36, 0.18);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-sky-100.text-sky-800,
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-sky-700 {
+    color: #7dd3fc;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-sky-100.text-sky-800 {
+    background: rgba(56, 189, 248, 0.18);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-slate-100.text-slate-600 {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-blue-100.text-blue-700 {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-blue-700 {
+    color: #93c5fd;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-pink-700 {
+    color: #f9a8d4;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-mobile-sheet {
+    border-color: var(--scan-glass-border);
+    border-radius: var(--scan-glass-radius) var(--scan-glass-radius) 0 0;
+    background: rgba(15, 23, 42, 0.92);
+    color: var(--scan-glass-text);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-mobile-sheet-header {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-mobile-sheet-close {
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-mobile-sheet-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-backdrop {
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-mobile-sheet {
+    background: rgba(28, 28, 30, 0.96);
+  }
+
+/* Delte app-sider — pipeline, kø, kampanjer osv. */
+[data-app-theme="apple"] .scan-glass-shell [class~="bg-brand-goldPale"] {
+  background: rgba(10, 132, 255, 0.12);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .input-app:focus {
+  border-color: rgba(10, 132, 255, 0.45);
+  --tw-ring-color: rgba(10, 132, 255, 0.15);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .btn-primary {
+  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.22);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .pipeline-column-body {
+  background: rgba(44, 44, 46, 0.55);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .pipeline-card {
+  background: rgba(44, 44, 46, 0.92);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .pipeline-card:hover {
+  border-color: rgba(10, 132, 255, 0.28);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .pipeline-card-dragging {
+  border-color: rgba(10, 132, 255, 0.4);
+  background: rgba(58, 58, 60, 0.98);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .ko-focus-card {
+  background: rgba(44, 44, 46, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .ko-focus-progress-fill {
+  background: linear-gradient(90deg, #0a84ff, #30d158);
+}
+
+[data-app-theme="apple"] .journey-banner--hero {
+  border-color: rgba(10, 132, 255, 0.28);
+  background: linear-gradient(
+    135deg,
+    rgba(10, 132, 255, 0.1) 0%,
+    rgba(44, 44, 46, 0.35) 55%
+  );
+}
+
+[data-app-theme="apple"] .journey-banner-step--active {
+  background: rgba(10, 132, 255, 0.16);
+  color: #b3d7ff;
+  border-color: rgba(10, 132, 255, 0.28);
+}
+
+[data-app-theme="apple"] .journey-banner-cta {
+  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.28);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .campaign-row {
+  background: rgba(44, 44, 46, 0.45);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .app-overview-stat-card {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(44, 44, 46, 0.55);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .app-overview-pipeline-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(44, 44, 46, 0.45);
+}
+
+[data-app-theme="apple"] .scan-glass-shell .app-overview-pipeline-card:hover {
+  border-color: rgba(10, 132, 255, 0.28);
+  background: rgba(58, 58, 60, 0.55);
+}
+
+

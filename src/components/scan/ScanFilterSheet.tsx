@@ -46,12 +46,12 @@ export function ScanFilterSheet({
         <button
           type="button"
           onClick={onOpen}
-          className="scan-filter-trigger lg:hidden inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold"
+          className="scan-btn-ghost lg:hidden inline-flex min-h-[36px] items-center gap-1.5 px-3 text-xs"
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
           Flere filter
           {activeFilterCount > 0 && (
-            <span className="rounded-full bg-sky-400/25 px-1.5 py-0.5 text-[10px] font-bold text-sky-100">
+            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold">
               {activeFilterCount}
             </span>
           )}
@@ -88,6 +88,7 @@ export function ScanFilterSheet({
             <div className="p-4">
               <CompanyFilters
                 layout="sidebar"
+                hideNameSearch
                 filters={filters}
                 municipalities={municipalities}
                 onChange={(next) => {

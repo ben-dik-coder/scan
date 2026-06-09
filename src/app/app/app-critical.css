@@ -4,8 +4,15 @@
  */
 
 html.app-glass-theme {
-  background-color: #234a73;
   color: #f8fafc;
+}
+
+html.app-glass-theme[data-app-theme="classic"] {
+  background-color: #234a73;
+}
+
+html.app-glass-theme[data-app-theme="apple"] {
+  background-color: #000000;
 }
 
 html.app-glass-theme body {

@@ -22,7 +22,6 @@ import {
 } from "@/components/scan/ScanSavedAudiences";
 import { AddToListMenu, ScanCompanyLists } from "@/components/scan/ScanCompanyLists";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
-import { ScanNameSearchBar } from "@/components/scan/ScanNameSearchBar";
 import { ScanQuickBar } from "@/components/scan/ScanQuickBar";
 import { ScanQueueHint } from "@/components/scan/ScanQueueHint";
 import { useAutoWebsiteScan } from "@/hooks/useAutoWebsiteScan";
@@ -51,7 +50,6 @@ import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
-import { cn } from "@/lib/utils";
 import {
   Building2,
   Globe,
@@ -933,45 +931,39 @@ export function AppPageClient(props: Props) {
     : `Viser ${rankedDisplayCompanies.length} av ${companies.length} · sortert etter score`;
 
   return (
-    <div className="scan-glass-kommand w-full max-w-none space-y-2 pb-6 lg:space-y-2.5">
+    <div className="scan-glass-kommand w-full max-w-none space-y-3 pb-8 lg:space-y-4">
       <section className="scan-surface-full overflow-hidden">
         <TrialNudgeBanner
           noWebsiteCount={noWebsiteCount}
           withEmailCount={withEmailCount}
         />
-        <header className="scan-glass-header p-2.5 lg:p-3">
-          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
-            <div className="min-w-0">
+        <header className="scan-glass-header px-4 py-4 lg:px-5 lg:py-5">
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+            <div className="flex min-w-0 flex-col gap-3">
               <h1 className="scan-glass-title">Skann</h1>
-              <p className="scan-glass-subtitle">
-                1. Velg målgruppe · 2. Velg firma · 3. Legg i kø eller send
-              </p>
+              <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <span className="scan-chip">
-                <Building2 className="h-3 w-3 text-brand-gold" />
-                {pagination
-                  ? showExactTotal
-                    ? `${pagination.total} firma`
-                    : `${companies.length} på siden`
-                  : `${companies.length} firma`}
+            <div className="scan-stat-inline flex flex-col items-end gap-0.5 pt-1">
+              <span>
+                <Building2 className="mr-1 inline h-3.5 w-3.5 opacity-60" />
+                <strong>
+                  {pagination
+                    ? showExactTotal
+                      ? pagination.total
+                      : companies.length
+                    : companies.length}
+                </strong>{" "}
+                firma
               </span>
-              <span className="scan-chip">
-                <PhoneCall className="h-3 w-3 text-brand-gold" />
-                {withContactCount} med kontakt
+              <span>
+                <PhoneCall className="mr-1 inline h-3.5 w-3.5 opacity-60" />
+                <strong>{withContactCount}</strong> med kontakt
               </span>
             </div>
           </div>
         </header>
 
         <ScanQueueHint />
-
-        <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
-
-        <ScanNameSearchBar
-          value={filters.nameQuery ?? ""}
-          onDebouncedChange={(nameQuery) => applyFilters({ ...filters, nameQuery })}
-        />
 
         <ScanActiveFilterChips
           filters={filters}
@@ -980,8 +972,8 @@ export function AppPageClient(props: Props) {
         />
 
         <div className="scan-glass-divider flex flex-col border-t lg:flex-row lg:gap-0">
-          <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/10 p-3 lg:block lg:w-[17.5rem] xl:w-[19rem]">
-            <p className="scan-glass-muted mb-2 text-[10px] font-semibold uppercase tracking-wide">
+          <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/[0.06] p-4 lg:block lg:w-[17.5rem] xl:w-[19rem]">
+            <p className="scan-filter-section-title mb-2 px-0.5">
               Finn marked
             </p>
             <CompanyFilters
@@ -1004,6 +996,8 @@ export function AppPageClient(props: Props) {
               onCheckAndQueue={checkAndAddToQueue}
               onOpenFilters={() => setFilterSheetOpen(true)}
               activeFilterCount={activeFilterCount}
+              nameQuery={filters.nameQuery ?? ""}
+              onNameQueryChange={(nameQuery) => applyFilters({ ...filters, nameQuery })}
             />
 
             <ScanFilterSheet
@@ -1073,22 +1067,14 @@ export function AppPageClient(props: Props) {
             />
 
             {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
-              <div
-                className={cn(
-                  "mx-2.5 mb-2 rounded-xl border px-3 py-2 text-xs lg:mx-3",
-                  activeListSource === "agent"
-                    ? "border-violet-400/35 bg-violet-500/15 text-violet-100"
-                    : "border-sky-400/35 bg-sky-500/15 text-sky-100"
-                )}
-                role="status"
-              >
+              <div className="scan-banner scan-banner-accent" role="status">
                 <strong>
                   {activeListSource === "agent" ? "AI-liste" : "Firma-liste"}: {activeListName}
                 </strong>{" "}
                 — viser {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
                 {activeListSource === "agent" ? "firma fra agenten" : "lagrede firma"}
                 {visibleCompanies.length < pinnedOrgnrs.size ? (
-                  <span className="text-violet-200/80">
+                  <span>
                     {" "}
                     ({pinnedOrgnrs.size - visibleCompanies.length} finnes ikke i registeret)
                   </span>
@@ -1108,10 +1094,7 @@ export function AppPageClient(props: Props) {
             )}
 
             {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
-              <div
-                className="mx-2.5 mb-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 lg:mx-3"
-                role="status"
-              >
+              <div className="scan-banner scan-banner-success" role="status">
                 <strong>{noWebsiteCount} firma uten nettside</strong> — gode leads for nettside-salg.
               </div>
             )}
@@ -1123,7 +1106,7 @@ export function AppPageClient(props: Props) {
               </p>
             )}
 
-            <div className="scan-glass-divider border-t p-2">
+            <div className="scan-glass-divider border-t px-3 py-3 lg:px-4">
               <CompanyTable
                 companies={rankedDisplayCompanies}
                 selected={selected}
@@ -1237,8 +1220,8 @@ export function AppPageClient(props: Props) {
         </p>
       )}
 
-      <details ref={emailSectionRef} className="scan-surface-pad w-full max-w-none scroll-mt-4">
-        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-semibold text-white/70 hover:text-white">
+      <details ref={emailSectionRef} className="scan-surface-pad mx-2 w-full max-w-none scroll-mt-4 sm:mx-3">
+        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
           Send e-post til valgte firma
         </summary>
         <div className="mt-3">
@@ -1253,8 +1236,8 @@ export function AppPageClient(props: Props) {
         </div>
       </details>
 
-      <details className="scan-surface-pad w-full max-w-none">
-        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-semibold text-white/70 hover:text-white">
+      <details className="scan-surface-pad mx-2 w-full max-w-none sm:mx-3">
+        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
           Mine firmalister
         </summary>
         <div className="mt-3">
@@ -1266,8 +1249,8 @@ export function AppPageClient(props: Props) {
         </div>
       </details>
 
-      <details className="scan-surface-pad w-full max-w-none">
-        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-semibold text-white/70 hover:text-white">
+      <details className="scan-surface-pad mx-2 w-full max-w-none sm:mx-3">
+        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
           Lagrede målgrupper
         </summary>
         <div className="mt-3">

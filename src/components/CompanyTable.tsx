@@ -65,13 +65,13 @@ const COLUMN_LABELS: Record<ColumnId, string> = {
 };
 
 const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
-  "orgnr",
   "email",
   "website",
   "status",
 ];
 
 const OPTIONAL_COLUMNS: ColumnId[] = [
+  "orgnr",
   "phone",
   "facebook",
   "instagram",
@@ -79,7 +79,7 @@ const OPTIONAL_COLUMNS: ColumnId[] = [
   "ceo",
 ];
 
-const COLUMN_STORAGE_KEY = "nylead-scan-visible-columns";
+const COLUMN_STORAGE_KEY = "nylead-scan-visible-columns-v2";
 
 type Props = {
   companies: CompanyWithLead[];
@@ -819,11 +819,11 @@ export function CompanyTable({
             <summary className="scan-btn-ghost cursor-pointer list-none px-2 py-1 [&::-webkit-details-marker]:hidden">
               Kolonner
             </summary>
-            <div className="absolute right-0 z-10 mt-1 min-w-[10rem] rounded-xl border border-white/15 bg-slate-900/95 p-2 shadow-lg">
+            <div className="absolute right-0 z-10 mt-1 min-w-[10rem] rounded-xl border border-white/10 bg-[rgba(28,28,30,0.95)] p-2 shadow-lg backdrop-blur-xl">
               {OPTIONAL_COLUMNS.map((id) => (
                 <label
                   key={id}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/8"
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] hover:bg-white/[0.06]"
                 >
                   <input
                     type="checkbox"

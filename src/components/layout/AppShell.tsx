@@ -6,6 +6,8 @@ import { AgentChatFab, AgentChatPanel } from "@/components/agent/AgentChatPanel"
 import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
 import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
+import { ThemeSelector } from "@/components/theme/ThemeSelector";
+import { isAppRoute } from "@/lib/theme/app-theme";
 import { cn } from "@/lib/utils";
 import { isAgentEnabled } from "@/lib/agent/constants";
 import {
@@ -33,10 +35,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-
-function isAppRoute(pathname: string) {
-  return pathname === "/app" || pathname.startsWith("/app/");
-}
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -92,18 +90,6 @@ export function AppShell({
   );
   const isGlassShell = isAppRoute(pathname);
   const isScanPage = pathname === "/app";
-
-  useEffect(() => {
-    if (!isGlassShell) return;
-    document.documentElement.classList.add("app-glass-theme");
-    document.body.classList.add("app-glass-theme");
-    return () => {
-      document.documentElement.classList.remove("app-glass-theme");
-      document.body.classList.remove("app-glass-theme");
-      document.documentElement.style.backgroundColor = "";
-      document.body.style.color = "";
-    };
-  }, [isGlassShell]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -231,6 +217,12 @@ export function AppShell({
         )}
       </nav>
 
+      {isGlassShell && (
+        <div className="border-t border-white/10 px-3 py-3">
+          <ThemeSelector compact />
+        </div>
+      )}
+
       <div
         className={cn(
           "border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
@@ -252,11 +244,6 @@ export function AppShell({
         "app-shell-bg flex min-h-screen",
         isGlassShell ? "scan-glass-page-bg scan-glass-shell" : "text-brand-navy"
       )}
-      style={
-        isGlassShell
-          ? { backgroundColor: "#234a73", color: "#f8fafc", minHeight: "100vh" }
-          : undefined
-      }
     >
       {drawerOpen && (
         <div
