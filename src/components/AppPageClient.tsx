@@ -21,6 +21,7 @@ import {
   type SavedAudienceApply,
 } from "@/components/scan/ScanSavedAudiences";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
+import { ScanNameSearchBar } from "@/components/scan/ScanNameSearchBar";
 import { ScanQuickBar } from "@/components/scan/ScanQuickBar";
 import { ScanQueueHint } from "@/components/scan/ScanQueueHint";
 import { useAutoWebsiteScan } from "@/hooks/useAutoWebsiteScan";
@@ -442,7 +443,7 @@ export function AppPageClient(props: Props) {
       next = { ...next, days: 0 };
     }
     if (
-      next.nameQuery.trim() &&
+      (next.nameQuery ?? "").trim() &&
       next.nameQuery !== filters.nameQuery &&
       next.days !== 0
     ) {
@@ -471,7 +472,8 @@ export function AppPageClient(props: Props) {
     else params.delete("bransje");
     if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
-    if (next.nameQuery.trim()) params.set("navn", next.nameQuery.trim());
+    const trimmedNameQuery = (next.nameQuery ?? "").trim();
+    if (trimmedNameQuery) params.set("navn", trimmedNameQuery);
     else params.delete("navn");
     if (next.websitePresence !== "all") params.set("web", next.websitePresence);
     else params.delete("web");
@@ -530,7 +532,8 @@ export function AppPageClient(props: Props) {
     else params.delete("bransje");
     if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
-    if (next.nameQuery.trim()) params.set("navn", next.nameQuery.trim());
+    const trimmedNameQuery = (next.nameQuery ?? "").trim();
+    if (trimmedNameQuery) params.set("navn", trimmedNameQuery);
     else params.delete("navn");
     params.delete("web");
     params.delete("fb");
@@ -943,6 +946,11 @@ export function AppPageClient(props: Props) {
         <ScanQueueHint />
 
         <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
+
+        <ScanNameSearchBar
+          value={filters.nameQuery ?? ""}
+          onDebouncedChange={(nameQuery) => applyFilters({ ...filters, nameQuery })}
+        />
 
         <ScanActiveFilterChips
           filters={filters}

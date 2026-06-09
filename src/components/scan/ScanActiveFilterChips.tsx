@@ -61,10 +61,11 @@ function buildChips(
     });
   }
 
-  if (filters.nameQuery.trim()) {
+  const nameQuery = (filters.nameQuery ?? "").trim();
+  if (nameQuery) {
     chips.push({
       id: "navn",
-      label: `Navn: ${filters.nameQuery.trim()}`,
+      label: `Navn: ${nameQuery}`,
       onRemove: () => onChange({ ...filters, nameQuery: "" }),
     });
   }

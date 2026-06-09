@@ -176,10 +176,10 @@ export function CompanyFilters({
     <label className={`flex flex-col gap-0.5 ${isMobileBar ? "sm:col-span-2" : ""}`}>
       <span className="scan-label">
         <Search className="h-3.5 w-3.5 text-brand-gold" />
-        Ord i firmanavn
+        Søk i firmanavn
       </span>
       <DebouncedNameQueryInput
-        value={filters.nameQuery}
+        value={filters.nameQuery ?? ""}
         onDebouncedChange={(nameQuery) => onChange({ ...filters, nameQuery })}
       />
     </label>
@@ -188,10 +188,10 @@ export function CompanyFilters({
   if (isMobileBar) {
     return (
       <div className={gridClass}>
+        {nameQueryField}
         {regionField}
         {municipalityField}
         {professionField}
-        {nameQueryField}
       </div>
     );
   }
@@ -201,6 +201,8 @@ export function CompanyFilters({
 
   return (
     <div className="space-y-2">
+      {nameQueryField}
+
       <div className={gridClass}>
         {regionField}
         {municipalityField}
@@ -243,7 +245,6 @@ export function CompanyFilters({
 
       <div className={isSidebar ? "pt-1" : "scan-glass-divider border-t pt-2"}>
         {professionField}
-        <div className={isSidebar ? "pt-2" : "pt-2"}>{nameQueryField}</div>
       </div>
 
       <div
