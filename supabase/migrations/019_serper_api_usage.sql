@@ -1,4 +1,5 @@
 -- Serper API-kall per bruker per måned (maks 1500)
+-- Krever tabellen usage_monthly — kjør 005_usage_monthly.sql først hvis den mangler.
 alter table public.usage_monthly
   add column if not exists serper_api_calls int not null default 0;
 

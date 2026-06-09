@@ -6,7 +6,7 @@ export const DEFAULT_APP_THEME: AppThemeId = "apple";
 
 export const APP_THEME_BACKGROUNDS: Record<AppThemeId, string> = {
   classic: "#234a73",
-  apple: "#000000",
+  apple: "#1c1c1e",
 };
 
 export const APP_THEME_OPTIONS: {

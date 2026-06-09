@@ -418,82 +418,26 @@ function FirmaPageBrreg() {
   }
 
   return (
-    <div className="scan-glass-kommand w-full max-w-none space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-3">
-        <span
-          className={`scan-glass-source-badge inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
-            companiesSource === "db" ? "" : "is-live"
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              companiesSource === "db" ? "bg-sky-400" : "bg-emerald-400"
-            }`}
-          />
-          {companiesSource === "db"
-            ? `Fra database${
-                dbCompanyCount != null
-                  ? ` (${dbCompanyCount.toLocaleString("nb-NO")} firma totalt)`
-                  : ""
-              }`
-            : "Live fra Brønnøysund"}
-          {fetchedAt && (
-            <span className="opacity-70">
-              · {new Date(fetchedAt).toLocaleTimeString("nb-NO")}
-            </span>
-          )}
-        </span>
-        <button
-          type="button"
-          onClick={loadCompanies}
-          disabled={loading}
-          className="scan-glass-toolbar-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Oppdater liste
-        </button>
-      </div>
-
-      {contactUsage && (
-        <p
-          className={`scan-surface-pad mx-2 text-center text-xs sm:mx-3 ${
-            contactUsage.limitReached ? "text-amber-200" : "scan-glass-muted"
-          }`}
-        >
-          {contactUsage.used} av {contactUsage.limit} bedrifter med tlf/e-post brukt denne
-          måneden
-          {contactUsage.limitReached ? (
-            <>
-              {" "}
-              — grensen er nådd.{" "}
-              <a href="/app/abonnement" className="font-semibold underline">
-                Se abonnement
-              </a>{" "}
-              for mer.
-            </>
-          ) : (
-            <> ({contactUsage.remaining} igjen)</>
-          )}
-        </p>
-      )}
-
-      <AppPageClient
-        companies={companies}
-        total={total}
-        withEmail={withEmail}
-        municipalities={municipalities}
-        initialFilters={filters}
-        templates={templates}
-        sequences={sequences}
-        dataSource="brreg"
-        companiesSource={companiesSource}
-        brregTotal={brregTotal}
-        dbCompanyCount={dbCompanyCount}
-        allTime={filters.days === 0}
-        pagination={{ ...pagination, truncated }}
-        onPageChange={goToPage}
-      />
-    </div>
+    <AppPageClient
+      companies={companies}
+      total={total}
+      withEmail={withEmail}
+      municipalities={municipalities}
+      initialFilters={filters}
+      templates={templates}
+      sequences={sequences}
+      dataSource="brreg"
+      companiesSource={companiesSource}
+      brregTotal={brregTotal}
+      dbCompanyCount={dbCompanyCount}
+      allTime={filters.days === 0}
+      pagination={{ ...pagination, truncated }}
+      onPageChange={goToPage}
+      fetchedAt={fetchedAt}
+      contactUsage={contactUsage}
+      onRefreshList={loadCompanies}
+      refreshingList={loading}
+    />
   );
 }
 

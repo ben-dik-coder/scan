@@ -45,13 +45,17 @@ Slik finner du den:
      DATABASE_URL=postgresql://postgres.umsimryvoifrjmkaelup:PASSORD@...
 
 Alternativ (uten passord i terminal):
-  Lim inn supabase/migrations/019_serper_api_usage.sql i SQL Editor og trykk Run:
+  Kjør først supabase/migrations/005_usage_monthly.sql, deretter 019_serper_api_usage.sql i SQL Editor:
   https://supabase.com/dashboard/project/umsimryvoifrjmkaelup/sql/new
 `);
   process.exit(1);
 }
 
-const sql = readFileSync(
+const usageMonthlySql = readFileSync(
+  "supabase/migrations/005_usage_monthly.sql",
+  "utf8"
+);
+const serperSql = readFileSync(
   "supabase/migrations/019_serper_api_usage.sql",
   "utf8"
 );
@@ -62,10 +66,13 @@ const client = new Client({
 });
 
 try {
-  console.log("Kobler til Supabase og kjører Serper-migrasjon (019)…");
+  console.log("Kobler til Supabase…");
   await client.connect();
-  await client.query(sql);
-  console.log("✅ Ferdig! serper_api_calls og increment_serper_usage er opprettet.");
+  console.log("Kjører 005_usage_monthly (tabell)…");
+  await client.query(usageMonthlySql);
+  console.log("Kjører 019_serper_api_usage (kolonne + funksjon)…");
+  await client.query(serperSql);
+  console.log("✅ Ferdig! usage_monthly, serper_api_calls og increment_serper_usage er opprettet.");
 } catch (err) {
   console.error("❌ Migrasjon feilet:", err.message);
   process.exit(1);

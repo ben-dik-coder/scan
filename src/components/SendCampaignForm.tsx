@@ -326,10 +326,9 @@ export function SendCampaignForm({
   const labelClass = light ? "font-medium text-slate-600" : "font-semibold text-white/70";
   const isSingle = singleRecipient || selectedCompanies.length === 1;
   const singleName = selectedCompanies[0]?.name;
-  const zoneClass = "text-[10px] font-semibold uppercase tracking-wider text-slate-500";
 
   return (
-    <form onSubmit={handleSend} className={light ? "space-y-5" : "panel space-y-5 p-5 sm:p-6"}>
+    <form onSubmit={handleSend} className="space-y-4">
       <div
         className={
           light
@@ -387,15 +386,19 @@ export function SendCampaignForm({
       )}
 
       {isSingle ? (
-        <section className="space-y-2">
-          <h4 className={zoneClass}>Mottaker</h4>
-          {withEmail.length > 0 ? (
-            <p className={light ? "text-sm text-slate-700" : "text-sm text-slate-200"}>
-              {resolvedRecipients[0]?.resolved.email ?? selectedCompanies[0]?.email ?? "—"}
-            </p>
-          ) : (
-            <p className="text-sm text-slate-500">Ingen e-post funnet for dette firmaet.</p>
-          )}
+        <section className="space-y-1">
+          <p
+            className={
+              light
+                ? "text-sm text-slate-700"
+                : "text-sm text-slate-200"
+            }
+          >
+            <span className={light ? "text-slate-500" : "scan-glass-muted"}>Til </span>
+            {withEmail.length > 0
+              ? resolvedRecipients[0]?.resolved.email ?? selectedCompanies[0]?.email ?? "—"
+              : "ingen e-post funnet"}
+          </p>
         </section>
       ) : (
         withEmail.length > 0 && (
@@ -409,27 +412,16 @@ export function SendCampaignForm({
 
       {sendEmail && <EmailConnect light={light} compact />}
 
-      <section className="space-y-3">
-        {isSingle && <h4 className={zoneClass}>Melding</h4>}
-
-        <div
-          className={cn(
-            "flex gap-1 rounded-lg p-1",
-            light ? "bg-slate-100" : "bg-white/[0.06]"
-          )}
-        >
+      <section className="space-y-2.5">
+        <div className="scan-segmented w-full" role="tablist" aria-label="Meldingstype">
           <button
             type="button"
+            role="tab"
+            aria-selected={messageTab === "text"}
             onClick={() => setMessageTab("text")}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition",
-              messageTab === "text"
-                ? light
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "bg-white/12 text-white"
-                : light
-                  ? "text-slate-500 hover:text-slate-700"
-                  : "text-white/45 hover:text-white/70"
+              "scan-segmented-item flex-1",
+              messageTab === "text" && "scan-segmented-item-active"
             )}
           >
             <MessageSquare className="h-3.5 w-3.5" aria-hidden />
@@ -437,16 +429,12 @@ export function SendCampaignForm({
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={messageTab === "files"}
             onClick={() => setMessageTab("files")}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition",
-              messageTab === "files"
-                ? light
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "bg-white/12 text-white"
-                : light
-                  ? "text-slate-500 hover:text-slate-700"
-                  : "text-white/45 hover:text-white/70"
+              "scan-segmented-item flex-1",
+              messageTab === "files" && "scan-segmented-item-active"
             )}
           >
             <FileImage className="h-3.5 w-3.5" aria-hidden />
@@ -523,8 +511,6 @@ export function SendCampaignForm({
       </section>
 
       <section className="space-y-3">
-        {isSingle && <h4 className={zoneClass}>Send</h4>}
-
       {personalCount > 0 && (
         <label
           className={

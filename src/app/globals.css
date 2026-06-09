@@ -39,7 +39,13 @@ html.app-glass-theme[data-app-theme="classic"] {
 }
 
 html.app-glass-theme[data-app-theme="apple"] {
-  background-color: #000000;
+  background-color: #1c1c1e;
+}
+
+html.app-glass-theme[data-app-theme="apple"] body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html.app-glass-theme body {
@@ -417,6 +423,44 @@ html.app-glass-theme body {
 
   .scan-chip-active {
     @apply border-brand-gold/35 bg-brand-goldPale text-brand-navy ring-1 ring-brand-gold/25;
+  }
+
+  .scan-segmented {
+    @apply inline-flex w-full items-stretch gap-0.5 rounded-lg border-none bg-slate-100 p-1;
+  }
+
+  .scan-segmented-item {
+    @apply inline-flex min-h-[2rem] flex-1 items-center justify-center gap-1.5 rounded-md border-none bg-transparent px-3 py-2 text-xs font-semibold text-slate-500 transition hover:text-slate-700;
+  }
+
+  .scan-segmented-item-active {
+    @apply bg-white text-slate-900 shadow-sm;
+  }
+
+  .scan-segmented-item-active svg {
+    @apply text-brand-gold;
+  }
+
+  .ko-send-drawer .scan-segmented,
+  .app-side-drawer .scan-segmented {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .ko-send-drawer .scan-segmented-item,
+  .app-side-drawer .scan-segmented-item {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .ko-send-drawer .scan-segmented-item:hover:not(.scan-segmented-item-active),
+  .app-side-drawer .scan-segmented-item:hover:not(.scan-segmented-item-active) {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .ko-send-drawer .scan-segmented-item-active,
+  .app-side-drawer .scan-segmented-item-active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    box-shadow: none;
   }
 
   .scan-tab {

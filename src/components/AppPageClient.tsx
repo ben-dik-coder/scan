@@ -57,6 +57,7 @@ import {
   List,
   PhoneCall,
   Radar,
+  RefreshCw,
   Search,
 } from "lucide-react";
 
@@ -76,6 +77,13 @@ type PaginationState = {
   truncated?: boolean;
 };
 
+type ContactUsage = {
+  used: number;
+  limit: number;
+  remaining: number;
+  limitReached: boolean;
+};
+
 type Props = {
   companies: CompanyWithLead[];
   total: number;
@@ -92,6 +100,10 @@ type Props = {
   allTime?: boolean;
   pagination?: PaginationState;
   onPageChange?: (page: number) => void;
+  fetchedAt?: string | null;
+  contactUsage?: ContactUsage | null;
+  onRefreshList?: () => void;
+  refreshingList?: boolean;
 };
 
 export function AppPageClient(props: Props) {
@@ -916,6 +928,41 @@ export function AppPageClient(props: Props) {
       : 0;
   const showExactTotal = pagination && !pagination.truncated;
 
+  const firmCount = pagination
+    ? showExactTotal
+      ? pagination.total
+      : companies.length
+    : companies.length;
+
+  const sourceMetaParts: string[] = [];
+  if (props.companiesSource === "db") {
+    sourceMetaParts.push(
+      `Database${
+        props.dbCompanyCount != null
+          ? ` (${props.dbCompanyCount.toLocaleString("nb-NO")})`
+          : ""
+      }`
+    );
+  } else if (props.dataSource === "brreg") {
+    sourceMetaParts.push("Live Brreg");
+  }
+  if (props.contactUsage) {
+    const { used, limit, remaining, limitReached } = props.contactUsage;
+    sourceMetaParts.push(
+      limitReached
+        ? `${used} av ${limit} kontakter brukt`
+        : `${used} av ${limit} kontakter (${remaining} igjen)`
+    );
+  }
+  if (props.fetchedAt) {
+    sourceMetaParts.push(
+      new Date(props.fetchedAt).toLocaleTimeString("nb-NO", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+  }
+
   const listSummary = isAgentListActive
     ? `AI-liste: ${rankedDisplayCompanies.length} av ${visibleCompanies.length}${
         listFilter !== "all" ? ` · ${rankedDisplayCompanies.length} i valgt fane` : ""
@@ -937,39 +984,73 @@ export function AppPageClient(props: Props) {
           noWebsiteCount={noWebsiteCount}
           withEmailCount={withEmailCount}
         />
-        <header className="scan-glass-header px-4 py-4 lg:px-5 lg:py-5">
-          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-            <div className="flex min-w-0 flex-col gap-3">
+        <header className="scan-glass-header scan-page-header px-4 py-2.5 lg:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
               <h1 className="scan-glass-title">Skann</h1>
-              <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
-            </div>
-            <div className="scan-stat-inline flex flex-col items-end gap-0.5 pt-1">
-              <span>
-                <Building2 className="mr-1 inline h-3.5 w-3.5 opacity-60" />
-                <strong>
-                  {pagination
-                    ? showExactTotal
-                      ? pagination.total
-                      : companies.length
-                    : companies.length}
-                </strong>{" "}
-                firma
-              </span>
-              <span>
-                <PhoneCall className="mr-1 inline h-3.5 w-3.5 opacity-60" />
+              <span className="scan-stat-inline">
+                <Building2 className="mr-0.5 inline h-3 w-3 opacity-60" aria-hidden />
+                <strong>{firmCount}</strong> firma
+                <span className="mx-1.5 opacity-40" aria-hidden>
+                  ·
+                </span>
+                <PhoneCall className="mr-0.5 inline h-3 w-3 opacity-60" aria-hidden />
                 <strong>{withContactCount}</strong> med kontakt
               </span>
             </div>
+            {props.onRefreshList && (
+              <button
+                type="button"
+                onClick={props.onRefreshList}
+                disabled={props.refreshingList}
+                className="scan-glass-toolbar-btn inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium transition disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${props.refreshingList ? "animate-spin" : ""}`}
+                  aria-hidden
+                />
+                <span className="hidden sm:inline">Oppdater</span>
+              </button>
+            )}
           </div>
+
+          {sourceMetaParts.length > 0 && (
+            <p
+              className={`scan-page-meta mt-0.5 text-[11px] leading-snug ${
+                props.contactUsage?.limitReached ? "text-amber-300/90" : "scan-glass-muted"
+              }`}
+            >
+              <span
+                className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${
+                  props.companiesSource === "db" ? "bg-sky-400" : "bg-emerald-400"
+                }`}
+                aria-hidden
+              />
+              {sourceMetaParts.join(" · ")}
+              {props.contactUsage?.limitReached && (
+                <>
+                  {" "}
+                  —{" "}
+                  <a href="/app/abonnement" className="font-semibold underline">
+                    Se abonnement
+                  </a>
+                </>
+              )}
+            </p>
+          )}
+
+          <div className="scan-page-controls-row mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
+            <ScanActiveFilterChips
+              filters={filters}
+              municipalities={props.municipalities}
+              onChange={applyFilters}
+              variant="inline"
+            />
+          </div>
+
+          <ScanQueueHint />
         </header>
-
-        <ScanQueueHint />
-
-        <ScanActiveFilterChips
-          filters={filters}
-          municipalities={props.municipalities}
-          onChange={applyFilters}
-        />
 
         <div className="scan-glass-divider flex flex-col border-t lg:flex-row lg:gap-0">
           <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/[0.06] p-4 lg:block lg:w-[17.5rem] xl:w-[19rem]">

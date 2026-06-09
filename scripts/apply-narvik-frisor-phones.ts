@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
-import { mapBrregEnhet } from "../src/lib/brreg/map-company.ts";
+import { upsertBrregEnhet } from "../src/lib/brreg/upsert-enhet.ts";
 
 function loadEnvLocal() {
   const path = resolve(process.cwd(), ".env.local");
@@ -121,12 +121,7 @@ async function ensureCompany(orgnr: string) {
   if (!res.ok) throw new Error(`Brreg ${orgnr}: ${res.status}`);
   const enhet = await res.json();
   const supabase = createServiceClient();
-  const mapped = mapBrregEnhet(enhet);
-  const { industry_description: _drop, ...row } = mapped;
-  const { error } = await supabase
-    .from("companies")
-    .upsert(row, { onConflict: "orgnr" });
-  if (error) throw new Error(error.message);
+  await upsertBrregEnhet(enhet, supabase);
 }
 
 async function main() {

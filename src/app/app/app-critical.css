@@ -12,7 +12,7 @@ html.app-glass-theme[data-app-theme="classic"] {
 }
 
 html.app-glass-theme[data-app-theme="apple"] {
-  background-color: #000000;
+  background-color: #1c1c1e;
 }
 
 html.app-glass-theme body {

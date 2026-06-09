@@ -10,6 +10,7 @@ type Props = {
   filters: FilterState;
   municipalities: Array<{ code: string; name: string; count: number }>;
   onChange: (filters: FilterState) => void;
+  variant?: "default" | "inline";
 };
 
 function buildSummaryParts(
@@ -71,15 +72,28 @@ export function countActiveMarketFilters(
   return buildSummaryParts(filters, municipalities).length;
 }
 
-export function ScanActiveFilterChips({ filters, municipalities, onChange }: Props) {
+export function ScanActiveFilterChips({
+  filters,
+  municipalities,
+  onChange,
+  variant = "default",
+}: Props) {
   const parts = buildSummaryParts(filters, municipalities);
 
   if (parts.length === 0) {
     return null;
   }
 
+  const isInline = variant === "inline";
+
   return (
-    <div className="scan-active-filter-chips flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 lg:px-5">
+    <div
+      className={
+        isInline
+          ? "scan-active-filter-chips scan-active-filter-chips--inline ml-auto flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1"
+          : "scan-active-filter-chips flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 lg:px-5"
+      }
+    >
       <span className="scan-glass-muted text-xs">
         Filter: <span className="text-slate-300">{parts.join(" · ")}</span>
       </span>

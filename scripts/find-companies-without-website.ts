@@ -22,7 +22,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
-import { mapBrregEnhet } from "../src/lib/brreg/map-company.ts";
+import { upsertBrregEnhet } from "../src/lib/brreg/upsert-enhet.ts";
 import {
   getIndustryCodeOrFilters,
   industryGroupLabel,
@@ -166,12 +166,7 @@ async function refreshFromBrreg(orgnr: string): Promise<Company | null> {
   if (!res.ok) return null;
   const enhet = await res.json();
   const supabase = createServiceClient();
-  const mapped = mapBrregEnhet(enhet);
-  const { industry_description: _drop, ...row } = mapped;
-  const { error } = await supabase
-    .from("companies")
-    .upsert(row, { onConflict: "orgnr" });
-  if (error) throw new Error(`Brreg upsert ${orgnr}: ${error.message}`);
+  await upsertBrregEnhet(enhet, supabase);
 
   const { data } = await supabase
     .from("companies")
