@@ -327,7 +327,7 @@ function titleCaseWord(word: string): string {
 /** Brreg-navn som «SHIP O HOI TATTOO REMY ANDRE …» → merkenavn «SHIP O HOI TATTOO». */
 export function extractBrandPortion(companyName: string): string | null {
   const tokens = rawNameTokens(companyName);
-  if (tokens.length < 5) return null;
+  if (tokens.length < 3) return null;
 
   const normalized = tokens.map(normalizeNameToken);
 
@@ -337,12 +337,13 @@ export function extractBrandPortion(companyName: string): string | null {
       industryIdx = i;
     }
   }
-  if (industryIdx >= 0 && industryIdx < tokens.length - 2) {
+  // Ett ord etter bransje/studio (f.eks. «NØYA NAILS STUDIO VOROTYNTSEVA») er ofte eiernavn.
+  if (industryIdx >= 0 && industryIdx < tokens.length - 1) {
     return tokens.slice(0, industryIdx + 1).join(" ");
   }
 
   const byIdx = normalized.indexOf("by");
-  if (byIdx >= 1 && byIdx < tokens.length - 2) {
+  if (byIdx >= 1 && byIdx < tokens.length - 1) {
     return tokens.slice(0, byIdx).join(" ");
   }
 
@@ -521,7 +522,9 @@ export function companyMatchesResult(
   link: string,
   companyName: string
 ): boolean {
-  const tokens = nameTokens(companyName);
+  const brand = extractBrandPortion(companyName);
+  const matchName = brand ?? companyName;
+  const tokens = nameTokens(matchName);
   const titleHay = compactAlnum(title);
   const linkHay = link ? linkMatchHaystack(link) : "";
   const domainHay = link ? domainMatchHaystack(link) : "";
@@ -982,6 +985,8 @@ export function buildWebsiteSearchQueries(company: {
 }): string[] {
   const name = company.name.trim();
   const stripped = stripCompanySuffix(name);
+  const brand = extractBrandPortion(name);
+  const brandTitle = brand ? toTitleCaseName(brand) : null;
   const places = companyGeoPlaces(company);
   const all = buildSearchQueries(company);
   const withNettside = all.filter((q) => /\bnettside\b/i.test(q));
@@ -998,6 +1003,8 @@ export function buildWebsiteSearchQueries(company: {
 
   if (places.length > 0) {
     for (const place of places) {
+      if (brandTitle) add(`"${brandTitle}" ${place}`);
+      if (brand) add(`${brand} ${place}`);
       add(`${stripped} ${place}`);
       if (name !== stripped) add(`${name} ${place}`);
     }

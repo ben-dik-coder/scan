@@ -4,6 +4,9 @@
  */
 import assert from "node:assert/strict";
 import {
+  buildPlacesSearchQuery,
+} from "../src/lib/website-scan/serper-places.ts";
+import {
   companyMatchesProfileName,
   companyMatchesResult,
   companySearchNameVariants,
@@ -133,6 +136,34 @@ await test("Merkenavn skilles fra eiernavn (tattoo)", () => {
   assert.equal(
     extractBrandPortion(SHIP_O_HOI),
     "SHIP O HOI TATTOO"
+  );
+});
+
+const NOYA_NAILS = "NØYA NAILS STUDIO VOROTYNTSEVA";
+
+await test("Merkenavn skilles fra eiernavn (nails studio, 4 ord)", () => {
+  assert.equal(extractBrandPortion(NOYA_NAILS), "NØYA NAILS STUDIO");
+});
+
+await test("Google Maps-treff Nøya Nails Studio matcher langt Brreg-navn", () => {
+  assert.equal(
+    companyMatchesResult(
+      "Nøya Nails Studio",
+      "https://noyanails.no",
+      NOYA_NAILS
+    ),
+    true
+  );
+});
+
+await test("Places-søk bruker merkenavn uten eier", () => {
+  assert.match(
+    buildPlacesSearchQuery({
+      orgnr: "935556813",
+      name: NOYA_NAILS,
+      municipality_name: "TROMSØ",
+    }),
+    /Nøya Nails Studio Troms/i
   );
 });
 

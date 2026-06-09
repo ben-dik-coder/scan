@@ -7,9 +7,11 @@ import {
   companyMatchesResult,
   compactAlnum,
   domainSimilarToCompany,
+  extractBrandPortion,
   isNonOwnWebsiteDomain,
   normalizeDomain,
   stripCompanySuffix,
+  toTitleCaseName,
 } from "./parse-results";
 import { phonePlausibleForCompany } from "./phone-plausible";
 import type { WebsiteScanCompanyInput } from "./types";
@@ -122,9 +124,11 @@ function scorePlace(
 }
 
 export function buildPlacesSearchQuery(company: WebsiteScanCompanyInput): string {
-  const name = stripCompanySuffix(company.name).trim();
+  const brand = extractBrandPortion(company.name);
+  const display =
+    brand != null ? toTitleCaseName(brand) : stripCompanySuffix(company.name).trim();
   const geo = primaryGeoPlace(company) ?? companyGeoPlaces(company)[0];
-  return geo ? `${name} ${geo}` : name;
+  return geo ? `${display} ${geo}` : display;
 }
 
 export async function searchSerperPlaces(
