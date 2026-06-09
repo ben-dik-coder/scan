@@ -239,14 +239,26 @@ function mergeHits(
   return { phone, email, url, source };
 }
 
+const NARVIK_REGION_PLACES = ["Narvik", "Ankenes", "Bjerkvik", "Ballangen", "Kjøpsvik"];
+const MAX_COMPANY_QUERIES = 4;
+const MAX_LINKS_PER_QUERY = 4;
+const MAX_PERSON_LINKS = 3;
+
 function build1881Queries(company: {
   name: string;
   municipality_name?: string | null;
   city?: string | null;
 }): string[] {
-  const places = new Set<string>();
-  for (const p of [company.city, company.municipality_name, "Narvik", "Ankenes", "Bjerkvik", "Ballangen", "Kjøpsvik"]) {
-    if (p?.trim()) places.add(p.trim());
+  const places: string[] = [];
+  for (const p of [company.city, company.municipality_name]) {
+    const trimmed = p?.trim();
+    if (trimmed && !places.includes(trimmed)) places.push(trimmed);
+  }
+  // Narvik-omegn kun som fallback når stedet er ukjent eller i Narvik-regionen.
+  if (places.length === 0 || places.some((p) => isNarvikRegionPlace(p))) {
+    for (const p of NARVIK_REGION_PLACES) {
+      if (!places.includes(p)) places.push(p);
+    }
   }
 
   const stripped = stripCompanySuffix(company.name).trim();
@@ -255,15 +267,21 @@ function build1881Queries(company: {
     names.add(stripped.replace(/\s+v\/.*$/i, "").trim());
   }
 
-  const queries = new Set<string>();
+  const queries: string[] = [];
+  const push = (q: string) => {
+    if (q && !queries.includes(q)) queries.push(q);
+  };
+  // Viktigste først: navn + hjemsted, så bare navn, så øvrige steder.
+  const primary = places[0];
+  for (const name of names) {
+    if (name && primary) push(`${name} ${primary}`);
+  }
+  for (const name of names) push(name);
   for (const name of names) {
     if (!name) continue;
-    for (const place of places) {
-      queries.add(`${name} ${place}`);
-    }
-    queries.add(name);
+    for (const place of places) push(`${name} ${place}`);
   }
-  return [...queries];
+  return queries.slice(0, MAX_COMPANY_QUERIES);
 }
 
 function is1881BlockedOrEmpty(html: string): boolean {
@@ -322,15 +340,14 @@ async function extractFrom1881PersonHtml(
   return { phone, email, url, source: "1881-person" };
 }
 
-async function extractFromPage(
+async function extractFromHtml(
+  html: string,
   url: string,
   orgnr: string,
   companyName: string,
   source: DirectoryContactHit["source"],
   options?: { requireOrgnr?: boolean; trustTextRegex?: boolean }
 ): Promise<DirectoryContactHit | null> {
-  const html = await fetchPublicHtml(url);
-  if (!html) return null;
   if (options?.requireOrgnr && !orgnrInHtml(html, orgnr)) return null;
 
   if (source === "1881-person" && is1881PersonPage(html)) {
@@ -352,6 +369,18 @@ async function extractFromPage(
   return { phone, email, url, source };
 }
 
+async function extractFromPage(
+  url: string,
+  orgnr: string,
+  companyName: string,
+  source: DirectoryContactHit["source"],
+  options?: { requireOrgnr?: boolean; trustTextRegex?: boolean }
+): Promise<DirectoryContactHit | null> {
+  const html = await fetchPublicHtml(url);
+  if (!html) return null;
+  return extractFromHtml(html, url, orgnr, companyName, source, options);
+}
+
 function slugMatchesCompany(url: string, companyName: string): boolean {
   const slug = url.split("/").filter(Boolean).pop() ?? "";
   return companyMatchesResult(slug, url, companyName);
@@ -366,8 +395,13 @@ export async function lookup1881Contact(company: {
 }): Promise<DirectoryContactHit | null> {
   const hits: DirectoryContactHit[] = [];
   const seenUrls = new Set<string>();
+  const doneEnough = () => {
+    const merged = mergeHits(...hits);
+    return Boolean(merged?.phone && merged.email);
+  };
 
   for (const query of build1881Queries(company)) {
+    if (doneEnough()) break;
     const searchHtml = await fetchPublicHtml(
       `https://www.1881.no/?query=${encodeURIComponent(query)}`
     );
@@ -380,11 +414,18 @@ export async function lookup1881Contact(company: {
       ...links,
     ];
 
+    let visited = 0;
     for (const url of ordered) {
+      if (doneEnough() || visited >= MAX_LINKS_PER_QUERY) break;
       if (seenUrls.has(url)) continue;
       seenUrls.add(url);
+      visited++;
 
-      const strict = await extractFromPage(
+      const pageHtml = await fetchPublicHtml(url);
+      if (!pageHtml) continue;
+
+      const strict = await extractFromHtml(
+        pageHtml,
         url,
         company.orgnr,
         company.name,
@@ -394,7 +435,8 @@ export async function lookup1881Contact(company: {
       if (strict) hits.push(strict);
 
       if (slugMatchesCompany(url, company.name)) {
-        const loose = await extractFromPage(
+        const loose = await extractFromHtml(
+          pageHtml,
           url,
           company.orgnr,
           company.name,
@@ -418,17 +460,34 @@ export async function lookupGulesiderContact(company: {
 }): Promise<DirectoryContactHit | null> {
   const hits: DirectoryContactHit[] = [];
   const seenUrls = new Set<string>();
+  const doneEnough = () => {
+    const merged = mergeHits(...hits);
+    return Boolean(merged?.phone && merged.email);
+  };
 
-  const tryListing = async (url: string, requireOrgnr: boolean) => {
-    if (seenUrls.has(url)) return;
+  const tryListing = async (url: string, requireOrgnr: boolean): Promise<boolean> => {
+    if (seenUrls.has(url)) return false;
     seenUrls.add(url);
-    const hit = await extractFromPage(url, company.orgnr, company.name, "gulesider", {
+    const html = await fetchPublicHtml(url);
+    if (!html) return true;
+
+    const hit = await extractFromHtml(html, url, company.orgnr, company.name, "gulesider", {
       requireOrgnr,
     });
     if (hit) hits.push(hit);
+
+    // Slug-treff: godta også uten org.nr i siden — gjenbruk samme HTML.
+    if (requireOrgnr && slugMatchesCompany(url, company.name)) {
+      const loose = await extractFromHtml(html, url, company.orgnr, company.name, "gulesider", {
+        requireOrgnr: false,
+      });
+      if (loose) hits.push(loose);
+    }
+    return true;
   };
 
   for (const query of build1881Queries(company)) {
+    if (doneEnough()) break;
     const searchHtml = await fetchPublicHtml(
       `https://www.gulesider.no/?query=${encodeURIComponent(query)}`
     );
@@ -441,15 +500,15 @@ export async function lookupGulesiderContact(company: {
       ...links,
     ];
 
+    let visited = 0;
     for (const url of ordered) {
-      await tryListing(url, true);
-      if (slugMatchesCompany(url, company.name)) {
-        await tryListing(url, false);
-      }
+      if (doneEnough() || visited >= MAX_LINKS_PER_QUERY) break;
+      if (await tryListing(url, true)) visited++;
     }
   }
 
   for (const url of buildGulesiderSlugUrls(company.name)) {
+    if (doneEnough()) break;
     if (slugMatchesCompany(url, company.name)) {
       await tryListing(url, false);
     }
@@ -469,7 +528,7 @@ export async function lookupGulesiderPersonContact(
       `https://www.gulesider.no/?query=${encodeURIComponent(query)}`
     );
     if (!searchHtml) continue;
-    for (const url of extractGulesiderPersonLinks(searchHtml)) {
+    for (const url of extractGulesiderPersonLinks(searchHtml).slice(0, MAX_PERSON_LINKS)) {
       const hit = await extractFromPage(url, orgnr, personName, "gulesider-person", {
         requireOrgnr: false,
       });
@@ -483,21 +542,18 @@ function build1881PersonQueries(
   personName: string,
   place?: string | null
 ): string[] {
-  const places = new Set<string>();
-  for (const p of [
-    place,
-    "Narvik",
-    "Ankenes",
-    "Bjerkvik",
-    "Ballangen",
-    "Kjøpsvik",
-  ]) {
-    if (p?.trim()) places.add(p.trim());
+  const places: string[] = [];
+  if (place?.trim()) places.push(place.trim());
+  // Narvik-omegn kun som fallback når stedet er ukjent eller i Narvik-regionen.
+  if (places.length === 0 || isNarvikRegionPlace(place)) {
+    for (const p of NARVIK_REGION_PLACES) {
+      if (!places.includes(p)) places.push(p);
+    }
   }
-  const queries = new Set<string>();
-  for (const p of places) queries.add(`${personName} ${p}`);
-  queries.add(personName);
-  return [...queries];
+  const queries: string[] = [];
+  for (const p of places) queries.push(`${personName} ${p}`);
+  queries.push(personName);
+  return queries.slice(0, 3);
 }
 
 export async function lookup1881PersonContact(
@@ -532,7 +588,7 @@ export async function lookup1881PersonContact(
       extract1881PersonLinks(searchHtml),
       personName,
       place
-    )) {
+    ).slice(0, MAX_PERSON_LINKS)) {
       const hit = await extractFromPage(url, orgnr, personName, "1881-person", {
         requireOrgnr: false,
       });

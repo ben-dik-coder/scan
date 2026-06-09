@@ -322,12 +322,15 @@ async function phasePhones(companies: Company[], progress: Progress, dryRun: boo
   let addedPhone = 0;
   let addedEmail = 0;
 
-  await mapPool(targets, 10, async (company) => {
+  await mapPool(targets, 30, async (company) => {
     try {
-      const [from1881, fromGulesider] = await Promise.all([
-        lookup1881Contact(company).catch(() => null),
-        lookupGulesiderContact(company).catch(() => null),
-      ]);
+      const from1881 = await lookup1881Contact(company).catch(() => null);
+      const needGulesider =
+        (!hasPhone(company) && !from1881?.phone) ||
+        (!hasEmail(company) && !from1881?.email);
+      const fromGulesider = needGulesider
+        ? await lookupGulesiderContact(company).catch(() => null)
+        : null;
       const { phone, email, source } = mergeContacts(from1881, fromGulesider);
       const notes: string[] = [];
       const patch: Record<string, string | boolean> = {

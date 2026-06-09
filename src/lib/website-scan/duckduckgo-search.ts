@@ -1,6 +1,6 @@
 import type { SearchHit } from "./parse-results";
 
-const DDG_TIMEOUT_MS = 20_000;
+const DDG_TIMEOUT_MS = 12_000;
 const DDG_MAX_RESULTS = 10;
 
 const BROWSER_USER_AGENT =

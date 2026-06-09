@@ -12,7 +12,14 @@ import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import { AGENT_MAX_TOOL_LOOPS } from "@/lib/agent/constants";
 import { isAgentResumeIntent } from "@/lib/agent/prompt";
-import { Send, Square } from "lucide-react";
+import {
+  ArrowUp,
+  Building2,
+  Search,
+  Square,
+  UtensilsCrossed,
+  type LucideIcon,
+} from "lucide-react";
 
 type ChatMessage = {
   id: string;
@@ -23,10 +30,13 @@ type ChatMessage = {
   listName?: string;
 };
 
-const SUGGESTIONS = [
-  "Finn frisører i Narvik uten nettside",
-  "Nye byggfirma i Oslo siste 30 dager",
-  "Serveringsfirma i Nordland som trenger nettside",
+const SUGGESTIONS: Array<{ label: string; icon: LucideIcon }> = [
+  { label: "Finn frisører i Narvik uten nettside", icon: Search },
+  { label: "Nye byggfirma i Oslo siste 30 dager", icon: Building2 },
+  {
+    label: "Serveringsfirma i Nordland som trenger nettside",
+    icon: UtensilsCrossed,
+  },
 ];
 
 function newId() {
@@ -455,18 +465,37 @@ export function AgentChatPanel({
     <AppSideDrawer
       open={open}
       onClose={onClose}
-      title={
-        <span className="flex items-center gap-2">
-          <AgentRobotIcon size={20} />
-          AI-assistent
-        </span>
+      header={
+        <div className="flex items-center gap-2.5 border-b border-white/[0.06] bg-[#232325]/85 px-4 py-3 pr-14 backdrop-blur-xl">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#0a84ff] to-[#5e5ce6] shadow-[0_2px_10px_rgba(10,132,255,0.35)]">
+            <AgentRobotIcon size={26} className="drop-shadow-sm" />
+          </span>
+          <span className="flex min-w-0 flex-col leading-tight">
+            <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-[#f5f5f7]">
+              AI-assistent
+            </span>
+            <span className="truncate text-[11px] text-[#98989d]">
+              Finner firma og lager lister
+            </span>
+          </span>
+        </div>
       }
       maxWidth="md"
-      panelClassName="flex flex-col overflow-hidden"
+      panelClassName="flex flex-col overflow-hidden border-white/[0.06] bg-[#1c1c1e]"
       footer={
-        <>
+        <div className="bg-[#1c1c1e] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+          {serperUsage && (
+            <p
+              className={cn(
+                "mb-1.5 text-center text-[10px] tabular-nums tracking-wide",
+                serperUsage.limitReached ? "text-amber-400" : "text-[#98989d]/70"
+              )}
+            >
+              Serper-søk: {serperUsage.used} / {serperUsage.limit}
+            </p>
+          )}
           <form
-            className="flex gap-2 border-t border-white/10 p-3"
+            className="flex items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void sendMessage(input);
@@ -478,64 +507,65 @@ export function AgentChatPanel({
               onChange={(e) => setInput(e.target.value)}
               placeholder="F.eks. Finn frisører uten nettside i Narvik…"
               disabled={loading}
-              className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-sky-400/50 focus:outline-none"
+              className="min-w-0 flex-1 rounded-[14px] border border-white/[0.06] bg-[#2c2c2e] px-4 py-2.5 text-[13px] text-[#f5f5f7] placeholder:text-[#98989d] transition focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30 disabled:opacity-60"
             />
             {loading ? (
               <button
                 type="button"
                 onClick={stopRequest}
-                className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-500/20 px-3 text-sm font-medium text-red-200 transition hover:bg-red-500/30"
+                className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-red-400/30 bg-red-500/15 px-3.5 text-xs font-medium text-red-300 transition hover:bg-red-500/25"
                 aria-label="Stopp"
               >
-                <Square className="h-3.5 w-3.5 fill-current" />
+                <Square className="h-3 w-3 fill-current" />
                 Stopp
               </button>
             ) : (
               <button
                 type="submit"
                 disabled={!input.trim()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white transition hover:bg-sky-400 disabled:opacity-40"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0a84ff] text-white shadow-[0_2px_10px_rgba(10,132,255,0.4)] transition hover:bg-[#3395ff] active:scale-95 disabled:bg-[#2c2c2e] disabled:text-[#5a5a5e] disabled:shadow-none"
                 aria-label="Send"
               >
-                <Send className="h-4 w-4" />
+                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
               </button>
             )}
           </form>
-        </>
+        </div>
       }
     >
-      <div className={cn("agent-aurora-field", loading && "agent-aurora-field--active")}>
-        {loading && (
-          <div className="agent-aurora-overlay" aria-hidden="true">
-            <div className="agent-aurora-overlay__ribbon agent-aurora-overlay__ribbon--1" />
-            <div className="agent-aurora-overlay__ribbon agent-aurora-overlay__ribbon--2" />
-            <div className="agent-aurora-overlay__ribbon agent-aurora-overlay__ribbon--3" />
-            <div className="agent-aurora-overlay__shimmer" />
-            <div className="agent-aurora-overlay__veil" />
-          </div>
-        )}
-
-        <div ref={listRef} className="agent-aurora-content flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <div className="flex min-h-full flex-col">
+        <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-4">
         {loadingHistory && (
-          <p className="text-center text-sm text-slate-400">Laster samtale…</p>
+          <p className="text-center text-sm text-[#98989d]">Laster samtale…</p>
         )}
 
         {!loadingHistory && messages.length === 0 && (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-300">
-              Jeg kan finne firma, sjekke nettside, berike kontaktinfo og lage
-              lister over de som trenger nettside.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
+          <div className="flex flex-1 flex-col items-center justify-center gap-7 px-1 py-8">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a84ff] to-[#5e5ce6] shadow-[0_8px_28px_rgba(10,132,255,0.35)]">
+                <AgentRobotIcon size={46} className="drop-shadow-sm" />
+              </span>
+              <h3 className="text-[19px] font-semibold tracking-[-0.02em] text-[#f5f5f7]">
+                Hva kan jeg hjelpe med?
+              </h3>
+              <p className="max-w-[270px] text-[12.5px] leading-relaxed text-[#98989d]">
+                Jeg finner firma, sjekker nettsider, beriker kontaktinfo og
+                lager lister over de som trenger nettside.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-2">
+              {SUGGESTIONS.map(({ label, icon: Icon }) => (
                 <button
-                  key={s}
+                  key={label}
                   type="button"
-                  onClick={() => void sendMessage(s)}
+                  onClick={() => void sendMessage(label)}
                   disabled={loading}
-                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 transition hover:border-sky-400/40 hover:bg-sky-400/10"
+                  className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-4 py-3 text-left text-[13px] leading-snug text-[#f5f5f7] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#3a3a3c] hover:shadow-[0_6px_16px_rgba(0,0,0,0.35)] active:translate-y-0 disabled:opacity-50"
                 >
-                  {s}
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0a84ff]/15 text-[#0a84ff] transition group-hover:bg-[#0a84ff]/25">
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  {label}
                 </button>
               ))}
             </div>
@@ -546,11 +576,13 @@ export function AgentChatPanel({
           <div
             key={m.id}
             className={cn(
-              "max-w-[92%] rounded-2xl px-3 py-2 text-sm",
-              m.role === "user" && "ml-auto bg-sky-500/25 text-white",
-              m.role === "assistant" && "bg-white/8 text-slate-100",
+              "max-w-[85%] rounded-[18px] px-3.5 py-2 text-[13px] leading-relaxed",
+              m.role === "user" &&
+                "ml-auto rounded-br-[6px] bg-[#0a84ff] text-white shadow-[0_2px_8px_rgba(10,132,255,0.25)]",
+              m.role === "assistant" &&
+                "rounded-bl-[6px] border border-white/[0.04] bg-[#2c2c2e] text-[#f5f5f7]",
               m.role === "status" &&
-                "mx-auto max-w-full border border-white/10 bg-white/5 text-center text-xs text-slate-400"
+                "mx-auto max-w-full rounded-full bg-white/[0.05] px-3.5 py-1 text-center text-[11px] text-[#98989d]"
             )}
           >
             <p className="whitespace-pre-wrap">{m.content}</p>
@@ -562,12 +594,12 @@ export function AgentChatPanel({
                     onClose();
                     router.push(m.link!);
                   }}
-                  className="inline-flex text-left text-xs font-semibold text-sky-300 hover:text-sky-200"
+                  className="inline-flex text-left text-xs font-semibold text-[#6cb8ff] hover:text-[#9ccfff]"
                 >
                   Åpne listen i Skann →
                 </button>
                 {m.listName && (
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-[#98989d]">
                     Lagret som «{m.listName}» under Lagrede målgrupper
                   </span>
                 )}
@@ -620,36 +652,33 @@ export function AgentChatPanel({
             >
               Start søk igjen
             </button>
-            <p className="text-center text-[11px] text-slate-500">
+            <p className="text-center text-[11px] text-[#98989d]">
               Du kan også stille spørsmål før du fortsetter
             </p>
           </div>
         )}
 
-        {serperUsage && (
-          <p
-            className={cn(
-              "text-center text-xs tabular-nums",
-              serperUsage.limitReached ? "text-amber-300" : "text-slate-500"
-            )}
-          >
-            Serper: {serperUsage.used} / {serperUsage.limit}
-          </p>
-        )}
-
         {loading && (
           <div
-            className="agent-thinking-status"
+            className="agent-thinking-bubble"
             role="status"
             aria-live="polite"
             aria-busy="true"
           >
-            <span className="agent-thinking-status__dot" aria-hidden="true" />
-            {activeTool
-              ? toolProgress
-                ? `${activeTool.replace(/_/g, " ")}… ${toolProgress.scanned}/${toolProgress.total} (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
-                : `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
-              : "Tenker…"}
+            <span className="agent-thinking-bubble__dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            {activeTool ? (
+              <span className="agent-thinking-bubble__label">
+                {toolProgress
+                  ? `${activeTool.replace(/_/g, " ")}… ${toolProgress.scanned}/${toolProgress.total} (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+                  : `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`}
+              </span>
+            ) : (
+              <span className="sr-only">Tenker…</span>
+            )}
           </div>
         )}
 

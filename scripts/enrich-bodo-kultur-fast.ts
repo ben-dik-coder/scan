@@ -27,8 +27,8 @@ const INDUSTRY = "kultur";
 const MAX_RUNTIME_MS = 25 * 60 * 1000;
 const CONCURRENCY_OWNERS = 50;
 const CONCURRENCY_BRREG = 40;
-const CONCURRENCY_CONTACTS = 15;
-const CONCURRENCY_MAPS = 8;
+const CONCURRENCY_CONTACTS = 32;
+const CONCURRENCY_MAPS = 15;
 const PROGRESS_FILE = resolve(process.cwd(), "scripts/.cache/bodo-kultur-fast-progress.json");
 
 type Phase = "all" | "owners" | "brreg" | "contacts" | "maps";
@@ -361,15 +361,17 @@ async function phaseContacts(companies: Company[], progress: Progress, dryRun: b
       const needsPhone = !hasPhone(company);
       const needsEmail = !hasEmail(company);
 
-      const [[from1881, fromGulesider], mapsDiscovery] = await Promise.all([
-        Promise.all([
-          lookup1881Contact(company).catch(() => null),
-          lookupGulesiderContact(company).catch(() => null),
-        ]),
+      const [from1881, mapsDiscovery] = await Promise.all([
+        lookup1881Contact(company).catch(() => null),
         needsPhone
           ? discoverFromDuckDuckGoMaps(company).catch(() => null)
           : Promise.resolve(null),
       ]);
+      const needGulesider =
+        (needsPhone && !from1881?.phone) || (needsEmail && !from1881?.email);
+      const fromGulesider = needGulesider
+        ? await lookupGulesiderContact(company).catch(() => null)
+        : null;
 
       let { phone, email, source } = mergeContacts(from1881, fromGulesider);
 

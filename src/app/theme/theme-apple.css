@@ -304,6 +304,47 @@ html[data-app-theme="apple"].app-glass-theme::before {
     color: var(--scan-glass-accent);
   }
 
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented-icon {
+    padding-inline: 0.5rem;
+    min-width: 30px;
+  }
+
+  /* Steg-linjen «Velg › Sjekk › Kø» — diskret brødsmule med tydelig aktivt steg */
+[data-app-theme="apple"] .scan-glass-kommand .scan-steps {
+    gap: 0.25rem;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: -0.006em;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--scan-glass-muted);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-step svg {
+    opacity: 0.8;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-step-active {
+    background: rgba(10, 132, 255, 0.16);
+    color: #7cb8ff;
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-step-done {
+    color: var(--scan-glass-text);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-step-sep {
+    color: rgba(255, 255, 255, 0.22);
+    font-size: 10px;
+  }
+
 [data-app-theme="apple"] .scan-glass-kommand .scan-tab {
     border: none;
     border-radius: 7px;
@@ -455,10 +496,21 @@ html[data-app-theme="apple"].app-glass-theme::before {
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .scan-glass-notice {
-    @apply border-t px-2.5 py-2 text-xs lg:px-3;
-    border-color: rgba(251, 191, 36, 0.25);
-    background: rgba(251, 191, 36, 0.08);
-    color: #fde68a;
+    @apply px-3 py-2.5 text-xs;
+    border: 1px solid var(--scan-glass-border);
+    border-radius: calc(var(--scan-glass-radius) + 2px);
+    background: var(--scan-glass-surface);
+    color: var(--scan-glass-muted);
+    line-height: 1.45;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-notice strong {
+    color: var(--scan-glass-text);
+    font-weight: 600;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-glass-notice:not(.scan-glass-notice-warn) svg {
+    color: var(--scan-glass-muted) !important;
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .scan-glass-notice-warn {
@@ -646,10 +698,25 @@ html[data-app-theme="apple"].app-glass-theme::before {
     padding: 10px 14px;
   }
 
-[data-app-theme="apple"] .scan-glass-kommand .nylead-compact-table .cv-status-select {
-    border-color: var(--scan-glass-border);
-    background: rgba(255, 255, 255, 0.05);
+  /* Status-dropdown: usynlig ramme til man peker på den (Apple-stil) */
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .cv-status-select {
+    border-color: transparent;
+    background: transparent;
     color: var(--scan-glass-text);
+    border-radius: 7px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .cv-status-select:hover,
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .cv-status-select:focus,
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .cv-status-select:focus-visible {
+    border-color: var(--scan-glass-border);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .cv-status-select option {
+    background: #2c2c2e;
+    color: #f5f5f7;
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-emerald-100.text-emerald-800 {
@@ -658,10 +725,15 @@ html[data-app-theme="apple"].app-glass-theme::before {
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-amber-100.text-amber-900,
-[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-amber-700,
-[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-amber-800 {
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-amber-700 {
     color: #fcd34d;
-  }
+}
+
+/* «Ingen nettside» er en nøytral status, ikke et varsel — dempet grå i stedet for gult */
+[data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .text-amber-800 {
+    color: var(--scan-glass-muted);
+    font-weight: 400;
+}
 
 [data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .bg-amber-100.text-amber-900 {
     background: rgba(251, 191, 36, 0.18);

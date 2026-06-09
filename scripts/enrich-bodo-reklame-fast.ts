@@ -28,8 +28,8 @@ const INDUSTRY = "reklame";
 const MAX_RUNTIME_MS = 60 * 60 * 1000;
 const CONCURRENCY_OWNERS = 50;
 const CONCURRENCY_BRREG = 40;
-const CONCURRENCY_CONTACTS = 18;
-const CONCURRENCY_MAPS = 8;
+const CONCURRENCY_CONTACTS = 32;
+const CONCURRENCY_MAPS = 15;
 const PROGRESS_FILE = resolve(process.cwd(), "scripts/.cache/bodo-reklame-fast-progress.json");
 
 type Phase = "all" | "owners" | "brreg" | "contacts" | "maps";
@@ -436,10 +436,12 @@ async function phaseContacts(companies: Company[], progress: Progress, dryRun: b
       const needsPhone = !hasPhone(company);
       const needsEmail = !hasEmail(company);
 
-      const [from1881, fromGulesider] = await Promise.all([
-        lookup1881Contact(company).catch(() => null),
-        lookupGulesiderContact(company).catch(() => null),
-      ]);
+      const from1881 = await lookup1881Contact(company).catch(() => null);
+      const needGulesider =
+        (needsPhone && !from1881?.phone) || (needsEmail && !from1881?.email);
+      const fromGulesider = needGulesider
+        ? await lookupGulesiderContact(company).catch(() => null)
+        : null;
 
       let { phone, email, source } = mergeContacts(from1881, fromGulesider);
 

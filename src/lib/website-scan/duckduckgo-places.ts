@@ -54,21 +54,8 @@ function extractPhoneFromText(text: string): string | null {
 }
 
 async function searchDdgMapsHits(query: string) {
-  const queries = [`${query} site:google.com/maps`, `${query} google maps`];
-  const hits: Awaited<ReturnType<typeof searchDuckDuckGo>> = [];
-  const seen = new Set<string>();
-
-  for (const q of queries) {
-    const batch = await searchDuckDuckGo(q).catch(() => []);
-    for (const hit of batch) {
-      if (seen.has(hit.link)) continue;
-      seen.add(hit.link);
-      hits.push(hit);
-    }
-    if (hits.some((hit) => isGoogleMapsUrl(hit.link))) break;
-  }
-
-  return hits;
+  // Ett DDG-søk holder — det andre søket ga sjelden nye treff og doblet tiden.
+  return searchDuckDuckGo(`${query} site:google.com/maps`).catch(() => []);
 }
 
 /** Gratis Google Maps-oppslag via DuckDuckGo — bruker Serper-scoring på treff. */

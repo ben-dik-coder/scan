@@ -82,20 +82,32 @@ export function ScanQuickBar({
       <div className="mt-3 flex flex-col gap-3 lg:mt-0 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <nav
-            className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
+            className="scan-steps flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
             aria-label="Steg"
           >
-            <span className={cn(activeStep >= 1 && "text-slate-300")}>
+            <span
+              className={cn(
+                "scan-step",
+                activeStep === 1 && "scan-step-active",
+                activeStep >= 1 && "text-slate-300",
+                activeStep > 1 && "scan-step-done"
+              )}
+            >
               <Users className="mr-0.5 inline h-3 w-3" aria-hidden />
               Velg
             </span>
-            <span aria-hidden className="text-slate-600">›</span>
-            <span className={cn(activeStep >= 2 && "text-white")}>
+            <span aria-hidden className="scan-step-sep text-slate-600">›</span>
+            <span
+              className={cn(
+                "scan-step",
+                activeStep === 2 && "scan-step-active text-white"
+              )}
+            >
               <Search className="mr-0.5 inline h-3 w-3" aria-hidden />
               Sjekk
             </span>
-            <span aria-hidden className="text-slate-600">›</span>
-            <span className="text-slate-500">
+            <span aria-hidden className="scan-step-sep text-slate-600">›</span>
+            <span className="scan-step text-slate-500">
               <ListTodo className="mr-0.5 inline h-3 w-3" aria-hidden />
               Kø
             </span>
