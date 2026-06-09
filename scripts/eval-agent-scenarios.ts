@@ -12,6 +12,8 @@ import {
   isAgentResumeIntent,
   isAgentPostCancelFollowUp,
 } from "../src/lib/agent/prompt.ts";
+import { needsConcreteSummary } from "../src/lib/agent/run-agent.ts";
+import { formatCompanyExamples } from "../src/lib/agent/format-summary.ts";
 import {
   mapProfessionToIndustryGroup,
   resolveAgentSearchIndustryFilters,
@@ -78,6 +80,21 @@ function testProfessionMapping() {
   assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).industryGroup, "frisor");
 }
 
+function testConcreteSummaryGate() {
+  assert.equal(needsConcreteSummary("", true), true);
+  assert.equal(needsConcreteSummary("Jeg skal søke nå.", true), true);
+  assert.equal(
+    needsConcreteSummary("Fant 12 frisører i Narvik — f.eks. Klipp AS, Hår & Vel.", true),
+    false
+  );
+  assert.equal(needsConcreteSummary("Hei!", false), false);
+}
+
+function testFormatExamples() {
+  assert.match(formatCompanyExamples(["A AS", "B AS"]), /A AS/);
+  assert.equal(formatCompanyExamples([]), "");
+}
+
 function testStartupContext() {
   const ctx: AgentStartupContext = {
     serperUsed: 1400,
@@ -98,8 +115,10 @@ function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
+  testConcreteSummaryGate();
+  testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 4/4 OK");
+  console.log("eval-agent-scenarios: 6/6 OK");
 }
 
 main();

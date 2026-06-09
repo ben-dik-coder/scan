@@ -42,6 +42,7 @@ import {
 } from "@/lib/website-scan/saved-scans-server";
 import { phoneCoreDigits } from "@/lib/website-scan/phone-plausible";
 import { upsertUserMemory } from "@/lib/agent/user-memory";
+import { formatCompanyExamples } from "@/lib/agent/format-summary";
 import type { WebsiteScanCompanyInput, WebsiteScanResult } from "@/lib/website-scan/types";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -245,7 +246,7 @@ async function executeListSavedLists(
   });
 
   return {
-    summary: `Fant ${lists.length} lagrede lister`,
+    summary: `Fant ${lists.length} lagrede lister${lists[0] ? ` — sist: «${lists[0].name}» (${lists[0].orgnrCount} firma)` : ""}`,
     data: { lists },
   };
 }
@@ -449,7 +450,7 @@ async function executeSearchCompanies(
   });
 
   return {
-    summary: `Fant ${companies.length} firma${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}`,
+    summary: `Fant ${companies.length} firma${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}${formatCompanyExamples(companies.map((c) => c.name))}`,
     data: {
       companies: companies.map((c) => ({
         orgnr: c.orgnr,
@@ -570,6 +571,10 @@ async function executeScanWebsites(
 
   const withoutSite = scans.filter((s) => isLeadWithoutOwnSite(s)).length;
   const bookingOnly = scans.filter((s) => isBookingOnlyScan(s)).length;
+  const withoutSiteNames = scans
+    .filter((s) => isLeadWithoutOwnSite(s))
+    .map((s) => companies.find((c) => c.orgnr === s.orgnr)?.name ?? s.displayName ?? s.orgnr)
+    .filter(Boolean) as string[];
 
   await updateRunProgress(ctx.runId, {
     phase: "scan_done",
@@ -580,7 +585,7 @@ async function executeScanWebsites(
   });
 
   return {
-    summary: `Skannet ${scans.length} firma — ${withoutSite} uten egen nettside (${bookingOnly} kun booking)`,
+    summary: `Skannet ${scans.length} firma — ${withoutSite} uten egen nettside (${bookingOnly} kun booking)${formatCompanyExamples(withoutSiteNames)}`,
     data: {
       scanned: scans.length,
       withoutWebsite: withoutSite,
@@ -723,7 +728,7 @@ async function executeFilterNoWebsite(
     loadCompaniesByOrgnr(notScanned),
   ]);
 
-  const summaryParts = [`${without.length} uten nettside`];
+  const summaryParts = [`${without.length} uten nettside${formatCompanyExamples(confirmedCompanies.map((c) => c.name), 4)}`];
   if (autoScanned > 0) {
     summaryParts.unshift(`Skannet ${autoScanned} firma automatisk før filtrering`);
   }

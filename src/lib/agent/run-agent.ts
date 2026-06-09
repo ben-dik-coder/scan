@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { AGENT_DISABLED_MESSAGE, AGENT_MAX_TOOL_LOOPS, isAgentEnabled } from "@/lib/agent/constants";
 import { executeAgentTool } from "@/lib/agent/execute-tool";
 import type { AgentToolContext } from "@/lib/agent/execute-tool";
-import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
+import { AGENT_SYSTEM_PROMPT, AGENT_FINAL_SUMMARY_NUDGE } from "@/lib/agent/prompt";
 import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
 
 export type AgentStreamEvent =
@@ -84,6 +84,49 @@ type AgentRunSummary = {
   hitMaxLoops: boolean;
 };
 
+export function needsConcreteSummary(assistantText: string, hadTools: boolean): boolean {
+  if (!hadTools) return false;
+  const text = assistantText.trim();
+  if (!text) return true;
+
+  const hasNumbers = /\d/.test(text);
+  const hasExamples = /f\.?eks\.| — |«|»/i.test(text);
+  if (hasNumbers && hasExamples) return false;
+  if (hasNumbers && text.length >= 90) return false;
+
+  if (text.length < 70) return true;
+  if (!hasNumbers) return true;
+  if (
+    /^(jeg (skal|har)|la meg|ok[,! ]|greit[,! ]|fint[,! ])/i.test(text) &&
+    text.length < 140
+  ) {
+    return true;
+  }
+  return false;
+}
+
+async function synthesizeAgentReply(
+  client: OpenAI,
+  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  model: string,
+  signal?: AbortSignal
+): Promise<string> {
+  throwIfAborted(signal);
+
+  const synthesisMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    ...messages,
+    { role: "user", content: AGENT_FINAL_SUMMARY_NUDGE },
+  ];
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: synthesisMessages,
+    tool_choice: "none",
+  });
+
+  return response.choices[0]?.message?.content?.trim() ?? "";
+}
+
 export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
   const parts: string[] = [];
 
@@ -102,13 +145,11 @@ export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
   }
 
   if (summary.hitMaxLoops) {
-    parts.unshift(
-      "Jobben tok mange steg og stoppet ved grensen. Her er det som ble gjort:"
-    );
+    parts.unshift("Jobben tok mange steg og stoppet ved grensen.");
   } else if (parts.length === 0) {
-    return "Jobben er ferdig, men jeg fikk ikke skrevet et sammendrag. Sjekk statusmeldingene over.";
+    return "Ferdig — men jeg fikk ikke skrevet et godt sammendrag. Se statusmeldingene over, eller spør meg «hva fant du?»";
   } else if (!summary.listName) {
-    parts.unshift("Ferdig! Her er resultatet:");
+    parts.unshift("Oppsummert:");
   }
 
   return parts.join("\n\n");
@@ -272,6 +313,7 @@ export async function runAgentChat(
   }
 
   const hitMaxLoops = loops >= AGENT_MAX_TOOL_LOOPS;
+  const hadTools = toolSummaries.length > 0;
 
   if (hitMaxLoops && !assistantText.trim()) {
     await onEvent({
@@ -279,6 +321,19 @@ export async function runAgentChat(
       message:
         "Agenten stoppet etter for mange steg. Prøv en enklere forespørsel.",
     });
+  }
+
+  if (needsConcreteSummary(assistantText, hadTools)) {
+    const synthesized = await synthesizeAgentReply(
+      client,
+      messages,
+      getAgentModel(),
+      signal
+    ).catch(() => "");
+    if (synthesized.trim()) {
+      assistantText = synthesized.trim();
+      await onEvent({ type: "text", content: assistantText });
+    }
   }
 
   if (!assistantText.trim()) {
