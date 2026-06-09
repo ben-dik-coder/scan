@@ -1,5 +1,5 @@
 import { hasApi1881 } from "./api1881/config";
-import { ENABLE_SERPER_PLACES } from "./scan-api-budget";
+import { ENABLE_DDG_PLACES, ENABLE_SERPER_PLACES } from "./scan-api-budget";
 
 export function hasGoogleCse(): boolean {
   return Boolean(
@@ -31,6 +31,14 @@ export function isSerperPlacesEnabled(): boolean {
   return hasSerperPlaces() && ENABLE_SERPER_PLACES;
 }
 
+export function isDdgPlacesEnabled(): boolean {
+  return hasFreeWebSearch() && ENABLE_DDG_PLACES;
+}
+
+export function isMapsDiscoveryEnabled(): boolean {
+  return isSerperPlacesEnabled() || isDdgPlacesEnabled();
+}
+
 /** Gratis nettsøk via DuckDuckGo HTML — alltid tilgjengelig uten API-nøkkel. */
 export function hasFreeWebSearch(): boolean {
   return true;
@@ -50,6 +58,7 @@ export function getWebsiteScanProviders(): string[] {
   }
   if (hasSerper()) providers.push("Serper Google");
   if (isSerperPlacesEnabled()) providers.push("Serper Google Maps");
+  if (isDdgPlacesEnabled()) providers.push("DuckDuckGo Google Maps");
   if (hasFreeWebSearch() && !hasGoogleCse() && !hasSerpApi() && !hasSerper()) {
     providers.push("DuckDuckGo (gratis)");
   }

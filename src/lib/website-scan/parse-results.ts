@@ -188,7 +188,7 @@ const DESCRIPTIVE_DOMAIN_TOKENS = new Set([
 
 export type WebsiteKind = "own" | "booking_only" | "none";
 
-export type SearchHit = { title: string; link: string };
+export type SearchHit = { title: string; link: string; snippet?: string };
 
 export function normalizeDomain(url: string): string {
   try {

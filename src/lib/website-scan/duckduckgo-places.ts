@@ -1,0 +1,180 @@
+import { companyGeoPlaces } from "@/lib/brreg/geo-place";
+import { searchDuckDuckGo } from "./duckduckgo-search";
+import {
+  companyMatchesResult,
+  normalizeDomain,
+  pickBestWebsite,
+} from "./parse-results";
+import { phonePlausibleForCompany } from "./phone-plausible";
+import {
+  buildPlacesSearchQuery,
+  normalizePlaceWebsite,
+  scorePlaceHit,
+  type GooglePlacesDiscovery,
+  type SerperPlaceHit,
+} from "./serper-places";
+import type { WebsiteScanCompanyInput } from "./types";
+
+function isGoogleMapsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (host.includes("google.") || host === "maps.app.goo.gl") &&
+      (parsed.pathname.includes("/maps") || host === "maps.app.goo.gl")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function cleanMapsTitle(title: string): string {
+  return title
+    .replace(/\s*[-–|·]\s*Google\s*Maps.*$/i, "")
+    .replace(/\s*[-–|·]\s*Kart.*$/i, "")
+    .replace(/\s*\|\s*Google.*$/i, "")
+    .trim();
+}
+
+function extractPhoneFromText(text: string): string | null {
+  const patterns = [
+    /(?:\+47|0047)[\s.-]?(?:\d[\s.-]?){7}\d/g,
+    /\b\d{2}[\s.-]\d{2}[\s.-]\d{2}[\s.-]\d{2}\b/g,
+    /\b\d{3}[\s.-]\d{2}[\s.-]\d{3}\b/g,
+    /\b\d{8}\b/g,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[0]) {
+      const digits = match[0].replace(/\D/g, "");
+      if (digits.length >= 8) return match[0].trim();
+    }
+  }
+  return null;
+}
+
+async function searchDdgMapsHits(query: string) {
+  const queries = [`${query} site:google.com/maps`, `${query} google maps`];
+  const hits: Awaited<ReturnType<typeof searchDuckDuckGo>> = [];
+  const seen = new Set<string>();
+
+  for (const q of queries) {
+    const batch = await searchDuckDuckGo(q).catch(() => []);
+    for (const hit of batch) {
+      if (seen.has(hit.link)) continue;
+      seen.add(hit.link);
+      hits.push(hit);
+    }
+    if (hits.some((hit) => isGoogleMapsUrl(hit.link))) break;
+  }
+
+  return hits;
+}
+
+/** Gratis Google Maps-oppslag via DuckDuckGo — bruker Serper-scoring på treff. */
+export async function discoverFromDuckDuckGoMaps(
+  company: WebsiteScanCompanyInput
+): Promise<GooglePlacesDiscovery | null> {
+  const query = buildPlacesSearchQuery(company);
+  const geoPlaces = companyGeoPlaces(company);
+
+  const [mapsHits, organicHits] = await Promise.all([
+    searchDdgMapsHits(query),
+    searchDuckDuckGo(query).catch(() => []),
+  ]);
+
+  let best: {
+    place: SerperPlaceHit;
+    score: number;
+    confidence: "high" | "medium" | "low";
+    website: { websiteUrl: string; websiteDomain: string } | null;
+    phone?: string;
+  } | null = null;
+
+  for (const hit of mapsHits) {
+    if (!isGoogleMapsUrl(hit.link)) continue;
+
+    const placeTitle = cleanMapsTitle(hit.title);
+    if (!placeTitle || !companyMatchesResult(placeTitle, hit.link, company.name)) {
+      continue;
+    }
+
+    const snippetPhone = extractPhoneFromText(hit.snippet ?? hit.title);
+    const place: SerperPlaceHit = {
+      title: placeTitle,
+      address: hit.snippet,
+      phoneNumber: snippetPhone ?? undefined,
+      website: undefined,
+    };
+
+    const scored = scorePlaceHit(place, company.name, geoPlaces);
+    if (!scored) continue;
+
+    if (!best || scored.score > best.score) {
+      best = {
+        place,
+        score: scored.score,
+        confidence: scored.confidence,
+        website: null,
+        phone: snippetPhone ?? undefined,
+      };
+    }
+  }
+
+  const websitePick = pickBestWebsite(
+    organicHits.filter((hit) => !isGoogleMapsUrl(hit.link)),
+    company.name,
+    { municipalityName: geoPlaces[0] ?? null }
+  );
+
+  let website =
+    websitePick.hasWebsite && websitePick.websiteUrl && websitePick.websiteDomain
+      ? {
+          websiteUrl: websitePick.websiteUrl,
+          websiteDomain: websitePick.websiteDomain,
+        }
+      : null;
+
+  if (!website) {
+    for (const hit of organicHits) {
+      if (isGoogleMapsUrl(hit.link)) continue;
+      const candidate = normalizePlaceWebsite(
+        hit.link,
+        company.name,
+        cleanMapsTitle(hit.title)
+      );
+      if (candidate) {
+        website = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!best && !website) return null;
+
+  const phoneFromOrganic = organicHits
+    .map((hit) => extractPhoneFromText(`${hit.title} ${hit.snippet ?? ""}`))
+    .find(
+      (value) => value && phonePlausibleForCompany(value, company.orgnr)
+    );
+
+  const phone =
+    [best?.phone, best?.place.phoneNumber, phoneFromOrganic].find(
+      (value) => value && phonePlausibleForCompany(value, company.orgnr)
+    ) ?? undefined;
+
+  if (!website && !phone) return null;
+
+  const confidence =
+    best?.confidence ??
+    (websitePick.confidence === "low" ? "low" : websitePick.confidence);
+
+  return {
+    websiteUrl: website?.websiteUrl ?? best?.website?.websiteUrl,
+    websiteDomain: website?.websiteDomain ?? best?.website?.websiteDomain,
+    phone,
+    confidence,
+    placeTitle: best?.place.title ?? company.name,
+  };
+}

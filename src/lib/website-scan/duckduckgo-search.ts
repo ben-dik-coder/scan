@@ -26,6 +26,33 @@ function parseDdgHtml(html: string): SearchHit[] {
   const hits: SearchHit[] = [];
   const seen = new Set<string>();
 
+  const resultBlockRe =
+    /<div[^>]*class="[^"]*result[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+  let blockMatch: RegExpExecArray | null;
+
+  while ((blockMatch = resultBlockRe.exec(html)) !== null && hits.length < DDG_MAX_RESULTS) {
+    const block = blockMatch[1];
+    const linkMatch =
+      block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i) ??
+      block.match(/<a[^>]*class='[^']*result-link[^']*'[^>]*href='([^']*)'[^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+
+    const rawHref = linkMatch[1].replace(/&amp;/g, "&");
+    const title = stripHtml(linkMatch[2]);
+    const link = decodeDdgRedirect(rawHref);
+    if (!title || !link || seen.has(link)) continue;
+
+    const snippetMatch =
+      block.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i) ??
+      block.match(/<span[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+    const snippet = snippetMatch ? stripHtml(snippetMatch[1]) : undefined;
+
+    seen.add(link);
+    hits.push({ title, link, snippet });
+  }
+
+  if (hits.length > 0) return hits;
+
   const patterns = [
     /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
     /<a[^>]*class='[^']*result-link[^']*'[^>]*href='([^']*)'[^>]*>([\s\S]*?)<\/a>/gi,

@@ -1,5 +1,5 @@
 import { SerperLimitReachedError } from "@/lib/billing/serper-usage";
-import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper, isSerperPlacesEnabled } from "./config";
+import { hasFreeWebSearch, hasGoogleCse, hasSerpApi, hasSerper, isMapsDiscoveryEnabled } from "./config";
 import {
   discoverWebsiteByDomainGuess,
   isWeakDomainGuess,
@@ -40,7 +40,7 @@ import { searchDuckDuckGo } from "./duckduckgo-search";
 import { searchSerpApi } from "./serpapi";
 import { searchSerper, searchSerperForWebsite } from "./serper";
 import {
-  discoverFromGooglePlaces,
+  discoverFromPlaces,
   placesDiscoveryEnoughToSkipOrganic,
   type GooglePlacesDiscovery,
 } from "./serper-places";
@@ -194,7 +194,7 @@ export async function enrichScanContacts(
   }
 ): Promise<WebsiteScanResult> {
   const needsPlacesPhone =
-    !scan.enrichedPhone && isSerperPlacesEnabled() && !options?.seedContacts?.length;
+    !scan.enrichedPhone && isMapsDiscoveryEnabled() && !options?.seedContacts?.length;
 
   if (
     scan.contactsEnriched &&
@@ -247,11 +247,11 @@ export async function enrichScanContacts(
 
   let seedContacts = options?.seedContacts;
   if (!seedContacts?.length && needsPlacesPhone) {
-    if (!isSerperPlacesEnabled()) {
+    if (!isMapsDiscoveryEnabled()) {
       seedContacts = undefined;
     } else {
       try {
-        const places = await discoverFromGooglePlaces(company, options?.userId);
+        const places = await discoverFromPlaces(company, options?.userId);
         seedContacts =
           (places && placesSeedContactsFromPhone(places, company.orgnr)) ?? [
             {
@@ -266,7 +266,7 @@ export async function enrichScanContacts(
         if (err instanceof SerperLimitReachedError) throw err;
         logScan(
           company.orgnr,
-          "Serper Places under kontakt-berikelse feilet",
+          "Google Maps under kontakt-berikelse feilet",
           err instanceof Error ? err.message : err
         );
       }
@@ -1307,11 +1307,11 @@ export async function scanCompanyWebsite(
 
   const userId = options?.userId;
 
-  if (!usedVerifiedHint && isSerperPlacesEnabled()) {
+  if (!usedVerifiedHint && isMapsDiscoveryEnabled()) {
     try {
-      placesDiscovery = await discoverFromGooglePlaces(company, userId);
+      placesDiscovery = await discoverFromPlaces(company, userId);
       if (placesDiscovery) {
-        logScan(company.orgnr, "Google Maps (Serper Places)", {
+        logScan(company.orgnr, "Google Maps", {
           placeTitle: placesDiscovery.placeTitle,
           website: placesDiscovery.websiteUrl,
           phone: placesDiscovery.phone,
@@ -1373,7 +1373,7 @@ export async function scanCompanyWebsite(
       if (err instanceof SerperLimitReachedError) throw err;
       logScan(
         company.orgnr,
-        "Serper Places feilet",
+        "Google Maps-oppslag feilet",
         err instanceof Error ? err.message : err
       );
     }

@@ -1,7 +1,9 @@
 import {
   assertSerperQuota,
   recordSerperApiCall,
+  SerperLimitReachedError,
 } from "@/lib/billing/serper-usage";
+import { isDdgPlacesEnabled, isSerperPlacesEnabled } from "./config";
 import { companyGeoPlaces, primaryGeoPlace } from "@/lib/brreg/geo-place";
 import {
   companyMatchesResult,
@@ -59,7 +61,7 @@ function geoMatchesPlace(text: string, geoPlaces: string[]): boolean {
   });
 }
 
-function normalizePlaceWebsite(
+export function normalizePlaceWebsite(
   website: string | undefined,
   companyName: string,
   placeTitle: string
@@ -87,7 +89,7 @@ function normalizePlaceWebsite(
   }
 }
 
-function scorePlace(
+export function scorePlaceHit(
   place: SerperPlaceHit,
   companyName: string,
   geoPlaces: string[]
@@ -195,7 +197,7 @@ export async function searchSerperPlaces(
     }));
 }
 
-export async function discoverFromGooglePlaces(
+export async function discoverFromSerperPlaces(
   company: WebsiteScanCompanyInput,
   userId?: string
 ): Promise<GooglePlacesDiscovery | null> {
@@ -212,7 +214,7 @@ export async function discoverFromGooglePlaces(
   } | null = null;
 
   for (const place of places) {
-    const scored = scorePlace(place, company.name, geoPlaces);
+    const scored = scorePlaceHit(place, company.name, geoPlaces);
     if (!scored) continue;
 
     const website = normalizePlaceWebsite(place.website, company.name, place.title);
@@ -243,6 +245,38 @@ export async function discoverFromGooglePlaces(
     confidence: best.confidence,
     placeTitle: best.place.title,
   };
+}
+
+/** Serper først, DuckDuckGo Maps som gratis fallback. */
+export async function discoverFromPlaces(
+  company: WebsiteScanCompanyInput,
+  userId?: string
+): Promise<GooglePlacesDiscovery | null> {
+  if (isSerperPlacesEnabled()) {
+    try {
+      const serper = await discoverFromSerperPlaces(company, userId);
+      if (serper) return serper;
+    } catch (err) {
+      if (!(err instanceof SerperLimitReachedError) || !isDdgPlacesEnabled()) {
+        throw err;
+      }
+    }
+  }
+
+  if (isDdgPlacesEnabled()) {
+    const { discoverFromDuckDuckGoMaps } = await import("./duckduckgo-places");
+    return discoverFromDuckDuckGoMaps(company);
+  }
+
+  return null;
+}
+
+/** @deprecated Bruk discoverFromSerperPlaces eller discoverFromPlaces */
+export async function discoverFromGooglePlaces(
+  company: WebsiteScanCompanyInput,
+  userId?: string
+): Promise<GooglePlacesDiscovery | null> {
+  return discoverFromSerperPlaces(company, userId);
 }
 
 export function placesDiscoveryEnoughToSkipOrganic(
