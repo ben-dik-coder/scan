@@ -60,7 +60,8 @@ export async function upsertBrregEnhet(
     .maybeSingle();
 
   const merged = preserveExistingContactFields(mapped, existing ?? undefined);
-  const { industry_description: _drop, ...row } = merged;
+  const { industry_description, ...row } = merged;
+  void industry_description;
   const { error } = await supabase
     .from("companies")
     .upsert(row, { onConflict: "orgnr" });
