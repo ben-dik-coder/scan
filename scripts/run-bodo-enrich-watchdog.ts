@@ -167,15 +167,6 @@ function loadFrisorProgress(file: string): FrisorProgress {
   }
 }
 
-function reconcileContactsDone(companies: Company[], contacts: string[]): string[] {
-  const byOrgnr = new Map(companies.map((c) => [c.orgnr, c]));
-  return contacts.filter((orgnr) => {
-    const c = byOrgnr.get(orgnr);
-    if (!c) return true;
-    return hasPhone(c) && hasEmail(c);
-  });
-}
-
 async function loadCompanies(industry: string): Promise<Company[]> {
   const supabase = createServiceClient();
   const codes = getIndustryCodeOrFilters(industry) ?? [];
@@ -243,7 +234,8 @@ async function getJobStatus(job: JobDef): Promise<JobStatus> {
 
   if (job.kind === "standard") {
     const progress = loadStandardProgress(job.progressFile);
-    const contactsDone = new Set(reconcileContactsDone(companies, progress.contacts));
+    // Sjekket = ferdig, selv om vi ikke fant telefon/e-post («ingenting å finne»).
+    const contactsDone = new Set(progress.contacts);
     const mapsDone = new Set(progress.maps);
 
     const pendingContacts = active.filter(
@@ -264,7 +256,8 @@ async function getJobStatus(job: JobDef): Promise<JobStatus> {
   }
 
   const progress = loadFrisorProgress(job.progressFile);
-  const contactsDone = new Set(reconcileContactsDone(companies, progress.contacts));
+  // Sjekket = ferdig, selv om vi ikke fant telefon/e-post («ingenting å finne»).
+  const contactsDone = new Set(progress.contacts);
   const facebookDone = new Set(progress.facebook);
   const fbMap = await loadFacebookMap(active.map((c) => c.orgnr));
 

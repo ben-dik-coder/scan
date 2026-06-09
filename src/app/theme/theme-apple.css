@@ -181,7 +181,8 @@ html[data-app-theme="apple"].app-glass-theme::before {
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .scan-surface-full {
-    @apply mx-2 my-2 overflow-hidden sm:mx-3;
+    /* w-auto: med w-full + mx ville boksen blitt bredere enn siden og lent mot høyre */
+    @apply mx-2 my-2 w-auto overflow-hidden sm:mx-3;
     border-radius: calc(var(--scan-glass-radius) + 4px);
     border: 1px solid var(--scan-glass-border);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;

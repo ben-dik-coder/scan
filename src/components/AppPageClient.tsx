@@ -1301,7 +1301,7 @@ export function AppPageClient(props: Props) {
         </p>
       )}
 
-      <details ref={emailSectionRef} className="scan-surface-pad mx-2 w-full max-w-none scroll-mt-4 sm:mx-3">
+      <details ref={emailSectionRef} className="scan-surface-pad mx-2 w-auto scroll-mt-4 sm:mx-3">
         <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
           Send e-post til valgte firma
         </summary>
@@ -1317,7 +1317,7 @@ export function AppPageClient(props: Props) {
         </div>
       </details>
 
-      <details className="scan-surface-pad mx-2 w-full max-w-none sm:mx-3">
+      <details className="scan-surface-pad mx-2 w-auto sm:mx-3">
         <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
           Mine firmalister
         </summary>
@@ -1330,7 +1330,7 @@ export function AppPageClient(props: Props) {
         </div>
       </details>
 
-      <details className="scan-surface-pad mx-2 w-full max-w-none sm:mx-3">
+      <details className="scan-surface-pad mx-2 w-auto sm:mx-3">
         <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
           Lagrede målgrupper
         </summary>

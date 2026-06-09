@@ -68,7 +68,8 @@ html[data-app-theme="classic"].app-glass-theme::before {
   }
 
 [data-app-theme="classic"] .scan-glass-kommand .scan-surface-full {
-    @apply mx-2 my-2 overflow-hidden rounded-2xl border sm:mx-3;
+    /* w-auto: med w-full + mx ville boksen blitt bredere enn siden og lent mot høyre */
+    @apply mx-2 my-2 w-auto overflow-hidden rounded-2xl border sm:mx-3;
     border-radius: var(--scan-glass-radius);
   }
 

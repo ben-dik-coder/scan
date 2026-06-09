@@ -180,7 +180,9 @@ async function synthesizeAgentReply(
       },
     ],
     tool_choice: "none",
-    max_tokens: 450,
+    // gpt-5-modeller godtar ikke `max_tokens`; resonneringstokens trekkes
+    // fra samme budsjett, så vi gir litt ekstra rom over de ~450 synlige.
+    max_completion_tokens: 1200,
   });
 
   return response.choices[0]?.message?.content?.trim() ?? "";
