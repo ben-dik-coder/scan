@@ -5,7 +5,9 @@ import type { WebsiteScanResult } from "@/lib/website-scan/types";
 export type AgentSavedListFilters = Partial<FilterState> & {
   agentOrgnrs?: string[];
   modus?: string;
-  createdBy?: string;
+  createdBy?: "agent" | "user" | string;
+  /** Valgfri mappe/gruppe for brukerens firmalister */
+  group?: string;
 };
 
 export function agentOrgnrsFromFilters(
@@ -33,8 +35,36 @@ export function isAgentSavedListFilters(
   filters: AgentSavedListFilters | Record<string, unknown> | null | undefined
 ): boolean {
   if (!filters) return false;
-  if (filters.createdBy === "agent") return true;
+  return filters.createdBy === "agent";
+}
+
+export function isCompanyListFilters(
+  filters: AgentSavedListFilters | Record<string, unknown> | null | undefined
+): boolean {
   return agentOrgnrsFromFilters(filters).length > 0;
+}
+
+export function listGroupFromFilters(
+  filters: AgentSavedListFilters | Record<string, unknown> | null | undefined
+): string {
+  if (!filters || typeof filters.group !== "string") return "";
+  return filters.group.trim();
+}
+
+export function mergeOrgnrsIntoFilters(
+  filters: AgentSavedListFilters | Record<string, unknown>,
+  orgnrs: string[],
+  createdBy: "agent" | "user" = "user"
+): AgentSavedListFilters {
+  const existing = agentOrgnrsFromFilters(filters);
+  const merged = Array.from(new Set([...existing, ...orgnrs]));
+  return {
+    ...(filters as AgentSavedListFilters),
+    agentOrgnrs: merged,
+    createdBy:
+      (filters as AgentSavedListFilters).createdBy === "agent" ? "agent" : createdBy,
+    days: AGENT_LIST_PERIOD_DAYS,
+  };
 }
 
 export function mergeAgentListFilters(

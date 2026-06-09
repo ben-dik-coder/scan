@@ -55,7 +55,7 @@ function orgnrInHtml(html: string, orgnr: string): boolean {
 function extract1881ListingLinks(html: string): string[] {
   const links = new Set<string>();
   for (const match of html.matchAll(
-    /href="(https:\/\/www\.1881\.no\/[^"]+_\d+S\d\/)/g
+    /href="(https:\/\/www\.1881\.no\/[^"]+_\d+S\d+\/)/g
   )) {
     const url = match[1]!;
     if (url.includes("digitale-medier-1881")) continue;
@@ -68,11 +68,11 @@ function extract1881ListingLinks(html: string): string[] {
 function extract1881PersonLinks(html: string): string[] {
   const links = new Set<string>();
   for (const match of html.matchAll(
-    /href="(https:\/\/www\.1881\.no\/person\/[^"]+_\d+S\d\/?)/g
+    /href="(https:\/\/www\.1881\.no\/person\/[^"]+_\d+S\d+\/?)/g
   )) {
     links.add(match[1]!.replace(/\/?$/, "/"));
   }
-  for (const match of html.matchAll(/href="(\/person\/[^"]+_\d+S\d\/?)/g)) {
+  for (const match of html.matchAll(/href="(\/person\/[^"]+_\d+S\d+\/?)/g)) {
     links.add(`https://www.1881.no${match[1]!.replace(/\/?$/, "/")}`);
   }
   return [...links];
@@ -80,7 +80,7 @@ function extract1881PersonLinks(html: string): string[] {
 
 function personSlugFrom1881Url(url: string): string {
   const slug = url.split("/").filter(Boolean).pop() ?? "";
-  return slug.replace(/_\d+S\d\/?$/i, "");
+  return slug.replace(/_\d+S\d+\/?$/i, "");
 }
 
 function surnameCloseEnough(a: string, b: string): boolean {

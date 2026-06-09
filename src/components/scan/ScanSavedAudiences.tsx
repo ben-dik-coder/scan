@@ -70,6 +70,7 @@ export type SavedAudienceApply = {
   agentOrgnrs?: string[];
   listId?: string;
   listName?: string;
+  listSource?: "agent" | "user";
 };
 
 type Props = {
@@ -210,7 +211,7 @@ export function ScanSavedAudiences({
         {!loading &&
           saved.map((l) => {
             const agentOrgnrs = agentOrgnrsFromFilters(l.filters);
-            const isAgent = l.filters.createdBy === "agent" || agentOrgnrs.length > 0;
+            const isAgent = l.filters.createdBy === "agent";
             return (
               <button
                 key={l.id}
@@ -221,6 +222,7 @@ export function ScanSavedAudiences({
                     agentOrgnrs: agentOrgnrs.length ? agentOrgnrs : undefined,
                     listId: l.id,
                     listName: l.name,
+                    listSource: isAgent ? "agent" : agentOrgnrs.length ? "user" : undefined,
                   })
                 }
                 className={cn(

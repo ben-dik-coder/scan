@@ -20,6 +20,7 @@ import {
   ScanSavedAudiences,
   type SavedAudienceApply,
 } from "@/components/scan/ScanSavedAudiences";
+import { AddToListMenu, ScanCompanyLists } from "@/components/scan/ScanCompanyLists";
 import { TrialNudgeBanner } from "@/components/scan/TrialNudgeBanner";
 import { ScanNameSearchBar } from "@/components/scan/ScanNameSearchBar";
 import { ScanQuickBar } from "@/components/scan/ScanQuickBar";
@@ -50,6 +51,7 @@ import { computeQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
+import { cn } from "@/lib/utils";
 import {
   Building2,
   Globe,
@@ -116,6 +118,8 @@ export function AppPageClient(props: Props) {
   const wasScanningRef = useRef(false);
   const [pinnedOrgnrs, setPinnedOrgnrs] = useState<Set<string> | null>(null);
   const [activeListName, setActiveListName] = useState<string | null>(null);
+  const [activeListSource, setActiveListSource] = useState<"agent" | "user" | null>(null);
+  const [listMessage, setListMessage] = useState<string | null>(null);
   const [agentListCompanies, setAgentListCompanies] = useState<CompanyWithLead[]>([]);
   const [agentListLoading, setAgentListLoading] = useState(false);
 
@@ -147,6 +151,13 @@ export function AppPageClient(props: Props) {
         const orgnrs = agentOrgnrsFromFilters(row.filters);
         setPinnedOrgnrs(orgnrs.length ? new Set(orgnrs) : null);
         setActiveListName(row.name ?? null);
+        setActiveListSource(
+          row.filters?.createdBy === "agent"
+            ? "agent"
+            : orgnrs.length
+              ? "user"
+              : null
+        );
         if (!orgnrs.length) return;
 
         setListFilter("no_website");
@@ -426,6 +437,7 @@ export function AppPageClient(props: Props) {
       listId?: string | null;
       agentOrgnrs?: string[] | null;
       listName?: string | null;
+      listSource?: "agent" | "user" | null;
     }
   ) {
     if (
@@ -497,6 +509,11 @@ export function AppPageClient(props: Props) {
     if (options?.listName !== undefined) {
       setActiveListName(options.listName);
     }
+    if (options?.listSource !== undefined) {
+      setActiveListSource(options.listSource);
+    } else if (options?.agentOrgnrs !== undefined) {
+      setActiveListSource(options.agentOrgnrs?.length ? "user" : null);
+    }
     if (options?.preserveListFilter && options.listFilter) {
       setListFilter(options.listFilter);
     } else if (!options?.preserveListFilter) {
@@ -508,10 +525,14 @@ export function AppPageClient(props: Props) {
   function applySavedAudience(payload: SavedAudienceApply) {
     applyFilters(payload.filters, {
       preserveListFilter: true,
-      listFilter: payload.agentOrgnrs?.length ? "no_website" : "all",
+      listFilter:
+        payload.agentOrgnrs?.length && payload.listSource === "agent"
+          ? "no_website"
+          : "all",
       listId: payload.listId ?? null,
       agentOrgnrs: payload.agentOrgnrs ?? null,
       listName: payload.listName ?? null,
+      listSource: payload.listSource ?? (payload.agentOrgnrs?.length ? "user" : null),
     });
   }
 
@@ -1053,12 +1074,19 @@ export function AppPageClient(props: Props) {
 
             {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
               <div
-                className="mx-2.5 mb-2 rounded-xl border border-violet-400/35 bg-violet-500/15 px-3 py-2 text-xs text-violet-100 lg:mx-3"
+                className={cn(
+                  "mx-2.5 mb-2 rounded-xl border px-3 py-2 text-xs lg:mx-3",
+                  activeListSource === "agent"
+                    ? "border-violet-400/35 bg-violet-500/15 text-violet-100"
+                    : "border-sky-400/35 bg-sky-500/15 text-sky-100"
+                )}
                 role="status"
               >
-                <strong>AI-liste: {activeListName}</strong> — viser{" "}
-                {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
-                firma fra agenten
+                <strong>
+                  {activeListSource === "agent" ? "AI-liste" : "Firma-liste"}: {activeListName}
+                </strong>{" "}
+                — viser {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
+                {activeListSource === "agent" ? "firma fra agenten" : "lagrede firma"}
                 {visibleCompanies.length < pinnedOrgnrs.size ? (
                   <span className="text-violet-200/80">
                     {" "}
@@ -1187,6 +1215,11 @@ export function AppPageClient(props: Props) {
               </span>
             )}
           </span>
+          <AddToListMenu
+            selectedOrgnrs={Array.from(selected)}
+            onApply={applySavedAudience}
+            onAdded={setListMessage}
+          />
           <button
             type="button"
             onClick={addSelectedToQueue}
@@ -1196,6 +1229,12 @@ export function AppPageClient(props: Props) {
             {addingToQueue ? "Legger i kø…" : `Legg i kø (${selected.size})`}
           </button>
         </div>
+      )}
+
+      {listMessage && selected.size === 0 && (
+        <p className="fixed inset-x-3 bottom-20 z-20 text-center text-xs text-emerald-300 sm:inset-x-auto sm:right-6">
+          {listMessage}
+        </p>
       )}
 
       <details ref={emailSectionRef} className="scan-surface-pad w-full max-w-none scroll-mt-4">
@@ -1210,6 +1249,19 @@ export function AppPageClient(props: Props) {
             websiteScans={websiteScans}
             onSent={() => setSelected(new Set())}
             light
+          />
+        </div>
+      </details>
+
+      <details className="scan-surface-pad w-full max-w-none">
+        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-semibold text-white/70 hover:text-white">
+          Mine firmalister
+        </summary>
+        <div className="mt-3">
+          <ScanCompanyLists
+            selectedOrgnrs={Array.from(selected)}
+            onApply={applySavedAudience}
+            onAdded={setListMessage}
           />
         </div>
       </details>

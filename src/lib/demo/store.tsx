@@ -56,6 +56,11 @@ type DemoContextValue = {
   sendCampaignDemo: (orgnrs: string[], subject: string) => void;
   enrollSequenceDemo: (sequenceId: string, orgnrs: string[]) => void;
   saveListDemo: (name: string, filters: Record<string, unknown>) => void;
+  updateSavedListDemo: (
+    id: string,
+    filters: Record<string, unknown>,
+    name?: string
+  ) => void;
 };
 
 const DemoContext = createContext<DemoContextValue | null>(null);
@@ -205,6 +210,19 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     ]);
   }, []);
 
+  const updateSavedListDemo = useCallback(
+    (id: string, filters: Record<string, unknown>, name?: string) => {
+      setSavedLists((prev) =>
+        prev.map((list) =>
+          list.id === id
+            ? { ...list, filters, name: name?.trim() ? name.trim() : list.name }
+            : list
+        )
+      );
+    },
+    []
+  );
+
   const value = useMemo(
     () => ({
       companies,
@@ -221,6 +239,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       sendCampaignDemo,
       enrollSequenceDemo,
       saveListDemo,
+      updateSavedListDemo,
     }),
     [
       companies,
@@ -237,6 +256,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       sendCampaignDemo,
       enrollSequenceDemo,
       saveListDemo,
+      updateSavedListDemo,
     ]
   );
 
