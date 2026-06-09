@@ -74,6 +74,10 @@ export function AgentChatPanel({
   const [pendingSavePrompt, setPendingSavePrompt] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolStep, setToolStep] = useState(0);
+  const [toolProgress, setToolProgress] = useState<{
+    scanned: number;
+    total: number;
+  } | null>(null);
   const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -214,6 +218,7 @@ export function AgentChatPanel({
       setLoading(true);
       setActiveTool(null);
       setToolStep(0);
+      setToolProgress(null);
 
       try {
         const res = await fetch("/api/agent/chat", {
@@ -257,11 +262,35 @@ export function AgentChatPanel({
         const decoder = new TextDecoder();
         let buffer = "";
         let assistantText = "";
+        let streamingMessageId: string | null = null;
         let resultLink: string | undefined;
         let savedListId: string | undefined;
         let savedListName: string | undefined;
         let savedOrgnrCount: number | undefined;
         const statusSummaries: string[] = [];
+
+        const ensureStreamingMessage = () => {
+          if (streamingMessageId) return streamingMessageId;
+          const id = newId();
+          streamingMessageId = id;
+          setMessages((prev) => [
+            ...prev,
+            { id, role: "assistant", content: "" },
+          ]);
+          scrollToBottom();
+          return id;
+        };
+
+        const appendStreamingDelta = (delta: string) => {
+          const id = ensureStreamingMessage();
+          assistantText += delta;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === id ? { ...m, content: m.content + delta } : m
+            )
+          );
+          scrollToBottom();
+        };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -283,16 +312,38 @@ export function AgentChatPanel({
             if (event.type === "conversation" && typeof event.conversationId === "string") {
               setConversationId(event.conversationId);
               setStoredAgentConversationId(event.conversationId);
+            } else if (event.type === "text_delta" && typeof event.content === "string") {
+              appendStreamingDelta(event.content);
             } else if (event.type === "text" && typeof event.content === "string") {
               assistantText = event.content;
+              if (streamingMessageId) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === streamingMessageId
+                      ? { ...m, content: event.content as string }
+                      : m
+                  )
+                );
+              }
             } else if (event.type === "tool_start" && typeof event.tool === "string") {
               setActiveTool(event.tool);
               setToolStep((n) => n + 1);
+              setToolProgress(null);
+            } else if (
+              event.type === "tool_progress" &&
+              typeof event.scanned === "number" &&
+              typeof event.total === "number"
+            ) {
+              setToolProgress({
+                scanned: event.scanned,
+                total: event.total,
+              });
             } else if (
               event.type === "tool_end" &&
               typeof event.summary === "string"
             ) {
               setActiveTool(null);
+              setToolProgress(null);
               statusSummaries.push(event.summary);
               appendMessage({ role: "status", content: event.summary });
             } else if (
@@ -343,13 +394,30 @@ export function AgentChatPanel({
         }
 
         if (assistantText.trim()) {
-          appendMessage({
-            role: "assistant",
-            content: assistantText,
-            link: resultLink,
-            listId: savedListId,
-            listName: savedListName,
-          });
+          if (streamingMessageId) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamingMessageId
+                  ? {
+                      ...m,
+                      content: assistantText,
+                      link: resultLink,
+                      listId: savedListId,
+                      listName: savedListName,
+                    }
+                  : m
+              )
+            );
+            scrollToBottom();
+          } else {
+            appendMessage({
+              role: "assistant",
+              content: assistantText,
+              link: resultLink,
+              listId: savedListId,
+              listName: savedListName,
+            });
+          }
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
@@ -368,6 +436,7 @@ export function AgentChatPanel({
         setLoading(false);
         setActiveTool(null);
         setToolStep(0);
+        setToolProgress(null);
       }
     },
     [appendMessage, conversationId, loading]
@@ -577,7 +646,9 @@ export function AgentChatPanel({
           >
             <span className="agent-thinking-status__dot" aria-hidden="true" />
             {activeTool
-              ? `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+              ? toolProgress
+                ? `${activeTool.replace(/_/g, " ")}… ${toolProgress.scanned}/${toolProgress.total} (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
+                : `${activeTool.replace(/_/g, " ")}… (steg ${toolStep}/${AGENT_MAX_TOOL_LOOPS})`
               : "Tenker…"}
           </div>
         )}

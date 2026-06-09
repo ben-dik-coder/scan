@@ -113,43 +113,6 @@ export async function POST(request: NextRequest) {
     await saveMessage(conversationId, "user", message);
   }
 
-  const priorMessages =
-    user && !isDemoMode() && body.conversationId
-      ? await loadConversationMessages(conversationId, user.id)
-      : [];
-
-  const history = buildAgentChatHistory(priorMessages);
-
-  if (!body.conversationId || history.length === 0) {
-    history.push({ role: "user", content: message });
-  } else if (history[history.length - 1]?.content !== message) {
-    history.push({ role: "user", content: message });
-  }
-
-  const systemPromptParts: string[] = [];
-
-  if (user && !isDemoMode()) {
-    const startup = await loadAgentStartupContext(user.id);
-    systemPromptParts.push(buildAgentStartupContextPrompt(startup));
-  }
-
-  if (user && !isDemoMode() && conversationId) {
-    const lastRun = await getLastResumableRunForConversation(
-      conversationId,
-      user.id
-    );
-    if (lastRun) {
-      if (isAgentResumeIntent(message)) {
-        systemPromptParts.push(buildAgentResumePrompt(lastRun));
-      } else if (isAgentPostCancelFollowUp(message)) {
-        systemPromptParts.push(buildAgentCancelledRunContextPrompt(lastRun));
-      }
-    }
-  }
-
-  const systemPromptExtra =
-    systemPromptParts.length > 0 ? systemPromptParts.join("\n\n") : undefined;
-
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -178,6 +141,43 @@ export async function POST(request: NextRequest) {
       send({ type: "run", runId: run.id });
 
       try {
+        const [priorMessages, startup, lastRun] = await Promise.all([
+          user && !isDemoMode() && body.conversationId
+            ? loadConversationMessages(conversationId, user.id)
+            : Promise.resolve([]),
+          user && !isDemoMode()
+            ? loadAgentStartupContext(user.id)
+            : Promise.resolve(null),
+          user && !isDemoMode() && conversationId
+            ? getLastResumableRunForConversation(conversationId, user.id)
+            : Promise.resolve(null),
+        ]);
+
+        const history = buildAgentChatHistory(priorMessages);
+
+        if (!body.conversationId || history.length === 0) {
+          history.push({ role: "user", content: message });
+        } else if (history[history.length - 1]?.content !== message) {
+          history.push({ role: "user", content: message });
+        }
+
+        const systemPromptParts: string[] = [];
+
+        if (startup) {
+          systemPromptParts.push(buildAgentStartupContextPrompt(startup));
+        }
+
+        if (lastRun) {
+          if (isAgentResumeIntent(message)) {
+            systemPromptParts.push(buildAgentResumePrompt(lastRun));
+          } else if (isAgentPostCancelFollowUp(message)) {
+            systemPromptParts.push(buildAgentCancelledRunContextPrompt(lastRun));
+          }
+        }
+
+        const systemPromptExtra =
+          systemPromptParts.length > 0 ? systemPromptParts.join("\n\n") : undefined;
+
         const { assistantText, link } = await runAgentChat(
           history,
           { userId: user?.id ?? "demo", runId: run.id },
@@ -185,8 +185,17 @@ export async function POST(request: NextRequest) {
             if (request.signal.aborted) return;
             if (event.type === "text") {
               send({ type: "text", content: event.content });
+            } else if (event.type === "text_delta") {
+              send({ type: "text_delta", content: event.content });
             } else if (event.type === "tool_start") {
               send({ type: "tool_start", tool: event.tool });
+            } else if (event.type === "tool_progress") {
+              send({
+                type: "tool_progress",
+                tool: event.tool,
+                scanned: event.scanned,
+                total: event.total,
+              });
             } else if (event.type === "tool_end") {
               send({
                 type: "tool_end",

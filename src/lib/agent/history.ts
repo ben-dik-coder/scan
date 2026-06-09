@@ -14,9 +14,10 @@ export function buildAgentChatHistory(messages: AgentMessage[]): AgentChatMessag
 
     if (msg.role === "tool" && msg.content.trim()) {
       const label = msg.tool_name?.replace(/_/g, " ") ?? "verktøy";
+      const note = msg.content.trim();
       history.push({
         role: "assistant",
-        content: `[${label}] ${msg.content.trim()}`,
+        content: `[${label}] ${note.length > 280 ? `${note.slice(0, 280)}…` : note}`,
       });
     }
   }

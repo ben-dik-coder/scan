@@ -1,13 +1,36 @@
 import OpenAI from "openai";
-import { AGENT_DISABLED_MESSAGE, AGENT_MAX_TOOL_LOOPS, isAgentEnabled } from "@/lib/agent/constants";
+import {
+  AGENT_DISABLED_MESSAGE,
+  AGENT_MAX_TOOL_LOOPS,
+  AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH,
+  isAgentEnabled,
+} from "@/lib/agent/constants";
 import { executeAgentTool } from "@/lib/agent/execute-tool";
-import type { AgentToolContext } from "@/lib/agent/execute-tool";
-import { AGENT_SYSTEM_PROMPT, AGENT_FINAL_SUMMARY_NUDGE } from "@/lib/agent/prompt";
+import type { AgentToolContext, ToolExecutionResult } from "@/lib/agent/execute-tool";
+import {
+  formatFastListReply,
+  isSimpleListIntent,
+  parseSimpleListRequest,
+  type SimpleListCompany,
+} from "@/lib/agent/fast-list";
+import {
+  AGENT_SYSTEM_PROMPT,
+  AGENT_FINAL_SUMMARY_NUDGE,
+  isSimpleSearchIntent,
+} from "@/lib/agent/prompt";
 import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
+import { compactToolResultForModel } from "@/lib/agent/tool-payload";
 
 export type AgentStreamEvent =
   | { type: "text"; content: string }
+  | { type: "text_delta"; content: string }
   | { type: "tool_start"; tool: string }
+  | {
+      type: "tool_progress";
+      tool: string;
+      scanned: number;
+      total: number;
+    }
   | { type: "tool_end"; tool: string; summary: string }
   | { type: "error"; message: string }
   | {
@@ -105,26 +128,133 @@ export function needsConcreteSummary(assistantText: string, hadTools: boolean): 
   return false;
 }
 
+function isConcreteEnoughText(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.length >= 70 && /\d/.test(trimmed);
+}
+
+function shouldSkipSynthesis(
+  toolsUsed: Set<string>,
+  toolSummaries: string[]
+): boolean {
+  if (!toolsUsed.has("search_companies")) return false;
+  if (
+    toolsUsed.has("scan_websites") ||
+    toolsUsed.has("filter_no_website") ||
+    toolsUsed.has("enrich_contacts") ||
+    toolsUsed.has("save_list")
+  ) {
+    return false;
+  }
+
+  const searchSummary =
+    toolSummaries.find((summary) => /Fant \d+ firma/.test(summary)) ?? "";
+  return searchSummary.length > 0;
+}
+
 async function synthesizeAgentReply(
   client: OpenAI,
-  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  toolSummaries: string[],
+  partialReply: string,
   model: string,
   signal?: AbortSignal
 ): Promise<string> {
   throwIfAborted(signal);
 
-  const synthesisMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    ...messages,
-    { role: "user", content: AGENT_FINAL_SUMMARY_NUDGE },
-  ];
+  const useful = toolSummaries.filter((s) => s.trim().length > 0).slice(-5);
+  if (useful.length === 0) return "";
 
   const response = await client.chat.completions.create({
     model,
-    messages: synthesisMessages,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Du skriver korte, konkrete svar på norsk til en B2B-selger basert på verktøy-resultater.",
+      },
+      {
+        role: "user",
+        content: `Verktøy-resultater:\n${useful.join("\n")}${
+          partialReply.trim() ? `\n\nUfullstendig svar fra assistent: ${partialReply.trim()}` : ""
+        }\n\n${AGENT_FINAL_SUMMARY_NUDGE}`,
+      },
+    ],
     tool_choice: "none",
+    max_tokens: 450,
   });
 
   return response.choices[0]?.message?.content?.trim() ?? "";
+}
+
+type StreamedAssistantMessage = {
+  content: string;
+  tool_calls?: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[];
+};
+
+async function streamAssistantCompletion(
+  client: OpenAI,
+  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  model: string,
+  onTextDelta: (delta: string) => Promise<void>,
+  signal?: AbortSignal
+): Promise<StreamedAssistantMessage> {
+  throwIfAborted(signal);
+
+  const stream = await client.chat.completions.create({
+    model,
+    messages,
+    tools: AGENT_OPENAI_TOOLS,
+    tool_choice: "auto",
+    stream: true,
+  });
+
+  let content = "";
+  const toolCallsByIndex = new Map<
+    number,
+    { id: string; name: string; arguments: string }
+  >();
+
+  for await (const chunk of stream) {
+    throwIfAborted(signal);
+    const delta = chunk.choices[0]?.delta;
+    if (!delta) continue;
+
+    if (delta.content) {
+      content += delta.content;
+      await onTextDelta(delta.content);
+    }
+
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        let existing = toolCallsByIndex.get(idx);
+        if (!existing) {
+          existing = {
+            id: tc.id ?? "",
+            name: tc.function?.name ?? "",
+            arguments: "",
+          };
+          toolCallsByIndex.set(idx, existing);
+        }
+        if (tc.id) existing.id = tc.id;
+        if (tc.function?.name) existing.name = tc.function.name;
+        if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+      }
+    }
+  }
+
+  const tool_calls =
+    toolCallsByIndex.size > 0
+      ? Array.from(toolCallsByIndex.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([, tc]) => ({
+            id: tc.id,
+            type: "function" as const,
+            function: { name: tc.name, arguments: tc.arguments },
+          }))
+      : undefined;
+
+  return { content, tool_calls };
 }
 
 export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
@@ -194,24 +324,72 @@ export async function runAgentChat(
   let listName: string | undefined;
   let orgnrCount: number | undefined;
   const toolSummaries: string[] = [];
+  const toolsUsed = new Set<string>();
   let loops = 0;
+  const model = getAgentModel();
+  const lastUserMessage =
+    [...history].reverse().find((m) => m.role === "user")?.content ?? "";
+  const maxToolLoops = isSimpleSearchIntent(lastUserMessage)
+    ? AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH
+    : AGENT_MAX_TOOL_LOOPS;
+  const toolCtx: AgentToolContext = {
+    ...ctx,
+    onProgress: async (progress) => {
+      await onEvent({ type: "tool_progress", ...progress });
+    },
+  };
 
-  while (loops < AGENT_MAX_TOOL_LOOPS) {
+  if (isSimpleListIntent(lastUserMessage)) {
+    const parsed = parseSimpleListRequest(lastUserMessage);
+    if (parsed) {
+      await onEvent({ type: "tool_start", tool: "search_companies" });
+      let result: ToolExecutionResult;
+      try {
+        result = await executeAgentTool(
+          toolCtx,
+          "search_companies",
+          parsed.searchArgs
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Ukjent feil";
+        result = { summary: `Feil: ${message}`, data: { error: message } };
+      }
+
+      await onEvent({
+        type: "tool_end",
+        tool: "search_companies",
+        summary: result.summary,
+      });
+
+      const companies = Array.isArray(result.data.companies)
+        ? (result.data.companies as SimpleListCompany[])
+        : [];
+      assistantText = formatFastListReply(companies, parsed);
+      await onEvent({ type: "text", content: assistantText });
+      await onEvent({ type: "done", content: assistantText });
+      return { assistantText };
+    }
+  }
+
+  while (loops < maxToolLoops) {
     throwIfAborted(signal);
 
-    const response = await client.chat.completions.create({
-      model: getAgentModel(),
+    let streamedContent = "";
+    const choice = await streamAssistantCompletion(
+      client,
       messages,
-      tools: AGENT_OPENAI_TOOLS,
-      tool_choice: "auto",
-    });
-
-    const choice = response.choices[0]?.message;
-    if (!choice) break;
+      model,
+      async (delta) => {
+        streamedContent += delta;
+        await onEvent({ type: "text_delta", content: delta });
+      },
+      signal
+    );
 
     if (choice.content?.trim()) {
       assistantText = choice.content.trim();
-      await onEvent({ type: "text", content: assistantText });
+    } else if (streamedContent.trim()) {
+      assistantText = streamedContent.trim();
     }
 
     const toolCalls = choice.tool_calls;
@@ -223,30 +401,49 @@ export async function runAgentChat(
       tool_calls: toolCalls,
     });
 
-    for (const tc of toolCalls) {
-      throwIfAborted(signal);
-      if (tc.type !== "function") continue;
-      const toolName = tc.function.name;
-      let parsedArgs: Record<string, unknown> = {};
-      try {
-        parsedArgs = JSON.parse(tc.function.arguments || "{}") as Record<
-          string,
-          unknown
-        >;
-      } catch {
-        parsedArgs = {};
-      }
+    const executedTools = await Promise.all(
+      toolCalls.map(async (tc) => {
+        throwIfAborted(signal);
+        if (tc.type !== "function") {
+          return {
+            tc,
+            toolName: "unknown",
+            result: {
+              summary: "Ukjent verktøytype",
+              data: { error: "Ukjent verktøytype" },
+            } satisfies ToolExecutionResult,
+          };
+        }
 
-      await onEvent({ type: "tool_start", tool: toolName });
+        const toolName = tc.function.name;
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = JSON.parse(tc.function.arguments || "{}") as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          parsedArgs = {};
+        }
 
-      let result;
-      try {
-        result = await executeAgentTool(ctx, toolName, parsedArgs);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Ukjent feil";
-        result = { summary: `Feil: ${message}`, data: { error: message } };
-      }
+        await onEvent({ type: "tool_start", tool: toolName });
 
+        let result: ToolExecutionResult;
+        try {
+          result = await executeAgentTool(toolCtx, toolName, parsedArgs);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Ukjent feil";
+          result = { summary: `Feil: ${message}`, data: { error: message } };
+        }
+
+        return { tc, toolName, result };
+      })
+    );
+
+    for (const { tc, toolName, result } of executedTools) {
+      if (toolName === "unknown") continue;
+
+      toolsUsed.add(toolName);
       toolSummaries.push(result.summary);
       await onEvent({
         type: "tool_end",
@@ -302,18 +499,22 @@ export async function runAgentChat(
       messages.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: JSON.stringify({
-          summary: result.summary,
-          ...result.data,
-        }),
+        content: JSON.stringify(compactToolResultForModel(result)),
       });
     }
 
     loops++;
   }
 
-  const hitMaxLoops = loops >= AGENT_MAX_TOOL_LOOPS;
+  const hitMaxLoops = loops >= maxToolLoops;
   const hadTools = toolSummaries.length > 0;
+  const runSummary: AgentRunSummary = {
+    toolSummaries,
+    listId,
+    listName,
+    orgnrCount,
+    hitMaxLoops,
+  };
 
   if (hitMaxLoops && !assistantText.trim()) {
     await onEvent({
@@ -324,26 +525,33 @@ export async function runAgentChat(
   }
 
   if (needsConcreteSummary(assistantText, hadTools)) {
-    const synthesized = await synthesizeAgentReply(
-      client,
-      messages,
-      getAgentModel(),
-      signal
-    ).catch(() => "");
-    if (synthesized.trim()) {
-      assistantText = synthesized.trim();
+    const builtSummary = buildAgentCompletionSummary(runSummary);
+    if (
+      shouldSkipSynthesis(toolsUsed, toolSummaries) ||
+      isConcreteEnoughText(builtSummary)
+    ) {
+      assistantText = builtSummary;
       await onEvent({ type: "text", content: assistantText });
+    } else {
+      const synthesized = await synthesizeAgentReply(
+        client,
+        toolSummaries,
+        assistantText,
+        model,
+        signal
+      ).catch(() => "");
+      if (synthesized.trim()) {
+        assistantText = synthesized.trim();
+        await onEvent({ type: "text", content: assistantText });
+      } else if (builtSummary.trim()) {
+        assistantText = builtSummary.trim();
+        await onEvent({ type: "text", content: assistantText });
+      }
     }
   }
 
   if (!assistantText.trim()) {
-    assistantText = buildAgentCompletionSummary({
-      toolSummaries,
-      listId,
-      listName,
-      orgnrCount,
-      hitMaxLoops,
-    });
+    assistantText = buildAgentCompletionSummary(runSummary);
     await onEvent({ type: "text", content: assistantText });
   }
 

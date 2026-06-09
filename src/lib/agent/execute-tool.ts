@@ -7,7 +7,15 @@ import {
   applyCompanyContactLimit,
   hasContactInfo,
 } from "@/lib/billing/usage";
-import { AGENT_MAX_COMPANIES_PER_JOB, AGENT_SCAN_DELAY_MS } from "@/lib/agent/constants";
+import {
+  AGENT_MAX_COMPANIES_PER_JOB,
+  AGENT_MAX_FAST_LIST_LIMIT,
+  AGENT_MAX_SCAN_PER_CALL,
+  AGENT_SCAN_DELAY_MS,
+  AGENT_SCAN_ONE_TIMEOUT_MS,
+  AGENT_TOOL_SCAN_TIMEOUT_MS,
+  AGENT_TOOL_SEARCH_TIMEOUT_MS,
+} from "@/lib/agent/constants";
 import { AGENT_LIST_PERIOD_DAYS } from "@/lib/agent/saved-list-filters";
 import { resolveAgentSearchIndustryFilters } from "@/lib/agent/search-filters";
 import { buildAgentScanUrl } from "@/lib/agent/build-scan-url";
@@ -51,6 +59,11 @@ import type { Company } from "@/types/database";
 export type AgentToolContext = {
   userId: string;
   runId: string;
+  onProgress?: (progress: {
+    tool: string;
+    scanned: number;
+    total: number;
+  }) => void | Promise<void>;
 };
 
 export type ToolExecutionResult = {
@@ -62,12 +75,53 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `${label} tok for lang tid (over ${Math.round(ms / 1000)} sek)`
+              )
+            ),
+          ms
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 function uniqueOrgnrs(orgnrs: string[]): string[] {
   return Array.from(new Set(orgnrs.map((o) => o.trim()).filter(Boolean)));
 }
 
 function capOrgnrs(orgnrs: string[]): string[] {
   return uniqueOrgnrs(orgnrs).slice(0, AGENT_MAX_COMPANIES_PER_JOB);
+}
+
+function capScanOrgnrs(orgnrs: string[]): {
+  orgnrs: string[];
+  remainingOrgnrs: string[];
+  capped: boolean;
+} {
+  const unique = capOrgnrs(orgnrs);
+  const capped = unique.slice(0, AGENT_MAX_SCAN_PER_CALL);
+  const remainingOrgnrs = unique.slice(AGENT_MAX_SCAN_PER_CALL);
+  return {
+    orgnrs: capped,
+    remainingOrgnrs,
+    capped: remainingOrgnrs.length > 0,
+  };
 }
 
 function storePhone(value: string): { mobile?: string; phone?: string } {
@@ -393,6 +447,14 @@ async function executeSearchCompanies(
     typeof args.days === "number" && Number.isFinite(args.days)
       ? args.days
       : defaultDays;
+  const requestedLimit =
+    typeof args.limit === "number" && Number.isFinite(args.limit)
+      ? Math.floor(args.limit)
+      : undefined;
+  const pageSize =
+    requestedLimit && requestedLimit > 0
+      ? Math.min(requestedLimit, AGENT_MAX_FAST_LIST_LIMIT)
+      : AGENT_MAX_COMPANIES_PER_JOB;
 
   const searchArgs = {
     municipalityCode,
@@ -403,13 +465,26 @@ async function executeSearchCompanies(
     days,
     hasEmail: false,
     page: 1,
-    pageSize: AGENT_MAX_COMPANIES_PER_JOB,
+    pageSize,
   };
 
   const useDb = await shouldUseBrregDb();
-  const result = useDb
-    ? await fetchCompaniesFromDb(searchArgs)
-    : await fetchCompaniesFromBrreg(searchArgs);
+  let result;
+  try {
+    result = await withTimeout(
+      useDb
+        ? fetchCompaniesFromDb(searchArgs)
+        : fetchCompaniesFromBrreg(searchArgs),
+      AGENT_TOOL_SEARCH_TIMEOUT_MS,
+      "Søk"
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Søket feilet";
+    return {
+      summary: message,
+      data: { error: "search_timeout", message },
+    };
+  }
 
   const orgnrs = result.companies.map((c) => c.orgnr);
   const [overrideMap, dbPatchMap] = await Promise.all([
@@ -483,9 +558,8 @@ async function executeScanWebsites(
   ctx: AgentToolContext,
   args: Record<string, unknown>
 ): Promise<ToolExecutionResult> {
-  const orgnrs = capOrgnrs(
-    Array.isArray(args.orgnrs) ? (args.orgnrs as string[]) : []
-  );
+  const requested = Array.isArray(args.orgnrs) ? (args.orgnrs as string[]) : [];
+  const { orgnrs, remainingOrgnrs, capped } = capScanOrgnrs(requested);
   if (orgnrs.length === 0) {
     return { summary: "Ingen firma å skanne", data: { scans: [] } };
   }
@@ -493,13 +567,15 @@ async function executeScanWebsites(
   const companies = await loadCompaniesByOrgnr(orgnrs);
   const scans: WebsiteScanResult[] = [];
   let scanned = 0;
+  const deadline = Date.now() + AGENT_TOOL_SCAN_TIMEOUT_MS;
+  let timedOut = false;
 
   await updateRunProgress(ctx.runId, {
     phase: "scan_websites",
     orgnrs,
     scanned: 0,
     total: companies.length,
-    remainingOrgnrs: orgnrs,
+    remainingOrgnrs: [...remainingOrgnrs, ...orgnrs],
   });
 
   const social: ScanSocialOptions = {
@@ -508,33 +584,55 @@ async function executeScanWebsites(
   };
 
   for (let i = 0; i < companies.length; i += MAX_WEBSITE_SCAN_BATCH) {
+    if (Date.now() > deadline) {
+      timedOut = true;
+      break;
+    }
+
     const batch = companies.slice(i, i + MAX_WEBSITE_SCAN_BATCH);
     const cached = await loadCachedWebsiteScans(batch.map((c) => c.orgnr));
     const cachedByOrgnr = new Map(cached.map((s) => [s.orgnr, s]));
 
     for (const company of batch) {
+      if (Date.now() > deadline) {
+        timedOut = true;
+        break;
+      }
+
       const input = toScanInput(company);
       let scan = cachedByOrgnr.get(company.orgnr);
       try {
         if (scan && isWebsiteScanCacheComplete(scan, social)) {
           // bruk cache
         } else if (scan && isSocialScanComplete(scan, social)) {
-          scan = await enrichScanContacts(input, scan);
+          scan = await withTimeout(
+            enrichScanContacts(input, scan),
+            AGENT_SCAN_ONE_TIMEOUT_MS,
+            `Berik ${company.name}`
+          );
           await persistCachedWebsiteScans([scan], ctx.userId);
         } else {
-          scan = await scanCompanyWebsite(input, { social, userId: ctx.userId });
-          scan = await enrichScanContacts(input, scan);
+          scan = await withTimeout(
+            scanCompanyWebsite(input, { social, userId: ctx.userId }),
+            AGENT_SCAN_ONE_TIMEOUT_MS,
+            `Skann ${company.name}`
+          );
+          scan = await withTimeout(
+            enrichScanContacts(input, scan),
+            AGENT_SCAN_ONE_TIMEOUT_MS,
+            `Berik ${company.name}`
+          );
           await persistCachedWebsiteScans([scan], ctx.userId);
         }
       } catch (err) {
         if (err instanceof SerperLimitReachedError) {
-          const remainingOrgnrs = orgnrs.slice(scans.length);
+          const pendingOrgnrs = [...orgnrs.slice(scans.length), ...remainingOrgnrs];
           await updateRunProgress(ctx.runId, {
             phase: "scan_websites",
             orgnrs,
             scanned: scans.length,
             total: companies.length,
-            remainingOrgnrs,
+            remainingOrgnrs: pendingOrgnrs,
             serperLimitReached: true,
           });
           return {
@@ -543,7 +641,7 @@ async function executeScanWebsites(
               scanned: scans.length,
               serperLimitReached: true,
               serperUsage: err.usage,
-              remainingOrgnrs,
+              remainingOrgnrs: pendingOrgnrs,
               scans: scans.map((s) => ({
                 orgnr: s.orgnr,
                 hasWebsite: s.hasWebsite,
@@ -551,18 +649,42 @@ async function executeScanWebsites(
             },
           };
         }
-        throw err;
+
+        const message = err instanceof Error ? err.message : "Skann feilet";
+        scan = {
+          orgnr: company.orgnr,
+          hasWebsite: false,
+          websiteKind: "none",
+          websiteUrl: null,
+          websiteDomain: null,
+          bookingPlatform: null,
+          source: "none",
+          confidence: "low",
+          query: company.name,
+          scannedAt: new Date().toISOString(),
+          error: message,
+          displayName: company.name,
+        };
       }
+
       scans.push(scan);
       scanned++;
+      const pendingOrgnrs = [...orgnrs.slice(scanned), ...remainingOrgnrs];
       await updateRunProgress(ctx.runId, {
         phase: "scan_websites",
         orgnrs,
         scanned,
         total: companies.length,
-        remainingOrgnrs: orgnrs.slice(scanned),
+        remainingOrgnrs: pendingOrgnrs,
+      });
+      await ctx.onProgress?.({
+        tool: "scan_websites",
+        scanned,
+        total: companies.length,
       });
     }
+
+    if (timedOut) break;
 
     if (i + MAX_WEBSITE_SCAN_BATCH < companies.length) {
       await sleep(AGENT_SCAN_DELAY_MS);
@@ -576,20 +698,38 @@ async function executeScanWebsites(
     .map((s) => companies.find((c) => c.orgnr === s.orgnr)?.name ?? s.displayName ?? s.orgnr)
     .filter(Boolean) as string[];
 
+  const pendingOrgnrs = timedOut
+    ? [...orgnrs.slice(scans.length), ...remainingOrgnrs]
+    : remainingOrgnrs;
+
   await updateRunProgress(ctx.runId, {
-    phase: "scan_done",
+    phase: timedOut ? "scan_websites" : "scan_done",
     orgnrs,
     scanned: scans.length,
     total: companies.length,
-    remainingOrgnrs: [],
+    remainingOrgnrs: pendingOrgnrs,
+    timedOut: timedOut || undefined,
   });
 
+  const limitParts: string[] = [];
+  if (capped) {
+    limitParts.push(
+      `${remainingOrgnrs.length} gjenstår — kjør scan_websites på nytt for å fortsette`
+    );
+  }
+  if (timedOut) {
+    limitParts.push("stoppet pga tidsbegrensning");
+  }
+
   return {
-    summary: `Skannet ${scans.length} firma — ${withoutSite} uten egen nettside (${bookingOnly} kun booking)${formatCompanyExamples(withoutSiteNames)}`,
+    summary: `Skannet ${scans.length} firma — ${withoutSite} uten egen nettside (${bookingOnly} kun booking)${formatCompanyExamples(withoutSiteNames)}${limitParts.length > 0 ? `. ${limitParts.join(". ")}` : ""}`,
     data: {
       scanned: scans.length,
       withoutWebsite: withoutSite,
       bookingOnly,
+      capped,
+      timedOut,
+      remainingOrgnrs: pendingOrgnrs,
       scans: scans.map(mapScanForAgent),
     },
   };
@@ -697,17 +837,8 @@ async function executeFilterNoWebsite(
     return { summary: "Ingen firma å filtrere", data: { orgnrs: [] } };
   }
 
-  let scans = await loadCachedWebsiteScans(orgnrs);
-  let scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
-  const pendingBeforeScan = orgnrs.filter((o) => !scanByOrgnr.has(o));
-  let autoScanned = 0;
-
-  if (pendingBeforeScan.length > 0) {
-    await executeScanWebsites(ctx, { orgnrs: pendingBeforeScan });
-    autoScanned = pendingBeforeScan.length;
-    scans = await loadCachedWebsiteScans(orgnrs);
-    scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
-  }
+  const scans = await loadCachedWebsiteScans(orgnrs);
+  const scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
 
   const notScanned = orgnrs.filter((o) => !scanByOrgnr.has(o));
   const without = orgnrs.filter((o) =>
@@ -729,12 +860,9 @@ async function executeFilterNoWebsite(
   ]);
 
   const summaryParts = [`${without.length} uten nettside${formatCompanyExamples(confirmedCompanies.map((c) => c.name), 4)}`];
-  if (autoScanned > 0) {
-    summaryParts.unshift(`Skannet ${autoScanned} firma automatisk før filtrering`);
-  }
   if (notScanned.length > 0) {
     summaryParts.push(
-      `${notScanned.length} utelatt fordi de ikke er skannet — kjør scan_websites på disse orgnr først`
+      `${notScanned.length} utelatt fordi de ikke er skannet — kjør scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL} per kall) på disse orgnr først`
     );
   }
 
@@ -748,7 +876,6 @@ async function executeFilterNoWebsite(
         facebookOnly,
         noWebsiteNoSocial,
       },
-      autoScanned,
       notScanned,
       excludedNotScanned: notScanned.length,
       companies: confirmedCompanies.map((c) => ({

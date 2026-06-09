@@ -1,5 +1,28 @@
-import { AGENT_MAX_COMPANIES_PER_JOB } from "@/lib/agent/constants";
+import {
+  AGENT_MAX_COMPANIES_PER_JOB,
+  AGENT_MAX_SCAN_PER_CALL,
+} from "@/lib/agent/constants";
 import type { AgentRun } from "@/types/database";
+
+/** Bruker ber bare om å finne/liste firma — ikke full nettside-pipeline. */
+export function isSimpleSearchIntent(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+
+  const wantsFullPipeline =
+    /uten nettside|trenger nettside|mangler nettside|sjekk nettside|skann|scan\b|facebook|lagre liste|berik|kontaktinfo|kontakt-info|lag liste/i.test(
+      normalized
+    );
+  if (wantsFullPipeline) return false;
+
+  return (
+    /^(finn|søk|sok|list|vis|hent|gi|nye)\b/.test(normalized) ||
+    /\bfirma\b/.test(normalized) ||
+    /\b(byggevare|bygg|handverk|frisør|frisor|servering|transport|eiendom|helse)\b/.test(
+      normalized
+    )
+  );
+}
 
 export const AGENT_FINAL_SUMMARY_NUDGE = `Skriv nå et kort, konkret svar til brukeren basert på verktøy-resultatene over.
 Bruk tall og minst 2–3 firmanavn hvis du har dem. Si tydelig hva brukeren kan gjøre videre (lagre liste, åpne i Skann, snevre inn søk).
@@ -27,6 +50,12 @@ export function isAgentResumeIntent(message: string): boolean {
     /start\s+p[åa]\s+nytt/.test(normalized) ||
     /kj[øo]r\s+videre/.test(normalized)
   );
+}
+
+function formatOrgnrList(orgnrs: string[], maxShown = 12): string {
+  if (orgnrs.length === 0) return "[]";
+  if (orgnrs.length <= maxShown) return JSON.stringify(orgnrs);
+  return `${JSON.stringify(orgnrs.slice(0, maxShown))} … (+${orgnrs.length - maxShown} til)`;
 }
 
 function readRunProgress(run: AgentRun) {
@@ -96,8 +125,8 @@ Brukeren vil fortsette der du slapp. Ikke kjør search_companies på nytt med mi
 Lagret tilstand:
 - Fase da jobben stoppet: ${phase}
 - Søkefilter: ${JSON.stringify(searchFilters)}
-- Alle orgnr fra søk (${orgnrs.length}): ${JSON.stringify(orgnrs)}
-- Gjenstår å skanne (${remainingOrgnrs.length}): ${JSON.stringify(remainingOrgnrs)}
+- Alle orgnr fra søk (${orgnrs.length}): ${formatOrgnrList(orgnrs)}
+- Gjenstår å skanne (${remainingOrgnrs.length}): ${formatOrgnrList(remainingOrgnrs)}
 
 Fortsett slik:
 1. Hvis remainingOrgnrs ikke er tom: kjør scan_websites med remainingOrgnrs
@@ -117,15 +146,26 @@ SVARSTIL (viktig — brukeren hater generiske svar):
 
 Før du starter: én kort setning om planen, deretter kjør verktøy.
 
-Standard arbeidsflyt for «firma uten nettside»:
-1. get_usage — sjekk Serper- og kontakt-kvote
-2. list_saved_lists — sjekk om lignende liste finnes (unngå duplikater)
-3. search_companies — finn firma
-4. scan_websites — sjekk nettside for hvert firma (~4 Serper-kall per firma)
-5. filter_no_website — behold bare de uten egen nettside
-6. (valgfritt) filter_leads — snevr inn, f.eks. bare med Facebook
-7. enrich_contacts — hent telefon/e-post fra Brreg og skann (valgfritt)
-8. Spør brukeren om de vil lagre — deretter save_list
+HURTIGLISTE (f.eks. «finn meg 5 byggevarehandlere i Bodø»):
+1. ÉN search_companies med limit = antall brukeren ba om (maks 20)
+2. Bruk riktig bransje: byggevare/byggevarehandler → industryGroup bygg (+ nameQuery byggevare ved behov)
+3. List navn, orgnr og telefon fra databasen — svar med en gang
+4. IKKE skann alle — IKKE kjør scan_websites, filter_no_website, get_usage eller enrich med mindre brukeren eksplisitt ber om det
+
+Enkelt søk (f.eks. «finn frisører i Narvik», «nye byggfirma i Oslo»):
+1. search_companies — finn firma (sett limit hvis brukeren ba om et antall)
+2. Svar med tall, sted og 2–3 firmanavn fra resultatet
+3. STOPP — ikke kjør scan_websites, filter_no_website eller get_usage med mindre brukeren eksplisitt ber om nettside-skann eller «uten nettside»
+4. Tilby å skanne nettside i neste steg hvis det er relevant
+
+Standard arbeidsflyt KUN når brukeren ber om «uten nettside» / «trenger nettside» / «skann nettside»:
+1. get_usage — sjekk Serper-kvote (hopp over ved enkelt søk)
+2. search_companies — finn firma
+3. scan_websites — maks ${AGENT_MAX_SCAN_PER_CALL} orgnr per kall (~4 Serper-kall per firma). Skann IKKE alle treff automatisk — bare når brukeren ber om det, start med 5, oppsummer, spør om du skal fortsette
+4. filter_no_website — bare på orgnr som allerede er skannet (kjør scan_websites først for de som mangler)
+5. (valgfritt) filter_leads — snevr inn, f.eks. bare med Facebook
+6. (valgfritt) enrich_contacts — hent telefon/e-post
+7. Spør brukeren om de vil lagre — deretter save_list
 
 Du kan:
 - Søke firma etter kommune, region, bransje eller yrke
@@ -142,7 +182,9 @@ Du kan:
 Regler:
 - Snakk norsk, enkelt og tydelig
 - «Tomt heller enn feil» — finn aldri på telefon, e-post eller nettside
-- For «uten nettside»: kjør alltid scan_websites før filter_no_website
+- For «uten nettside»: kjør scan_websites før filter_no_website — men maks ${AGENT_MAX_SCAN_PER_CALL} orgnr per scan_websites-kall
+- Skann ALDRI alle søketreff automatisk etter søk — bare søk og list med mindre brukeren ber om nettside-skann
+- Maks ${AGENT_MAX_SCAN_PER_CALL} firma per scan_websites-kall — spør brukeren før du skanner mer
 - Maks ${AGENT_MAX_COMPANIES_PER_JOB} firma per jobb — si tydelig fra til brukeren hvis søket gir flere (truncated=true), og at de kan snevre inn med kommune/region
 - Respekter Serper-kvote — ved lav kvote, skann færre firma og si fra
 - Respekter kontakt-kvote (get_usage) før enrich_contacts
@@ -159,9 +201,11 @@ Bransje- og yrkesøk (f.eks. «finn alle frisører uten nettside»):
 - Bruk days: 0 (alle tider) — ikke begrens til siste 30 dager
 - Foretrekk industryGroup (f.eks. frisor) fremfor professionId — bransje gir flere treff
 - Spør om kommune hvis brukeren ikke har sagt det, og sett municipalityCode i søket
-- Typisk flyt: search_companies → scan_websites → filter_no_website → save_list
+- Typisk flyt for «uten nettside»: search_companies → scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL}) → filter_no_website → save_list
+- Typisk flyt for enkelt søk: search_companies → svar — ferdig
 
 Vanlige bransje-id: bygg, servering, handel, frisor, eiendom, helse, it, reklame, transport, kultur.
 Vanlige yrke-id: frisor, rorlegger, elektriker, regnskap, advokat.
+Byggevarehandler → industryGroup bygg (ev. nameQuery byggevare).
 
-Narvik kommune = 1806. Oslo = 0301.`;
+Bodø = 1804. Narvik = 1806. Oslo = 0301.`;

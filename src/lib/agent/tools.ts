@@ -1,4 +1,8 @@
 import type OpenAI from "openai";
+import {
+  AGENT_MAX_FAST_LIST_LIMIT,
+  AGENT_MAX_SCAN_PER_CALL,
+} from "@/lib/agent/constants";
 
 export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
@@ -63,10 +67,14 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "search_companies",
       description:
-        "Søk firma i Brreg-databasen etter kommune, region, bransje, yrke eller ord i firmanavn",
+        "Søk firma i Brreg-databasen etter kommune, region, bransje, yrke eller ord i firmanavn. Ved hurtigliste: sett limit til antall brukeren ba om.",
       parameters: {
         type: "object",
         properties: {
+          limit: {
+            type: "number",
+            description: `Maks antall firma å returnere (1–${AGENT_MAX_FAST_LIST_LIMIT}). Bruk når brukeren ber om f.eks. «5 byggevarehandlere».`,
+          },
           municipalityCode: {
             type: "string",
             description: "Kommunenummer, f.eks. 1806 for Narvik",
@@ -105,7 +113,7 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "scan_websites",
       description:
-        "Skann nettside for en liste med orgnr (maks 100). Søker også etter Facebook-side. Må kjøres før filter_no_website.",
+        `Skann nettside for en liste med orgnr (maks ${AGENT_MAX_SCAN_PER_CALL} per kall). Søker også etter Facebook-side. Kjør BARE når brukeren ber om nettside-skann — aldri automatisk etter søk. Spør brukeren før du skanner mer.`,
       parameters: {
         type: "object",
         properties: {

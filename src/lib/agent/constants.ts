@@ -13,11 +13,32 @@ export function isAgentEnabled(): boolean {
 /** Maks firma agenten behandler per jobb (MVP) */
 export const AGENT_MAX_COMPANIES_PER_JOB = 100;
 
+/** Maks firma per scan_websites-kall — hindrer 20-min skann av hele søket */
+export const AGENT_MAX_SCAN_PER_CALL = 5;
+
+/** Standard antall firma ved «finn meg 5 …» uten eksplisitt tall */
+export const AGENT_DEFAULT_LIST_LIMIT = 5;
+
+/** Maks limit i search_companies for hurtigliste */
+export const AGENT_MAX_FAST_LIST_LIMIT = 20;
+
+/** Timeout for search_companies */
+export const AGENT_TOOL_SEARCH_TIMEOUT_MS = 15_000;
+
+/** Maks tid for ett scan_websites-kall */
+export const AGENT_TOOL_SCAN_TIMEOUT_MS = 30_000;
+
+/** Timeout per firma under agent-skann */
+export const AGENT_SCAN_ONE_TIMEOUT_MS = 45_000;
+
 /** Maks tool-loops mot OpenAI per melding */
-export const AGENT_MAX_TOOL_LOOPS = 12;
+export const AGENT_MAX_TOOL_LOOPS = 8;
+
+/** Færre tool-loops når brukeren bare ber om søk (ikke nettside-skann) */
+export const AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH = 5;
 
 /** Maks tool-sammendrag i samtalehistorikk */
-export const AGENT_MAX_TOOL_HISTORY_MESSAGES = 20;
+export const AGENT_MAX_TOOL_HISTORY_MESSAGES = 12;
 
 export const AGENT_SCAN_DELAY_MS = 200;
 

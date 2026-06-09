@@ -9,14 +9,20 @@ import {
   type AgentStartupContext,
 } from "../src/lib/agent/context.ts";
 import {
+  isSimpleListIntent,
+  parseSimpleListRequest,
+} from "../src/lib/agent/fast-list.ts";
+import {
   isAgentResumeIntent,
   isAgentPostCancelFollowUp,
+  isSimpleSearchIntent,
 } from "../src/lib/agent/prompt.ts";
 import { needsConcreteSummary } from "../src/lib/agent/run-agent.ts";
 import { formatCompanyExamples } from "../src/lib/agent/format-summary.ts";
 import {
   mapProfessionToIndustryGroup,
   resolveAgentSearchIndustryFilters,
+  resolveIndustryKeyword,
 } from "../src/lib/agent/search-filters.ts";
 import type { AgentMessage } from "../src/types/database.ts";
 
@@ -71,13 +77,38 @@ function testHistoryWithTools() {
       content: `msg ${i}`,
     })) as { role: "user" | "assistant"; content: string }[]
   );
-  assert.ok(trimmed.length <= 40);
+  assert.ok(trimmed.length <= 24);
 }
 
 function testProfessionMapping() {
   assert.equal(mapProfessionToIndustryGroup("bilverksted"), "handel");
   assert.equal(mapProfessionToIndustryGroup("advokat"), "it");
   assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).industryGroup, "frisor");
+}
+
+function testSimpleSearchIntent() {
+  assert.equal(isSimpleSearchIntent("Finn frisører i Narvik"), true);
+  assert.equal(isSimpleSearchIntent("Nye byggfirma i Oslo siste 30 dager"), true);
+  assert.equal(isSimpleSearchIntent("Finn frisører i Narvik uten nettside"), false);
+  assert.equal(isSimpleSearchIntent("Skann nettside for disse"), false);
+}
+
+function testSimpleListIntent() {
+  assert.equal(isSimpleListIntent("finn meg 5 byggevarehandlere"), true);
+  assert.equal(isSimpleListIntent("finn 5 byggevarehandler i Bodø"), true);
+  assert.equal(isSimpleListIntent("finn frisører uten nettside"), false);
+  assert.equal(isSimpleListIntent("skann nettside for disse"), false);
+
+  const parsed = parseSimpleListRequest("finn meg 5 byggevarehandlere i Bodø");
+  assert.ok(parsed);
+  assert.equal(parsed.limit, 5);
+  assert.equal(parsed.searchArgs.municipalityCode, "1804");
+  assert.equal(parsed.searchArgs.industryGroup, "bygg");
+  assert.equal(parsed.searchArgs.nameQuery, "byggevare");
+  assert.equal(parsed.searchArgs.days, 0);
+
+  const bygg = resolveIndustryKeyword("byggevarehandler i norge");
+  assert.equal(bygg?.filters.industryGroup, "bygg");
 }
 
 function testConcreteSummaryGate() {
@@ -115,10 +146,12 @@ function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
+  testSimpleSearchIntent();
+  testSimpleListIntent();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 6/6 OK");
+  console.log("eval-agent-scenarios: 7/7 OK");
 }
 
 main();

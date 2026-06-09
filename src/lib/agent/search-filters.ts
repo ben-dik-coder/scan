@@ -60,6 +60,75 @@ export function mapProfessionToIndustryGroup(
   return mapped && INDUSTRY_GROUP_IDS.has(mapped) ? mapped : undefined;
 }
 
+type IndustryKeywordMatch = {
+  label: string;
+  filters: {
+    industryGroup?: string;
+    professionId?: string;
+    nameQuery?: string;
+  };
+};
+
+/** Vanlige brukerord → søkefilter (f.eks. byggevarehandler → bygg). */
+const INDUSTRY_KEYWORD_RULES: Array<{
+  pattern: RegExp;
+  match: IndustryKeywordMatch;
+}> = [
+  {
+    pattern: /\b(byggevarehandler|byggevarehandlere|byggevare|byggvare)\b/,
+    match: { label: "byggevarehandlere", filters: { industryGroup: "bygg", nameQuery: "byggevare" } },
+  },
+  {
+    pattern: /\b(byggfirma|byggfirmaer|byggmester|handverk|handverker|handverkere|håndverk|håndverker)\b/,
+    match: { label: "bygg- og håndverksfirma", filters: { industryGroup: "bygg" } },
+  },
+  {
+    pattern: /\b(frisor|frisør|frisører|frisor\s*salong|hårstudio|harstudio)\b/,
+    match: { label: "frisører", filters: { industryGroup: "frisor" } },
+  },
+  {
+    pattern: /\b(restaurant|restauranter|servering|kafe|café|cafe)\b/,
+    match: { label: "serveringssteder", filters: { industryGroup: "servering" } },
+  },
+  {
+    pattern: /\b(transport|transportfirma|taxi|flyttebyra|flyttebyrå)\b/,
+    match: { label: "transportfirma", filters: { industryGroup: "transport" } },
+  },
+  {
+    pattern: /\b(eiendom|eiendomsmegler|megler)\b/,
+    match: { label: "eiendomsfirma", filters: { industryGroup: "eiendom" } },
+  },
+  {
+    pattern: /\b(helse|lege|tannlege|fysioterapeut|barnehage)\b/,
+    match: { label: "helsefirma", filters: { industryGroup: "helse" } },
+  },
+  {
+    pattern: /\b(butikk|handel|handelsbedrift)\b/,
+    match: { label: "handelsbedrifter", filters: { industryGroup: "handel" } },
+  },
+  {
+    pattern: /\b(it[\s-]?firma|it[\s-]?selskap|webbyra|webbyrå|webdesign)\b/,
+    match: { label: "IT-firma", filters: { industryGroup: "it" } },
+  },
+  {
+    pattern: /\b(reklame|reklamebyra|reklamebyrå|markedsforing|markedsføring)\b/,
+    match: { label: "reklamefirma", filters: { industryGroup: "reklame" } },
+  },
+];
+
+export function resolveIndustryKeyword(message: string): IndustryKeywordMatch | null {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return null;
+
+  for (const rule of INDUSTRY_KEYWORD_RULES) {
+    if (rule.pattern.test(normalized)) {
+      return rule.match;
+    }
+  }
+
+  return null;
+}
+
 export function resolveAgentSearchIndustryFilters(args: {
   industryGroup?: string;
   professionId?: string;
