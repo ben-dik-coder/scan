@@ -84,6 +84,12 @@ type ContactUsage = {
   limitReached: boolean;
 };
 
+/** Holdingselskap: navn med «holding» eller næringskode 64.20x */
+function isHoldingCompany(c: CompanyWithLead): boolean {
+  if (/\bholding\b/i.test(c.name)) return true;
+  return (c.industry_code ?? "").startsWith("64.2");
+}
+
 type Props = {
   companies: CompanyWithLead[];
   total: number;
@@ -121,6 +127,7 @@ export function AppPageClient(props: Props) {
   );
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listViewMode, setListViewMode] = useState<"table" | "cards">("table");
+  const [hideHolding, setHideHolding] = useState(false);
   const [noWebsiteBanner, setNoWebsiteBanner] = useState(false);
   const [queueAfterScan, setQueueAfterScan] = useState(false);
   const [addingToQueue, setAddingToQueue] = useState(false);
@@ -389,9 +396,17 @@ export function AppPageClient(props: Props) {
     return true;
   };
 
+  const holdingCount = useMemo(
+    () => visibleCompanies.filter(isHoldingCompany).length,
+    [visibleCompanies]
+  );
+
   const companiesByListTab = useMemo(() => {
     const applyTab = (tabId: typeof listFilter) => {
       let list = visibleCompanies;
+      if (hideHolding) {
+        list = list.filter((c) => !isHoldingCompany(c));
+      }
       if (tabId === "no_website") {
         list = list.filter((c) => matchesNoWebsiteTab(c.orgnr));
       } else if (tabId === "with_website") {
@@ -412,6 +427,7 @@ export function AppPageClient(props: Props) {
     visibleCompanies,
     websiteScans,
     isAgentListActive,
+    hideHolding,
     filters.websitePresence,
     filters.facebookPresence,
     filters.instagramPresence,
@@ -610,7 +626,10 @@ export function AppPageClient(props: Props) {
       .map((c) => c.orgnr);
   }
 
-  async function addLeadsToQueue(orgnrs: string[]) {
+  async function addLeadsToQueue(
+    orgnrs: string[],
+    options?: { stayOnPage?: boolean }
+  ) {
     if (orgnrs.length === 0) return;
     setAddingToQueue(true);
     setScanSelectionMessage(null);
@@ -643,6 +662,10 @@ export function AppPageClient(props: Props) {
           `${queued} lagt i kø. ${failed} feilet — prøv igjen for resten.`
         );
       }
+      if (options?.stayOnPage) {
+        setListMessage(`${queued} firma lagt i kø`);
+        return;
+      }
       try {
         sessionStorage.setItem(
           "nylead-queue-toast",
@@ -655,6 +678,26 @@ export function AppPageClient(props: Props) {
     } finally {
       setAddingToQueue(false);
     }
+  }
+
+  // Hurtighandlinger fra rad-hover i tabellen
+  function quickQueueCompany(c: CompanyWithLead) {
+    void addLeadsToQueue([c.orgnr], { stayOnPage: true });
+  }
+
+  function quickEmailCompany(c: CompanyWithLead) {
+    setSelected(new Set([c.orgnr]));
+    const section = emailSectionRef.current;
+    if (section) {
+      section.open = true;
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function quickCheckWebsiteCompany(c: CompanyWithLead) {
+    setScanSelectionMessage(null);
+    const result = scanCompanies([c], { preserveOrder: true });
+    if (!result.ok) setScanSelectionMessage(result.message);
   }
 
   function addSelectedToQueue() {
@@ -1147,6 +1190,21 @@ export function AppPageClient(props: Props) {
               exportMessage={exportMessage}
             />
 
+            <div className="flex items-center px-3 pb-2 lg:px-4">
+              <label className="scan-glass-muted inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
+                <input
+                  type="checkbox"
+                  checked={hideHolding}
+                  onChange={(e) => setHideHolding(e.target.checked)}
+                  className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
+                />
+                Skjul holdingselskap
+                {holdingCount > 0 && (
+                  <span className="opacity-70">({holdingCount})</span>
+                )}
+              </label>
+            </div>
+
             {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
               <div className="scan-banner scan-banner-accent" role="status">
                 <strong>
@@ -1200,6 +1258,9 @@ export function AppPageClient(props: Props) {
                 scanningOrgnrs={scanning ? scanningOrgnrs : undefined}
                 viewMode={listViewMode}
                 queueScores={queueScores}
+                onQuickQueue={quickQueueCompany}
+                onQuickEmail={quickEmailCompany}
+                onQuickCheckWebsite={quickCheckWebsiteCompany}
               />
 
           {pagination && props.onPageChange && (

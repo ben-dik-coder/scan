@@ -73,6 +73,45 @@ export function computeQueueScore(
   return Math.min(150, Math.round(score));
 }
 
+/** Kort, menneskelig forklaring på hvorfor et firma fikk scoren sin (til tooltip). */
+export function explainQueueScore(
+  company: Company,
+  lead: UserLead | null,
+  scan: WebsiteScanResult | null
+): string {
+  const reasons: string[] = [];
+
+  const days = daysSince(company.registered_at);
+  if (days != null) {
+    if (days <= 3) reasons.push("helt nytt firma");
+    else if (days <= 7) reasons.push("registrert siste uke");
+    else if (days <= 14) reasons.push("registrert siste 14 dager");
+    else if (days <= 30) reasons.push("registrert siste måned");
+  }
+
+  if (company.phone || company.mobile || scan?.enrichedPhone) {
+    reasons.push("har telefon");
+  }
+  if (company.has_email || company.email) {
+    reasons.push("har e-post");
+  }
+
+  if (scan) {
+    if (!scan.hasWebsite && scan.websiteKind === "none") reasons.push("uten nettside");
+    else if (!scan.hasWebsite) reasons.push("trolig uten nettside");
+    if (scan.gulesiderListed && !scan.hasWebsite) reasons.push("på Gulesider");
+    if (scan.facebookUrl) reasons.push("har Facebook");
+  } else {
+    reasons.push("ikke nettside-sjekket ennå");
+  }
+
+  const status = lead?.status ?? "ny";
+  if (status === "ny") reasons.push("ny lead");
+  if (!lead?.last_contacted_at) reasons.push("ikke kontaktet");
+
+  return reasons.join(", ");
+}
+
 export function buildQueueCandidates(
   companies: Company[],
   leadsByOrgnr: Map<string, UserLead>,

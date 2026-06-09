@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LEAD_STATUSES, statusLabel } from "@/lib/sales/constants";
+import { explainQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead } from "@/types/database";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import {
@@ -13,7 +14,7 @@ import { hasUncertainWebsiteHits, displayNameDiffersFromLegal } from "@/lib/webs
 import { StatusPill, EmptyState } from "@/components/ui/primitives";
 import { ScanGoogleSearchPopup } from "@/components/scan/ScanGoogleSearchPopup";
 import { cn, formatRegisteredDate } from "@/lib/utils";
-import { Globe, Globe2, HelpCircle, X } from "lucide-react";
+import { Globe, Globe2, HelpCircle, ListPlus, Mail, Radar, X } from "lucide-react";
 
 function InstagramIcon({ className }: { className?: string }) {
   return (
@@ -41,7 +42,6 @@ function LinkedinIcon({ className }: { className?: string }) {
 
 type ColumnId =
   | "score"
-  | "orgnr"
   | "email"
   | "phone"
   | "website"
@@ -53,7 +53,6 @@ type ColumnId =
 
 const COLUMN_LABELS: Record<ColumnId, string> = {
   score: "Score",
-  orgnr: "Org.nr",
   email: "E-post",
   phone: "Tlf",
   website: "Nettside",
@@ -71,7 +70,6 @@ const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
 ];
 
 const OPTIONAL_COLUMNS: ColumnId[] = [
-  "orgnr",
   "phone",
   "facebook",
   "instagram",
@@ -96,6 +94,10 @@ type Props = {
   queueScores?: Map<string, number>;
   /** Valgfri callback når bruker åpner Google-søk fra e-post-kolonnen */
   onGoogleSearch?: (company: CompanyWithLead) => void;
+  /** Hurtighandlinger som vises ved hover på en rad */
+  onQuickQueue?: (company: CompanyWithLead) => void;
+  onQuickEmail?: (company: CompanyWithLead) => void;
+  onQuickCheckWebsite?: (company: CompanyWithLead) => void;
 };
 
 function loadVisibleColumns(): Set<ColumnId> {
@@ -640,7 +642,7 @@ function CompanyMobileCard({
         checked={isSelected}
         onChange={() => onToggle(c.orgnr)}
         aria-label={`Velg ${c.name}`}
-        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-sky-600"
+        className="cv-checkbox mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-sky-600"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-1">
@@ -719,6 +721,71 @@ function CompanyMobileCard({
   );
 }
 
+function RowQuickActions({
+  company,
+  onQuickQueue,
+  onQuickEmail,
+  onQuickCheckWebsite,
+}: {
+  company: CompanyWithLead;
+  onQuickQueue?: (company: CompanyWithLead) => void;
+  onQuickEmail?: (company: CompanyWithLead) => void;
+  onQuickCheckWebsite?: (company: CompanyWithLead) => void;
+}) {
+  if (!onQuickQueue && !onQuickEmail && !onQuickCheckWebsite) return null;
+
+  const actions: Array<{
+    key: string;
+    title: string;
+    icon: ReactNode;
+    onClick: (company: CompanyWithLead) => void;
+  }> = [];
+  if (onQuickQueue) {
+    actions.push({
+      key: "queue",
+      title: "Legg i kø",
+      icon: <ListPlus className="h-3.5 w-3.5" />,
+      onClick: onQuickQueue,
+    });
+  }
+  if (onQuickEmail) {
+    actions.push({
+      key: "email",
+      title: "Send e-post",
+      icon: <Mail className="h-3.5 w-3.5" />,
+      onClick: onQuickEmail,
+    });
+  }
+  if (onQuickCheckWebsite) {
+    actions.push({
+      key: "check",
+      title: "Sjekk nettside",
+      icon: <Radar className="h-3.5 w-3.5" />,
+      onClick: onQuickCheckWebsite,
+    });
+  }
+
+  return (
+    <div className="cv-row-actions flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+      {actions.map((action) => (
+        <button
+          key={action.key}
+          type="button"
+          title={action.title}
+          aria-label={`${action.title}: ${company.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            action.onClick(company);
+          }}
+          className="cv-quick-btn rounded-md p-1 text-[var(--cv-muted)] transition-colors hover:bg-[var(--cv-surface)] hover:text-[var(--cv-text)]"
+        >
+          {action.icon}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function CompanyTable({
   companies,
   selected,
@@ -732,6 +799,9 @@ export function CompanyTable({
   viewMode = "table",
   queueScores,
   onGoogleSearch,
+  onQuickQueue,
+  onQuickEmail,
+  onQuickCheckWebsite,
 }: Props) {
   const [detailOrgnr, setDetailOrgnr] = useState<string | null>(null);
   const [googleSearchCompany, setGoogleSearchCompany] = useState<CompanyWithLead | null>(null);
@@ -741,6 +811,16 @@ export function CompanyTable({
     detailOrgnr != null ? companies.find((c) => c.orgnr === detailOrgnr) : undefined;
 
   const showCol = (id: ColumnId) => visibleColumns.has(id);
+
+  // Skjul e-postkolonnen automatisk når ingen rader har e-post (unngå kolonne full av «—»)
+  const anyRowHasEmail = useMemo(
+    () =>
+      companies.some((c) =>
+        Boolean(resolveCompanyEmail(c, websiteScans?.get(c.orgnr)))
+      ),
+    [companies, websiteScans]
+  );
+  const showEmailCol = showCol("email") && anyRowHasEmail;
 
   function openGoogleSearch(company: CompanyWithLead) {
     setGoogleSearchCompany(company);
@@ -781,7 +861,7 @@ export function CompanyTable({
           checked={allSelected}
           onChange={onToggleAll}
           aria-label="Velg alle"
-          className="h-3.5 w-3.5 rounded accent-sky-600"
+          className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
         />
         <span className="text-[11px] font-semibold text-[var(--cv-muted)]">Velg alle</span>
       </div>
@@ -878,14 +958,13 @@ export function CompanyTable({
                     checked={allSelected}
                     onChange={onToggleAll}
                     aria-label="Velg alle"
-                    className="h-3.5 w-3.5 rounded accent-sky-600"
+                    className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
                   />
                 </th>
                 <th>Firma</th>
                 {queueScores && <th className="w-14">Score</th>}
-                {showCol("orgnr") && <th>Org.nr</th>}
-                {showCol("email") && <th>E-post</th>}
-                {showCol("phone") && <th>Tlf</th>}
+                {showEmailCol && <th>E-post</th>}
+                {showCol("phone") && <th className="cv-phone-cell">Tlf</th>}
                 {showCol("website") && <th>Nettside</th>}
                 {showCol("facebook") && <th>Facebook</th>}
                 {showCol("instagram") && <th>Instagram</th>}
@@ -903,42 +982,61 @@ export function CompanyTable({
                 const score = queueScores?.get(c.orgnr);
 
                 return (
-                  <tr key={c.orgnr} className={cn(isSelected && "is-selected")}>
+                  <tr key={c.orgnr} className={cn("group", isSelected && "is-selected")}>
                     <td>
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => onToggle(c.orgnr)}
                         aria-label={`Velg ${c.name}`}
-                        className="h-3.5 w-3.5 rounded accent-sky-600"
+                        className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
                       />
                     </td>
                     <td>
-                      <CompanyNameButton
-                        company={c}
-                        onGoogleSearch={openGoogleSearch}
-                        className="max-w-[14rem]"
-                      />
-                      {(c.municipality_name || c.registered_at) && (
-                        <p className="cv-meta max-w-[14rem] truncate">
-                          {c.municipality_name ?? "—"}
-                          {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
-                        </p>
-                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <CompanyNameButton
+                            company={c}
+                            onGoogleSearch={openGoogleSearch}
+                            className="max-w-[14rem]"
+                          />
+                          <p className="cv-meta max-w-[16rem] truncate">
+                            {[
+                              c.municipality_name,
+                              c.registered_at
+                                ? formatRegisteredDate(c.registered_at)
+                                : null,
+                              c.orgnr,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <RowQuickActions
+                          company={c}
+                          onQuickQueue={onQuickQueue}
+                          onQuickEmail={onQuickEmail}
+                          onQuickCheckWebsite={onQuickCheckWebsite}
+                        />
+                      </div>
                     </td>
                     {queueScores && (
                       <td className="tabular-nums">
                         {score != null ? (
                           <span
                             className={cn(
-                              "inline-flex min-w-[2rem] justify-center rounded px-1.5 py-0.5 text-[11px] font-bold",
+                              "cv-score-badge inline-flex min-w-[2rem] justify-center rounded px-1.5 py-0.5 text-[11px] font-bold",
                               score >= 80
                                 ? "bg-emerald-500/20 text-emerald-200"
                                 : score >= 50
                                   ? "bg-amber-500/20 text-amber-100"
                                   : "bg-white/10 text-slate-300"
                             )}
-                            title="Anbefalt prioritet"
+                            title={`Score ${score}: ${explainQueueScore(
+                              c,
+                              c.user_lead ?? null,
+                              scan ?? null
+                            )}`}
                           >
                             {score}
                           </span>
@@ -947,10 +1045,7 @@ export function CompanyTable({
                         )}
                       </td>
                     )}
-                    {showCol("orgnr") && (
-                      <td className="cv-mono whitespace-nowrap">{c.orgnr}</td>
-                    )}
-                    {showCol("email") && (
+                    {showEmailCol && (
                       <td className="max-w-[12rem]">
                         {(() => {
                           const resolved = resolveCompanyEmail(c, scan);
@@ -963,7 +1058,7 @@ export function CompanyTable({
                       </td>
                     )}
                     {showCol("phone") && (
-                      <td className="whitespace-nowrap">
+                      <td className="cv-phone-cell whitespace-nowrap">
                         <PhoneCell company={c} scan={scan} />
                       </td>
                     )}

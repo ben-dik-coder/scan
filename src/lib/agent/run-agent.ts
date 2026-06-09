@@ -14,7 +14,7 @@ import {
   type SimpleListCompany,
 } from "@/lib/agent/fast-list";
 import {
-  AGENT_SYSTEM_PROMPT,
+  buildAgentSystemPrompt,
   AGENT_FINAL_SUMMARY_NUDGE,
   isSimpleSearchIntent,
 } from "@/lib/agent/prompt";
@@ -308,9 +308,11 @@ export async function runAgentChat(
     return { assistantText: msg };
   }
 
+  const model = getAgentModel();
+  const basePrompt = buildAgentSystemPrompt(model);
   const systemPrompt = options?.systemPromptExtra
-    ? `${AGENT_SYSTEM_PROMPT}\n\n${options.systemPromptExtra}`
-    : AGENT_SYSTEM_PROMPT;
+    ? `${basePrompt}\n\n${options.systemPromptExtra}`
+    : basePrompt;
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
@@ -328,7 +330,6 @@ export async function runAgentChat(
   const toolSummaries: string[] = [];
   const toolsUsed = new Set<string>();
   let loops = 0;
-  const model = getAgentModel();
   const lastUserMessage =
     [...history].reverse().find((m) => m.role === "user")?.content ?? "";
   const maxToolLoops = isSimpleSearchIntent(lastUserMessage)
