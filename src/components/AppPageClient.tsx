@@ -441,6 +441,13 @@ export function AppPageClient(props: Props) {
     ) {
       next = { ...next, days: 0 };
     }
+    if (
+      next.nameQuery.trim() &&
+      next.nameQuery !== filters.nameQuery &&
+      next.days !== 0
+    ) {
+      next = { ...next, days: 0 };
+    }
     if (options?.agentOrgnrs?.length) {
       next = filtersForAgentListApplication(
         {
@@ -464,6 +471,8 @@ export function AppPageClient(props: Props) {
     else params.delete("bransje");
     if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
+    if (next.nameQuery.trim()) params.set("navn", next.nameQuery.trim());
+    else params.delete("navn");
     if (next.websitePresence !== "all") params.set("web", next.websitePresence);
     else params.delete("web");
     if (next.facebookPresence !== "all") params.set("fb", next.facebookPresence);
@@ -521,6 +530,8 @@ export function AppPageClient(props: Props) {
     else params.delete("bransje");
     if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
+    if (next.nameQuery.trim()) params.set("navn", next.nameQuery.trim());
+    else params.delete("navn");
     params.delete("web");
     params.delete("fb");
     params.delete("ig");
@@ -680,6 +691,7 @@ export function AppPageClient(props: Props) {
       genericEmailOnly: filters.genericEmailOnly,
       industryGroup: filters.industryGroup,
       professionId: filters.professionId,
+      nameQuery: filters.nameQuery,
       websitePresence: filters.websitePresence,
       facebookPresence: filters.facebookPresence,
       instagramPresence: filters.instagramPresence,

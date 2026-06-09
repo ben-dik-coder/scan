@@ -19,6 +19,7 @@ import {
   matchesIndustryGroup,
 } from "@/lib/constants/industries";
 import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
+import { companyNameMatchesQuery } from "@/lib/brreg/name-search";
 import { isPersonalEmail, mapBrregEnhet, type CompanyInsert } from "./map-company";
 
 let kommuneCodesCache: string[] | null = null;
@@ -69,6 +70,8 @@ export type BrregCompanyFilters = {
   industryGroup?: string;
   /** Konkret yrke-id fra dropdown, f.eks. «rorlegger» */
   professionId?: string;
+  /** Søkeord i firmanavn (alle ord må finnes) */
+  nameQuery?: string;
   /** Maks antall sider à 100 firma (sikkerhetsgrense) */
   maxPages?: number;
   /** 1-basert side */
@@ -144,6 +147,9 @@ function matchesFilters(
     ) {
       return false;
     }
+  }
+  if (!companyNameMatchesQuery(company.name, filters.nameQuery)) {
+    return false;
   }
   return true;
 }
@@ -239,12 +245,13 @@ export async function fetchCompaniesFromBrreg(
     .filter(Boolean)
     .join(",") || undefined;
   const industryAtBrreg = Boolean(brregNaeringskode);
+  const nameQueryActive = (filters.nameQuery?.trim().length ?? 0) >= 2;
 
   /**
    * Med bransje henter vi alle i Brreg (f.eks. 81 frisører i Narvik).
    * Periode filtreres etterpå hos oss — ellers får Brreg ofte 0 treff på «siste 30 dager».
    */
-  const useBrregDateFilter = !industryAtBrreg && !allTime;
+  const useBrregDateFilter = !industryAtBrreg && !nameQueryActive && !allTime;
   const fromDate = useBrregDateFilter ? daysAgoISO(days) : undefined;
   const toDate = useBrregDateFilter ? formatDateISO(new Date()) : undefined;
 

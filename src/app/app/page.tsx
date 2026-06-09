@@ -39,7 +39,8 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
     params.has("epost") ||
     params.has("generisk") ||
     params.has("bransje") ||
-    params.has("yrke");
+    params.has("yrke") ||
+    params.has("navn");
 
   if (brreg && !hasAnyFilter) {
     return { ...DEFAULT_MARKET_FILTERS, industryGroup: "" };
@@ -69,6 +70,7 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
         : false,
     industryGroup: params.get("bransje") ?? "",
     professionId: parseProfessionIdFromParam(params.get("yrke") ?? ""),
+    nameQuery: params.get("navn") ?? "",
     websitePresence:
       (params.get("web") as FilterState["websitePresence"]) || "all",
     facebookPresence:
@@ -98,6 +100,8 @@ function buildCompaniesQuery(filters: FilterState, page = 1): string {
   else params.delete("bransje");
   if (filters.professionId) params.set("yrke", filters.professionId);
   else params.delete("yrke");
+  if (filters.nameQuery.trim()) params.set("navn", filters.nameQuery.trim());
+  else params.delete("navn");
   if (filters.websitePresence !== "all") params.set("web", filters.websitePresence);
   else params.delete("web");
   if (filters.facebookPresence !== "all") params.set("fb", filters.facebookPresence);
@@ -122,6 +126,7 @@ function FirmaPageDemo() {
     genericEmailOnly: filters.genericEmailOnly,
     industryGroup: filters.industryGroup || undefined,
     professionId: filters.professionId || undefined,
+    nameQuery: filters.nameQuery || undefined,
   });
 
   const shuffled = useMemo(() => {
@@ -134,6 +139,7 @@ function FirmaPageDemo() {
         genericEmailOnly: filters.genericEmailOnly,
         industryGroup: filters.industryGroup || undefined,
         professionId: filters.professionId || undefined,
+        nameQuery: filters.nameQuery || undefined,
       },
       getDemoShuffleSessionId()
     );
@@ -330,6 +336,7 @@ function FirmaPageBrreg() {
     filters.genericEmailOnly,
     filters.industryGroup,
     filters.professionId,
+    filters.nameQuery,
     currentPage,
   ]);
 

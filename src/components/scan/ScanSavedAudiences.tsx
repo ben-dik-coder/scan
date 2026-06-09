@@ -104,6 +104,7 @@ function mergeFilters(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId: resolveProfessionId(partial),
+    nameQuery: partial.nameQuery ?? "",
     websitePresence: partial.websitePresence ?? "all",
     facebookPresence: partial.facebookPresence ?? "all",
     instagramPresence: partial.instagramPresence ?? "all",

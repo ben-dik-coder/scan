@@ -14,6 +14,10 @@ import { computeLeadScore } from "@/lib/sales/lead-score";
 import { seededRank } from "@/lib/shuffle/seeded-shuffle";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { Company, CompanyWithLead } from "@/types/database";
+import {
+  companyNameMatchesQuery,
+  nameQueryTokens,
+} from "@/lib/brreg/name-search";
 import { daysAgoISO, fetchKommuner } from "./client";
 import {
   isAllTimePeriod,
@@ -76,6 +80,21 @@ function applyIndustryFilter(
     next = next.or(getWebbyraNameOrFilters().join(","));
   }
 
+  return next;
+}
+
+function applyNameQueryFilter(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
+  nameQuery?: string
+) {
+  const tokens = nameQueryTokens(nameQuery);
+  if (tokens.length === 0) return query;
+
+  let next = query;
+  for (const token of tokens) {
+    next = next.ilike("name", `%${token}%`);
+  }
   return next;
 }
 
@@ -160,6 +179,7 @@ export async function fetchCompaniesFromDb(
 
   query = applyIndustryFilter(query, filters.industryGroup);
   query = applyProfessionFilter(query, filters.professionId);
+  query = applyNameQueryFilter(query, filters.nameQuery);
 
   query = query.order("registered_at", { ascending: false, nullsFirst: false });
 
@@ -183,6 +203,9 @@ export async function fetchCompaniesFromDb(
         matchesProfessionSearch(c.industry_code, { name: c.name }, professionMatch)
       );
     }
+  }
+  if (filters.nameQuery?.trim()) {
+    rows = rows.filter((c) => companyNameMatchesQuery(c.name, filters.nameQuery));
   }
   const companies = rows.map(toCompanyWithLead);
   sortCompanies(companies, filters.sortSeed);

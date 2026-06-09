@@ -383,7 +383,11 @@ async function executeSearchCompanies(
     professionId:
       typeof args.professionId === "string" ? args.professionId : undefined,
   });
-  const defaultDays = industryGroup || professionId ? 0 : 30;
+  const nameQuery =
+    typeof args.nameQuery === "string" && args.nameQuery.trim().length >= 2
+      ? args.nameQuery.trim()
+      : undefined;
+  const defaultDays = industryGroup || professionId || nameQuery ? 0 : 30;
   const days =
     typeof args.days === "number" && Number.isFinite(args.days)
       ? args.days
@@ -394,6 +398,7 @@ async function executeSearchCompanies(
     regionId,
     industryGroup,
     professionId,
+    nameQuery,
     days,
     hasEmail: false,
     page: 1,
@@ -429,6 +434,7 @@ async function executeSearchCompanies(
     regionId,
     industryGroup,
     professionId,
+    nameQuery,
     mappedFromProfession,
     days,
   };

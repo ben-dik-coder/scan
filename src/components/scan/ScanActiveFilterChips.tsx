@@ -61,6 +61,14 @@ function buildChips(
     });
   }
 
+  if (filters.nameQuery.trim()) {
+    chips.push({
+      id: "navn",
+      label: `Navn: ${filters.nameQuery.trim()}`,
+      onRemove: () => onChange({ ...filters, nameQuery: "" }),
+    });
+  }
+
   if (filters.days !== def.days) {
     chips.push({
       id: "periode",

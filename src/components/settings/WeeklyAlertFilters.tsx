@@ -25,6 +25,7 @@ function toFilterState(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId,
+    nameQuery: partial.nameQuery ?? "",
     websitePresence: partial.websitePresence ?? "all",
     facebookPresence: partial.facebookPresence ?? "all",
     instagramPresence: partial.instagramPresence ?? "all",
@@ -47,6 +48,7 @@ export function formatWeeklyAlertSummary(filters: Partial<FilterState>): string 
     parts.push(filters.days === 0 ? "alle firma" : `siste ${filters.days} dager`);
   }
   if (filters.hasEmail) parts.push("kun med e-post");
+  if (filters.nameQuery?.trim()) parts.push(`navn: ${filters.nameQuery.trim()}`);
   return parts.length > 0 ? parts.join(" · ") : "Hele Norge (standard)";
 }
 
@@ -71,6 +73,7 @@ export function WeeklyAlertFilters({ filters, municipalities, onChange }: Props)
             municipalityCode: next.municipalityCode,
             days: next.days,
             professionId: next.professionId,
+            nameQuery: next.nameQuery,
             hasEmail: next.hasEmail,
             industryGroup: next.industryGroup,
           })

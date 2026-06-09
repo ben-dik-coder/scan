@@ -48,6 +48,7 @@ export function mergeAgentListFilters(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId: partial.professionId ?? "",
+    nameQuery: partial.nameQuery ?? "",
     websitePresence:
       (partial.websitePresence as FilterState["websitePresence"]) ?? "without",
     facebookPresence: partial.facebookPresence ?? "all",

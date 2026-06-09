@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { INDUSTRY_GROUPS } from "@/lib/constants/industries";
 import { PROFESSION_OPTIONS } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion, REGIONS } from "@/lib/constants/regions";
@@ -14,6 +14,7 @@ import {
   MapPin,
   MapPinned,
   Scissors,
+  Search,
 } from "lucide-react";
 
 export type WebsitePresenceFilter = "all" | "with" | "without" | "not_scanned";
@@ -28,6 +29,8 @@ export type FilterState = {
   industryGroup: string;
   /** Konkret yrke-id fra dropdown (tom = alle yrker) */
   professionId: string;
+  /** Søkeord i firmanavn */
+  nameQuery: string;
   websitePresence: WebsitePresenceFilter;
   facebookPresence: SocialPresenceFilter;
   instagramPresence: SocialPresenceFilter;
@@ -40,6 +43,43 @@ type Props = {
   /** sidebar = desktop-panel, mobile-bar = alltid synlig på mobil, stack = full rad */
   layout?: "stack" | "sidebar" | "mobile-bar";
 };
+
+function DebouncedNameQueryInput({
+  value,
+  onDebouncedChange,
+  className,
+}: {
+  value: string;
+  onDebouncedChange: (nameQuery: string) => void;
+  className?: string;
+}) {
+  const [local, setLocal] = useState(value);
+
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (local !== value) {
+        onDebouncedChange(local);
+      }
+    }, 400);
+    return () => clearTimeout(id);
+  }, [local, value, onDebouncedChange]);
+
+  return (
+    <input
+      type="search"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      placeholder="f.eks. nails, spa"
+      className={className ?? "scan-input"}
+      autoComplete="off"
+      spellCheck={false}
+    />
+  );
+}
 
 export function CompanyFilters({
   filters,
@@ -132,12 +172,26 @@ export function CompanyFilters({
     </label>
   );
 
+  const nameQueryField = (
+    <label className={`flex flex-col gap-0.5 ${isMobileBar ? "sm:col-span-2" : ""}`}>
+      <span className="scan-label">
+        <Search className="h-3.5 w-3.5 text-brand-gold" />
+        Ord i firmanavn
+      </span>
+      <DebouncedNameQueryInput
+        value={filters.nameQuery}
+        onDebouncedChange={(nameQuery) => onChange({ ...filters, nameQuery })}
+      />
+    </label>
+  );
+
   if (isMobileBar) {
     return (
       <div className={gridClass}>
         {regionField}
         {municipalityField}
         {professionField}
+        {nameQueryField}
       </div>
     );
   }
@@ -189,6 +243,7 @@ export function CompanyFilters({
 
       <div className={isSidebar ? "pt-1" : "scan-glass-divider border-t pt-2"}>
         {professionField}
+        <div className={isSidebar ? "pt-2" : "pt-2"}>{nameQueryField}</div>
       </div>
 
       <div

@@ -27,6 +27,7 @@ import {
   matchesProfessionSearch,
   resolveProfessionFilter,
 } from "@/lib/constants/professions";
+import { companyNameMatchesQuery } from "@/lib/brreg/name-search";
 import { kommuneBelongsToRegion } from "@/lib/constants/regions";
 import { computeLeadScore } from "@/lib/sales/lead-score";
 
@@ -278,6 +279,7 @@ export function filterDemoCompanies(
     genericEmailOnly?: boolean;
     industryGroup?: string;
     professionId?: string;
+    nameQuery?: string;
     minScore?: number;
   }
 ) {
@@ -321,6 +323,7 @@ export function filterDemoCompanies(
         return false;
       }
     }
+    if (!companyNameMatchesQuery(c.name, filters.nameQuery)) return false;
     if (filters.minScore && (c.user_lead?.score ?? 0) < filters.minScore) return false;
     return true;
   });

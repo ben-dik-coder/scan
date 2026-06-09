@@ -63,7 +63,7 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "search_companies",
       description:
-        "Søk firma i Brreg-databasen etter kommune, region, bransje eller yrke",
+        "Søk firma i Brreg-databasen etter kommune, region, bransje, yrke eller ord i firmanavn",
       parameters: {
         type: "object",
         properties: {
@@ -88,7 +88,12 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
           days: {
             type: "number",
             description:
-              "Antall dager tilbake (0 = alle tider). Standard 30, men 0 når industryGroup/professionId er satt",
+              "Antall dager tilbake (0 = alle tider). Standard 30, men 0 når industryGroup/professionId/nameQuery er satt",
+          },
+          nameQuery: {
+            type: "string",
+            description:
+              "Søkeord i firmanavn — alle ord må finnes, f.eks. «nails» eller «beauty spa»",
           },
         },
         additionalProperties: false,

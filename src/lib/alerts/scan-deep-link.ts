@@ -24,6 +24,7 @@ export function buildScanDeepLink(
       ? parseProfessionIdFromParam(filters.professionSearch)
       : "");
   if (professionId) params.set("yrke", professionId);
+  if (filters.nameQuery?.trim()) params.set("navn", filters.nameQuery.trim());
   if (filters.websitePresence && filters.websitePresence !== "all") {
     params.set("web", filters.websitePresence);
   }
