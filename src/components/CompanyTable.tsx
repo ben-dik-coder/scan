@@ -13,7 +13,7 @@ import { resolveCompanyPhone } from "@/lib/website-scan/resolve-company-contact"
 import { hasUncertainWebsiteHits, displayNameDiffersFromLegal } from "@/lib/website-scan/parse-results";
 import { StatusPill, EmptyState } from "@/components/ui/primitives";
 import { ScanGoogleSearchPopup } from "@/components/scan/ScanGoogleSearchPopup";
-import { cn, formatRegisteredDate } from "@/lib/utils";
+import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
 import { Globe, Globe2, HelpCircle, ListPlus, Mail, Radar, X } from "lucide-react";
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -112,6 +112,36 @@ function loadVisibleColumns(): Set<ColumnId> {
   }
 }
 
+/** Avrundet score-pill med farge etter verdi (grønn høy, gul middels, grå lav) */
+function ScorePill({
+  score,
+  title,
+  size = "sm",
+}: {
+  score: number;
+  title?: string;
+  size?: "sm" | "md";
+}) {
+  return (
+    <span
+      className={cn(
+        "cv-score-badge inline-flex shrink-0 items-center justify-center rounded-full font-bold tabular-nums ring-1 ring-inset",
+        size === "md"
+          ? "min-w-[2.5rem] px-2.5 py-1 text-xs"
+          : "min-w-[2.25rem] px-2 py-0.5 text-[11px]",
+        score >= 80
+          ? "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30"
+          : score >= 50
+            ? "bg-amber-500/15 text-amber-200 ring-amber-400/30"
+            : "bg-white/[0.06] text-slate-300 ring-white/15"
+      )}
+      title={title}
+    >
+      {score}
+    </span>
+  );
+}
+
 function PresenceBadge({
   kind,
   label,
@@ -172,9 +202,12 @@ function WebsiteCell({
   }
   if (!scan) {
     return (
-      <span className="cv-muted inline-flex items-center gap-0.5" title="Ikke sjekket">
+      <span
+        className="cv-muted inline-flex items-center gap-1 rounded-full border border-[var(--cv-border)] px-1.5 py-0.5 text-[10px] font-medium"
+        title="Ikke sjekket"
+      >
         <HelpCircle className="h-3 w-3 shrink-0" />
-        —
+        Ikke sjekket
       </span>
     );
   }
@@ -223,7 +256,7 @@ function WebsiteCell({
     );
   }
   return (
-    <span className="inline-flex items-center gap-0.5 font-semibold text-amber-800">
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-400/30">
       <Globe className="h-3 w-3 shrink-0" />
       Ingen nettside
     </span>
@@ -250,7 +283,13 @@ function PhoneCell({
   scan?: WebsiteScanResult;
 }) {
   const resolved = resolveCompanyPhone(company, scan);
-  if (!resolved) return <span className="cv-muted">—</span>;
+  if (!resolved) {
+    return (
+      <span className="cv-muted inline-flex items-center rounded-full border border-[var(--cv-border)] px-1.5 py-0.5 text-[10px] font-medium">
+        Ingen tlf
+      </span>
+    );
+  }
   const platformLabel =
     resolved.source === "platform" && scan?.enrichedPhoneSource
       ? PLATFORM_SOURCE_LABELS[scan.enrichedPhoneSource] ?? scan.enrichedPhoneSource
@@ -303,6 +342,7 @@ function CompanyNameButton({
   className?: string;
   id?: string;
 }) {
+  const displayName = formatCompanyName(company.name);
   return (
     <button
       type="button"
@@ -315,9 +355,9 @@ function CompanyNameButton({
         "cv-firma max-w-full truncate text-left font-semibold hover:text-sky-200 hover:underline",
         className
       )}
-      title={`Søk «${company.name}» på Google`}
+      title={`${displayName} – søk på Google`}
     >
-      {company.name}
+      {displayName}
     </button>
   );
 }
@@ -612,6 +652,7 @@ function CompanyMobileCard({
   scan,
   isScanning,
   isSelected,
+  score,
   onToggle,
   onOpenDetail,
   onStatusChange,
@@ -621,6 +662,7 @@ function CompanyMobileCard({
   scan?: WebsiteScanResult;
   isScanning?: boolean;
   isSelected: boolean;
+  score?: number;
   onToggle: (orgnr: string) => void;
   onOpenDetail: (orgnr: string) => void;
   onStatusChange?: (orgnr: string, status: string) => void;
@@ -633,8 +675,8 @@ function CompanyMobileCard({
   return (
     <article
       className={cn(
-        "flex gap-2 border-b border-[var(--cv-border)] px-3 py-2",
-        isSelected && "bg-[var(--cv-surface)]"
+        "flex gap-2 rounded-xl border border-[var(--cv-border)] bg-white/[0.03] px-3 py-2.5 shadow-sm transition-all duration-150 hover:border-white/20 hover:bg-white/[0.05] hover:shadow-md",
+        isSelected && "bg-[var(--cv-surface)] ring-1 ring-inset ring-sky-400/40"
       )}
     >
       <input
@@ -645,34 +687,41 @@ function CompanyMobileCard({
         className="cv-checkbox mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-sky-600"
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-1">
+        <div className="flex items-start justify-between gap-1.5">
           <CompanyNameButton
             company={c}
             onGoogleSearch={onGoogleSearch}
-            className="min-w-0 flex-1 text-[13px]"
+            className="min-w-0 flex-1 text-sm tracking-tight"
           />
-          <button
-            type="button"
-            onClick={() => onOpenDetail(c.orgnr)}
-            className="shrink-0 text-[10px] font-semibold text-sky-300 hover:text-sky-200"
-          >
-            Info
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {score != null && <ScorePill score={score} title={`Score ${score}`} />}
+            <button
+              type="button"
+              onClick={() => onOpenDetail(c.orgnr)}
+              className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 hover:bg-white/[0.06] hover:text-sky-200"
+            >
+              Info
+            </button>
+          </div>
         </div>
-        {(c.municipality_name || c.registered_at) && (
-          <p className="cv-meta truncate text-[11px]">
-            {c.municipality_name ?? "—"}
-            {c.registered_at && ` · ${formatRegisteredDate(c.registered_at)}`}
-          </p>
-        )}
-        <p className="cv-mono mt-0.5 text-[11px]">{c.orgnr}</p>
+        <p className="cv-meta mt-0.5 truncate text-[11px]">
+          {[
+            c.municipality_name,
+            c.registered_at ? formatRegisteredDate(c.registered_at) : null,
+            c.orgnr,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
         <div className="mt-1 min-w-0 text-[12px]">
           {resolved ? (
             <EmailCell resolved={resolved} />
           ) : resolvedPhone ? (
             <PhoneCell company={c} scan={scan} />
           ) : (
-            <span className="cv-muted">Ingen kontakt</span>
+            <span className="cv-muted inline-flex items-center rounded-full border border-[var(--cv-border)] px-1.5 py-0.5 text-[10px] font-medium">
+              Ingen kontakt
+            </span>
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-[12px]">
@@ -867,7 +916,8 @@ export function CompanyTable({
       </div>
       <div
         className={cn(
-          useCardLayout && "grid gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3"
+          "grid gap-2 p-2",
+          useCardLayout && "sm:grid-cols-2 xl:grid-cols-3"
         )}
       >
         {companies.map((c) => (
@@ -877,6 +927,7 @@ export function CompanyTable({
             scan={websiteScans?.get(c.orgnr)}
             isScanning={scanningOrgnrs?.has(c.orgnr)}
             isSelected={selected.has(c.orgnr)}
+            score={queueScores?.get(c.orgnr)}
             onToggle={onToggle}
             onOpenDetail={setDetailOrgnr}
             onStatusChange={onStatusChange}
@@ -1023,23 +1074,14 @@ export function CompanyTable({
                     {queueScores && (
                       <td className="tabular-nums">
                         {score != null ? (
-                          <span
-                            className={cn(
-                              "cv-score-badge inline-flex min-w-[2rem] justify-center rounded px-1.5 py-0.5 text-[11px] font-bold",
-                              score >= 80
-                                ? "bg-emerald-500/20 text-emerald-200"
-                                : score >= 50
-                                  ? "bg-amber-500/20 text-amber-100"
-                                  : "bg-white/10 text-slate-300"
-                            )}
+                          <ScorePill
+                            score={score}
                             title={`Score ${score}: ${explainQueueScore(
                               c,
                               c.user_lead ?? null,
                               scan ?? null
                             )}`}
-                          >
-                            {score}
-                          </span>
+                          />
                         ) : (
                           <span className="cv-muted text-[11px]">—</span>
                         )}

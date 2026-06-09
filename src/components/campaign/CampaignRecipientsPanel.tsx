@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Company } from "@/types/database";
 import type { ResolvedCompanyEmail } from "@/lib/website-scan/resolve-company-email";
-import { cn } from "@/lib/utils";
+import { cn, formatCompanyName } from "@/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 type RecipientRow = {
@@ -71,7 +71,12 @@ export function CampaignRecipientsPanel({ recipients, skipped, light = true }: P
                 light ? "text-slate-700" : "text-white/75"
               )}
             >
-              <span className="min-w-0 flex-1 truncate font-medium">{company.name}</span>
+              <span
+                className="min-w-0 flex-1 truncate font-medium"
+                title={formatCompanyName(company.name)}
+              >
+                {formatCompanyName(company.name)}
+              </span>
               <span className={cn("shrink-0", light ? "text-slate-500" : "text-white/45")}>
                 {resolved.email}
               </span>
@@ -105,8 +110,9 @@ export function CampaignRecipientsPanel({ recipients, skipped, light = true }: P
                 <p
                   key={c.orgnr}
                   className={cn("truncate px-1 py-0.5 text-xs", light ? "text-slate-400" : "text-white/35")}
+                  title={formatCompanyName(c.name)}
                 >
-                  {c.name}
+                  {formatCompanyName(c.name)}
                 </p>
               ))}
             </div>

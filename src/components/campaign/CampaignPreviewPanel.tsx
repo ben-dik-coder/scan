@@ -3,7 +3,7 @@
 import type { Company } from "@/types/database";
 import { buildCampaignVars } from "@/lib/email/campaign-vars";
 import { renderTemplate } from "@/lib/email/utils";
-import { cn } from "@/lib/utils";
+import { cn, formatCompanyName } from "@/lib/utils";
 
 type Props = {
   companies: Company[];
@@ -55,7 +55,7 @@ export function CampaignPreviewPanel({
           >
             {companies.map((c) => (
               <option key={c.orgnr} value={c.orgnr}>
-                {c.name}
+                {formatCompanyName(c.name)}
               </option>
             ))}
           </select>

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { statusLabel } from "@/lib/sales/constants";
 import type { QueueItemResponse } from "@/lib/sales/queue-score";
-import { cn, formatRegisteredDate } from "@/lib/utils";
+import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
 import { useState } from "react";
 
 type Props = {
@@ -55,11 +55,12 @@ export function KoQueueCard({
           )}
           <h2
             className={cn(
-              "font-semibold text-slate-100",
+              "truncate font-semibold tracking-tight text-slate-100",
               isFocus ? "text-xl sm:text-2xl" : "text-base"
             )}
+            title={formatCompanyName(item.name)}
           >
-            {item.name}
+            {formatCompanyName(item.name)}
           </h2>
           <p className={cn("text-slate-400", isFocus ? "mt-1 text-sm" : "text-xs")}>
             {item.municipalityName ?? "—"}
@@ -85,8 +86,13 @@ export function KoQueueCard({
         </div>
         <span
           className={cn(
-            "shrink-0 rounded-full bg-sky-500/20 font-bold text-sky-200",
-            isFocus ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs"
+            "shrink-0 rounded-full font-bold tabular-nums ring-1 ring-inset",
+            isFocus ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs",
+            item.queueScore >= 80
+              ? "bg-emerald-500/15 text-emerald-200 ring-emerald-400/30"
+              : item.queueScore >= 50
+                ? "bg-amber-500/15 text-amber-200 ring-amber-400/30"
+                : "bg-white/[0.06] text-slate-300 ring-white/15"
           )}
         >
           {item.queueScore} kø-poeng

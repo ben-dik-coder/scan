@@ -4,7 +4,13 @@ import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Mail, MoreHorizontal, Phone, StickyNote } from "lucide-react";
 import { ScoreRing } from "@/components/ui/primitives";
-import { cn, formatFollowUpLabel, formatRelativeTime, isFollowUpOverdue } from "@/lib/utils";
+import {
+  cn,
+  formatCompanyName,
+  formatFollowUpLabel,
+  formatRelativeTime,
+  isFollowUpOverdue,
+} from "@/lib/utils";
 import type { PipelineItem } from "./types";
 
 type Props = {
@@ -48,7 +54,12 @@ export function PipelineCard({ item, onOpen, isDragOverlay = false }: Props) {
         <div className="flex items-start gap-2.5">
           <ScoreRing score={lead.score} size="sm" title={`Score ${lead.score}`} />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-slate-100">{company.name}</p>
+            <p
+              className="truncate font-semibold text-slate-100"
+              title={formatCompanyName(company.name)}
+            >
+              {formatCompanyName(company.name)}
+            </p>
             <p className="truncate text-xs text-slate-400">
               {company.municipality_name ?? "—"}
               {company.industry_description

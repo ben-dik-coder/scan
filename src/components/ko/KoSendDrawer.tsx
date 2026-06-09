@@ -5,6 +5,7 @@ import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import type { EmailTemplate } from "@/types/database";
 import type { QueueItemResponse } from "@/lib/sales/queue-score";
 import { queueItemToCompany } from "./queue-utils";
+import { formatCompanyName } from "@/lib/utils";
 
 type SequenceOption = { id: string; name: string; steps: unknown[] };
 
@@ -32,7 +33,9 @@ export function KoSendDrawer({
   const header = (
     <div className="border-b border-white/10 p-4 pr-14">
       <h2 className="truncate text-lg font-semibold text-white">Send e-post</h2>
-      <p className="truncate text-xs text-slate-400">{item.name}</p>
+      <p className="truncate text-xs text-slate-400" title={formatCompanyName(item.name)}>
+        {formatCompanyName(item.name)}
+      </p>
     </div>
   );
 

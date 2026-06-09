@@ -5,6 +5,60 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Selskapsformer som alltid skal stå i store bokstaver */
+const COMPANY_FORM_SUFFIXES = new Set([
+  "AS",
+  "ASA",
+  "ANS",
+  "DA",
+  "NUF",
+  "SA",
+  "BA",
+  "KS",
+  "ENK",
+  "IKS",
+  "STI",
+]);
+
+/** Småord som skal stå i små bokstaver når de ikke er første ord */
+const LOWERCASE_WORDS = new Set(["og", "i", "for", "av"]);
+
+function capitalizeSegment(segment: string): string {
+  if (!segment) return segment;
+  const lower = segment.toLocaleLowerCase("nb-NO");
+  return lower.charAt(0).toLocaleUpperCase("nb-NO") + lower.slice(1);
+}
+
+/**
+ * Pen visning av bedriftsnavn fra Brønnøysund (ALL CAPS → Title Case).
+ * «JAHU CATERING» → «Jahu Catering», «ARCTIC TREASURE AS» → «Arctic Treasure AS».
+ * Endrer kun visningen – aldri data. Navn som allerede har små bokstaver
+ * antas å være riktig formatert og returneres uendret.
+ */
+export function formatCompanyName(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const trimmed = raw.replace(/\s+/g, " ").trim();
+  if (!trimmed) return "";
+  if (/[a-zæøå]/.test(trimmed)) return trimmed;
+
+  return trimmed
+    .split(" ")
+    .map((word, index) => {
+      // Fjern ledende/avsluttende tegnsetting før vi sjekker ordet
+      const core = word.replace(/^[^0-9A-ZÆØÅ]+|[^0-9A-ZÆØÅ]+$/g, "");
+      if (COMPANY_FORM_SUFFIXES.has(core)) return word;
+      if (index > 0 && LOWERCASE_WORDS.has(core.toLocaleLowerCase("nb-NO"))) {
+        return word.toLocaleLowerCase("nb-NO");
+      }
+      // Stor forbokstav i hvert segment rundt bindestrek/punktum/skråstrek o.l.
+      return word
+        .split(/([-./&+]+)/)
+        .map((part) => (/^[-./&+]+$/.test(part) ? part : capitalizeSegment(part)))
+        .join("");
+    })
+    .join(" ");
+}
+
 export function formatRegisteredDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(`${iso}T12:00:00`);

@@ -8,7 +8,7 @@ import {
   buildLeadGoogleSearchQuery,
 } from "@/lib/scan/google-search-query";
 import type { CompanyWithLead } from "@/types/database";
-import { cn } from "@/lib/utils";
+import { cn, formatCompanyName } from "@/lib/utils";
 
 type Props = {
   company: CompanyWithLead | null;
@@ -55,7 +55,7 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Google-søk for ${company.name}`}
+        aria-label={`Google-søk for ${formatCompanyName(company.name)}`}
         onClick={(e) => e.stopPropagation()}
         className={cn(
           "scan-google-panel-body relative z-[1] w-full max-w-lg overflow-hidden rounded-2xl border border-white/25 bg-slate-900/95 text-white shadow-2xl backdrop-blur-xl",
@@ -65,7 +65,12 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
         <div className="flex items-start gap-2 border-b border-white/10 px-3 py-2.5">
           <Search className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="scan-glass-strong truncate text-sm font-semibold">{company.name}</p>
+            <p
+              className="scan-glass-strong truncate text-sm font-semibold"
+              title={formatCompanyName(company.name)}
+            >
+              {formatCompanyName(company.name)}
+            </p>
             <p className="scan-glass-muted text-[11px]">Søk lead på Google</p>
           </div>
           <button
@@ -101,7 +106,7 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
         </p>
         <iframe
           key={googleUrl}
-          title={`Google-søk: ${company.name}`}
+          title={`Google-søk: ${formatCompanyName(company.name)}`}
           src={googleUrl}
           className={cn(
             "scan-google-panel-iframe block w-full",

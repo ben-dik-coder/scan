@@ -7,7 +7,7 @@ import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { ScoreRing, StatusPill } from "@/components/ui/primitives";
 import { statusLabel } from "@/lib/sales/constants";
 import type { LeadActivity, LeadStatus } from "@/types/database";
-import { cn, formatRegisteredDate, formatRelativeTime } from "@/lib/utils";
+import { cn, formatCompanyName, formatRegisteredDate, formatRelativeTime } from "@/lib/utils";
 import type { PipelineItem } from "./types";
 
 type Props = {
@@ -87,7 +87,12 @@ export function LeadDetailDrawer({
         <ScoreRing score={lead.score} size="sm" />
         <StatusPill status={lead.status} label={statusLabel(lead.status)} />
       </div>
-      <h2 className="mt-2 truncate text-lg font-semibold text-white">{company.name}</h2>
+      <h2
+        className="mt-2 truncate text-lg font-semibold text-white"
+        title={formatCompanyName(company.name)}
+      >
+        {formatCompanyName(company.name)}
+      </h2>
       <p className="text-xs text-slate-400">Org.nr {company.orgnr}</p>
     </div>
   );

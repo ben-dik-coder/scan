@@ -12,6 +12,7 @@ import { filterQueueItems } from "@/components/ko/queue-utils";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import type { EmailTemplate } from "@/types/database";
+import { formatCompanyName } from "@/lib/utils";
 import {
   buildQueueCandidates,
   mapQueueCandidatesToItems,
@@ -197,7 +198,7 @@ export function KoClient() {
     if (!item) return;
     if (
       !window.confirm(
-        `Fjern ${item.name} fra arbeidskøen?\n\nFirma finnes fortsatt under Skann og Pipeline.`
+        `Fjern ${formatCompanyName(item.name)} fra arbeidskøen?\n\nFirma finnes fortsatt under Skann og Pipeline.`
       )
     ) {
       return;
@@ -406,9 +407,10 @@ export function KoClient() {
               {contactedItems.map((item) => (
                 <li
                   key={item.orgnr}
-                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-300"
+                  className="truncate rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-300"
+                  title={formatCompanyName(item.name)}
                 >
-                  {item.name}
+                  {formatCompanyName(item.name)}
                 </li>
               ))}
             </ul>

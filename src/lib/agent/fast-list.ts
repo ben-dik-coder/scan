@@ -4,6 +4,7 @@ import {
 } from "@/lib/agent/constants";
 import { isSimpleSearchIntent } from "@/lib/agent/prompt";
 import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
+import { formatCompanyName } from "@/lib/utils";
 
 export type SimpleListCompany = {
   orgnr: string;
@@ -152,7 +153,10 @@ export function formatFastListReply(
   const lines = companies.map((company, index) => {
     const phone = (company.phone ?? "").trim();
     const place = (company.municipality_name ?? "").trim();
-    const parts = [`${index + 1}. **${company.name}**`, `orgnr ${company.orgnr}`];
+    const parts = [
+      `${index + 1}. **${formatCompanyName(company.name)}**`,
+      `orgnr ${company.orgnr}`,
+    ];
     if (phone) parts.push(`tlf ${phone}`);
     if (place) parts.push(place);
     return parts.join(" · ");
