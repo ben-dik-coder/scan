@@ -2,7 +2,6 @@ import { companyGeoPlaces } from "@/lib/brreg/geo-place";
 import { searchDuckDuckGo } from "./duckduckgo-search";
 import {
   companyMatchesResult,
-  normalizeDomain,
   pickBestWebsite,
 } from "./parse-results";
 import { phonePlausibleForCompany } from "./phone-plausible";
