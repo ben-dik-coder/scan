@@ -14,7 +14,10 @@ export function isAgentEnabled(): boolean {
 export const AGENT_MAX_COMPANIES_PER_JOB = 100;
 
 /** Maks tool-loops mot OpenAI per melding */
-export const AGENT_MAX_TOOL_LOOPS = 8;
+export const AGENT_MAX_TOOL_LOOPS = 12;
+
+/** Maks tool-sammendrag i samtalehistorikk */
+export const AGENT_MAX_TOOL_HISTORY_MESSAGES = 20;
 
 export const AGENT_SCAN_DELAY_MS = 200;
 

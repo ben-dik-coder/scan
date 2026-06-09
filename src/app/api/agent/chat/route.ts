@@ -14,6 +14,11 @@ import {
 } from "@/lib/agent/conversations";
 import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
 import {
+  buildAgentStartupContextPrompt,
+  loadAgentStartupContext,
+} from "@/lib/agent/context";
+import { buildAgentChatHistory } from "@/lib/agent/history";
+import {
   isAgentResumeIntent,
   isAgentPostCancelFollowUp,
   buildAgentResumePrompt,
@@ -113,12 +118,7 @@ export async function POST(request: NextRequest) {
       ? await loadConversationMessages(conversationId, user.id)
       : [];
 
-  const history = priorMessages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
+  const history = buildAgentChatHistory(priorMessages);
 
   if (!body.conversationId || history.length === 0) {
     history.push({ role: "user", content: message });
@@ -126,7 +126,13 @@ export async function POST(request: NextRequest) {
     history.push({ role: "user", content: message });
   }
 
-  let systemPromptExtra: string | undefined;
+  const systemPromptParts: string[] = [];
+
+  if (user && !isDemoMode()) {
+    const startup = await loadAgentStartupContext(user.id);
+    systemPromptParts.push(buildAgentStartupContextPrompt(startup));
+  }
+
   if (user && !isDemoMode() && conversationId) {
     const lastRun = await getLastResumableRunForConversation(
       conversationId,
@@ -134,12 +140,15 @@ export async function POST(request: NextRequest) {
     );
     if (lastRun) {
       if (isAgentResumeIntent(message)) {
-        systemPromptExtra = buildAgentResumePrompt(lastRun);
+        systemPromptParts.push(buildAgentResumePrompt(lastRun));
       } else if (isAgentPostCancelFollowUp(message)) {
-        systemPromptExtra = buildAgentCancelledRunContextPrompt(lastRun);
+        systemPromptParts.push(buildAgentCancelledRunContextPrompt(lastRun));
       }
     }
   }
+
+  const systemPromptExtra =
+    systemPromptParts.length > 0 ? systemPromptParts.join("\n\n") : undefined;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -184,6 +193,13 @@ export async function POST(request: NextRequest) {
                 tool: event.tool,
                 summary: event.summary,
               });
+            } else if (event.type === "confirm_save") {
+              send({
+                type: "confirm_save",
+                count: event.count,
+                orgnrs: event.orgnrs,
+                message: event.message,
+              });
             } else if (event.type === "error") {
               send({ type: "error", message: event.message });
             } else if (event.type === "list_saved") {
@@ -206,7 +222,17 @@ export async function POST(request: NextRequest) {
             }
           },
           request.signal,
-          systemPromptExtra ? { systemPromptExtra } : undefined
+          {
+            systemPromptExtra,
+            onToolComplete:
+              user && !isDemoMode()
+                ? async (tool, summary) => {
+                    await saveMessage(conversationId!, "tool", summary, {
+                      tool_name: tool,
+                    });
+                  }
+                : undefined,
+          }
         );
 
         if (request.signal.aborted) {

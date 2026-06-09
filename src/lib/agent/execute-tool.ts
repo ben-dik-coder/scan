@@ -1,5 +1,8 @@
 import { getEntitlements } from "@/lib/billing/entitlements";
-import { SerperLimitReachedError } from "@/lib/billing/serper-usage";
+import {
+  getSerperUsage,
+  SerperLimitReachedError,
+} from "@/lib/billing/serper-usage";
 import {
   applyCompanyContactLimit,
   hasContactInfo,
@@ -19,7 +22,9 @@ import {
 } from "@/lib/company-contact-overrides";
 import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
 import { fetchEnhet } from "@/lib/brreg/client";
+import { shouldUseBrregDb } from "@/lib/brreg/db-source";
 import { fetchCompaniesFromDb } from "@/lib/brreg/fetch-companies-db";
+import { fetchCompaniesFromBrreg } from "@/lib/brreg/fetch-companies";
 import { mapBrregEnhet } from "@/lib/brreg/map-company";
 import {
   enrichScanContacts,
@@ -36,6 +41,7 @@ import {
   persistCachedWebsiteScans,
 } from "@/lib/website-scan/saved-scans-server";
 import { phoneCoreDigits } from "@/lib/website-scan/phone-plausible";
+import { upsertUserMemory } from "@/lib/agent/user-memory";
 import type { WebsiteScanCompanyInput, WebsiteScanResult } from "@/lib/website-scan/types";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -122,6 +128,16 @@ export async function executeAgentTool(
   switch (name) {
     case "get_entitlements":
       return executeGetEntitlements(ctx);
+    case "get_usage":
+      return executeGetUsage(ctx);
+    case "list_saved_lists":
+      return executeListSavedLists(ctx);
+    case "load_saved_list":
+      return executeLoadSavedList(ctx, args);
+    case "filter_leads":
+      return executeFilterLeads(ctx, args);
+    case "remember_preference":
+      return executeRememberPreference(ctx, args);
     case "search_companies":
       return executeSearchCompanies(ctx, args);
     case "scan_websites":
@@ -143,16 +159,210 @@ export async function executeAgentTool(
 async function executeGetEntitlements(
   ctx: AgentToolContext
 ): Promise<ToolExecutionResult> {
-  const entitlements = await getEntitlements(ctx.userId);
+  return executeGetUsage(ctx);
+}
+
+async function executeGetUsage(
+  ctx: AgentToolContext
+): Promise<ToolExecutionResult> {
+  const [entitlements, serper] = await Promise.all([
+    getEntitlements(ctx.userId),
+    getSerperUsage(ctx.userId),
+  ]);
+
   return {
-    summary: `${entitlements.companiesWithContactRemaining} kontakter igjen denne måneden`,
+    summary: `Serper ${serper.used}/${serper.limit} (${serper.remaining} igjen). Kontakt ${entitlements.companiesWithContactRemaining}/${entitlements.maxCompaniesWithContactPerMonth} igjen.`,
     data: {
       hasAccess: entitlements.hasAccess,
+      serperUsed: serper.used,
+      serperLimit: serper.limit,
+      serperRemaining: serper.remaining,
+      serperLimitReached: serper.limitReached,
       companiesWithContactUsed: entitlements.companiesWithContactUsed,
       companiesWithContactRemaining: entitlements.companiesWithContactRemaining,
       maxCompaniesWithContactPerMonth:
         entitlements.maxCompaniesWithContactPerMonth,
+      estimatedSerperPerCompany: 4,
     },
+  };
+}
+
+function mapScanForAgent(scan: WebsiteScanResult) {
+  return {
+    orgnr: scan.orgnr,
+    hasWebsite: scan.hasWebsite,
+    websiteKind: scan.websiteKind,
+    websiteUrl: scan.websiteUrl,
+    bookingPlatform: scan.bookingPlatform,
+    countsAsNoWebsite: isLeadWithoutOwnSite(scan),
+    confidence: scan.confidence,
+    websiteDiscoverySource: scan.websiteDiscoverySource ?? null,
+    displayName: scan.displayName ?? null,
+    gulesiderListed: scan.gulesiderListed ?? false,
+    gulesiderUrl: scan.gulesiderUrl ?? null,
+    enrichedPhone: scan.enrichedPhone ?? null,
+    enrichedPhoneSource: scan.enrichedPhoneSource ?? null,
+    enrichedEmail: scan.enrichedEmail ?? null,
+    enrichedEmailSource: scan.enrichedEmailSource ?? null,
+    facebookUrl: scan.facebookUrl ?? null,
+    linkedinUrl: scan.linkedinUrl ?? null,
+    instagramUrl: scan.instagramUrl ?? null,
+    error: scan.error ?? null,
+  };
+}
+
+async function executeListSavedLists(
+  ctx: AgentToolContext
+): Promise<ToolExecutionResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("saved_lists")
+    .select("id, name, filters, created_at")
+    .eq("user_id", ctx.userId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    return { summary: `Kunne ikke hente lister: ${error.message}`, data: { error: error.message } };
+  }
+
+  const lists = (data ?? []).map((row) => {
+    const filters = (row.filters as Record<string, unknown> | null) ?? {};
+    const agentOrgnrs = Array.isArray(filters.agentOrgnrs)
+      ? (filters.agentOrgnrs as string[])
+      : [];
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      createdAt: row.created_at as string,
+      createdBy: typeof filters.createdBy === "string" ? filters.createdBy : null,
+      orgnrCount: agentOrgnrs.length,
+      municipalityCode:
+        typeof filters.municipalityCode === "string" ? filters.municipalityCode : "",
+      industryGroup:
+        typeof filters.industryGroup === "string" ? filters.industryGroup : "",
+    };
+  });
+
+  return {
+    summary: `Fant ${lists.length} lagrede lister`,
+    data: { lists },
+  };
+}
+
+async function executeLoadSavedList(
+  ctx: AgentToolContext,
+  args: Record<string, unknown>
+): Promise<ToolExecutionResult> {
+  const listId = typeof args.listId === "string" ? args.listId.trim() : "";
+  const listName = typeof args.name === "string" ? args.name.trim() : "";
+
+  const supabase = await createClient();
+  let query = supabase
+    .from("saved_lists")
+    .select("id, name, filters")
+    .eq("user_id", ctx.userId);
+
+  if (listId) {
+    query = query.eq("id", listId);
+  } else if (listName) {
+    query = query.ilike("name", listName);
+  } else {
+    return { summary: "Oppgi listId eller name", data: { error: "missing_list_ref" } };
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle();
+  if (error) {
+    return { summary: `Kunne ikke hente liste: ${error.message}`, data: { error: error.message } };
+  }
+  if (!data) {
+    return { summary: "Listen finnes ikke", data: { error: "not_found" } };
+  }
+
+  const filters = (data.filters as Record<string, unknown> | null) ?? {};
+  const orgnrs = capOrgnrs(
+    Array.isArray(filters.agentOrgnrs) ? (filters.agentOrgnrs as string[]) : []
+  );
+
+  await updateRunProgress(ctx.runId, {
+    phase: "list_loaded",
+    searchFilters: filters,
+    orgnrs,
+    remainingOrgnrs: orgnrs,
+  });
+
+  return {
+    summary: `Lastet liste «${data.name}» med ${orgnrs.length} firma`,
+    data: {
+      listId: data.id,
+      listName: data.name,
+      orgnrs,
+      filters,
+    },
+  };
+}
+
+async function executeFilterLeads(
+  ctx: AgentToolContext,
+  args: Record<string, unknown>
+): Promise<ToolExecutionResult> {
+  const orgnrs = capOrgnrs(
+    Array.isArray(args.orgnrs) ? (args.orgnrs as string[]) : []
+  );
+  if (orgnrs.length === 0) {
+    return { summary: "Ingen firma å filtrere", data: { orgnrs: [] } };
+  }
+
+  const facebookOnly = args.facebookOnly === true;
+  const hasPhone = args.hasPhone === true;
+  const minConfidence =
+    typeof args.minConfidence === "string" ? args.minConfidence : undefined;
+
+  const scans = await loadCachedWebsiteScans(orgnrs);
+  const scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
+
+  const matched = orgnrs.filter((orgnr) => {
+    const scan = scanByOrgnr.get(orgnr);
+    if (!scan) return false;
+    if (facebookOnly && !scan.facebookUrl) return false;
+    if (hasPhone && !scan.enrichedPhone) return false;
+    if (minConfidence === "high" && scan.confidence !== "high") return false;
+    if (minConfidence === "medium" && scan.confidence === "low") return false;
+    return true;
+  });
+
+  const companies = await loadCompaniesByOrgnr(matched);
+
+  return {
+    summary: `Filtrerte til ${matched.length} av ${orgnrs.length} firma`,
+    data: {
+      orgnrs: matched,
+      count: matched.length,
+      filters: { facebookOnly, hasPhone, minConfidence },
+      companies: companies.map((c) => ({
+        orgnr: c.orgnr,
+        name: c.name,
+        phone: c.phone ?? c.mobile,
+        email: c.email,
+      })),
+    },
+  };
+}
+
+async function executeRememberPreference(
+  ctx: AgentToolContext,
+  args: Record<string, unknown>
+): Promise<ToolExecutionResult> {
+  const key = typeof args.key === "string" ? args.key.trim() : "";
+  const value = typeof args.value === "string" ? args.value.trim() : "";
+  if (!key || !value) {
+    return { summary: "Trenger key og value", data: { error: "missing_fields" } };
+  }
+
+  await upsertUserMemory(ctx.userId, key, value);
+  return {
+    summary: `Husket ${key}: ${value}`,
+    data: { key, value },
   };
 }
 
@@ -179,7 +389,7 @@ async function executeSearchCompanies(
       ? args.days
       : defaultDays;
 
-  const result = await fetchCompaniesFromDb({
+  const searchArgs = {
     municipalityCode,
     regionId,
     industryGroup,
@@ -188,7 +398,12 @@ async function executeSearchCompanies(
     hasEmail: false,
     page: 1,
     pageSize: AGENT_MAX_COMPANIES_PER_JOB,
-  });
+  };
+
+  const useDb = await shouldUseBrregDb();
+  const result = useDb
+    ? await fetchCompaniesFromDb(searchArgs)
+    : await fetchCompaniesFromBrreg(searchArgs);
 
   const orgnrs = result.companies.map((c) => c.orgnr);
   const [overrideMap, dbPatchMap] = await Promise.all([
@@ -206,6 +421,9 @@ async function executeSearchCompanies(
   });
 
   const truncated = result.total > AGENT_MAX_COMPANIES_PER_JOB;
+  const truncatedHint = truncated
+    ? "Snevr inn med municipalityCode, regionId eller industryGroup, eller kjør nytt søk med days: 0."
+    : null;
   const searchFilters = {
     municipalityCode,
     regionId,
@@ -234,10 +452,20 @@ async function executeSearchCompanies(
         email: c.email,
         website: c.website,
         municipality_name: c.municipality_name,
+        registered_at: c.registered_at,
+        industry_code: c.industry_code,
+        leadScore:
+          "user_lead" in c && c.user_lead && typeof c.user_lead.score === "number"
+            ? c.user_lead.score
+            : undefined,
       })),
       total: result.total,
       returned: companies.length,
       truncated,
+      truncatedHint,
+      withEmail: result.withEmail,
+      dbCompanyCount: "dbCompanyCount" in result ? result.dbCompanyCount : undefined,
+      dataSource: useDb ? "database" : "live_brreg",
       orgnrs: companies.map((c) => c.orgnr),
       filters: searchFilters,
     },
@@ -351,18 +579,7 @@ async function executeScanWebsites(
       scanned: scans.length,
       withoutWebsite: withoutSite,
       bookingOnly,
-      scans: scans.map((s) => ({
-        orgnr: s.orgnr,
-        hasWebsite: s.hasWebsite,
-        websiteKind: s.websiteKind,
-        websiteUrl: s.websiteUrl,
-        bookingPlatform: s.bookingPlatform,
-        countsAsNoWebsite: isLeadWithoutOwnSite(s),
-        confidence: s.confidence,
-        facebookUrl: s.facebookUrl ?? null,
-        linkedinUrl: s.linkedinUrl ?? null,
-        instagramUrl: s.instagramUrl ?? null,
-      })),
+      scans: scans.map(mapScanForAgent),
     },
   };
 }
@@ -485,6 +702,15 @@ async function executeFilterNoWebsite(
   const without = orgnrs.filter((o) =>
     isLeadWithoutOwnSite(scanByOrgnr.get(o))
   );
+  const bookingOnly = without.filter((o) => {
+    const scan = scanByOrgnr.get(o);
+    return scan ? isBookingOnlyScan(scan) : false;
+  }).length;
+  const facebookOnly = without.filter((o) => {
+    const scan = scanByOrgnr.get(o);
+    return scan && isLeadWithoutOwnSite(scan) && Boolean(scan.facebookUrl);
+  }).length;
+  const noWebsiteNoSocial = without.length - facebookOnly;
 
   const [confirmedCompanies, pendingCompanies] = await Promise.all([
     loadCompaniesByOrgnr(without),
@@ -506,6 +732,11 @@ async function executeFilterNoWebsite(
     data: {
       orgnrs: without,
       count: without.length,
+      breakdown: {
+        bookingOnly,
+        facebookOnly,
+        noWebsiteNoSocial,
+      },
       autoScanned,
       notScanned,
       excludedNotScanned: notScanned.length,

@@ -268,6 +268,14 @@ export type AgentRun = {
   updated_at: string;
 };
 
+export type AgentUserMemory = {
+  id: string;
+  user_id: string;
+  memory_key: string;
+  memory_value: string;
+  updated_at: string;
+};
+
 export type CompanyWithLead = Company & {
   user_lead?: UserLead | null;
 };

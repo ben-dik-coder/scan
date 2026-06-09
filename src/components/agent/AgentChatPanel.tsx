@@ -71,6 +71,7 @@ export function AgentChatPanel({
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [pendingRetryText, setPendingRetryText] = useState<string | null>(null);
   const [showResumeButton, setShowResumeButton] = useState(false);
+  const [pendingSavePrompt, setPendingSavePrompt] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolStep, setToolStep] = useState(0);
   const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
@@ -127,13 +128,21 @@ export function AgentChatPanel({
 
         if (cancelled) return;
 
-        const loaded = (data.messages ?? [])
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
+        const loaded = (data.messages ?? []).map((m) => {
+          if (m.role === "tool") {
+            const label = (m as { tool_name?: string }).tool_name?.replace(/_/g, " ") ?? "verktøy";
+            return {
+              id: m.id,
+              role: "status" as const,
+              content: `[${label}] ${m.content}`,
+            };
+          }
+          return {
             id: m.id,
             role: m.role as "user" | "assistant",
             content: m.content,
-          }));
+          };
+        });
 
         setMessages(loaded);
         requestAnimationFrame(() => {
@@ -195,6 +204,7 @@ export function AgentChatPanel({
       setInput("");
       setBlockedMessage(null);
       setPendingRetryText(null);
+      setPendingSavePrompt(null);
       if (isAgentResumeIntent(trimmed)) {
         setShowResumeButton(false);
       }
@@ -285,6 +295,11 @@ export function AgentChatPanel({
               setActiveTool(null);
               statusSummaries.push(event.summary);
               appendMessage({ role: "status", content: event.summary });
+            } else if (
+              event.type === "confirm_save" &&
+              typeof event.message === "string"
+            ) {
+              setPendingSavePrompt(event.message);
             } else if (event.type === "error" && typeof event.message === "string") {
               assistantText = event.message;
             } else if (event.type === "list_saved") {
@@ -502,6 +517,28 @@ export function AgentChatPanel({
             >
               Avbryt og start på nytt
             </button>
+          </div>
+        )}
+
+        {pendingSavePrompt && !loading && (
+          <div className="flex flex-col items-start gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+            <p>{pendingSavePrompt}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void sendMessage("Ja, lagre listen")}
+                className="rounded-lg border border-emerald-300/40 bg-emerald-400/20 px-3 py-1.5 text-xs font-medium text-emerald-50 transition hover:bg-emerald-400/30"
+              >
+                Lagre liste
+              </button>
+              <button
+                type="button"
+                onClick={() => void sendMessage("Nei, ikke lagre ennå — skann flere")}
+                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+              >
+                Ikke lagre ennå
+              </button>
+            </div>
           </div>
         )}
 

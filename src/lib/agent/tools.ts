@@ -4,9 +4,58 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
   {
     type: "function",
     function: {
-      name: "get_entitlements",
-      description: "Hent brukerens gjenværende kontakt-kvote denne måneden",
+      name: "get_usage",
+      description:
+        "Hent Serper-kvote og kontakt-kvote for brukeren denne måneden. Kjør før store scan_websites-jobber.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_entitlements",
+      description: "Alias for get_usage — kontakt- og Serper-kvote",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_saved_lists",
+      description: "List brukerens lagrede lister (navn, filter, antall firma)",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "load_saved_list",
+      description: "Last orgnr fra en eksisterende lagret liste",
+      parameters: {
+        type: "object",
+        properties: {
+          listId: { type: "string", description: "ID på lagret liste" },
+          name: { type: "string", description: "Navn på liste (alternativ til listId)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remember_preference",
+      description:
+        "Lagre bruker-preferanse for fremtidige samtaler (default_municipality, default_industry, sales_focus, notes)",
+      parameters: {
+        type: "object",
+        properties: {
+          key: { type: "string" },
+          value: { type: "string" },
+        },
+        required: ["key", "value"],
+        additionalProperties: false,
+      },
     },
   },
   {
@@ -97,6 +146,28 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
           orgnrs: {
             type: "array",
             items: { type: "string" },
+          },
+        },
+        required: ["orgnrs"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "filter_leads",
+      description:
+        "Filtrer orgnr etter skann-resultat: Facebook, telefon, confidence",
+      parameters: {
+        type: "object",
+        properties: {
+          orgnrs: { type: "array", items: { type: "string" } },
+          facebookOnly: { type: "boolean" },
+          hasPhone: { type: "boolean" },
+          minConfidence: {
+            type: "string",
+            enum: ["high", "medium", "low"],
           },
         },
         required: ["orgnrs"],

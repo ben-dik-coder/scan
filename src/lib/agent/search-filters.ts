@@ -23,11 +23,16 @@ const PROFESSION_TO_INDUSTRY_GROUP: Record<string, string> = {
   butikk: "handel",
   apotek: "handel",
   bilforhandler: "handel",
+  bilverksted: "handel",
   reklame: "reklame",
   fotograf: "reklame",
   webdesign: "webbyra",
   it: "it",
   regnskap: "it",
+  advokat: "it",
+  arkitekt: "bygg",
+  rengjoring: "handel",
+  bilvask: "handel",
   megler: "eiendom",
   taxi: "transport",
   flyttebyra: "transport",
@@ -36,6 +41,9 @@ const PROFESSION_TO_INDUSTRY_GROUP: Record<string, string> = {
   fysioterapeut: "helse",
   barnehage: "helse",
   trening: "helse",
+  tatovering: "kultur",
+  negler: "skjonnhet",
+  hudpleie: "skjonnhet",
 };
 
 export function mapProfessionToIndustryGroup(

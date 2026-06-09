@@ -11,6 +11,12 @@ export type AgentStreamEvent =
   | { type: "tool_end"; tool: string; summary: string }
   | { type: "error"; message: string }
   | {
+      type: "confirm_save";
+      count: number;
+      orgnrs: string[];
+      message: string;
+    }
+  | {
       type: "list_saved";
       listId: string;
       listName: string;
@@ -67,6 +73,7 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 export type AgentChatOptions = {
   systemPromptExtra?: string;
+  onToolComplete?: (tool: string, summary: string, data: Record<string, unknown>) => Promise<void>;
 };
 
 type AgentRunSummary = {
@@ -205,6 +212,26 @@ export async function runAgentChat(
         tool: toolName,
         summary: result.summary,
       });
+
+      if (options?.onToolComplete) {
+        await options.onToolComplete(toolName, result.summary, result.data);
+      }
+
+      if (toolName === "filter_no_website") {
+        const count =
+          typeof result.data.count === "number" ? result.data.count : 0;
+        const orgnrs = Array.isArray(result.data.orgnrs)
+          ? (result.data.orgnrs as string[])
+          : [];
+        if (count > 0) {
+          await onEvent({
+            type: "confirm_save",
+            count,
+            orgnrs,
+            message: `Fant ${count} firma uten nettside. Vil du lagre som liste?`,
+          });
+        }
+      }
 
       if (toolName === "save_list") {
         if (typeof result.data.url === "string") link = result.data.url;

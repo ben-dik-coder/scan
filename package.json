@@ -47,7 +47,8 @@
     "verify:website-scan": "npx tsx scripts/verify-website-scan-matching.ts",
     "eval:website-scan": "npx tsx scripts/eval-website-scan-batch.ts",
     "eval:phone-recall": "npx tsx scripts/eval-serpapi-phone-recall.ts",
-    "eval:facebook-discovery": "npx tsx scripts/eval-facebook-discovery.ts"
+    "eval:facebook-discovery": "npx tsx scripts/eval-facebook-discovery.ts",
+    "eval:agent-scenarios": "npx tsx scripts/eval-agent-scenarios.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",
