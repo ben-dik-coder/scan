@@ -15,6 +15,7 @@ import {
 import { resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
 import { companyGeoPlaces } from "../src/lib/brreg/geo-place.ts";
+import { fetchWebsitePageMetadata } from "../src/lib/website-scan/fetch-website-metadata.ts";
 import {
   buildFacebookSearchQueries,
   normalizeFacebookUrl,
@@ -25,7 +26,6 @@ import {
   compactAlnum,
   dedupeHits,
   normalizeDomain,
-  pickBestWebsite,
   type SearchHit,
 } from "../src/lib/website-scan/parse-results.ts";
 import {
@@ -40,8 +40,8 @@ import {
 } from "../src/lib/website-scan/scan-api-budget.ts";
 import {
   discoverPhoneFromSerper,
+  discoverWebsiteFromSerper,
   searchSerper,
-  searchSerperForWebsite,
 } from "../src/lib/website-scan/serper.ts";
 import type { Company } from "../src/types/database.ts";
 import type {
@@ -96,11 +96,54 @@ function parseArgs() {
   const args = process.argv.slice(2);
   let limit = 30;
   let seed = "eval-jun-2026-v3";
+  let serperOnly = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit" && args[i + 1]) limit = Number(args[++i]);
     else if (args[i] === "--seed" && args[i + 1]) seed = args[++i];
+    else if (args[i] === "--serper-only") serperOnly = true;
   }
-  return { limit, seed };
+  return { limit, seed, serperOnly };
+}
+
+function inputFromRow(row: EvalRow): WebsiteScanCompanyInput {
+  return {
+    orgnr: row.orgnr,
+    name: row.name,
+    municipality_name: row.place,
+    city: row.place,
+    email: null,
+    website: null,
+    industry_code: null,
+  };
+}
+
+function loadCachedEvalRows(limit: number): EvalRow[] {
+  const cachePath = resolve(process.cwd(), "scripts/.cache/serper-eval-30.json");
+  if (!existsSync(cachePath)) {
+    throw new Error(`Mangler cache: ${cachePath}`);
+  }
+  const cached = JSON.parse(readFileSync(cachePath, "utf8")) as {
+    rows?: EvalRow[];
+  };
+  const rows = (cached.rows ?? []).slice(0, limit).map((row) => ({
+    ...row,
+    serperWebsite: null,
+    serperDomain: null,
+    serperWebsiteConfidence: null,
+    websiteMatch: null,
+    serperPhone: null,
+    serperPhoneConfidence: null,
+    phoneMatch: null,
+    serperFacebook: null,
+    serperFacebookConfidence: null,
+    facebookMatch: null,
+    websiteQueries: [],
+    phoneQueries: [],
+    facebookQueriesRun: 0,
+    error: undefined,
+  }));
+  if (!rows.length) throw new Error("Cache har ingen rader");
+  return rows;
 }
 
 function mulberry32(seed: number) {
@@ -238,22 +281,38 @@ async function discoverGroundTruth(
 }
 
 async function discoverWebsiteSerper(company: WebsiteScanCompanyInput) {
-  const { hits, queries } = await searchSerperForWebsite(company);
-  const pick = pickBestWebsite(hits, company.name, {
-    municipalityName: company.municipality_name ?? company.city,
-  });
+  const result = await discoverWebsiteFromSerper(company);
   return {
-    websiteUrl: pick.websiteUrl,
-    websiteDomain: pick.websiteDomain,
-    confidence: pick.confidence,
-    queries,
+    websiteUrl: result.websiteUrl,
+    websiteDomain: result.websiteDomain,
+    confidence: result.confidence,
+    queries: result.queries,
   };
 }
 
 async function discoverFacebookSerper(
   company: WebsiteScanCompanyInput,
-  websiteDomain?: string | null
+  websiteDomain?: string | null,
+  websiteUrl?: string | null
 ) {
+  if (websiteUrl?.trim()) {
+    const meta = await fetchWebsitePageMetadata(websiteUrl).catch(() => ({
+      displayName: null,
+      facebookUrl: null,
+      instagramUrl: null,
+      linkedinUrl: null,
+    }));
+    const metaFb = meta.facebookUrl?.trim();
+    if (metaFb) {
+      return {
+        facebookUrl: normalizeFacebookUrl(metaFb) ?? metaFb,
+        confidence: "high" as const,
+        queriesRun: 0,
+        queries: [] as string[],
+      };
+    }
+  }
+
   const queries = buildFacebookSearchQueries(company, { websiteDomain });
   const alternate = alternateNames(company.name);
   const geoPlaces = companyGeoPlaces(company);
@@ -271,6 +330,7 @@ async function discoverFacebookSerper(
     const pick = pickFacebookFromHits(merged, company.name, geoLabel, {
       geoPlaces,
       alternateNames: alternate,
+      websiteDomain,
     });
     if (pick.url) break;
     await sleep(200);
@@ -280,10 +340,14 @@ async function discoverFacebookSerper(
   let pick = pickFacebookFromHits(merged, company.name, geoLabel, {
     geoPlaces,
     alternateNames: alternate,
+    websiteDomain,
   });
   if (!pick.url) {
     for (const alt of alternate) {
-      const altPick = pickFacebookFromHits(merged, alt, geoLabel, { geoPlaces });
+      const altPick = pickFacebookFromHits(merged, alt, geoLabel, {
+        geoPlaces,
+        websiteDomain,
+      });
       if (altPick.url) {
         pick = altPick;
         break;
@@ -437,13 +501,22 @@ function metricBlock(
 async function main() {
   loadEnvLocal();
 
-  const { limit, seed } = parseArgs();
+  const { limit, seed, serperOnly } = parseArgs();
   const apiKey = process.env.SERPER_API_KEY?.trim();
   if (!apiKey) {
     console.error("SERPER_API_KEY mangler i .env.local");
     process.exit(1);
   }
 
+  let evalRows: EvalRow[] = [];
+  let tried = 0;
+
+  if (serperOnly) {
+    evalRows = loadCachedEvalRows(limit);
+    console.log(
+      `Serper-only: ${evalRows.length} bedrifter fra cache (hopper over ground truth)…\n`
+    );
+  } else {
   const poolTarget = Math.max(limit * 4, 80);
   console.log(`Henter inntil ${poolTarget} kandidater (seed ${seed})…`);
   const pool = shuffle(await loadCandidatePool(poolTarget), seed);
@@ -451,9 +524,7 @@ async function main() {
   console.log(
     `Fase 1: Ground truth (uten Serper) — mål ${limit} bedrifter med treff…\n`
   );
-  const evalRows: EvalRow[] = [];
   const companyByOrgnr = new Map<string, Company>();
-  let tried = 0;
 
   for (const c of pool) {
     if (evalRows.length >= limit) break;
@@ -510,27 +581,34 @@ async function main() {
       `\nFant bare ${evalRows.length}/${limit} med ground truth (prøvde ${tried}).`
     );
   }
+  }
   console.log(`\n${evalRows.length} bedrifter — kjører Serper…\n`);
 
   forceSerperEval();
 
   for (let i = 0; i < evalRows.length; i++) {
     const row = evalRows[i]!;
-    const c = companyByOrgnr.get(row.orgnr)!;
-    const input = discoveryInput(c);
+    const input = inputFromRow(row);
 
     process.stdout.write(
       `[SP ${i + 1}/${evalRows.length}] ${row.name.slice(0, 36)}… `
     );
 
     try {
-      const [web, phone, fb] = await Promise.all([
-        row.truthWebsite ? discoverWebsiteSerper(input) : Promise.resolve(null),
+      const web = row.truthWebsite
+        ? await discoverWebsiteSerper(input)
+        : null;
+      const serperDomain = web?.websiteDomain ?? null;
+
+      const [phone, fb] = await Promise.all([
         row.truthPhone
-          ? discoverPhoneFromSerper(input)
+          ? discoverPhoneFromSerper(input, {
+              websiteDomain: serperDomain,
+              websiteUrl: web?.websiteUrl,
+            })
           : Promise.resolve(null),
         row.truthFacebook
-          ? discoverFacebookSerper(input, row.truthDomain)
+          ? discoverFacebookSerper(input, serperDomain, web?.websiteUrl)
           : Promise.resolve(null),
       ]);
 

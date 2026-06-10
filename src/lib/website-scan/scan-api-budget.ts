@@ -7,10 +7,10 @@
 export const MAX_WEBSITE_SEARCH_QUERIES = 1;
 
 /** Serper /search for nettside — prioritér enkle firmavn+sted-spørringer */
-export const SERPER_WEBSITE_MAX_QUERIES = 5;
+export const SERPER_WEBSITE_MAX_QUERIES = 7;
 
 /** Serper /search for telefon når Places mangler nummer */
-export const SERPER_PHONE_MAX_QUERIES = 4;
+export const SERPER_PHONE_MAX_QUERIES = 8;
 
 /** Ekstra site:gulesider.no-søk koster 1 SerpAPI — bruk treff fra hovedsøk */
 export const ENABLE_GULESIDER_SERP_SEARCH = false;

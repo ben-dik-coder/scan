@@ -1,6 +1,7 @@
 import { fetchWebsitePageMetadata } from "./fetch-website-metadata";
 import {
   compactAlnum,
+  norwegianDomainCompact,
   domainSimilarToCompany,
   isGenericDomainBase,
   isNonOwnWebsiteDomain,
@@ -56,6 +57,15 @@ function domainBases(companyName: string): string[] {
     .replace(/[^a-z0-9æøå-]+/gi, "-")
     .replace(/^-|-$/g, "");
   if (hyphenSlug.includes("-")) add(hyphenSlug);
+
+  const noDomainCompact = norwegianDomainCompact(stripped);
+  if (
+    noDomainCompact.length >= 4 &&
+    noDomainCompact !== compact &&
+    noDomainCompact.length <= 24
+  ) {
+    add(noDomainCompact);
+  }
 
   // Hele navnet uten mellomrom (glowbyelena) — ofte riktig domene, må prøves tidlig.
   if (compact.length >= 5 && compact.length <= 24) add(compact);

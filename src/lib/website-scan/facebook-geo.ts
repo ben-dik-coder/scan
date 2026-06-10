@@ -2,7 +2,11 @@ import type { FacebookProfileSnippet } from "@/lib/website-scan/types";
 
 /** Land/region som tydelig ikke er Norge (vanlige falske treff). */
 const FOREIGN_LOCATION_RE =
-  /\b(polen|poland|polska|polski|tyskland|germany|deutschland|frankrike|france|spania|spain|italia|italy|nederland|netherlands|belgia|belgium|østerrike|austria|tsjekkia|czech|ungarn|hungary|romania|bulgaria|ukraina|ukraine|litauen|lithuania|latvia|estonia|irland|ireland|storbritannia|united kingdom|england|skottland|scotland|usa|united states)\b/i;
+  /\b(polen|poland|polska|polski|tyskland|germany|deutschland|frankrike|france|spania|spain|italia|italy|nederland|netherlands|belgia|belgium|østerrike|austria|tsjekkia|czech|ungarn|hungary|romania|bulgaria|ukraina|ukraine|litauen|lithuania|latvia|estonia|irland|ireland|storbritannia|united kingdom|england|skottland|scotland|usa|united states|mairie|ville de|town of|city of)\b/i;
+
+/** Vanlige utenlandske Facebook-handles som matcher norske firmanavn tilfeldig. */
+const FOREIGN_FB_HANDLE_RE =
+  /^(mairie|ville|cityof|townof|hotel|restaur|magasin|shop|store|boutique)/i;
 
 const FOREIGN_CITY_RE =
   /\b(warszawa|warsaw|kraków|krakow|wrocław|wroclaw|gdańsk|gdansk|poznań|poznan|łódź|lodz|szczecin|bydgoszcz|lublin|katowice|berlin|münchen|munich|hamburg|köln|cologne|frankfurt|paris|madrid|barcelona|roma|rome|milano|milan|amsterdam|rotterdam|brussel|brussels|wien|vienna|prague|praha|budapest|bucharest|kyiv|kiev|dublin|london|manchester|liverpool)\b/i;
@@ -121,6 +125,13 @@ export function facebookSearchTextLooksValid(
   if (hasNorwayLocationSignals(text, municipality)) return true;
 
   return !hasForeignLocationSignals(text);
+}
+
+export function facebookHandleLooksForeign(handle: string): boolean {
+  const h = handle.trim();
+  if (!h || /^\d+$/.test(h)) return false;
+  if (FOREIGN_FB_HANDLE_RE.test(h)) return true;
+  return hasForeignLocationSignals(h);
 }
 
 export function scoreFacebookSearchHit(

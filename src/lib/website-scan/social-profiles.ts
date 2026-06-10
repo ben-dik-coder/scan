@@ -1,6 +1,7 @@
 import { websiteFromEmail } from "@/lib/website-scan/email-hint";
 import { companyGeoPlaces } from "@/lib/brreg/geo-place";
 import {
+  facebookHandleLooksForeign,
   facebookUrlHasForeignLocale,
   scoreFacebookSearchHit,
 } from "@/lib/website-scan/facebook-geo";
@@ -373,6 +374,7 @@ export function pickFacebookFromHits(
   options?: {
     alternateNames?: string[];
     geoPlaces?: string[];
+    websiteDomain?: string | null;
   }
 ): SocialUrlPick {
   const seen = new Set<string>();
@@ -385,6 +387,9 @@ export function pickFacebookFromHits(
     const domain = normalizeDomain(h.link);
     if (!isFacebookHost(domain)) continue;
     if (facebookUrlHasForeignLocale(h.link)) continue;
+
+    const fbHandle = socialHandleFromLink(h.link, "facebook");
+    if (fbHandle && facebookHandleLooksForeign(fbHandle)) continue;
 
     const { match, strength, hadTitleMatch } = socialHitMatchesCompany(
       h,
@@ -400,7 +405,15 @@ export function pickFacebookFromHits(
     if (!url || seen.has(url)) continue;
     seen.add(url);
 
-    const score = strength + geoScore;
+    let score = strength + geoScore;
+    const websiteSlug = options?.websiteDomain?.split(".")[0]?.trim();
+    if (websiteSlug && fbHandle) {
+      const slugCompact = compactAlnum(websiteSlug);
+      const handleCompact = compactAlnum(fbHandle);
+      if (slugCompact.length >= 4 && handleCompact.includes(slugCompact)) {
+        score += 8;
+      }
+    }
     if (!best || score > best.score) {
       best = { url, score, hadTitleMatch };
     }

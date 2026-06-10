@@ -431,6 +431,18 @@ export function compactAlnum(text: string): string {
     .replace(/[^a-z0-9]/gi, "");
 }
 
+/** Norske domener bruker ofte aa/ae/o — «INNPÅ» → innpaa.no */
+export function norwegianDomainCompact(text: string): string {
+  return stripCompanySuffix(text)
+    .toLowerCase()
+    .replace(/å/g, "aa")
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "o")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^a-z0-9]/gi, "");
+}
+
 /**
  * Sosial profil / sidetittel — alle navneord må finnes i selve profilnavnet,
  * ikke bare i URL eller «Headline Frisør Narvik» for «Narvik Frisør AS».
@@ -582,6 +594,7 @@ export function domainSimilarToCompany(
 
   const stripped = stripCompanySuffix(companyName);
   const companyCompact = compactAlnum(stripped);
+  const companyNoDomain = norwegianDomainCompact(stripped);
   const strippedSlug = stripped
     .toLowerCase()
     .replace(/[^a-z0-9æøå-]+/gi, "-")
@@ -593,6 +606,7 @@ export function domainSimilarToCompany(
     if (base !== companyCompact) return false;
   }
   if (base === companyCompact) return true;
+  if (companyNoDomain.length >= 4 && base === companyNoDomain) return true;
   if (
     companyCompact.length >= 5 &&
     Math.abs(base.length - companyCompact.length) <= 2 &&
@@ -766,6 +780,18 @@ function scoreHit(
     const companyCompact = compactAlnum(strippedName);
     if (domainCompact === companyCompact) score += 3;
     if (domainBase.endsWith("as") && !companyCompact.endsWith("as")) score -= 2;
+
+    const brand = extractBrandPortion(companyName);
+    const brandCompact = compactAlnum(brand ?? tokens.slice(0, 2).join(""));
+    if (brandCompact.length >= 5 && domainCompact === brandCompact) score += 5;
+
+    if (tokens.length >= 3) {
+      const tailTokens = tokens.slice(2).filter((t) => t.length >= 4);
+      const tailInDomain = tailTokens.some((t) =>
+        domainCompact.includes(compactAlnum(t))
+      );
+      if (tailInDomain && domainCompact.length > brandCompact.length) score -= 6;
+    }
   }
 
   for (const token of tokens) {
@@ -799,6 +825,107 @@ function scoreHit(
   if (!acceptAsOwn || score < minScore) return null;
 
   return { title, link, domain, score, nameInDomain };
+}
+
+const URL_IN_TEXT_RE =
+  /(?:https?:\/\/)?(?:www\.)?([a-z0-9][-a-z0-9]{2,}\.(?:no|com|net|org|io|shop))\b/gi;
+
+/** Trekk ut URL-er fra snippet/tittel (f.eks. nettside nevnt i 1881-treff). */
+export function extractUrlsFromText(text: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(URL_IN_TEXT_RE)) {
+    const host = match[1]?.toLowerCase();
+    if (!host || seen.has(host)) continue;
+    seen.add(host);
+    urls.push(`https://${host}/`);
+  }
+  return urls;
+}
+
+/** @handle som annabeautystudiono → sannsynlig annabeautystudio.no */
+function inferDomainFromSocialHandle(
+  handle: string,
+  companyName: string
+): string | null {
+  const h = handle.toLowerCase().replace(/[._-]/g, "");
+  const compact = compactAlnum(stripCompanySuffix(companyName));
+  if (h.length < 6 || compact.length < 5) return null;
+
+  if (h.endsWith("no") && h.length > 4) {
+    const base = h.slice(0, -2);
+    if (
+      base.length >= 5 &&
+      (compact === base ||
+        compact.startsWith(base) ||
+        base.startsWith(compact.slice(0, Math.min(base.length, compact.length))))
+    ) {
+      return `https://${base}.no/`;
+    }
+  }
+
+  if (h === compact || (h.length >= 8 && compact.includes(h))) {
+    return `https://${h}.no/`;
+  }
+
+  return null;
+}
+
+/** Utvid treff med domener fra snippet, e-post og sosiale @handles. */
+export function enrichWebsiteHits(
+  hits: SearchHit[],
+  companyName: string
+): SearchHit[] {
+  const extras: SearchHit[] = [];
+  const seen = new Set(
+    hits.map((h) => h.link.split("#")[0]?.toLowerCase() ?? h.link.toLowerCase())
+  );
+
+  for (const hit of hits) {
+    const text = `${hit.title} ${hit.snippet ?? ""}`;
+
+    const handleMatch = text.match(/\(@([a-z0-9._-]+)\)/i);
+    if (handleMatch) {
+      const inferred = inferDomainFromSocialHandle(handleMatch[1]!, companyName);
+      if (inferred) {
+        const key = inferred.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          extras.push({ title: companyName, link: inferred });
+        }
+      }
+    }
+
+    const emailMatch = text.match(
+      /\b([a-z0-9][-a-z0-9._]*@[a-z0-9][-a-z0-9.]*\.(?:no|com))\b/i
+    );
+    if (emailMatch) {
+      const emailDomain = emailMatch[1]!.split("@")[1]!.toLowerCase();
+      if (
+        emailDomain &&
+        !isNonOwnWebsiteDomain(emailDomain) &&
+        domainSimilarToCompany(emailDomain, companyName)
+      ) {
+        const url = `https://${emailDomain}/`;
+        const key = url.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          extras.push({ title: companyName, link: url });
+        }
+      }
+    }
+
+    for (const url of extractUrlsFromText(text)) {
+      const domain = normalizeDomain(url);
+      if (!domain || isNonOwnWebsiteDomain(domain)) continue;
+      const key = url.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extras.push({ title: companyName, link: url, snippet: hit.snippet });
+    }
+  }
+
+  return dedupeHits([...hits, ...extras]);
 }
 
 function findBookingOnlyHit(
@@ -842,13 +969,14 @@ export function pickBestWebsite(
   topHits: Array<{ title: string; link: string; domain: string }>;
   confidence: "high" | "medium" | "low";
 } {
-  const topHits = hits.slice(0, 8).map((h) => ({
+  const enriched = enrichWebsiteHits(hits, companyName);
+  const topHits = enriched.slice(0, 8).map((h) => ({
     title: h.title,
     link: h.link,
     domain: normalizeDomain(h.link),
   }));
 
-  const analyzed = hits
+  const analyzed = enriched
     .map((h) => {
       const domain = normalizeDomain(h.link);
       return scoreHit(domain, h.title, h.link, companyName, context);
@@ -876,7 +1004,7 @@ export function pickBestWebsite(
     };
   }
 
-  const booking = findBookingOnlyHit(hits, companyName);
+  const booking = findBookingOnlyHit(enriched, companyName);
   if (booking) {
     return {
       hasWebsite: false,
@@ -1006,16 +1134,34 @@ export function buildWebsiteSearchQueries(company: {
     queries.push(q);
   };
 
+  const strippedTitle = toTitleCaseName(stripped);
+
   if (places.length > 0) {
     for (const place of places) {
       if (brandTitle) add(`"${brandTitle}" ${place}`);
       if (brand) add(`${brand} ${place}`);
       add(`${stripped} ${place}`);
+      if (strippedTitle !== stripped) add(`"${strippedTitle}" ${place}`);
       if (name !== stripped) add(`${name} ${place}`);
       const compact = compactAlnum(stripped);
+      const noCompact = norwegianDomainCompact(stripped);
+      if (noCompact.length >= 4 && noCompact !== compact) {
+        add(`${noCompact}.no`);
+        add(`${noCompact} ${place}`);
+      }
       if (compact.length >= 5) {
         add(`${compact} ${place}`);
         add(`${compact} ${place} nettside`);
+        add(`${compact}.no`);
+        add(`${compact}.com`);
+      }
+      const hyphenSlug = stripped
+        .toLowerCase()
+        .replace(/[^a-z0-9æøå-]+/gi, "-")
+        .replace(/^-|-$/g, "");
+      if (hyphenSlug.includes("-") && hyphenSlug.length >= 5) {
+        add(`${hyphenSlug} ${place}`);
+        add(`${hyphenSlug}.com ${place}`);
       }
       add(`"${stripped}" ${place} nettside`);
     }
