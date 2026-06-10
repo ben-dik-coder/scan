@@ -46,7 +46,7 @@ export function ScanListToolbar({
   return (
     <div className="scan-glass-divider space-y-3 border-t px-3 py-3 lg:px-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="scan-segmented min-w-0 max-w-full overflow-x-auto">
+        <div className="scan-segmented min-w-0 max-w-full flex-1 overflow-x-auto">
           {tabs.map((tab) => {
             const TabIcon = tab.icon;
             const isWebsiteTab = tab.id === "no_website" || tab.id === "with_website";
@@ -56,7 +56,7 @@ export function ScanListToolbar({
                 type="button"
                 onClick={() => onTabChange(tab.id)}
                 className={cn(
-                  "scan-segmented-item",
+                  "scan-segmented-item shrink-0 flex-none",
                   activeTab === tab.id && "scan-segmented-item-active",
                   tab.pinned && "shrink-0",
                   isWebsiteTab && tab.count === 0 && activeTab !== tab.id && "opacity-60"
@@ -70,12 +70,12 @@ export function ScanListToolbar({
             );
           })}
         </div>
-        <div className="scan-segmented hidden shrink-0 md:inline-flex">
+        <div className="scan-segmented scan-segmented-view-toggle hidden w-auto shrink-0 overflow-hidden md:inline-flex">
           <button
             type="button"
             onClick={() => onViewModeChange("table")}
             className={cn(
-              "scan-segmented-item scan-segmented-icon px-2",
+              "scan-segmented-item scan-segmented-icon shrink-0 flex-none px-2",
               listViewMode === "table" && "scan-segmented-item-active"
             )}
             aria-pressed={listViewMode === "table"}
@@ -88,7 +88,7 @@ export function ScanListToolbar({
             type="button"
             onClick={() => onViewModeChange("cards")}
             className={cn(
-              "scan-segmented-item scan-segmented-icon px-2",
+              "scan-segmented-item scan-segmented-icon shrink-0 flex-none px-2",
               listViewMode === "cards" && "scan-segmented-item-active"
             )}
             aria-pressed={listViewMode === "cards"}

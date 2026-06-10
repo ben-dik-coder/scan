@@ -213,21 +213,29 @@ export function ScanCompanyLists({
     }
   }
 
-  async function deleteList(listId: string) {
-    setDeletingId(listId);
+  async function deleteList(list: SavedListRow) {
+    if (
+      !window.confirm(
+        `Er du sikker på at du vil slette «${list.name}»?\n\nDette kan ikke angres.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(list.id);
     try {
       if (isDemoMode()) {
-        showMessage("Sletting i demo kommer snart — bruk en ny liste i stedet");
-        return;
+        demo.deleteSavedListDemo(list.id);
+      } else {
+        const res = await fetch(`/api/saved-lists/${encodeURIComponent(list.id)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error ?? "Kunne ikke slette");
+        }
       }
-      const res = await fetch(`/api/saved-lists/${encodeURIComponent(listId)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Kunne ikke slette");
-      }
-      showMessage("Listen er slettet");
+      showMessage(`Listen «${list.name}» er slettet`);
       await reloadSaved();
     } catch (err) {
       showMessage(err instanceof Error ? err.message : "Noe gikk galt");
@@ -372,17 +380,19 @@ export function ScanCompanyLists({
                           </span>
                         )}
                       </button>
-                      {!isAgent && (
-                        <button
-                          type="button"
-                          onClick={() => void deleteList(list.id)}
-                          disabled={deletingId === list.id}
-                          className="rounded-lg p-2 text-white/50 hover:bg-red-500/15 hover:text-red-200 disabled:opacity-40"
-                          aria-label={`Slett ${list.name}`}
-                        >
+                      <button
+                        type="button"
+                        onClick={() => void deleteList(list)}
+                        disabled={deletingId === list.id}
+                        className="rounded-lg p-2 text-white/50 hover:bg-red-500/15 hover:text-red-200 disabled:opacity-40"
+                        aria-label={`Slett ${list.name}`}
+                      >
+                        {deletingId === list.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
                           <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                        )}
+                      </button>
                     </div>
                   );
                 })}

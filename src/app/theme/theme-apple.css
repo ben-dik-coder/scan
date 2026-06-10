@@ -258,6 +258,12 @@ html[data-app-theme="apple"].app-glass-theme::before {
     border-radius: 9px;
     border: none;
     background: rgba(118, 118, 128, 0.24);
+    overflow: hidden;
+  }
+
+[data-app-theme="apple"] .scan-glass-kommand .scan-segmented-view-toggle {
+    width: auto;
+    flex: none;
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .scan-segmented-item,

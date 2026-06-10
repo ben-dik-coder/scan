@@ -7,6 +7,7 @@ import {
 } from "@/lib/agent/constants";
 import {
   extractPlaceMention,
+  formatNearbyPlaceSuggestion,
   formatPlaceLabel,
   isUnknownGeoPlace,
   parseDefaultMunicipalityFromPrompt,
@@ -159,7 +160,11 @@ export function isScanWebsitesFollowUp(message: string): boolean {
     /\bskann\s+(nettside|de|disse)\b/.test(normalized) ||
     /\bskann\s+(de|disse)\s+(to|tre|\d+|første|forste|neste)\b/.test(normalized) ||
     /\bskann\s+(de\s+)?neste\b/.test(normalized) ||
-    /\bskan\s+(de\s+)?neste\b/.test(normalized)
+    /\bskan\s+(de\s+)?neste\b/.test(normalized) ||
+    /\b(skann|sjekk)\s+(en|ett|to|tre|fire|fem|seks|syv|atte|ni|ti)\b/.test(
+      normalized
+    ) ||
+    /\b(skann|sjekk)\s+\d{1,2}\b/.test(normalized)
   );
 }
 
@@ -203,6 +208,24 @@ function parseScanCount(message: string): number {
     ni: 9,
     ti: 10,
   };
+
+  const scanWordMatch = normalized.match(
+    /\b(skann|sjekk)\s+(en|ett|to|tre|fire|fem|seks|syv|atte|ni|ti)\b/
+  );
+  if (scanWordMatch) {
+    return Math.min(
+      wordCounts[scanWordMatch[2]] ?? AGENT_MAX_SCAN_PER_CALL,
+      AGENT_MAX_SCAN_PER_JOB
+    );
+  }
+
+  const scanDigitMatch = normalized.match(/\b(skann|sjekk)\s+(\d{1,2})\b/);
+  if (scanDigitMatch) {
+    return Math.min(
+      Number.parseInt(scanDigitMatch[2], 10),
+      AGENT_MAX_SCAN_PER_JOB
+    );
+  }
 
   const nesteWordMatch = normalized.match(
     /\bneste\s+(en|ett|to|tre|fire|fem|seks|syv|atte|ni|ti)\b/
@@ -986,9 +1009,13 @@ export function formatWebsiteSalesLeadReply(
 
   const phoneNote = request.requirePhone ? " (alle med telefon)" : "";
   const header = `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}${phoneNote} du kan ta kontakt med:`;
+  const municipalityCode =
+    typeof request.searchArgs.municipalityCode === "string"
+      ? request.searchArgs.municipalityCode
+      : undefined;
   const footer =
     companies.length < request.limit
-      ? `\n\nFant bare ${companies.length} i databasen. Si fra om du vil prøve en annen bransje.`
+      ? `\n\nFant bare ${companies.length} i databasen. ${formatNearbyPlaceSuggestion(municipalityCode, request.industryLabel)} Si fra om du vil prøve en annen bransje.`
       : "\n\nVil du lagre som liste? Si fra.";
 
   return `${header}\n\n${lines.join("\n")}${footer}`;
@@ -1108,6 +1135,34 @@ export function formatUnknownPlaceReply(request: ParsedSimpleListRequest): strin
   return `Fant ingen ${request.industryLabel} i ${request.locationLabel}. Stedet finnes ikke som norsk kommune i Brønnøysund — prøv et annet sted.`;
 }
 
+export function formatPoolExhaustedReply(options: {
+  industryLabel: string;
+  locationLabel: string;
+  seenCount: number;
+  municipalityCode?: string;
+}): string {
+  const suggestion = formatNearbyPlaceSuggestion(
+    options.municipalityCode,
+    options.industryLabel
+  );
+  return `Fant ingen flere ${options.industryLabel} i ${options.locationLabel}. Du har sett ${options.seenCount} fra før — ${suggestion} Si fra om du vil skanne eller lagre.`;
+}
+
+function partialResultFooter(
+  request: ParsedSimpleListRequest,
+  found: number
+): string {
+  const municipalityCode =
+    typeof request.searchArgs.municipalityCode === "string"
+      ? request.searchArgs.municipalityCode
+      : undefined;
+  const suggestion = formatNearbyPlaceSuggestion(
+    municipalityCode,
+    request.industryLabel
+  );
+  return `\n\nFant bare ${found} i databasen. ${suggestion} Si fra om du vil skanne nettside eller lagre som liste.`;
+}
+
 export function formatFastListReply(
   companies: SimpleListCompany[],
   request: ParsedSimpleListRequest
@@ -1142,7 +1197,7 @@ export function formatFastListReply(
     : `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}${phoneNote}:`;
   const footer =
     companies.length < request.limit
-      ? `\n\nFant bare ${companies.length} i databasen. Si fra om du vil skanne nettside eller lagre som liste.`
+      ? partialResultFooter(request, companies.length)
       : "\n\nVil du skanne nettside eller lagre som liste? Si fra.";
 
   return `${header}\n\n${lines.join("\n")}${footer}`;

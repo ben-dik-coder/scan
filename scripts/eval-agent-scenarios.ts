@@ -24,6 +24,7 @@ import {
   parseSearchAndScanRequest,
   parseSimpleListRequest,
   parseWebsiteSalesLeadRequest,
+  formatPoolExhaustedReply,
   formatWebsiteSalesLeadReply,
 } from "../src/lib/agent/fast-list.ts";
 import {
@@ -45,6 +46,10 @@ import {
   resolveAgentSearchIndustryFilters,
   resolveIndustryKeyword,
 } from "../src/lib/agent/search-filters.ts";
+import {
+  formatNearbyPlaceSuggestion,
+  getNearbyMunicipalitySuggestions,
+} from "../src/lib/agent/municipality.ts";
 import {
   isWebsiteSalesLeadIntent,
   messageForIndustryResolution,
@@ -237,6 +242,8 @@ async function testSaveAndScanFollowUp() {
   assert.equal(isScanWebsitesFollowUp("skann de tre første"), true);
   assert.equal(isScanWebsitesFollowUp("skann de neste 5"), true);
   assert.equal(isScanWebsitesFollowUp("skann neste fem"), true);
+  assert.equal(isScanWebsitesFollowUp("skann 10"), true);
+  assert.equal(isScanWebsitesFollowUp("sjekk 10"), true);
 
   const history = [
     { role: "user", content: "finn 3 advokater i Oslo" },
@@ -303,6 +310,11 @@ async function testSaveAndScanFollowUp() {
   assert.equal(scanTen.count, 10);
   assert.equal(scanTen.orgnrs.length, 10);
 
+  const scanTenShort = parseScanWebsitesRequest("skann 10", tenHistory);
+  assert.ok(scanTenShort);
+  assert.equal(scanTenShort.count, 10);
+  assert.equal(scanTenShort.orgnrs.length, 10);
+
   const capped = capScanJobOrgnrs(tenOrgnrs);
   assert.equal(capped.orgnrs.length, 10);
   assert.equal(capped.remaining, 2);
@@ -313,6 +325,9 @@ async function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn 5 byggevarehandler i Bodø"), true);
   assert.equal(isSimpleListIntent("finn 5 frisører i Bodø"), true);
   assert.equal(isSimpleListIntent("finn 3 kulturfirma i Narvik"), true);
+  assert.equal(isSimpleListIntent("finn grillbar i Norge"), true);
+  assert.equal(isSimpleListIntent("finn 5 grillbar i Bergen"), true);
+  assert.equal(isSimpleListIntent("finn 3 tatovering i Oslo"), true);
   assert.equal(isSimpleListIntent("finn frisører uten nettside"), false);
   assert.equal(isSimpleListIntent("skann nettside for disse"), false);
 
@@ -404,6 +419,46 @@ async function testSimpleListIntent() {
   const svalbard = await parseSimpleListRequest("finn 5 frisører i Svalbard");
   assert.ok(svalbard);
   assert.equal(svalbard.unknownPlace, true);
+
+  const grillbar = await parseSimpleListRequest("finn grillbar i Norge");
+  assert.ok(grillbar);
+  assert.equal(grillbar.industryLabel, "grillbar");
+  assert.equal(grillbar.searchArgs.industryGroup, "servering");
+  assert.equal(grillbar.searchArgs.nameQuery, "grill");
+  assert.equal(grillbar.locationLabel, "Norge");
+
+  const grillBergen = await parseSimpleListRequest("finn 5 grillbar i Bergen");
+  assert.ok(grillBergen);
+  assert.equal(grillBergen.searchArgs.municipalityCode, "4601");
+}
+
+function testNearbySuggestions() {
+  assert.deepEqual(getNearbyMunicipalitySuggestions("1806"), [
+    "Tromsø",
+    "Harstad",
+  ]);
+  assert.match(
+    formatNearbyPlaceSuggestion("1806", "elektrikere"),
+    /Tromsø|Harstad/i
+  );
+  assert.match(
+    formatPoolExhaustedReply({
+      industryLabel: "elektrikere",
+      locationLabel: "Narvik",
+      seenCount: 5,
+      municipalityCode: "1806",
+    }),
+    /Tromsø|Harstad/i
+  );
+  assert.doesNotMatch(
+    formatPoolExhaustedReply({
+      industryLabel: "elektrikere",
+      locationLabel: "Narvik",
+      seenCount: 5,
+      municipalityCode: "1806",
+    }),
+    /filter|tool|kommunekode/i
+  );
 }
 
 async function testSearchAndScanIntent() {
@@ -746,6 +801,7 @@ async function main() {
   await testSaveAndScanFollowUp();
   await testSearchAndScanIntent();
   await testSimpleListIntent();
+  testNearbySuggestions();
   await testWebsiteSalesLeadIntent();
   testWebsiteSalesLeadQuality();
   testWebsiteSalesLeadReplyFormat();
@@ -753,7 +809,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 16/16 OK");
+  console.log("eval-agent-scenarios: 17/17 OK");
 }
 
 main().catch((err) => {

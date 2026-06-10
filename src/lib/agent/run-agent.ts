@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {
   AGENT_DISABLED_MESSAGE,
+  AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_SCAN_PER_CALL,
   AGENT_MAX_TOOL_LOOPS,
   AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH,
@@ -13,6 +14,7 @@ import { runChunkedWebsiteScans } from "@/lib/agent/chunked-scan";
 import {
   formatFacebookListReply,
   formatFastListReply,
+  formatPoolExhaustedReply,
   formatScanWebsitesReply,
   formatWebsiteSalesLeadReply,
   getDefaultMunicipalityFromPrompt,
@@ -223,6 +225,63 @@ async function searchCompaniesForFastList(
     const retry = await executeAgentTool(toolCtx, "search_companies", broaderArgs);
     if (Array.isArray(retry.data.companies) && retry.data.companies.length > 0) {
       companies = retry.data.companies as SimpleListCompany[];
+    }
+  }
+
+  return companies;
+}
+
+/** Roter bransjer når landsomfattende nettside-leads gir for få treff. */
+const WEBSITE_SALES_INDUSTRY_ROTATION = [
+  "handel",
+  "bygg",
+  "servering",
+  "helse",
+  "transport",
+  "eiendom",
+  "frisor",
+  "industri",
+] as const;
+
+async function searchWebsiteSalesLeadPool(
+  toolCtx: AgentToolContext,
+  onEvent: (event: AgentStreamEvent) => Promise<void>,
+  parsed: ParsedSimpleListRequest
+): Promise<SimpleListCompany[]> {
+  const baseArgs = { ...parsed.searchArgs };
+  const nationwide =
+    parsed.locationLabel === "Norge" ||
+    (!baseArgs.municipalityCode && !baseArgs.regionId);
+
+  let companies = (
+    await searchCompaniesForFastList(toolCtx, onEvent, baseArgs, true)
+  ).filter((company) => !isBadLeadCompany(company));
+
+  if (
+    nationwide &&
+    companies.length < parsed.limit &&
+    !baseArgs.industryGroup &&
+    !baseArgs.professionId
+  ) {
+    const seen = new Set(companies.map((company) => company.orgnr));
+    for (const industryGroup of WEBSITE_SALES_INDUSTRY_ROTATION) {
+      if (companies.length >= parsed.limit * 3) break;
+
+      const rotatedArgs = {
+        ...baseArgs,
+        industryGroup,
+        limit: Math.min(parsed.limit * 4, AGENT_MAX_COMPANIES_PER_JOB),
+      };
+      const batch = (
+        await searchCompaniesForFastList(toolCtx, onEvent, rotatedArgs, true)
+      ).filter(
+        (company) => !isBadLeadCompany(company) && !seen.has(company.orgnr)
+      );
+
+      for (const company of batch) {
+        seen.add(company.orgnr);
+      }
+      companies.push(...batch);
     }
   }
 
@@ -581,16 +640,13 @@ export async function runAgentChat(
         return { assistantText };
       }
 
-      const companies = (
-        await searchCompaniesForFastList(
-          toolCtx,
-          async (event) => {
-            await onEvent(event);
-          },
-          parsed.searchArgs,
-          true
-        )
-      ).filter((company) => !isBadLeadCompany(company));
+      const companies = await searchWebsiteSalesLeadPool(
+        toolCtx,
+        async (event) => {
+          await onEvent(event);
+        },
+        parsed
+      );
 
       const listedCompanies = filterListedCompanies(companies, parsed);
 
@@ -662,11 +718,17 @@ export async function runAgentChat(
 
     if (listedCompanies.length === 0 && progressLabel) {
       const seen = contextualParsed.excludeOrgnrs?.length ?? 0;
-      const place = contextualParsed.locationLabel || "området";
-      const industry = contextualParsed.industryLabel || "firma";
       assistantText =
         seen > 0
-          ? `Fant ingen flere ${industry} i ${place}. Du har sett ${seen} fra før — prøv et annet sted eller bransje, eller si fra om du vil skanne eller lagre.`
+          ? formatPoolExhaustedReply({
+              industryLabel: contextualParsed.industryLabel || "firma",
+              locationLabel: contextualParsed.locationLabel || "området",
+              seenCount: seen,
+              municipalityCode:
+                typeof contextualParsed.searchArgs.municipalityCode === "string"
+                  ? contextualParsed.searchArgs.municipalityCode
+                  : undefined,
+            })
           : "Fant ingen flere treff. Prøv å snevre inn til fylke/kommune, eller trykk Prøv igjen.";
     } else {
       assistantText = formatFastListReply(listedCompanies, contextualParsed);

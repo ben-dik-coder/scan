@@ -566,7 +566,11 @@ async function executeSearchCompanies(
     withoutWebsite,
     excludeIndustryGroups
   );
-  const overfetchMultiplier = websiteSalesMode
+  const nationwideWebsiteSales =
+    websiteSalesMode && !municipalityCode && !regionId;
+  const overfetchMultiplier = nationwideWebsiteSales
+    ? 48
+    : websiteSalesMode
     ? 32
     : withoutWebsite || excludeIndustryGroups?.length
       ? 24

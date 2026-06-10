@@ -61,6 +61,7 @@ type DemoContextValue = {
     filters: Record<string, unknown>,
     name?: string
   ) => void;
+  deleteSavedListDemo: (id: string) => void;
 };
 
 const DemoContext = createContext<DemoContextValue | null>(null);
@@ -223,6 +224,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const deleteSavedListDemo = useCallback((id: string) => {
+    setSavedLists((prev) => prev.filter((list) => list.id !== id));
+  }, []);
+
   const value = useMemo(
     () => ({
       companies,
@@ -240,6 +245,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       enrollSequenceDemo,
       saveListDemo,
       updateSavedListDemo,
+      deleteSavedListDemo,
     }),
     [
       companies,
@@ -257,6 +263,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       enrollSequenceDemo,
       saveListDemo,
       updateSavedListDemo,
+      deleteSavedListDemo,
     ]
   );
 

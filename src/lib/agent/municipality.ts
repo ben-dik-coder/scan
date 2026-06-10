@@ -139,6 +139,75 @@ export function municipalityCodeForName(name: string): string | undefined {
   return MUNICIPALITY_ALIASES[key];
 }
 
+/** Nærliggende kommuner å foreslå når lokalt søk er tomt. */
+const NEARBY_MUNICIPALITY_SUGGESTIONS: Record<string, string[]> = {
+  "1804": ["Tromsø", "Narvik", "Mo i Rana"],
+  "1806": ["Tromsø", "Harstad", "Bodø"],
+  "1833": ["Bodø", "Narvik", "Mo i Rana"],
+  "5501": ["Harstad", "Alta", "Bodø"],
+  "5503": ["Tromsø", "Narvik", "Sortland"],
+  "5601": ["Tromsø", "Hammerfest"],
+  "5603": ["Alta", "Tromsø"],
+  "4601": ["Stavanger", "Oslo"],
+  "5001": ["Trondheim", "Oslo"],
+  "0301": ["Bærum", "Asker"],
+};
+
+/** Alternative bransjer når én bransje er uttømt i liten kommune. */
+const ALTERNATIVE_INDUSTRY_SUGGESTIONS: Record<string, string> = {
+  elektriker: "rørleggere eller snekkere",
+  rorlegger: "elektrikere eller malere",
+  frisor: "neglesalonger eller spa",
+  maler: "snekkere eller murere",
+  advokat: "regnskapsførere",
+  tannlege: "fysioterapeuter",
+  restaurant: "kafeer eller bakerier",
+  grillbar: "restauranter eller kafeer",
+};
+
+export function getNearbyMunicipalitySuggestions(
+  municipalityCode?: string,
+  max = 2
+): string[] {
+  if (!municipalityCode) return [];
+  const suggestions = NEARBY_MUNICIPALITY_SUGGESTIONS[municipalityCode] ?? [];
+  return suggestions.slice(0, max);
+}
+
+export function getAlternativeIndustrySuggestion(industryLabel: string): string | undefined {
+  const normalized = normalizeMunicipalityText(industryLabel);
+  for (const [alias, suggestion] of Object.entries(ALTERNATIVE_INDUSTRY_SUGGESTIONS)) {
+    if (normalized.includes(alias)) return suggestion;
+  }
+  return undefined;
+}
+
+export function formatNearbyPlaceSuggestion(
+  municipalityCode?: string,
+  industryLabel?: string
+): string {
+  const nearby = getNearbyMunicipalitySuggestions(municipalityCode);
+  const altIndustry = industryLabel
+    ? getAlternativeIndustrySuggestion(industryLabel)
+    : undefined;
+
+  const parts: string[] = [];
+  if (nearby.length > 0) {
+    parts.push(
+      nearby.length === 1
+        ? `Vil du prøve ${nearby[0]}?`
+        : `Vil du prøve ${nearby.slice(0, -1).join(", ")} eller ${nearby[nearby.length - 1]}?`
+    );
+  }
+  if (altIndustry) {
+    parts.push(`Eller si fra om du vil se ${altIndustry} i stedet.`);
+  }
+  if (parts.length === 0) {
+    return "Prøv et større område eller en annen bransje.";
+  }
+  return parts.join(" ");
+}
+
 async function loadKommuner(): Promise<Array<{ nummer: string; navn: string }>> {
   if (!kommunerCache) {
     kommunerCache = await fetchKommuner();
