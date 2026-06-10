@@ -9,6 +9,7 @@ import {
   getActiveRunForUser,
   getLastResumableRunForConversation,
   loadConversationMessages,
+  loadConversationMessagesForUser,
   saveMessage,
 } from "@/lib/agent/conversations";
 import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
@@ -142,7 +143,9 @@ export async function POST(request: NextRequest) {
       try {
         const [priorMessages, startup, lastRun] = await Promise.all([
           persist && body.conversationId
-            ? loadConversationMessages(conversationId, user.id)
+            ? isServiceAuth
+              ? loadConversationMessagesForUser(conversationId, user.id)
+              : loadConversationMessages(conversationId, user.id)
             : Promise.resolve([]),
           persist ? loadAgentStartupContext(user.id) : Promise.resolve(null),
           persist && conversationId

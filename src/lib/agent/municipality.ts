@@ -4,6 +4,7 @@ import { fetchKommuner } from "@/lib/brreg/client";
 const MUNICIPALITY_ALIASES: Record<string, string> = {
   oslo: "0301",
   bergen: "4601",
+  bergn: "4601",
   trondheim: "5001",
   stavanger: "1103",
   bodø: "1804",

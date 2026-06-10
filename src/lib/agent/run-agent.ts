@@ -16,6 +16,8 @@ import {
   isSimpleListIntent,
   parseFacebookListRequest,
   parseSimpleListRequest,
+  parseContextualListRequest,
+  type ParsedSimpleListRequest,
   type SimpleListCompany,
 } from "@/lib/agent/fast-list";
 import {
@@ -187,6 +189,24 @@ async function searchCompaniesForFastList(
   }
 
   return companies;
+}
+
+function filterListedCompanies(
+  companies: SimpleListCompany[],
+  parsed: ParsedSimpleListRequest
+): SimpleListCompany[] {
+  const exclude = new Set(parsed.excludeOrgnrs ?? []);
+  const fresh = exclude.size
+    ? companies.filter((company) => !exclude.has(company.orgnr))
+    : companies;
+
+  if (parsed.requirePhone) {
+    return fresh
+      .filter((company) => Boolean((company.phone ?? "").trim()))
+      .slice(0, parsed.limit);
+  }
+
+  return fresh.slice(0, parsed.limit);
 }
 
 function shouldSkipSynthesis(
@@ -512,17 +532,38 @@ export async function runAgentChat(
         )
       ).filter((company) => !isBadLeadCompany(company));
 
-      const listedCompanies = parsed.requirePhone
-        ? companies
-            .filter((company) => Boolean((company.phone ?? "").trim()))
-            .slice(0, parsed.limit)
-        : companies.slice(0, parsed.limit);
+      const listedCompanies = filterListedCompanies(companies, parsed);
 
       assistantText = formatFastListReply(listedCompanies, parsed);
       await onEvent({ type: "text", content: assistantText });
       await onEvent({ type: "done", content: assistantText });
       return { assistantText };
     }
+  }
+
+  const contextualParsed = await parseContextualListRequest(
+    lastUserMessage,
+    history,
+    { defaultMunicipality }
+  );
+  if (contextualParsed) {
+    const companies = (
+      await searchCompaniesForFastList(
+        toolCtx,
+        async (event) => {
+          await onEvent(event);
+        },
+        contextualParsed.searchArgs,
+        true
+      )
+    ).filter((company) => !isBadLeadCompany(company));
+
+    const listedCompanies = filterListedCompanies(companies, contextualParsed);
+
+    assistantText = formatFastListReply(listedCompanies, contextualParsed);
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({ type: "done", content: assistantText });
+    return { assistantText };
   }
 
   while (loops < maxToolLoops) {

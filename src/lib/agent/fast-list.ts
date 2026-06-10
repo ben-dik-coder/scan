@@ -28,7 +28,10 @@ export type ParsedSimpleListRequest = {
   searchArgs: Record<string, unknown>;
   requirePhone?: boolean;
   unknownPlace?: boolean;
+  excludeOrgnrs?: string[];
 };
+
+type ChatTurn = { role: string; content: string };
 
 const REGION_ALIASES: Record<string, string> = {
   norge: "",
@@ -58,6 +61,161 @@ export function wantsPhoneInList(message: string): boolean {
 
 export function wantsFacebookInList(message: string): boolean {
   return /\bmed\s+facebook\b/i.test(message);
+}
+
+/** Oppfølging som trenger samtalekontekst — ikke fast-list. */
+export function isContextualFollowUp(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+
+  return (
+    isContextualListFollowUp(message) ||
+    /\b(de|disse|forrige|siste)\s+(to|tre|\d+|første|siste|resultat)\b/.test(
+      normalized
+    ) ||
+    /\bhvilken av disse\b/.test(normalized) ||
+    /\blagre\s+(som\s+)?liste\b/.test(normalized) ||
+    /\bskann\s+(nettside|de)\b/.test(normalized)
+  );
+}
+
+/** Valgfritt «meg/oss/litt» mellom verb og antall — f.eks. «finn meg 3 til». */
+const FOLLOW_UP_FILLER = "(?:\\s+(?:meg|oss|litt))?";
+
+function matchMoreCompaniesRequest(normalized: string): RegExpMatchArray | null {
+  return normalized.match(
+    new RegExp(
+      `\\b(finn|vis|gi|hent)${FOLLOW_UP_FILLER}\\s+(\\d{1,2})\\s+(til|flere|mer)\\b`
+    )
+  );
+}
+
+function isGenericMoreRequest(normalized: string): boolean {
+  return new RegExp(
+    `\\b(finn|vis)${FOLLOW_UP_FILLER}\\s+(flere|mer|noen til)\\b`
+  ).test(normalized);
+}
+
+/** Oppfølging som kan løses med nytt liste-søk fra historikk. */
+export function isContextualListFollowUp(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+
+  return (
+    Boolean(matchMoreCompaniesRequest(normalized)) ||
+    isGenericMoreRequest(normalized) ||
+    /\bsamme\s+(by|sted|kommune|omrade|område)\b/.test(normalized) ||
+    /\bi stedet\b/.test(normalized)
+  );
+}
+
+function extractOrgnrsFromText(text: string): string[] {
+  return [...text.matchAll(/orgnr[:\s]+(\d{9})/gi)].map((match) => match[1]);
+}
+
+function findLastSearchUserMessage(history: ChatTurn[]): string | undefined {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role !== "user") continue;
+    if (resolveIndustryKeyword(normalizeText(msg.content))) return msg.content;
+  }
+  return undefined;
+}
+
+function collectShownOrgnrs(history: ChatTurn[]): string[] {
+  const orgnrs: string[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role === "user" && resolveIndustryKeyword(normalizeText(msg.content))) {
+      break;
+    }
+    if (msg.role === "assistant") {
+      orgnrs.push(...extractOrgnrsFromText(msg.content));
+    }
+  }
+  return [...new Set(orgnrs)];
+}
+
+/** «finn 2 til», «samme by», «advokater i stedet» — gjenbruk forrige søk fra historikk. */
+export async function parseContextualListRequest(
+  message: string,
+  history: ChatTurn[],
+  options?: { defaultMunicipality?: { code?: string; label?: string } }
+): Promise<ParsedSimpleListRequest | null> {
+  if (!isContextualListFollowUp(message)) return null;
+
+  const normalized = normalizeText(message);
+  const lastSearch = findLastSearchUserMessage(history);
+  const shownOrgnrs = collectShownOrgnrs(history);
+
+  const moreMatch = matchMoreCompaniesRequest(normalized);
+  if ((moreMatch || isGenericMoreRequest(normalized)) && lastSearch) {
+    const base = await parseSimpleListRequest(lastSearch, options);
+    if (!base || base.unknownPlace) return null;
+    const limit = moreMatch
+      ? Math.min(Number.parseInt(moreMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT)
+      : base.limit;
+    return {
+      ...base,
+      limit,
+      searchArgs: {
+        ...base.searchArgs,
+        limit: Math.min(limit + shownOrgnrs.length + 4, AGENT_MAX_FAST_LIST_LIMIT),
+        days: 0,
+      },
+      excludeOrgnrs: shownOrgnrs,
+    };
+  }
+
+  const industry = resolveIndustryKeyword(normalized);
+  if (!industry) return null;
+
+  const limit =
+    parseLimit(normalized) ??
+    (lastSearch ? parseLimit(lastSearch) : undefined) ??
+    AGENT_DEFAULT_LIST_LIMIT;
+
+  let municipality = await resolveMunicipalityFromMessage(normalized, options);
+  if (
+    !municipality.code &&
+    lastSearch &&
+    (/\bsamme\s+(by|sted|kommune|omrade|område)\b/.test(normalized) ||
+      /\bi stedet\b/.test(normalized))
+  ) {
+    municipality = await resolveMunicipalityFromMessage(lastSearch, options);
+  }
+
+  if (!municipality.code && !parseRegion(normalized).id) {
+    return null;
+  }
+
+  const searchArgs: Record<string, unknown> = {
+    limit: Math.min(limit + 4, AGENT_MAX_FAST_LIST_LIMIT),
+    days: 0,
+    ...industry.filters,
+  };
+  if (municipality.code) {
+    searchArgs.municipalityCode = municipality.code;
+  } else {
+    const region = parseRegion(normalized);
+    if (region.id) searchArgs.regionId = region.id;
+  }
+
+  if (wantsPhoneInList(normalized) || (lastSearch && wantsPhoneInList(lastSearch))) {
+    searchArgs.requirePhone = true;
+  }
+
+  const locationLabel =
+    municipality.label ?? parseRegion(normalized).label ?? "valgt område";
+
+  return {
+    limit,
+    industryLabel: industry.label,
+    locationLabel,
+    searchArgs,
+    requirePhone: searchArgs.requirePhone === true,
+    excludeOrgnrs: shownOrgnrs,
+  };
 }
 
 function parseLimit(message: string): number | undefined {
@@ -92,6 +250,7 @@ function hasListVerb(normalized: string): boolean {
 
 /** Bruker vil ha en kort liste med N firma — ikke skann/lagre. */
 export function isSimpleListIntent(message: string): boolean {
+  if (isContextualFollowUp(message)) return false;
   if (wantsFacebookInList(message)) return false;
   if (!isSimpleSearchIntent(message)) return false;
 

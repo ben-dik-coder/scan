@@ -9,7 +9,9 @@ import {
   type AgentStartupContext,
 } from "../src/lib/agent/context.ts";
 import {
+  isContextualListFollowUp,
   isSimpleListIntent,
+  parseContextualListRequest,
   parseSimpleListRequest,
 } from "../src/lib/agent/fast-list.ts";
 import {
@@ -97,6 +99,32 @@ function testSimpleSearchIntent() {
   assert.equal(isSimpleSearchIntent("Nye byggfirma i Oslo siste 30 dager"), true);
   assert.equal(isSimpleSearchIntent("Finn frisører i Narvik uten nettside"), false);
   assert.equal(isSimpleSearchIntent("Skann nettside for disse"), false);
+}
+
+async function testContextualFollowUp() {
+  assert.equal(isContextualListFollowUp("finn meg 3 til"), true);
+  assert.equal(isContextualListFollowUp("finn 3 til"), true);
+  assert.equal(isContextualListFollowUp("finn meg flere"), true);
+  assert.equal(isContextualListFollowUp("finn flere"), true);
+  assert.equal(isContextualListFollowUp("hei"), false);
+
+  const history = [
+    { role: "user", content: "8 private tannleger i Bodø med telefon" },
+    {
+      role: "assistant",
+      content:
+        "Her er 8 tannleger i Bodø (alle med telefon):\n\n1. **Test AS** · orgnr 123456789 · tlf 123",
+    },
+  ];
+
+  const parsed = await parseContextualListRequest("finn meg 3 til", history);
+  assert.ok(parsed);
+  assert.equal(parsed.limit, 3);
+  assert.equal(parsed.industryLabel, "tannleger");
+  assert.equal(parsed.searchArgs.municipalityCode, "1804");
+  assert.equal(parsed.searchArgs.professionId, "tannlege");
+  assert.equal(parsed.searchArgs.requirePhone, true);
+  assert.deepEqual(parsed.excludeOrgnrs, ["123456789"]);
 }
 
 async function testSimpleListIntent() {
@@ -201,11 +229,12 @@ async function main() {
   testHistoryWithTools();
   testProfessionMapping();
   testSimpleSearchIntent();
+  await testContextualFollowUp();
   await testSimpleListIntent();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 7/7 OK");
+  console.log("eval-agent-scenarios: 8/8 OK");
 }
 
 main().catch((err) => {
