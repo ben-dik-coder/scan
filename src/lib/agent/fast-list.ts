@@ -880,8 +880,11 @@ export async function parseWebsiteSalesLeadRequest(
     defaultLabel: options?.defaultMunicipality?.label,
   });
   const region = parseRegion(industryMessage);
+  const nationwide =
+    isNationwideScopeMessage(message) ||
+    (!municipality.code && !region.id && /\bnorge\b/.test(normalizeText(industryMessage)));
 
-  if (municipality.unknown) {
+  if (municipality.unknown && !nationwide) {
     const placeLabel =
       municipality.label ?? extractPlaceMention(industryMessage) ?? "valgt sted";
     return {
@@ -900,7 +903,7 @@ export async function parseWebsiteSalesLeadRequest(
 
   const municipalityCode = municipality.code ?? options?.defaultMunicipality?.code;
   const regionId = region.id;
-  if (!municipalityCode && !regionId) {
+  if (!municipalityCode && !regionId && !nationwide) {
     return {
       limit,
       industryLabel: industry?.label ?? defaultIndustry?.label ?? "lokale firma",
@@ -933,13 +936,15 @@ export async function parseWebsiteSalesLeadRequest(
 
   searchArgs.requirePhone = true;
 
-  const locationLabel = formatPlaceLabel(
-    municipality.label ??
-      options?.defaultMunicipality?.label ??
-      region.label ??
-      "valgt område",
-    municipalityCode
-  );
+  const locationLabel = nationwide
+    ? "Norge"
+    : formatPlaceLabel(
+        municipality.label ??
+          options?.defaultMunicipality?.label ??
+          region.label ??
+          "valgt område",
+        municipalityCode
+      );
 
   return {
     limit,
