@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
 import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
+import { resolveAgentRequestAuth } from "@/lib/agent/service-auth";
 import {
   enforceConversationLimit,
   listUserConversations,
@@ -16,7 +16,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: AGENT_DISABLED_MESSAGE }, { status: 503 });
   }
 
-  const user = await getSessionUser();
+  const auth = await resolveAgentRequestAuth(request);
+  if ("errorResponse" in auth) {
+    return auth.errorResponse;
+  }
+
+  const { user } = auth;
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -44,7 +49,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: AGENT_DISABLED_MESSAGE }, { status: 503 });
   }
 
-  const user = await getSessionUser();
+  const auth = await resolveAgentRequestAuth(request);
+  if ("errorResponse" in auth) {
+    return auth.errorResponse;
+  }
+
+  const { user } = auth;
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

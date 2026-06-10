@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { getSessionUser } from "@/lib/auth";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import {
   cancelRun,
@@ -25,6 +24,10 @@ import {
   buildAgentCancelledRunContextPrompt,
 } from "@/lib/agent/prompt";
 import { runAgentChat } from "@/lib/agent/run-agent";
+import {
+  resolveAgentRequestAuth,
+  shouldPersistAgentData,
+} from "@/lib/agent/service-auth";
 import { isDemoMode } from "@/lib/demo/config";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +45,14 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const user = await getSessionUser();
+  const auth = await resolveAgentRequestAuth(request);
+  if ("errorResponse" in auth) {
+    return auth.errorResponse;
+  }
+
+  const { user, isServiceAuth } = auth;
+  const persist = shouldPersistAgentData(user, isServiceAuth);
+
   if (!user && !isDemoMode()) {
     return new Response(JSON.stringify({ error: "Du må være innlogget." }), {
       status: 401,
@@ -50,7 +60,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  if (user && !isDemoMode()) {
+  if (user && persist && !isServiceAuth) {
     const entitlements = await getEntitlements(user.id);
     if (!entitlements.hasAccess) {
       return new Response(
@@ -78,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  if (user && !isDemoMode()) {
+  if (persist) {
     const active = await getActiveRunForUser(user.id);
     if (active) {
       if (body.cancelPrevious) {
@@ -97,19 +107,18 @@ export async function POST(request: NextRequest) {
   }
 
   let conversationId = body.conversationId;
-  if (!conversationId && user && !isDemoMode()) {
+  if (!conversationId && persist) {
     const conv = await createConversation(user.id, deriveConversationTitle(message));
     conversationId = conv.id;
   } else if (!conversationId) {
     conversationId = `demo-${Date.now()}`;
   }
 
-  const run =
-    user && !isDemoMode()
-      ? await createRun(user.id, conversationId, { message })
-      : { id: `demo-run-${Date.now()}` };
+  const run = persist
+    ? await createRun(user.id, conversationId, { message })
+    : { id: `demo-run-${Date.now()}` };
 
-  if (user && !isDemoMode()) {
+  if (persist) {
     await saveMessage(conversationId, "user", message);
   }
 
@@ -122,7 +131,7 @@ export async function POST(request: NextRequest) {
         result: Record<string, unknown> | null = null,
         errorMessage?: string
       ) => {
-        if (runFinished || !user || isDemoMode()) return;
+        if (runFinished || !persist) return;
         runFinished = true;
         await finishRun(run.id, result, status, errorMessage);
       };
@@ -142,13 +151,11 @@ export async function POST(request: NextRequest) {
 
       try {
         const [priorMessages, startup, lastRun] = await Promise.all([
-          user && !isDemoMode() && body.conversationId
+          persist && body.conversationId
             ? loadConversationMessages(conversationId, user.id)
             : Promise.resolve([]),
-          user && !isDemoMode()
-            ? loadAgentStartupContext(user.id)
-            : Promise.resolve(null),
-          user && !isDemoMode() && conversationId
+          persist ? loadAgentStartupContext(user.id) : Promise.resolve(null),
+          persist && conversationId
             ? getLastResumableRunForConversation(conversationId, user.id)
             : Promise.resolve(null),
         ]);
@@ -233,14 +240,13 @@ export async function POST(request: NextRequest) {
           request.signal,
           {
             systemPromptExtra,
-            onToolComplete:
-              user && !isDemoMode()
-                ? async (tool, summary) => {
-                    await saveMessage(conversationId!, "tool", summary, {
-                      tool_name: tool,
-                    });
-                  }
-                : undefined,
+            onToolComplete: persist
+              ? async (tool, summary) => {
+                  await saveMessage(conversationId!, "tool", summary, {
+                    tool_name: tool,
+                  });
+                }
+              : undefined,
           }
         );
 
@@ -249,15 +255,12 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        if (user && !isDemoMode() && assistantText) {
+        if (persist && assistantText) {
           await saveMessage(conversationId!, "assistant", assistantText);
         }
 
-        if (user && !isDemoMode()) {
-          await completeRun(
-            "done",
-            { assistantText, link: link ?? null }
-          );
+        if (persist) {
+          await completeRun("done", { assistantText, link: link ?? null });
         }
       } catch (err) {
         if (
