@@ -1,6 +1,7 @@
 import {
   AGENT_DEFAULT_LIST_LIMIT,
   AGENT_MAX_FAST_LIST_LIMIT,
+  AGENT_MAX_SCAN_PER_CALL,
 } from "@/lib/agent/constants";
 import {
   extractPlaceMention,
@@ -109,25 +110,226 @@ export function isContextualListFollowUp(message: string): boolean {
   );
 }
 
-function extractOrgnrsFromText(text: string): string[] {
+export function extractOrgnrsFromText(text: string): string[] {
   return [...text.matchAll(/orgnr[:\s]+(\d{9})/gi)].map((match) => match[1]);
 }
 
-function findLastSearchUserMessage(history: ChatTurn[]): string | undefined {
+function findLastAssistantListMessage(history: ChatTurn[]): string | undefined {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role !== "assistant") continue;
+    if (extractOrgnrsFromText(msg.content).length > 0) return msg.content;
+  }
+  return undefined;
+}
+
+/** Orgnr fra siste assistent-liste i samtalen. */
+export function collectLastListOrgnrs(history: ChatTurn[]): string[] {
+  const text = findLastAssistantListMessage(history);
+  return text ? extractOrgnrsFromText(text) : [];
+}
+
+export function isSaveListFollowUp(message: string): boolean {
+  const normalized = normalizeText(message);
+  return /\blagre\s+(som\s+)?liste\b/.test(normalized);
+}
+
+export function isScanWebsitesFollowUp(message: string): boolean {
+  const normalized = normalizeText(message);
+  return (
+    /\bskann\s+(nettside|de|disse)\b/.test(normalized) ||
+    /\bskann\s+(de|disse)\s+(to|tre|\d+|første|forste)\b/.test(normalized)
+  );
+}
+
+function parseScanCount(message: string): number {
+  const normalized = normalizeText(message);
+  const wordCounts: Record<string, number> = {
+    en: 1,
+    ett: 1,
+    to: 2,
+    tre: 3,
+    fire: 4,
+    fem: 5,
+  };
+  for (const [word, count] of Object.entries(wordCounts)) {
+    if (new RegExp(`\\b(de|disse)\\s+${word}\\b`).test(normalized)) {
+      return count;
+    }
+  }
+  const digitMatch = normalized.match(
+    /\b(de|disse)\s+(\d{1,2})\s+(første|forste|siste)\b/
+  );
+  if (digitMatch) {
+    return Math.min(Number.parseInt(digitMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT);
+  }
+  const firstMatch = normalized.match(/\b(de|disse)\s+(første|forste)\b/);
+  if (firstMatch) return 2;
+  return AGENT_MAX_SCAN_PER_CALL;
+}
+
+export type ParsedSaveListRequest = {
+  orgnrs: string[];
+  name: string;
+  municipalityCode?: string;
+  regionId?: string;
+  industryGroup?: string;
+  professionId?: string;
+};
+
+export type ParsedScanWebsitesRequest = {
+  orgnrs: string[];
+  count: number;
+};
+
+/** «lagre som liste» — bruk orgnr fra siste søkeresultat. */
+export async function parseSaveListRequest(
+  message: string,
+  history: ChatTurn[],
+  options?: { defaultMunicipality?: { code?: string; label?: string } }
+): Promise<ParsedSaveListRequest | null> {
+  if (!isSaveListFollowUp(message)) return null;
+
+  const orgnrs = collectLastListOrgnrs(history);
+  if (orgnrs.length === 0) return null;
+
+  const lastSearch = findLastSearchUserMessage(history, message);
+  const parsed = lastSearch
+    ? await parseSimpleListRequest(lastSearch, options)
+    : null;
+
+  const industryLabel = parsed?.industryLabel ?? "firma";
+  const locationLabel = parsed?.locationLabel ?? "";
+  const name = locationLabel
+    ? `${orgnrs.length} ${industryLabel} ${locationLabel}`.slice(0, 80)
+    : `${orgnrs.length} ${industryLabel}`.slice(0, 80);
+
+  return {
+    orgnrs,
+    name,
+    municipalityCode:
+      typeof parsed?.searchArgs.municipalityCode === "string"
+        ? parsed.searchArgs.municipalityCode
+        : undefined,
+    regionId:
+      typeof parsed?.searchArgs.regionId === "string"
+        ? parsed.searchArgs.regionId
+        : undefined,
+    industryGroup:
+      typeof parsed?.searchArgs.industryGroup === "string"
+        ? parsed.searchArgs.industryGroup
+        : undefined,
+    professionId:
+      typeof parsed?.searchArgs.professionId === "string"
+        ? parsed.searchArgs.professionId
+        : undefined,
+  };
+}
+
+/** «skann de to første» — bruk orgnr fra siste liste. */
+export function parseScanWebsitesRequest(
+  message: string,
+  history: ChatTurn[]
+): ParsedScanWebsitesRequest | null {
+  if (!isScanWebsitesFollowUp(message)) return null;
+
+  const allOrgnrs = collectLastListOrgnrs(history);
+  if (allOrgnrs.length === 0) return null;
+
+  const count = Math.min(parseScanCount(message), allOrgnrs.length);
+  return { orgnrs: allOrgnrs.slice(0, count), count };
+}
+
+type ScanSummary = {
+  orgnr: string;
+  displayName?: string | null;
+  hasWebsite?: boolean;
+  websiteUrl?: string | null;
+  facebookUrl?: string | null;
+  countsAsNoWebsite?: boolean;
+};
+
+export function formatScanWebsitesReply(
+  scans: ScanSummary[],
+  options?: { serperLimited?: boolean; remaining?: number }
+): string {
+  if (scans.length === 0) {
+    return "Fant ingen firma å skanne — gjør et søk først.";
+  }
+
+  const lines = scans.map((scan, index) => {
+    const name = scan.displayName?.trim() || scan.orgnr;
+    let status = "ukjent nettside";
+    if (scan.countsAsNoWebsite || scan.hasWebsite === false) {
+      status = scan.facebookUrl ? "kun Facebook, ingen egen nettside" : "ingen egen nettside";
+    } else if (scan.websiteUrl) {
+      status = scan.websiteUrl;
+    } else if (scan.hasWebsite) {
+      status = "har nettside";
+    }
+    return `${index + 1}. **${formatCompanyName(name)}** · orgnr ${scan.orgnr} · ${status}`;
+  });
+
+  const withoutSite = scans.filter(
+    (scan) => scan.countsAsNoWebsite || scan.hasWebsite === false
+  ).length;
+
+  let footer = `\n\n${withoutSite} av ${scans.length} mangler egen nettside.`;
+  if (options?.serperLimited) {
+    footer += " Serper-kvoten er lav — noen skann ble utelatt.";
+  } else if (options?.remaining && options.remaining > 0) {
+    footer += ` Si fra om du vil skanne ${options.remaining} til.`;
+  }
+  footer += " Vil du lagre som liste? Si fra.";
+
+  return `Skannet ${scans.length} nettsider:\n\n${lines.join("\n")}${footer}`;
+}
+
+function findLastUserMessageIndex(history: ChatTurn[]): number {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === "user") return i;
+  }
+  return -1;
+}
+
+function shouldSkipLatestUserMessage(history: ChatTurn[], currentMessage: string): boolean {
+  const idx = findLastUserMessageIndex(history);
+  if (idx < 0) return false;
+  return normalizeText(history[idx].content) === normalizeText(currentMessage);
+}
+
+function findLastSearchUserMessage(
+  history: ChatTurn[],
+  currentMessage: string
+): string | undefined {
+  const skipLatest = shouldSkipLatestUserMessage(history, currentMessage);
+  let skippedLatest = false;
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
     if (msg.role !== "user") continue;
+    if (skipLatest && !skippedLatest) {
+      skippedLatest = true;
+      continue;
+    }
     if (resolveIndustryKeyword(normalizeText(msg.content))) return msg.content;
   }
   return undefined;
 }
 
-function collectShownOrgnrs(history: ChatTurn[]): string[] {
+function collectShownOrgnrs(history: ChatTurn[], currentMessage: string): string[] {
   const orgnrs: string[] = [];
+  const skipLatest = shouldSkipLatestUserMessage(history, currentMessage);
+  let skippedLatest = false;
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
-    if (msg.role === "user" && resolveIndustryKeyword(normalizeText(msg.content))) {
-      break;
+    if (msg.role === "user") {
+      if (skipLatest && !skippedLatest) {
+        skippedLatest = true;
+        continue;
+      }
+      if (resolveIndustryKeyword(normalizeText(msg.content))) {
+        break;
+      }
     }
     if (msg.role === "assistant") {
       orgnrs.push(...extractOrgnrsFromText(msg.content));
@@ -145,8 +347,8 @@ export async function parseContextualListRequest(
   if (!isContextualListFollowUp(message)) return null;
 
   const normalized = normalizeText(message);
-  const lastSearch = findLastSearchUserMessage(history);
-  const shownOrgnrs = collectShownOrgnrs(history);
+  const lastSearch = findLastSearchUserMessage(history, message);
+  const shownOrgnrs = collectShownOrgnrs(history, message);
 
   const moreMatch = matchMoreCompaniesRequest(normalized);
   if ((moreMatch || isGenericMoreRequest(normalized)) && lastSearch) {

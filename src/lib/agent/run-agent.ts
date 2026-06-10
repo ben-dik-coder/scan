@@ -11,12 +11,15 @@ import type { AgentToolContext, ToolExecutionResult } from "@/lib/agent/execute-
 import {
   formatFacebookListReply,
   formatFastListReply,
+  formatScanWebsitesReply,
   getDefaultMunicipalityFromPrompt,
   isFacebookListIntent,
   isSimpleListIntent,
   parseFacebookListRequest,
   parseSimpleListRequest,
   parseContextualListRequest,
+  parseSaveListRequest,
+  parseScanWebsitesRequest,
   type ParsedSimpleListRequest,
   type SimpleListCompany,
 } from "@/lib/agent/fast-list";
@@ -561,6 +564,107 @@ export async function runAgentChat(
     const listedCompanies = filterListedCompanies(companies, contextualParsed);
 
     assistantText = formatFastListReply(listedCompanies, contextualParsed);
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({ type: "done", content: assistantText });
+    return { assistantText };
+  }
+
+  const saveParsed = await parseSaveListRequest(lastUserMessage, history, {
+    defaultMunicipality,
+  });
+  if (saveParsed) {
+    await onEvent({ type: "tool_start", tool: "save_list" });
+    let saveResult: ToolExecutionResult;
+    try {
+      saveResult = await executeAgentTool(toolCtx, "save_list", {
+        name: saveParsed.name,
+        orgnrs: saveParsed.orgnrs,
+        municipalityCode: saveParsed.municipalityCode ?? "",
+        regionId: saveParsed.regionId ?? "",
+        industryGroup: saveParsed.industryGroup ?? "",
+        professionId: saveParsed.professionId ?? "",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Ukjent feil";
+      saveResult = { summary: `Feil: ${message}`, data: { error: message } };
+    }
+    await onEvent({
+      type: "tool_end",
+      tool: "save_list",
+      summary: saveResult.summary,
+    });
+
+    if (typeof saveResult.data.savedListId === "string") {
+      link = typeof saveResult.data.url === "string" ? saveResult.data.url : undefined;
+      listId = saveResult.data.savedListId;
+      listName =
+        typeof saveResult.data.listName === "string"
+          ? saveResult.data.listName
+          : saveParsed.name;
+      orgnrCount =
+        typeof saveResult.data.orgnrCount === "number"
+          ? saveResult.data.orgnrCount
+          : saveParsed.orgnrs.length;
+      await onEvent({
+        type: "list_saved",
+        listId: saveResult.data.savedListId,
+        listName: listName ?? saveParsed.name,
+        url: link ?? "/app",
+        orgnrCount: orgnrCount ?? saveParsed.orgnrs.length,
+      });
+    }
+
+    assistantText =
+      typeof saveResult.data.error === "string"
+        ? saveResult.summary
+        : `Lagret listen «${listName ?? saveParsed.name}» med ${orgnrCount ?? saveParsed.orgnrs.length} firma. Du finner den under Lagrede målgrupper.`;
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({
+      type: "done",
+      link,
+      listId,
+      listName,
+      orgnrCount,
+      content: assistantText,
+    });
+    return { assistantText, link };
+  }
+
+  const scanParsed = parseScanWebsitesRequest(lastUserMessage, history);
+  if (scanParsed) {
+    await onEvent({ type: "tool_start", tool: "scan_websites" });
+    let scanResult: ToolExecutionResult;
+    try {
+      scanResult = await executeAgentTool(toolCtx, "scan_websites", {
+        orgnrs: scanParsed.orgnrs,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Ukjent feil";
+      scanResult = { summary: `Feil: ${message}`, data: { error: message } };
+    }
+    await onEvent({
+      type: "tool_end",
+      tool: "scan_websites",
+      summary: scanResult.summary,
+    });
+
+    const scans = Array.isArray(scanResult.data.scans)
+      ? (scanResult.data.scans as Array<{
+          orgnr?: string;
+          displayName?: string | null;
+          hasWebsite?: boolean;
+          websiteUrl?: string | null;
+          facebookUrl?: string | null;
+          countsAsNoWebsite?: boolean;
+        }>)
+      : [];
+
+    assistantText = formatScanWebsitesReply(scans, {
+      serperLimited: scanResult.data.serperLimitReached === true,
+      remaining: Array.isArray(scanResult.data.remainingOrgnrs)
+        ? (scanResult.data.remainingOrgnrs as string[]).length
+        : 0,
+    });
     await onEvent({ type: "text", content: assistantText });
     await onEvent({ type: "done", content: assistantText });
     return { assistantText };

@@ -10,8 +10,12 @@ import {
 } from "../src/lib/agent/context.ts";
 import {
   isContextualListFollowUp,
+  isSaveListFollowUp,
+  isScanWebsitesFollowUp,
   isSimpleListIntent,
   parseContextualListRequest,
+  parseSaveListRequest,
+  parseScanWebsitesRequest,
   parseSimpleListRequest,
 } from "../src/lib/agent/fast-list.ts";
 import {
@@ -125,6 +129,49 @@ async function testContextualFollowUp() {
   assert.equal(parsed.searchArgs.professionId, "tannlege");
   assert.equal(parsed.searchArgs.requirePhone, true);
   assert.deepEqual(parsed.excludeOrgnrs, ["123456789"]);
+
+  const switchHistory = [
+    { role: "user", content: "finn 3 regnskapsførere i Oslo" },
+    {
+      role: "assistant",
+      content:
+        "Her er 3 regnskapsførere i oslo:\n\n1. **Bygdøy Regnskap AS** · orgnr 936926169 · OSLO",
+    },
+    { role: "user", content: "nei, det var feil — advokater i stedet" },
+  ];
+  const switched = await parseContextualListRequest(
+    "nei, det var feil — advokater i stedet",
+    switchHistory
+  );
+  assert.ok(switched);
+  assert.equal(switched.searchArgs.municipalityCode, "0301");
+  assert.equal(switched.searchArgs.professionId, "advokat");
+}
+
+async function testSaveAndScanFollowUp() {
+  assert.equal(isSaveListFollowUp("lagre som liste"), true);
+  assert.equal(isScanWebsitesFollowUp("skann nettside på de to første"), true);
+  assert.equal(isScanWebsitesFollowUp("skann de tre første"), true);
+
+  const history = [
+    { role: "user", content: "finn 3 advokater i Oslo" },
+    {
+      role: "assistant",
+      content:
+        "Her er 3 advokater i oslo:\n\n1. **Advokat AS** · orgnr 935001684 · tlf 22335815 · OSLO\n2. **Lexx Advokat AS** · orgnr 935987717 · tlf 958 13 340 · OSLO",
+    },
+  ];
+
+  const save = await parseSaveListRequest("lagre som liste", history);
+  assert.ok(save);
+  assert.equal(save.orgnrs.length, 2);
+  assert.match(save.name, /advokater/i);
+  assert.equal(save.municipalityCode, "0301");
+
+  const scan = parseScanWebsitesRequest("skann nettside på de to første", history);
+  assert.ok(scan);
+  assert.equal(scan.count, 2);
+  assert.deepEqual(scan.orgnrs, ["935001684", "935987717"]);
 }
 
 async function testSimpleListIntent() {
@@ -230,11 +277,12 @@ async function main() {
   testProfessionMapping();
   testSimpleSearchIntent();
   await testContextualFollowUp();
+  await testSaveAndScanFollowUp();
   await testSimpleListIntent();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 8/8 OK");
+  console.log("eval-agent-scenarios: 9/9 OK");
 }
 
 main().catch((err) => {
