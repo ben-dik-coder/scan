@@ -175,14 +175,24 @@ export async function parseContextualListRequest(
     (lastSearch ? parseLimit(lastSearch) : undefined) ??
     AGENT_DEFAULT_LIST_LIMIT;
 
-  let municipality = await resolveMunicipalityFromMessage(normalized, options);
+  const municipalityOptions = {
+    defaultCode: options?.defaultMunicipality?.code,
+    defaultLabel: options?.defaultMunicipality?.label,
+  };
+  let municipality = await resolveMunicipalityFromMessage(
+    normalized,
+    municipalityOptions
+  );
   if (
     !municipality.code &&
     lastSearch &&
     (/\bsamme\s+(by|sted|kommune|omrade|område)\b/.test(normalized) ||
       /\bi stedet\b/.test(normalized))
   ) {
-    municipality = await resolveMunicipalityFromMessage(lastSearch, options);
+    municipality = await resolveMunicipalityFromMessage(
+      lastSearch,
+      municipalityOptions
+    );
   }
 
   if (!municipality.code && !parseRegion(normalized).id) {
