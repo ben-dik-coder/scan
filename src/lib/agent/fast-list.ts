@@ -2,7 +2,13 @@ import {
   AGENT_DEFAULT_LIST_LIMIT,
   AGENT_MAX_FAST_LIST_LIMIT,
 } from "@/lib/agent/constants";
-import { parseMunicipalityFromMessage } from "@/lib/agent/municipality";
+import {
+  extractPlaceMention,
+  isUnknownGeoPlace,
+  parseDefaultMunicipalityFromPrompt,
+  parseMunicipalityFromMessage,
+  resolveMunicipalityFromMessage,
+} from "@/lib/agent/municipality";
 import { isSimpleSearchIntent } from "@/lib/agent/prompt";
 import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
 import { formatCompanyName } from "@/lib/utils";
@@ -12,6 +18,7 @@ export type SimpleListCompany = {
   name: string;
   phone?: string | null;
   municipality_name?: string | null;
+  facebookUrl?: string | null;
 };
 
 export type ParsedSimpleListRequest = {
@@ -19,6 +26,8 @@ export type ParsedSimpleListRequest = {
   industryLabel: string;
   locationLabel: string;
   searchArgs: Record<string, unknown>;
+  requirePhone?: boolean;
+  unknownPlace?: boolean;
 };
 
 const REGION_ALIASES: Record<string, string> = {
@@ -43,6 +52,14 @@ function normalizeText(message: string): string {
     .replace(/æ/g, "ae");
 }
 
+export function wantsPhoneInList(message: string): boolean {
+  return /\b(med\s+telefon|med\s+tlf|med\s+mobil|telefonnummer)\b/i.test(message);
+}
+
+export function wantsFacebookInList(message: string): boolean {
+  return /\bmed\s+facebook\b/i.test(message);
+}
+
 function parseLimit(message: string): number | undefined {
   const match = message.match(/\b(\d{1,2})\b/);
   if (!match) return undefined;
@@ -65,40 +82,68 @@ function parseRegion(message: string): { id?: string; label?: string } {
   return {};
 }
 
+function hasListVerb(normalized: string): boolean {
+  return (
+    /^(finn|sok|søk|list|vis|hent|gi meg|gi)\b/.test(normalized) ||
+    /\b(finn|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized) ||
+    /^\d{1,2}\s+\w+/.test(normalized)
+  );
+}
+
 /** Bruker vil ha en kort liste med N firma — ikke skann/lagre. */
 export function isSimpleListIntent(message: string): boolean {
+  if (wantsFacebookInList(message)) return false;
   if (!isSimpleSearchIntent(message)) return false;
 
   const normalized = normalizeText(message);
   const industry = resolveIndustryKeyword(normalized);
   if (!industry) return false;
 
-  const hasListVerb =
-    /^(finn|sok|søk|list|vis|hent|gi meg|gi)\b/.test(normalized) ||
-    /\b(finn|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized) ||
-    /^\d{1,2}\s+\w+/.test(normalized);
-
   const hasPlace = Boolean(parseMunicipalityFromMessage(normalized).code);
   const shortIndustryPlace =
-    !/uten nettside|facebook|skann|lagre/i.test(normalized) &&
+    !/uten nettside|skann|lagre/i.test(normalized) &&
     hasPlace &&
     normalized.split(/\s+/).length <= 4;
 
-  return hasListVerb || shortIndustryPlace;
+  return hasListVerb(normalized) || shortIndustryPlace;
 }
 
-export function parseSimpleListRequest(
-  message: string
-): ParsedSimpleListRequest | null {
-  if (!isSimpleListIntent(message)) return null;
+export function isFacebookListIntent(message: string): boolean {
+  if (!wantsFacebookInList(message)) return false;
 
+  const normalized = normalizeText(message);
+  const industry = resolveIndustryKeyword(normalized);
+  if (!industry) return false;
+
+  return hasListVerb(normalized);
+}
+
+async function buildListRequest(
+  message: string,
+  options?: { defaultMunicipality?: { code?: string; label?: string } }
+): Promise<ParsedSimpleListRequest | null> {
   const normalized = normalizeText(message);
   const industry = resolveIndustryKeyword(normalized);
   if (!industry) return null;
 
   const limit = parseLimit(normalized) ?? AGENT_DEFAULT_LIST_LIMIT;
-  const municipality = parseMunicipalityFromMessage(normalized);
+  const municipality = await resolveMunicipalityFromMessage(normalized, {
+    defaultCode: options?.defaultMunicipality?.code,
+    defaultLabel: options?.defaultMunicipality?.label,
+  });
   const region = parseRegion(normalized);
+
+  if (municipality.unknown) {
+    const placeLabel =
+      municipality.label ?? extractPlaceMention(normalized) ?? "valgt sted";
+    return {
+      limit,
+      industryLabel: industry.label,
+      locationLabel: placeLabel,
+      searchArgs: { limit, days: 0, ...industry.filters },
+      unknownPlace: true,
+    };
+  }
 
   const searchArgs: Record<string, unknown> = {
     limit,
@@ -112,6 +157,10 @@ export function parseSimpleListRequest(
     searchArgs.regionId = region.id;
   }
 
+  if (wantsPhoneInList(normalized)) {
+    searchArgs.requirePhone = true;
+  }
+
   const locationLabel =
     municipality.label ??
     region.label ??
@@ -122,15 +171,41 @@ export function parseSimpleListRequest(
     industryLabel: industry.label,
     locationLabel,
     searchArgs,
+    requirePhone: wantsPhoneInList(normalized),
   };
+}
+
+export async function parseSimpleListRequest(
+  message: string,
+  options?: { defaultMunicipality?: { code?: string; label?: string } }
+): Promise<ParsedSimpleListRequest | null> {
+  if (!isSimpleListIntent(message)) return null;
+  return buildListRequest(message, options);
+}
+
+export async function parseFacebookListRequest(
+  message: string,
+  options?: { defaultMunicipality?: { code?: string; label?: string } }
+): Promise<ParsedSimpleListRequest | null> {
+  if (!isFacebookListIntent(message)) return null;
+  return buildListRequest(message, options);
+}
+
+export function formatUnknownPlaceReply(request: ParsedSimpleListRequest): string {
+  return `Fant ingen ${request.industryLabel} i ${request.locationLabel}. Stedet finnes ikke som norsk kommune i Brønnøysund — prøv et annet sted.`;
 }
 
 export function formatFastListReply(
   companies: SimpleListCompany[],
   request: ParsedSimpleListRequest
 ): string {
+  if (request.unknownPlace) {
+    return formatUnknownPlaceReply(request);
+  }
+
   if (companies.length === 0) {
-    return `Fant ingen ${request.industryLabel} i ${request.locationLabel}. Prøv et annet sted eller en annen bransje.`;
+    const phoneHint = request.requirePhone ? " med telefon" : "";
+    return `Fant ingen ${request.industryLabel}${phoneHint} i ${request.locationLabel}. Prøv et annet sted eller en annen bransje.`;
   }
 
   const lines = companies.map((company, index) => {
@@ -145,11 +220,71 @@ export function formatFastListReply(
     return parts.join(" · ");
   });
 
-  const header = `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}:`;
+  const phoneNote = request.requirePhone
+    ? ` (alle med telefon)`
+    : "";
+  const header = `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}${phoneNote}:`;
   const footer =
     companies.length < request.limit
       ? `\n\nFant bare ${companies.length} i databasen. Si fra om du vil skanne nettside eller lagre som liste.`
       : "\n\nVil du skanne nettside eller lagre som liste? Si fra.";
 
   return `${header}\n\n${lines.join("\n")}${footer}`;
+}
+
+export function formatFacebookListReply(
+  companies: SimpleListCompany[],
+  request: ParsedSimpleListRequest,
+  meta?: { scanned: number; serperLimited?: boolean }
+): string {
+  if (request.unknownPlace) {
+    return formatUnknownPlaceReply(request);
+  }
+
+  const withFacebook = companies.filter((c) => (c.facebookUrl ?? "").trim());
+  if (withFacebook.length === 0) {
+    const scanNote = meta?.serperLimited
+      ? " Serper-kvoten er lav, så jeg skannet ikke nettsider nå."
+      : meta?.scanned
+        ? ` Skannet ${meta.scanned} firma uten å finne Facebook.`
+        : "";
+    return `Fant ingen ${request.industryLabel} med Facebook i ${request.locationLabel}.${scanNote} Prøv et annet sted eller si fra om du vil skanne flere.`;
+  }
+
+  const lines = withFacebook.map((company, index) => {
+    const place = (company.municipality_name ?? "").trim();
+    const parts = [
+      `${index + 1}. **${formatCompanyName(company.name)}**`,
+      `orgnr ${company.orgnr}`,
+      `Facebook: ${company.facebookUrl}`,
+    ];
+    if (place) parts.push(place);
+    return parts.join(" · ");
+  });
+
+  const header = `Her er ${withFacebook.length} ${request.industryLabel} med Facebook i ${request.locationLabel}:`;
+  const scanNote =
+    meta?.scanned && meta.scanned > withFacebook.length
+      ? `\n\nSkannet ${meta.scanned} firma — viste de med funnet Facebook-side.`
+      : "";
+  const footer =
+    "\n\nVil du lagre som liste eller skanne flere? Si fra.";
+
+  return `${header}\n\n${lines.join("\n")}${scanNote}${footer}`;
+}
+
+export function hasUnresolvedPlaceMention(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (isUnknownGeoPlace(normalized)) return true;
+  const place = extractPlaceMention(normalized);
+  if (!place) return false;
+  if (parseMunicipalityFromMessage(place).code) return false;
+  if (parseRegion(place).id) return false;
+  return true;
+}
+
+export function getDefaultMunicipalityFromPrompt(
+  systemPromptExtra?: string
+): { code?: string; label?: string } {
+  return parseDefaultMunicipalityFromPrompt(systemPromptExtra);
 }

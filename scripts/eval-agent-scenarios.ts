@@ -81,7 +81,8 @@ function testHistoryWithTools() {
 }
 
 function testProfessionMapping() {
-  assert.equal(mapProfessionToIndustryGroup("bilverksted"), "handel");
+  assert.equal(mapProfessionToIndustryGroup("bilverksted"), undefined);
+  assert.equal(mapProfessionToIndustryGroup("rengjoring"), undefined);
   assert.equal(mapProfessionToIndustryGroup("advokat"), undefined);
   assert.equal(
     resolveAgentSearchIndustryFilters({ professionId: "advokat" }).professionId,
@@ -97,7 +98,7 @@ function testSimpleSearchIntent() {
   assert.equal(isSimpleSearchIntent("Skann nettside for disse"), false);
 }
 
-function testSimpleListIntent() {
+async function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn meg 5 byggevarehandlere"), true);
   assert.equal(isSimpleListIntent("finn 5 byggevarehandler i Bodø"), true);
   assert.equal(isSimpleListIntent("finn 5 frisører i Bodø"), true);
@@ -105,7 +106,7 @@ function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn frisører uten nettside"), false);
   assert.equal(isSimpleListIntent("skann nettside for disse"), false);
 
-  const parsed = parseSimpleListRequest("finn meg 5 byggevarehandlere i Bodø");
+  const parsed = await parseSimpleListRequest("finn meg 5 byggevarehandlere i Bodø");
   assert.ok(parsed);
   assert.equal(parsed.limit, 5);
   assert.equal(parsed.searchArgs.municipalityCode, "1804");
@@ -113,7 +114,7 @@ function testSimpleListIntent() {
   assert.equal(parsed.searchArgs.nameQuery, "byggevare");
   assert.equal(parsed.searchArgs.days, 0);
 
-  const frisor = parseSimpleListRequest("finn 5 frisører i Bodø");
+  const frisor = await parseSimpleListRequest("finn 5 frisører i Bodø");
   assert.ok(frisor);
   assert.equal(frisor.limit, 5);
   assert.equal(frisor.searchArgs.municipalityCode, "1804");
@@ -121,7 +122,7 @@ function testSimpleListIntent() {
   assert.equal(frisor.searchArgs.nameQuery, undefined);
   assert.equal(frisor.searchArgs.days, 0);
 
-  const kultur = parseSimpleListRequest("finn 3 kulturfirma i Narvik");
+  const kultur = await parseSimpleListRequest("finn 3 kulturfirma i Narvik");
   assert.ok(kultur);
   assert.equal(kultur.searchArgs.industryGroup, "kultur");
   assert.equal(kultur.searchArgs.municipalityCode, "1806");
@@ -134,10 +135,17 @@ function testSimpleListIntent() {
   assert.equal(negle?.filters.industryGroup, "skjonnhet");
   assert.equal(negle?.filters.nameQuery, "negler");
 
-  const short = parseSimpleListRequest("byggevare Bodø");
+  const advokat = resolveIndustryKeyword("3 advokater Oslo");
+  assert.equal(advokat?.filters.professionId, "advokat");
+
+  const short = await parseSimpleListRequest("byggevare Bodø");
   assert.ok(short);
   assert.equal(short.searchArgs.municipalityCode, "1804");
   assert.equal(short.searchArgs.industryGroup, "bygg");
+
+  const svalbard = await parseSimpleListRequest("finn 5 frisører i Svalbard");
+  assert.ok(svalbard);
+  assert.equal(svalbard.unknownPlace, true);
 }
 
 function testConcreteSummaryGate() {
@@ -171,16 +179,19 @@ function testStartupContext() {
   assert.match(prompt, /1806/);
 }
 
-function main() {
+async function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
   testSimpleSearchIntent();
-  testSimpleListIntent();
+  await testSimpleListIntent();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
   console.log("eval-agent-scenarios: 7/7 OK");
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

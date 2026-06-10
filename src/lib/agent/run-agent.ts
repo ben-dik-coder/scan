@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {
   AGENT_DISABLED_MESSAGE,
+  AGENT_MAX_SCAN_PER_CALL,
   AGENT_MAX_TOOL_LOOPS,
   AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH,
   isAgentEnabled,
@@ -8,8 +9,12 @@ import {
 import { executeAgentTool } from "@/lib/agent/execute-tool";
 import type { AgentToolContext, ToolExecutionResult } from "@/lib/agent/execute-tool";
 import {
+  formatFacebookListReply,
   formatFastListReply,
+  getDefaultMunicipalityFromPrompt,
+  isFacebookListIntent,
   isSimpleListIntent,
+  parseFacebookListRequest,
   parseSimpleListRequest,
   type SimpleListCompany,
 } from "@/lib/agent/fast-list";
@@ -131,6 +136,56 @@ export function needsConcreteSummary(assistantText: string, hadTools: boolean): 
 function isConcreteEnoughText(text: string): boolean {
   const trimmed = text.trim();
   return trimmed.length >= 70 && /\d/.test(trimmed);
+}
+
+function parseSerperRemaining(systemPromptExtra?: string): number | undefined {
+  const match = systemPromptExtra?.match(
+    /Serper denne måneden: \d+ \/ \d+ \((\d+) igjen\)/
+  );
+  if (!match?.[1]) return undefined;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+async function searchCompaniesForFastList(
+  toolCtx: AgentToolContext,
+  onEvent: (event: AgentStreamEvent) => Promise<void>,
+  searchArgs: Record<string, unknown>,
+  retryWithoutNameQuery: boolean
+): Promise<SimpleListCompany[]> {
+  await onEvent({ type: "tool_start", tool: "search_companies" });
+  let result: ToolExecutionResult;
+  try {
+    result = await executeAgentTool(toolCtx, "search_companies", searchArgs);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Ukjent feil";
+    result = { summary: `Feil: ${message}`, data: { error: message } };
+  }
+
+  await onEvent({
+    type: "tool_end",
+    tool: "search_companies",
+    summary: result.summary,
+  });
+
+  let companies = Array.isArray(result.data.companies)
+    ? (result.data.companies as SimpleListCompany[])
+    : [];
+
+  if (
+    retryWithoutNameQuery &&
+    companies.length === 0 &&
+    typeof searchArgs.nameQuery === "string"
+  ) {
+    const broaderArgs = { ...searchArgs };
+    delete broaderArgs.nameQuery;
+    const retry = await executeAgentTool(toolCtx, "search_companies", broaderArgs);
+    if (Array.isArray(retry.data.companies) && retry.data.companies.length > 0) {
+      companies = retry.data.companies as SimpleListCompany[];
+    }
+  }
+
+  return companies;
 }
 
 function shouldSkipSynthesis(
@@ -342,49 +397,125 @@ export async function runAgentChat(
     },
   };
 
-  if (isSimpleListIntent(lastUserMessage)) {
-    const parsed = parseSimpleListRequest(lastUserMessage);
+  const defaultMunicipality = getDefaultMunicipalityFromPrompt(
+    options?.systemPromptExtra
+  );
+
+  if (isFacebookListIntent(lastUserMessage)) {
+    const parsed = await parseFacebookListRequest(lastUserMessage, {
+      defaultMunicipality,
+    });
     if (parsed) {
-      await onEvent({ type: "tool_start", tool: "search_companies" });
-      let result: ToolExecutionResult;
-      try {
-        result = await executeAgentTool(
-          toolCtx,
-          "search_companies",
-          parsed.searchArgs
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Ukjent feil";
-        result = { summary: `Feil: ${message}`, data: { error: message } };
+      if (parsed.unknownPlace) {
+        assistantText = formatFacebookListReply([], parsed);
+        await onEvent({ type: "text", content: assistantText });
+        await onEvent({ type: "done", content: assistantText });
+        return { assistantText };
       }
 
-      await onEvent({
-        type: "tool_end",
-        tool: "search_companies",
-        summary: result.summary,
-      });
+      const companies = await searchCompaniesForFastList(
+        toolCtx,
+        async (event) => {
+          await onEvent(event);
+        },
+        parsed.searchArgs,
+        true
+      );
 
-      let companies = Array.isArray(result.data.companies)
-        ? (result.data.companies as SimpleListCompany[])
-        : [];
+      const serperRemaining = parseSerperRemaining(options?.systemPromptExtra);
+      const canScan =
+        serperRemaining === undefined ? true : serperRemaining >= 20;
+      const scanOrgnrs = companies
+        .slice(0, AGENT_MAX_SCAN_PER_CALL)
+        .map((company) => company.orgnr)
+        .filter(Boolean);
 
-      if (
-        companies.length === 0 &&
-        typeof parsed.searchArgs.nameQuery === "string"
-      ) {
-        const broaderArgs = { ...parsed.searchArgs };
-        delete broaderArgs.nameQuery;
-        const retry = await executeAgentTool(
-          toolCtx,
-          "search_companies",
-          broaderArgs
-        );
-        if (Array.isArray(retry.data.companies) && retry.data.companies.length > 0) {
-          companies = retry.data.companies as SimpleListCompany[];
+      let scanned = 0;
+      let serperLimited = false;
+      const facebookByOrgnr = new Map<string, string | null>();
+
+      if (canScan && scanOrgnrs.length > 0) {
+        await onEvent({ type: "tool_start", tool: "scan_websites" });
+        let scanResult: ToolExecutionResult;
+        try {
+          scanResult = await executeAgentTool(toolCtx, "scan_websites", {
+            orgnrs: scanOrgnrs,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Ukjent feil";
+          scanResult = { summary: `Feil: ${message}`, data: { error: message } };
         }
+
+        await onEvent({
+          type: "tool_end",
+          tool: "scan_websites",
+          summary: scanResult.summary,
+        });
+
+        scanned = scanOrgnrs.length;
+        serperLimited = scanResult.data.serperLimitReached === true;
+
+        const scans = Array.isArray(scanResult.data.scans)
+          ? (scanResult.data.scans as Array<{
+              orgnr?: string;
+              facebookUrl?: string | null;
+            }>)
+          : [];
+        for (const scan of scans) {
+          if (scan.orgnr) {
+            facebookByOrgnr.set(scan.orgnr, scan.facebookUrl ?? null);
+          }
+        }
+      } else if (!canScan) {
+        serperLimited = true;
       }
 
-      assistantText = formatFastListReply(companies, parsed);
+      const withFacebook = companies
+        .map((company) => ({
+          ...company,
+          facebookUrl: facebookByOrgnr.get(company.orgnr) ?? null,
+        }))
+        .filter((company) => (company.facebookUrl ?? "").trim())
+        .slice(0, parsed.limit);
+
+      assistantText = formatFacebookListReply(withFacebook, parsed, {
+        scanned,
+        serperLimited,
+      });
+      await onEvent({ type: "text", content: assistantText });
+      await onEvent({ type: "done", content: assistantText });
+      return { assistantText };
+    }
+  }
+
+  if (isSimpleListIntent(lastUserMessage)) {
+    const parsed = await parseSimpleListRequest(lastUserMessage, {
+      defaultMunicipality,
+    });
+    if (parsed) {
+      if (parsed.unknownPlace) {
+        assistantText = formatFastListReply([], parsed);
+        await onEvent({ type: "text", content: assistantText });
+        await onEvent({ type: "done", content: assistantText });
+        return { assistantText };
+      }
+
+      const companies = await searchCompaniesForFastList(
+        toolCtx,
+        async (event) => {
+          await onEvent(event);
+        },
+        parsed.searchArgs,
+        true
+      );
+
+      const listedCompanies = parsed.requirePhone
+        ? companies
+            .filter((company) => Boolean((company.phone ?? "").trim()))
+            .slice(0, parsed.limit)
+        : companies;
+
+      assistantText = formatFastListReply(listedCompanies, parsed);
       await onEvent({ type: "text", content: assistantText });
       await onEvent({ type: "done", content: assistantText });
       return { assistantText };

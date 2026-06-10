@@ -22,6 +22,9 @@ export const AGENT_DEFAULT_LIST_LIMIT = 5;
 /** Maks limit i search_companies for hurtigliste */
 export const AGENT_MAX_FAST_LIST_LIMIT = 20;
 
+/** Maks antall firma/orgnr i kompakt tool-svar til modellen */
+export const AGENT_MAX_TOOL_RESULT_SAMPLE = 18;
+
 /** Hent flere treff enn limit slik at vi kan filtrere dårlige leads */
 export const AGENT_SEARCH_OVERFETCH_MIN = 40;
 

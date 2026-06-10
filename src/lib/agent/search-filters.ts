@@ -27,13 +27,11 @@ const PROFESSION_TO_INDUSTRY_GROUP: Record<string, string> = {
   butikk: "handel",
   apotek: "handel",
   bilforhandler: "handel",
-  bilverksted: "handel",
   reklame: "reklame",
   fotograf: "reklame",
   webdesign: "webbyra",
   it: "it",
   arkitekt: "bygg",
-  rengjoring: "handel",
   bilvask: "handel",
   megler: "eiendom",
   taxi: "transport",
@@ -43,7 +41,6 @@ const PROFESSION_TO_INDUSTRY_GROUP: Record<string, string> = {
   fysioterapeut: "helse",
   barnehage: "helse",
   trening: "helse",
-  tatovering: "kultur",
   negler: "skjonnhet",
   hudpleie: "skjonnhet",
 };
@@ -70,6 +67,15 @@ type IndustryKeywordMatch = {
     nameQuery?: string;
   };
 };
+
+/** Yrker med egne NACE-koder — ikke mapp til bred bransje. */
+const KEEP_AS_PROFESSION = new Set([
+  "advokat",
+  "regnskap",
+  "bilverksted",
+  "rengjoring",
+  "tatovering",
+]);
 
 /** Vanlige brukerord → søkefilter (f.eks. byggevarehandler → bygg). */
 const INDUSTRY_KEYWORD_RULES: Array<{
@@ -125,6 +131,29 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "kulturfirma", filters: { industryGroup: "kultur" } },
   },
   {
+    pattern: /\b(advokat|advokater|advokatfirma|advokatfirmaer|jurist|juridisk)\b/,
+    match: {
+      label: "advokater",
+      filters: { professionId: "advokat", nameQuery: "advokat" },
+    },
+  },
+  {
+    pattern:
+      /\b(regnskapsfører|regnskapsforer|regnskapsførere|regnskapsforere|regnskap|revisor|revisjon)\b/,
+    match: {
+      label: "regnskapsførere",
+      filters: { professionId: "regnskap", nameQuery: "regnskap" },
+    },
+  },
+  {
+    pattern: /\b(bilverksted|bilverksteder|bilverksted)\b/,
+    match: { label: "bilverksteder", filters: { professionId: "bilverksted" } },
+  },
+  {
+    pattern: /\b(rengjøring|rengjoring|renhold|vaktmester|vaskehjelp)\b/,
+    match: { label: "rengjøringsfirma", filters: { professionId: "rengjoring" } },
+  },
+  {
     pattern: /\b(neglesalong|neglesalonger|negler|nails|manikyr|pedikyr|vipper)\b/,
     match: {
       label: "neglesalonger",
@@ -135,7 +164,7 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     pattern: /\b(tatoveringsstudio|tatovering|tattovering|tattoo|tatoverer)\b/,
     match: {
       label: "tatoveringsstudio",
-      filters: { industryGroup: "kultur", nameQuery: "tatover" },
+      filters: { professionId: "tatovering", nameQuery: "tattoo" },
     },
   },
   {
@@ -200,19 +229,38 @@ function pickNameQueryForProfession(
   return undefined;
 }
 
+function defaultNameQueryForProfession(professionId: string): string | undefined {
+  if (professionId === "advokat") return "advokat";
+  if (professionId === "regnskap") return "regnskap";
+  if (professionId === "tatovering") return "tattoo";
+  return undefined;
+}
+
 function resolveFromProfession(message: string): IndustryKeywordMatch | null {
   const profession = resolveProfessionQuery(message);
   if (!profession?.professionId) return null;
 
-  const industryGroup = mapProfessionToIndustryGroup(profession.professionId);
+  const professionId = profession.professionId;
+  const nameQuery =
+    pickNameQueryForProfession(professionId, message) ??
+    defaultNameQueryForProfession(professionId);
+  const label = profession.label?.toLowerCase() ?? professionId;
+
+  if (KEEP_AS_PROFESSION.has(professionId)) {
+    return {
+      label,
+      filters: {
+        professionId,
+        ...(nameQuery ? { nameQuery } : {}),
+      },
+    };
+  }
+
+  const industryGroup = mapProfessionToIndustryGroup(professionId);
   if (!industryGroup) return null;
 
-  const nameQuery = pickNameQueryForProfession(profession.professionId, message);
-  const label =
-    profession.label?.toLowerCase() ?? industryGroupLabel(industryGroup).toLowerCase();
-
   return {
-    label,
+    label: label || industryGroupLabel(industryGroup).toLowerCase(),
     filters: {
       industryGroup,
       ...(nameQuery ? { nameQuery } : {}),
@@ -265,8 +313,6 @@ export function resolveAgentSearchIndustryFilters(args: {
     return { industryGroup, professionId };
   }
 
-  /** Yrker med egne NACE-koder — ikke mapp til bred bransje (f.eks. advokat → IT). */
-  const KEEP_AS_PROFESSION = new Set(["advokat", "regnskap"]);
   if (KEEP_AS_PROFESSION.has(professionId)) {
     return { industryGroup, professionId };
   }

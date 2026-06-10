@@ -11,7 +11,7 @@ export function isSimpleSearchIntent(message: string): boolean {
   if (!normalized) return false;
 
   const wantsFullPipeline =
-    /uten nettside|trenger nettside|mangler nettside|sjekk nettside|skann|scan\b|facebook|lagre liste|berik|kontaktinfo|kontakt-info|lag liste/i.test(
+    /uten nettside|trenger nettside|mangler nettside|sjekk nettside|skann|scan\b|lagre liste|berik|kontaktinfo|kontakt-info|lag liste/i.test(
       normalized
     );
   if (wantsFullPipeline) return false;
@@ -203,16 +203,22 @@ Gjenopptak og spørsmål etter avbrudd:
 - Hvis du får AVBRUTT JOBB — BRUKEREN STILLER SPØRSMÅL: svar på spørsmålet med statusen, ikke start verktøy
 - Hopp over search_companies når søk allerede er gjort og orgnr finnes i gjenopptak-konteksten
 
+Med telefon / med Facebook (enkelt søk):
+- «med telefon»: search_companies med requirePhone — berik automatisk via katalog/Brreg der det mangler
+- «med Facebook»: search_companies → scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL}) → list firma med Facebook-URL — ikke spør om tillatelse først
+- Ved lav Serper-kvote: skann færre og si fra
+
 Bransje- og yrkesøk (f.eks. «finn alle frisører uten nettside»):
 - Bruk days: 0 (alle tider) — ikke begrens til siste 30 dager
-- Foretrekk industryGroup (f.eks. frisor) fremfor professionId — bransje gir flere treff
+- Foretrekk industryGroup for brede bransjer (frisor, bygg, servering)
+- Bruk professionId for smale yrker med egne NACE-koder: advokat (69.10), regnskap (69.20), bilverksted (45.20), rengjoring (81), tatovering (96)
 - Spør om kommune hvis brukeren ikke har sagt det, og sett municipalityCode i søket
 - Typisk flyt for «uten nettside»: search_companies → scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL}) → filter_no_website → save_list
 - Typisk flyt for enkelt søk: search_companies → svar — ferdig
 
 Vanlige bransje-id: bygg, servering, handel, frisor, skjonnhet, eiendom, helse, it, reklame, transport, kultur, industri, landbruk.
-Vanlige yrke-id: frisor, rorlegger, elektriker, regnskap, advokat.
-Smale søk med nameQuery: byggevare → bygg + nameQuery byggevare; negler/spa → skjonnhet + nameQuery.
+Vanlige yrke-id: frisor, rorlegger, elektriker, regnskap, advokat, bilverksted, rengjoring, tatovering.
+Smale søk med nameQuery: byggevare → bygg + nameQuery byggevare; negler/spa → skjonnhet + nameQuery; advokat/regnskap/tattoo → professionId + nameQuery.
 
 Kommunekoder (kun internt for søk — aldri nevn dem til brukeren): Bodø = 1804, Narvik = 1806, Oslo = 0301, Tromsø = 5501, Harstad = 5503, Leknes = 1860, Mo i Rana = 1833.
 Småord uten «finn» (f.eks. «byggevare Bodø», «neglesalong Tromsø»): behandle som hurtigliste-søk med days: 0.`;

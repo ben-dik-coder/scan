@@ -61,8 +61,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Lokalt test-script: localhost som standard. Sett AGENT_CHAT_BASE_URL for prod (Vercel).
   const baseUrl = (
-    process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3003"
+    process.env.AGENT_CHAT_BASE_URL?.trim() || "http://localhost:3003"
   ).replace(/\/$/, "");
   const { message, conversationId } = parseArgs(process.argv.slice(2));
 

@@ -306,6 +306,20 @@ export const PROFESSIONS: ProfessionDef[] = [
     prefixes: ["45"],
     nameKeywords: ["bilvask", "vask"],
   },
+  {
+    id: "tatovering",
+    label: "Tatoveringsstudio",
+    aliases: [
+      "tatovering",
+      "tatoveringsstudio",
+      "tattoo",
+      "tatoverer",
+      "tattovering",
+    ],
+    codes: ["96.02", "96.09"],
+    prefixes: ["96"],
+    nameKeywords: ["tattoo", "tatover", "tatovering", "tatoveringsstudio"],
+  },
 ];
 
 export const PROFESSION_OPTIONS = [...PROFESSIONS].sort((a, b) =>

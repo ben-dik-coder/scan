@@ -24,7 +24,7 @@ const SCENARIOS: Array<{
   // Med krav
   { id: "L07", category: "krav", prompt: "finn 5 frisører i Bodø uten nettside", expect: (t) => hasResults(t) },
   { id: "L08", category: "krav", prompt: "finn frisører i Narvik med telefon", expect: (t) => phoneOk(t) },
-  { id: "L09", category: "krav", prompt: "finn frisører i Tromsø med Facebook", expect: (t) => hasResults(t) },
+  { id: "L09", category: "krav", prompt: "finn frisører i Tromsø med Facebook", expect: (t) => facebookOk(t) },
   // Småord/feil
   { id: "L10", category: "småord", prompt: "byggevare Bodø", expect: (t) => hasResults(t) },
   { id: "L11", category: "småord", prompt: "neglesalong Tromsø", expect: (t) => hasResults(t) },
@@ -49,7 +49,15 @@ const SCENARIOS: Array<{
   { id: "L17", category: "sted", prompt: "finn 5 frisører i Hammerfest", expect: (t) => hasResults(t) },
   { id: "L18", category: "liste", prompt: "finn 5 transportfirma i Bodø", expect: (t) => hasResults(t) },
   { id: "L19", category: "liste", prompt: "finn 5 IT-firma i Tromsø", expect: (t) => hasResults(t) },
-  { id: "L20", category: "liste", prompt: "finn 5 regnskapsførere i Oslo", expect: (t) => hasResults(t) },
+  {
+    id: "L20",
+    category: "liste",
+    prompt: "finn 5 regnskapsførere i Oslo",
+    expect: (t) => ({
+      ok: /regnskap|revisor|økonomi|okonomi/i.test(t) && hasResults(t).ok,
+      note: "mangler regnskapsfirma",
+    }),
+  },
   { id: "L21", category: "liste", prompt: "finn 5 kulturfirma i Narvik", expect: (t) => hasResults(t) },
   { id: "L22", category: "liste", prompt: "finn 5 helsefirma i Bodø", expect: (t) => hasResults(t) },
   { id: "L23", category: "liste", prompt: "finn 5 reklamefirma i Tromsø", expect: (t) => hasResults(t) },
@@ -59,7 +67,15 @@ const SCENARIOS: Array<{
   { id: "L27", category: "liste", prompt: "finn 5 apotek i Tromsø", expect: (t) => hasResults(t) },
   { id: "L28", category: "liste", prompt: "finn 5 arkitekter i Oslo", expect: (t) => hasResults(t) },
   { id: "L29", category: "liste", prompt: "finn 5 fysioterapeuter i Bodø", expect: (t) => hasResults(t) },
-  { id: "L30", category: "liste", prompt: "finn 5 tatoveringsstudio i Tromsø", expect: (t) => hasResults(t) },
+  {
+    id: "L30",
+    category: "liste",
+    prompt: "finn 5 tatoveringsstudio i Tromsø",
+    expect: (t) => ({
+      ok: /tattoo|tatover/i.test(t) && hasResults(t).ok,
+      note: "mangler tattoo/tatover",
+    }),
+  },
 ];
 
 function countOk(text: string, min: number, pattern: RegExp): { ok: boolean; note?: string } {
@@ -78,15 +94,29 @@ function hasResults(text: string): { ok: boolean; note?: string } {
 }
 
 function advokatOk(text: string): { ok: boolean; note?: string } {
-  const bad = /\bIT[\s-]?firma|software|programvare|datakonsulent/i.test(text);
-  const good = /advokat|juridisk|jurist/i.test(text);
-  const ok = good && !bad && hasResults(text).ok;
-  return { ok, note: bad ? "feil mapping til IT" : !good ? "mangler advokat" : undefined };
+  const bad = /\bIT[\s-]?firma|software|programvare|datakonsulent|drift\b/i.test(text);
+  const lines = text.split("\n").filter((l) => /^\d+\./.test(l.trim()));
+  const goodLines = lines.filter((l) => /advokat|juridisk|jurist/i.test(l));
+  const ok = goodLines.length >= 2 && !bad && hasResults(text).ok;
+  return {
+    ok,
+    note: bad ? "feil mapping til IT" : goodLines.length < 2 ? "for få advokatfirma" : undefined,
+  };
 }
 
 function phoneOk(text: string): { ok: boolean; note?: string } {
-  const ok = /tlf|telefon|\d{8}/i.test(text) && hasResults(text).ok;
-  return { ok, note: ok ? undefined : "mangler telefon i svar" };
+  const lines = text.split("\n").filter((l) => /^\d+\./.test(l.trim()));
+  const withPhone = lines.filter((l) => /tlf|telefon|\d{8}/i.test(l));
+  const ok = lines.length > 0 && withPhone.length === lines.length;
+  return { ok, note: ok ? undefined : "ikke alle linjer har telefon" };
+}
+
+function facebookOk(text: string): { ok: boolean; note?: string } {
+  const hasUrl = /facebook\.com/i.test(text) || /Facebook:/i.test(text);
+  const scannedNoFb =
+    /skannet \d+/i.test(text) && /fant ingen.*facebook/i.test(text);
+  const ok = hasUrl || (hasResults(text).ok && scannedNoFb) || scannedNoFb;
+  return { ok, note: ok ? undefined : "mangler Facebook-skann eller URL" };
 }
 
 function chatOk(text: string): { ok: boolean; note?: string } {
@@ -128,7 +158,11 @@ async function chat(message: string, conversationId?: string): Promise<{ text: s
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ message, ...(conversationId ? { conversationId } : {}) }),
+    body: JSON.stringify({
+      message,
+      cancelPrevious: true,
+      ...(conversationId ? { conversationId } : {}),
+    }),
   });
 
   if (!response.ok) {

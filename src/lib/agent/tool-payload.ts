@@ -1,6 +1,7 @@
+import { AGENT_MAX_TOOL_RESULT_SAMPLE } from "@/lib/agent/constants";
 import type { ToolExecutionResult } from "@/lib/agent/execute-tool";
 
-const MAX_ORGNR_SAMPLE = 8;
+const MAX_ORGNR_SAMPLE = AGENT_MAX_TOOL_RESULT_SAMPLE;
 
 /** Strip store lister fra tool-svar — modellen trenger sammendrag + antall, ikke alle orgnr. */
 export function compactToolResultForModel(
@@ -30,7 +31,7 @@ export function compactToolResultForModel(
         municipality_name?: string | null;
       }>;
       payload.companyCount = companies.length;
-      payload.companies = companies.slice(0, 8).map((company) => ({
+      payload.companies = companies.slice(0, MAX_ORGNR_SAMPLE).map((company) => ({
         orgnr: company.orgnr,
         name: company.name,
         phone: company.phone ?? undefined,
