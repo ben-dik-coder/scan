@@ -1,4 +1,5 @@
 import type { FilterState } from "@/components/CompanyFilters";
+import type { AgentListTab } from "@/lib/agent/saved-list-filters";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
 
@@ -14,7 +15,8 @@ export const SCAN_LEAD_MODE_LABELS: Record<
   },
   profession: {
     title: "Bransje i mitt område",
-    description: "Regnskap, IT, markedsføring eller andre lokale B2B-leads",
+    description:
+      "Bruker GPS for å finne din kommune — regnskap, IT, markedsføring og andre lokale B2B-leads",
   },
   all_new: {
     title: "Alle nye firma",
@@ -40,7 +42,7 @@ export function filtersForLeadMode(
       professionId: "",
       hasEmail: false,
       genericEmailOnly: false,
-      websitePresence: "all",
+      websitePresence: "without",
       facebookPresence: "all",
       instagramPresence: "all",
     };
@@ -71,6 +73,11 @@ export function filtersForLeadMode(
     facebookPresence: "all",
     instagramPresence: "all",
   };
+}
+
+/** Listefane som hører til valgt lead-modus (web=without for nettside-modus). */
+export function listTabForLeadMode(mode: ScanLeadMode): AgentListTab {
+  return mode === "websites" ? "no_website" : "all";
 }
 
 export const SCAN_AUDIENCE_STORAGE_KEY = "nylead-scan-audience-filters";

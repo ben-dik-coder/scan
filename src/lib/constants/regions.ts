@@ -30,6 +30,16 @@ export function regionLabel(regionId: string): string {
   return REGIONS.find((r) => r.id === regionId)?.label ?? "Hele Norge";
 }
 
+/** Område-id (f.eks. nordland) fra kommunenummer (f.eks. 1804). */
+export function regionIdForKommuneCode(kommuneCode: string): string {
+  const prefix = kommuneCode.trim().slice(0, 2);
+  if (!prefix) return "";
+  const region = REGIONS.find(
+    (r) => r.id && r.countyPrefixes.includes(prefix)
+  );
+  return region?.id ?? "";
+}
+
 export function kommuneBelongsToRegion(
   kommuneCode: string | null | undefined,
   regionId: string

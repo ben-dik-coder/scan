@@ -73,7 +73,7 @@ export function AgentChatFab({ onOpen }: { onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="agent-chat-fab fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center overflow-hidden rounded-full border border-sky-400/40 bg-sky-500/90 text-white shadow-lg shadow-sky-900/30 transition hover:bg-sky-400 hover:scale-105 active:scale-95"
+      className="agent-chat-fab fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center overflow-hidden rounded-full border border-sky-400/40 bg-sky-500/90 text-white shadow-lg shadow-sky-900/30 transition-[transform,background-color,bottom] duration-200 hover:bg-sky-400 hover:scale-105 active:scale-95"
       aria-label="Åpne AI-assistent"
       title="AI-assistent"
     >

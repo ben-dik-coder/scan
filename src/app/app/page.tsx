@@ -87,7 +87,11 @@ function parsePageParam(params: URLSearchParams): number {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
 }
 
-function buildCompaniesQuery(filters: FilterState, page = 1): string {
+function buildCompaniesQuery(
+  filters: FilterState,
+  page = 1,
+  options?: { modus?: string | null }
+): string {
   const params = new URLSearchParams();
   if (filters.regionId) params.set("omrade", filters.regionId);
   else params.delete("omrade");
@@ -108,6 +112,7 @@ function buildCompaniesQuery(filters: FilterState, page = 1): string {
   else params.delete("fb");
   if (filters.instagramPresence !== "all") params.set("ig", filters.instagramPresence);
   else params.delete("ig");
+  if (options?.modus) params.set("modus", options.modus);
   if (page > 1) params.set("page", String(page));
   else params.delete("page");
   return params.toString();
@@ -341,7 +346,15 @@ function FirmaPageBrreg() {
   ]);
 
   function goToPage(page: number) {
-    const params = new URLSearchParams(buildCompaniesQuery(filters, page));
+    const modus = searchParams.get("modus");
+    const params = new URLSearchParams(
+      buildCompaniesQuery(filters, page, {
+        modus:
+          modus === "websites" || modus === "profession" || modus === "all_new"
+            ? modus
+            : null,
+      })
+    );
     router.push(`/app?${params.toString()}`);
   }
 

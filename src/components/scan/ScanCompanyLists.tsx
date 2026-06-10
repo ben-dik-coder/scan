@@ -61,6 +61,7 @@ export function ScanCompanyLists({
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const companyLists = useMemo(
     () => saved.filter((l) => isCompanyListFilters(l.filters)),
@@ -127,7 +128,7 @@ export function ScanCompanyLists({
   function showMessage(text: string) {
     setMessage(text);
     onAdded?.(text);
-    window.setTimeout(() => setMessage(null), 4000);
+    window.setTimeout(() => setMessage(null), 3000);
   }
 
   async function createList(orgnrs: string[]) {
@@ -214,29 +215,26 @@ export function ScanCompanyLists({
   }
 
   async function deleteList(list: SavedListRow) {
-    if (
-      !window.confirm(
-        `Er du sikker på at du vil slette «${list.name}»?\n\nDette kan ikke angres.`
-      )
-    ) {
-      return;
-    }
-
+    setConfirmDeleteId(null);
     setDeletingId(list.id);
     try {
       if (isDemoMode()) {
         demo.deleteSavedListDemo(list.id);
+        setSaved((prev) => prev.filter((l) => l.id !== list.id));
       } else {
         const res = await fetch(`/api/saved-lists/${encodeURIComponent(list.id)}`, {
           method: "DELETE",
         });
         if (!res.ok) {
-          const data = await res.json();
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(data.error ?? "Kunne ikke slette");
         }
+        await reloadSaved();
+      }
+      if (!isDemoMode()) {
+        notifySavedListChanged({ id: list.id, name: list.name, orgnrCount: 0 });
       }
       showMessage(`Listen «${list.name}» er slettet`);
-      await reloadSaved();
     } catch (err) {
       showMessage(err instanceof Error ? err.message : "Noe gikk galt");
     } finally {
@@ -359,40 +357,75 @@ export function ScanCompanyLists({
                 {lists.map((list) => {
                   const orgnrs = agentOrgnrsFromFilters(list.filters);
                   const isAgent = isAgentSavedListFilters(list.filters);
+                  const confirming = confirmDeleteId === list.id;
+                  const deleting = deletingId === list.id;
                   return (
                     <div
                       key={list.id}
                       className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 pr-1"
                     >
-                      <button
-                        type="button"
-                        onClick={() => openList(list)}
-                        className="min-w-0 flex-1 px-3 py-2 text-left text-xs text-white hover:bg-white/5"
-                      >
-                        <span className="font-medium">{list.name}</span>
-                        <span className="scan-glass-muted ml-2 tabular-nums">
-                          {orgnrs.length} firma
-                        </span>
-                        {isAgent && (
-                          <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-violet-300">
-                            <AgentRobotIcon size={12} />
-                            AI
+                      {confirming ? (
+                        <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-xs text-white">
+                          <span>
+                            Slette «{list.name}»?
                           </span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteList(list)}
-                        disabled={deletingId === list.id}
-                        className="rounded-lg p-2 text-white/50 hover:bg-red-500/15 hover:text-red-200 disabled:opacity-40"
-                        aria-label={`Slett ${list.name}`}
-                      >
-                        {deletingId === list.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+                          <span className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void deleteList(list);
+                              }}
+                              disabled={deleting}
+                              className="rounded-lg bg-red-500/20 px-2 py-1 font-medium text-red-200 hover:bg-red-500/30 disabled:opacity-40"
+                            >
+                              {deleting ? "Sletter…" : "Ja, slett"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(null);
+                              }}
+                              disabled={deleting}
+                              className="rounded-lg px-2 py-1 text-white/60 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                            >
+                              Avbryt
+                            </button>
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openList(list)}
+                            className="min-w-0 flex-1 px-3 py-2 text-left text-xs text-white hover:bg-white/5"
+                          >
+                            <span className="font-medium">{list.name}</span>
+                            <span className="scan-glass-muted ml-2 tabular-nums">
+                              {orgnrs.length} firma
+                            </span>
+                            {isAgent && (
+                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-violet-300">
+                                <AgentRobotIcon size={12} />
+                                AI
+                              </span>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(list.id);
+                            }}
+                            disabled={deletingId !== null}
+                            className="relative z-10 shrink-0 rounded-lg p-2 text-white/50 hover:bg-red-500/15 hover:text-red-200 disabled:opacity-40"
+                            aria-label={`Slett ${list.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -441,7 +474,7 @@ export function AddToListMenu({ selectedOrgnrs, onAdded, onApply }: AddToListMen
             aria-label="Lukk"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute bottom-full right-0 z-40 mb-2 w-[min(100vw-2rem,320px)] rounded-xl border border-white/15 bg-slate-900/95 p-3 shadow-xl backdrop-blur">
+          <div className="scan-glass-dropdown absolute bottom-full right-0 z-40 mb-2 w-[min(100vw-2rem,320px)] rounded-xl border border-white/10 p-3 shadow-xl backdrop-blur-md">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-white">Legg i liste</span>
               <button

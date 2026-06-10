@@ -74,6 +74,55 @@ export function wantsFacebookInList(message: string): boolean {
   return /\bmed\s+facebook\b/i.test(message);
 }
 
+/** Bruker peker på forrige liste i samtalen — f.eks. «på disse», «den listen». */
+export function refersToPreviousList(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+
+  return (
+    /\bpå\s+(disse|de)\b/.test(normalized) ||
+    /\b(den|denne)\s+listen\b/.test(normalized) ||
+    /\bforrige\s+(liste|resultat|sok)\b/.test(normalized) ||
+    /\b(de|disse|forrige|siste)\s+(to|tre|fire|fem|\d+|forste|siste|resultat|neste)\b/.test(
+      normalized
+    ) ||
+    /\bskann\s+(disse|de)\b/.test(normalized) ||
+    /\b(finn|sjekk|skann)\s+.*\b(disse|de|listen)\b/.test(normalized)
+  );
+}
+
+/** Bruker vil ha Facebook i skann — ikke «med facebook» i nytt søk. */
+export function wantsFacebookInScan(message: string): boolean {
+  return /\b(fb|facebook)\b/i.test(message);
+}
+
+/**
+ * Oppfølging som ber om nettside/Facebook for firma i forrige liste —
+ * f.eks. «finn fb og evt nettside på disse». Skal ikke tolkes som webdesign-søk.
+ */
+export function isListEnrichFollowUp(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+  if (!refersToPreviousList(message)) return false;
+
+  const wantsEnrichment =
+    wantsFacebookInScan(message) ||
+    /\b(nettside|nettsider|hjemmeside|webside|website)\b/.test(normalized) ||
+    /\b(skann|sjekk|scan)\b/.test(normalized);
+
+  if (!wantsEnrichment) return false;
+
+  // «finn 5 webdesign i Oslo» er nytt søk, ikke berikelse av forrige liste.
+  if (
+    /\b(finn|list|vis|hent|gi|sok|søk)\s+(meg\s+)?\d+\s+\w/.test(normalized) &&
+    !/\bpå\s+(disse|de)\b/.test(normalized)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /** Oppfølging som trenger samtalekontekst — ikke fast-list. */
 export function isContextualFollowUp(message: string): boolean {
   const normalized = normalizeText(message);
@@ -85,6 +134,7 @@ export function isContextualFollowUp(message: string): boolean {
 
   return (
     isContextualListFollowUp(message) ||
+    isListEnrichFollowUp(message) ||
     /\b(de|disse|forrige|siste)\s+(to|tre|\d+|første|siste|resultat)\b/.test(
       normalized
     ) ||
@@ -156,6 +206,7 @@ export function isScanWebsitesFollowUp(message: string): boolean {
   ) {
     return false;
   }
+  if (isListEnrichFollowUp(message)) return true;
   return (
     /\bskann\s+(nettside|de|disse)\b/.test(normalized) ||
     /\bskann\s+(de|disse)\s+(to|tre|\d+|første|forste|neste)\b/.test(normalized) ||
@@ -294,6 +345,7 @@ export type ParsedSaveListRequest = {
 export type ParsedScanWebsitesRequest = {
   orgnrs: string[];
   count: number;
+  includeFacebook?: boolean;
 };
 
 /** «lagre som liste» — bruk orgnr fra siste søkeresultat. */
@@ -358,7 +410,11 @@ export function parseScanWebsitesRequest(
   if (pool.length === 0) return null;
 
   const batchCount = Math.min(count, pool.length, AGENT_MAX_SCAN_PER_JOB);
-  return { orgnrs: pool.slice(0, batchCount), count: batchCount };
+  return {
+    orgnrs: pool.slice(0, batchCount),
+    count: batchCount,
+    includeFacebook: wantsFacebookInScan(message),
+  };
 }
 
 function parseExplicitScanLimit(message: string): number | undefined {
@@ -509,6 +565,8 @@ const SEARCH_STOP_WORDS = new Set([
   "mer",
   "noen",
   "gode",
+  "nyeste",
+  "nye",
   "firma",
   "bedrift",
   "selskap",

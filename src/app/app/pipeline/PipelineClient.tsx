@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { agentOrgnrsFromFilters } from "@/lib/agent/saved-list-filters";
 import { NextStepBanner } from "@/components/journey/NextStepBanner";
 import { KoSendDrawer } from "@/components/ko/KoSendDrawer";
 import { pipelineItemToQueueItem } from "@/components/ko/queue-utils";
@@ -33,10 +35,15 @@ function isFollowUpToday(iso: string | null | undefined): boolean {
 
 export function PipelineClient({ initialItems, isDemo }: Props) {
   const demo = useDemo();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const loadedListIdRef = useRef<string | null>(null);
   const [items, setItems] = useState<PipelineItem[]>(initialItems);
   const [search, setSearch] = useState("");
   const [followUpToday, setFollowUpToday] = useState(false);
   const [score70Plus, setScore70Plus] = useState(false);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [listOrgnrs, setListOrgnrs] = useState<Set<string> | null>(null);
   const [drawerItem, setDrawerItem] = useState<PipelineItem | null>(null);
   const [drawerFocusNotes, setDrawerFocusNotes] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -74,6 +81,75 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
     })();
   }, [isDemo]);
 
+  useEffect(() => {
+    const listId = searchParams.get("liste");
+    if (!listId) {
+      loadedListIdRef.current = null;
+      setSelectedListId(null);
+      setListOrgnrs(null);
+      return;
+    }
+
+    if (loadedListIdRef.current === listId) return;
+
+    if (isDemo) {
+      const row = demo.savedLists.find((l) => l.id === listId);
+      if (!row) {
+        loadedListIdRef.current = null;
+        setSelectedListId(null);
+        setListOrgnrs(null);
+        return;
+      }
+      const orgnrs = agentOrgnrsFromFilters(row.filters);
+      loadedListIdRef.current = listId;
+      setSelectedListId(listId);
+      setListOrgnrs(orgnrs.length > 0 ? new Set(orgnrs) : null);
+      return;
+    }
+
+    fetch(`/api/saved-lists?id=${encodeURIComponent(listId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((row: { filters?: Record<string, unknown> } | null) => {
+        if (!row) {
+          loadedListIdRef.current = null;
+          setSelectedListId(null);
+          setListOrgnrs(null);
+          return;
+        }
+        const orgnrs = agentOrgnrsFromFilters(row.filters);
+        loadedListIdRef.current = listId;
+        setSelectedListId(listId);
+        setListOrgnrs(orgnrs.length > 0 ? new Set(orgnrs) : null);
+      })
+      .catch(() => undefined);
+  }, [searchParams, isDemo, demo.savedLists]);
+
+  const handleListSelect = useCallback(
+    (selection: {
+      listId: string | null;
+      orgnrs: string[] | null;
+      listName: string | null;
+    }) => {
+      setSelectedListId(selection.listId);
+      setListOrgnrs(
+        selection.orgnrs && selection.orgnrs.length > 0
+          ? new Set(selection.orgnrs)
+          : null
+      );
+      loadedListIdRef.current = selection.listId;
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (selection.listId) {
+        params.set("liste", selection.listId);
+      } else {
+        params.delete("liste");
+      }
+      const qs = params.toString();
+      router.replace(qs ? `/app/pipeline?${qs}` : "/app/pipeline");
+    },
+    [router, searchParams]
+  );
+
   const activeItems = useMemo(
     () =>
       items.filter((i) =>
@@ -82,15 +158,21 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
     [items]
   );
 
+  const listScopedActiveItems = useMemo(() => {
+    if (!listOrgnrs) return activeItems;
+    return activeItems.filter((i) => listOrgnrs.has(i.lead.orgnr));
+  }, [activeItems, listOrgnrs]);
+
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((item) => {
+      if (listOrgnrs && !listOrgnrs.has(item.lead.orgnr)) return false;
       if (q && !item.company.name.toLowerCase().includes(q)) return false;
       if (followUpToday && !isFollowUpToday(item.lead.next_follow_up_at)) return false;
       if (score70Plus && item.lead.score < 70) return false;
       return true;
     });
-  }, [items, search, followUpToday, score70Plus]);
+  }, [items, search, followUpToday, score70Plus, listOrgnrs]);
 
   const updateItem = useCallback((orgnr: string, patch: Partial<PipelineItem["lead"]>) => {
     setItems((prev) =>
@@ -201,10 +283,12 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
       )}
 
       <PipelineToolbar
-        totalCount={activeItems.length}
+        totalCount={listScopedActiveItems.length}
         visibleCount={filteredItems.filter((i) =>
           (ACTIVE_PIPELINE_STATUSES as readonly string[]).includes(i.lead.status)
         ).length}
+        selectedListId={selectedListId}
+        onListSelect={handleListSelect}
         search={search}
         onSearchChange={setSearch}
         followUpToday={followUpToday}

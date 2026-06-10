@@ -904,11 +904,13 @@ html.app-glass-theme body {
     background: rgba(255, 255, 255, 0.03);
   }
 
-  /* Arbeidskø: kort litt mørkere enn sidebakgrunn (#1e3a5f) */
+  /* Arbeidskø: samme glassflate som scan-surface / oversikt-kort */
   .scan-glass-shell .ko-queue-card {
-    background: rgba(11, 22, 42, 0.88) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #f8fafc;
+    background: var(--scan-glass-surface, rgba(255, 255, 255, 0.06)) !important;
+    border-color: var(--scan-glass-border, rgba(255, 255, 255, 0.1)) !important;
+    color: var(--scan-glass-text, #f8fafc);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
@@ -976,9 +978,9 @@ html.app-glass-theme body {
   }
 
   /* Arbeidskø v2 — fokusmodus */
-  .scan-glass-shell .ko-focus-card {
-    background: rgba(11, 22, 42, 0.92);
-    border-color: rgba(255, 255, 255, 0.14);
+  .scan-glass-shell .ko-queue-card.ko-focus-card {
+    background: var(--scan-glass-surface, rgba(255, 255, 255, 0.1)) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 8px 24px rgba(0, 0, 0, 0.25);
@@ -1066,6 +1068,21 @@ html.app-glass-theme body {
   /* Side-skuffer: under app-header, ikke klippet av main overflow */
   .app-side-drawer {
     top: calc(3.5rem + env(safe-area-inset-top, 0px));
+    background: var(--scan-glass-surface-subtle, var(--scan-glass-surface, rgba(255, 255, 255, 0.06)));
+    border-color: var(--scan-glass-border, rgba(255, 255, 255, 0.1));
+    color: var(--scan-glass-text, #f8fafc);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Skuffer rendres utenfor .scan-glass-shell (portal) — behold blå primærknapp */
+  .app-side-drawer .btn-primary {
+    background: var(--scan-glass-accent, #38bdf8);
+    color: var(--scan-glass-accent-text, #0f172a);
+    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
   }
 
   @media (max-width: 639px) {
@@ -1107,10 +1124,15 @@ html.app-glass-theme body {
     color: #cbd5e1;
   }
 
-  .scan-glass-shell .ko-queue-section-toggle {
-    background: rgba(11, 22, 42, 0.72) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #e2e8f0 !important;
+  .scan-glass-shell .ko-queue-section-toggle,
+  .scan-glass-shell .ko-filter-dropdown,
+  .scan-glass-shell .scan-glass-dropdown {
+    background: var(--scan-glass-surface, rgba(255, 255, 255, 0.06)) !important;
+    border-color: var(--scan-glass-border, rgba(255, 255, 255, 0.1)) !important;
+    color: var(--scan-glass-text, #f8fafc) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .scan-glass-shell .ko-queue-badge {
@@ -1374,6 +1396,11 @@ html.app-glass-theme body {
 .app-scroll::-webkit-scrollbar-thumb {
   background: rgba(12, 31, 61, 0.15);
   border-radius: 4px;
+}
+
+/* Flytt robotknappen over valglinjen når firma er valgt på Skann */
+body[data-scan-selection-bar="open"] .agent-chat-fab {
+  bottom: calc(max(1.25rem, env(safe-area-inset-bottom)) + 4rem);
 }
 
 /* Agent chat — ChatGPT-like bubbles, prose and typing indicator */

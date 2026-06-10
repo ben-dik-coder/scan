@@ -6,13 +6,11 @@ import Link from "next/link";
 import {
   ArrowRight,
   Bell,
-  GraduationCap,
   Mail,
   TrendingUp,
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useOnboarding } from "@/components/onboarding/OnboardingProvider";
 import { NextStepBanner } from "@/components/journey/NextStepBanner";
 import { cn } from "@/lib/utils";
 
@@ -53,39 +51,12 @@ function GlassStatCard({
 }
 
 export function SalesOverview({ stats }: { stats: SalesDashboardStats }) {
-  const { openOnboarding } = useOnboarding();
   const empty = stats.totalLeads === 0;
 
   return (
     <div className="app-overview-page w-full max-w-none space-y-4 sm:space-y-5">
       <section className="scan-surface-full overflow-hidden">
         <NextStepBanner pagePhase="overview" variant="hero" />
-
-        <header className="scan-glass-header flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-5">
-          <div className="min-w-0">
-            <h1 className="scan-glass-title text-xl sm:text-2xl">Oversikt</h1>
-            <p className="scan-glass-muted mt-1 text-sm">
-              Kommandosenter — se fremdrift og hva du bør gjøre nå
-            </p>
-          </div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Link
-              href="/app/ko"
-              className="scan-btn-primary inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-4 text-sm font-semibold sm:w-auto"
-            >
-              Jobb i køen
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <button
-              type="button"
-              onClick={openOnboarding}
-              className="scan-btn-ghost inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-4 text-sm font-semibold sm:w-auto"
-            >
-              <GraduationCap className="h-4 w-4" />
-              Veiledning
-            </button>
-          </div>
-        </header>
 
         {empty ? (
           <div className="border-t border-white/10 px-4 py-10 text-center sm:px-6">

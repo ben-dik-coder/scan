@@ -182,7 +182,15 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "frisører", filters: { professionId: "frisor" } },
   },
   {
-    pattern: /\b(restaurant|restauranter|servering|kafe|café|cafe)\b/,
+    pattern:
+      /\b(restau?r(?:ant(?:er)?|anter|an)|resturant(?:er)?|restuarant(?:er)?|spisested(?:er)?)\b/,
+    match: {
+      label: "restauranter",
+      filters: { professionId: "restaurant", nameQuery: "restaurant" },
+    },
+  },
+  {
+    pattern: /\b(servering|kafe|café|cafe|kafé)\b/,
     match: { label: "serveringssteder", filters: { industryGroup: "servering" } },
   },
   {
@@ -398,6 +406,7 @@ function defaultNameQueryForProfession(professionId: string): string | undefined
     blomster: "blomster",
     bilvask: "bilvask",
     kokk: "catering",
+    restaurant: "restaurant",
   };
   return defaults[professionId];
 }

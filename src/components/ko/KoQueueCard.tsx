@@ -12,7 +12,8 @@ import {
 import { statusLabel } from "@/lib/sales/constants";
 import type { QueueItemResponse } from "@/lib/sales/queue-score";
 import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   item: QueueItemResponse;
@@ -37,9 +38,45 @@ export function KoQueueCard({
   onRemoveFromQueue,
   onRequestDelete,
 }: Props) {
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const isFocus = variant === "focus";
   const isContacted = item.status === "kontaktet";
+
+  function updateMenuPos() {
+    const btn = menuButtonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPos(null);
+      return;
+    }
+    updateMenuPos();
+    const onReposition = () => updateMenuPos();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   return (
     <article
@@ -177,49 +214,69 @@ export function KoQueueCard({
           </button>
         )}
 
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/8"
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-            Mer
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 z-10 mt-1 min-w-[160px] rounded-lg border border-white/15 bg-slate-900 py-1 shadow-lg">
-              <Link
-                href="/app/pipeline"
-                className="block px-3 py-2 text-xs text-slate-200 hover:bg-white/10"
+        <button
+          ref={menuButtonRef}
+          type="button"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/8"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+          Mer
+        </button>
+        {menuOpen &&
+          menuPos &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-[100] cursor-default"
+                aria-label="Lukk"
                 onClick={() => setMenuOpen(false)}
+              />
+              <div
+                role="menu"
+                className="scan-glass-dropdown fixed z-[110] min-w-[160px] rounded-xl border border-white/10 py-1 shadow-xl backdrop-blur-md"
+                style={{ top: menuPos.top, right: menuPos.right }}
               >
-                Åpne i Pipeline
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onRemoveFromQueue();
-                }}
-                className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-slate-200 hover:bg-white/10"
-              >
-                <UserMinus className="h-3.5 w-3.5" />
-                Fjern fra kø
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onRequestDelete();
-                }}
-                className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Slett lead
-              </button>
-            </div>
+                <Link
+                  href="/app/pipeline"
+                  role="menuitem"
+                  className="block px-3 py-2 text-xs text-slate-200 hover:bg-white/10"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Åpne i Pipeline
+                </Link>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRemoveFromQueue();
+                  }}
+                  className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-slate-200 hover:bg-white/10"
+                >
+                  <UserMinus className="h-3.5 w-3.5" />
+                  Fjern fra kø
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRequestDelete();
+                  }}
+                  className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Slett lead
+                </button>
+              </div>
+            </>,
+            document.body
           )}
-        </div>
       </div>
     </article>
   );

@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
+import { SavedListPicker } from "@/components/saved-lists/SavedListPicker";
 import { cn } from "@/lib/utils";
 
 type Props = {
   totalCount: number;
   visibleCount: number;
+  selectedListId: string | null;
+  onListSelect: (selection: {
+    listId: string | null;
+    orgnrs: string[] | null;
+    listName: string | null;
+  }) => void;
   search: string;
   onSearchChange: (value: string) => void;
   followUpToday: boolean;
@@ -18,6 +25,8 @@ type Props = {
 export function PipelineToolbar({
   totalCount,
   visibleCount,
+  selectedListId,
+  onListSelect,
   search,
   onSearchChange,
   followUpToday,
@@ -28,6 +37,11 @@ export function PipelineToolbar({
   return (
     <div className="pipeline-toolbar flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-2">
+        <SavedListPicker
+          mode="filter"
+          selectedListId={selectedListId}
+          onSelect={onListSelect}
+        />
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input

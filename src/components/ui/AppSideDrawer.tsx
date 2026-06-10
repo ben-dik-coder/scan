@@ -65,7 +65,7 @@ export function AppSideDrawer({
       />
       <aside
         className={cn(
-          "app-side-drawer fixed z-[110] flex flex-col bg-slate-950/95 shadow-2xl backdrop-blur-md",
+          "app-side-drawer fixed z-[110] flex flex-col shadow-2xl backdrop-blur-md",
           fullScreenMobile
             ? [
                 "app-side-drawer--fullscreen-mobile inset-0 h-[100dvh] max-h-[100dvh] w-full max-w-none border-0 pt-[env(safe-area-inset-top,0px)]",

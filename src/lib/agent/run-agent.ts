@@ -253,7 +253,7 @@ async function searchWebsiteSalesLeadPool(
     parsed.locationLabel === "Norge" ||
     (!baseArgs.municipalityCode && !baseArgs.regionId);
 
-  let companies = (
+  const companies = (
     await searchCompaniesForFastList(toolCtx, onEvent, baseArgs, true)
   ).filter((company) => !isBadLeadCompany(company));
 
@@ -657,6 +657,41 @@ export async function runAgentChat(
     }
   }
 
+  const scanParsed = parseScanWebsitesRequest(lastUserMessage, history);
+  if (scanParsed) {
+    await onEvent({ type: "tool_start", tool: "scan_websites" });
+    const chunked = await runChunkedWebsiteScans(
+      toolCtx,
+      scanParsed.orgnrs,
+      {
+        onProgress: async (scanned, total) => {
+          await onEvent({
+            type: "tool_progress",
+            tool: "scan_websites",
+            scanned,
+            total,
+          });
+        },
+      },
+      { includeFacebook: scanParsed.includeFacebook === true }
+    );
+    await onEvent({
+      type: "tool_end",
+      tool: "scan_websites",
+      summary:
+        chunked.summaries[chunked.summaries.length - 1] ??
+        `Sjekket nettside for ${chunked.scans.length} firma`,
+    });
+
+    assistantText = formatScanWebsitesReply(chunked.scans, {
+      serperLimited: chunked.serperLimited,
+      remaining: chunked.remaining,
+    });
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({ type: "done", content: assistantText });
+    return { assistantText };
+  }
+
   if (isSimpleListIntent(lastUserMessage)) {
     const parsed = await parseSimpleListRequest(lastUserMessage, {
       defaultMunicipality,
@@ -881,36 +916,6 @@ export async function runAgentChat(
       );
     }
 
-    await onEvent({ type: "text", content: assistantText });
-    await onEvent({ type: "done", content: assistantText });
-    return { assistantText };
-  }
-
-  const scanParsed = parseScanWebsitesRequest(lastUserMessage, history);
-  if (scanParsed) {
-    await onEvent({ type: "tool_start", tool: "scan_websites" });
-    const chunked = await runChunkedWebsiteScans(toolCtx, scanParsed.orgnrs, {
-      onProgress: async (scanned, total) => {
-        await onEvent({
-          type: "tool_progress",
-          tool: "scan_websites",
-          scanned,
-          total,
-        });
-      },
-    });
-    await onEvent({
-      type: "tool_end",
-      tool: "scan_websites",
-      summary:
-        chunked.summaries[chunked.summaries.length - 1] ??
-        `Sjekket nettside for ${chunked.scans.length} firma`,
-    });
-
-    assistantText = formatScanWebsitesReply(chunked.scans, {
-      serperLimited: chunked.serperLimited,
-      remaining: chunked.remaining,
-    });
     await onEvent({ type: "text", content: assistantText });
     await onEvent({ type: "done", content: assistantText });
     return { assistantText };

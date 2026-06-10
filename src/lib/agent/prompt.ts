@@ -2,6 +2,7 @@ import {
   AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_SCAN_PER_CALL,
 } from "@/lib/agent/constants";
+import { isListEnrichFollowUp } from "@/lib/agent/fast-list";
 import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
 import { isWebsiteSalesLeadIntent } from "@/lib/agent/website-sales-leads";
 import type { AgentRun } from "@/types/database";
@@ -12,6 +13,7 @@ export function isSimpleSearchIntent(message: string): boolean {
   if (!normalized) return false;
 
   if (isWebsiteSalesLeadIntent(message)) return true;
+  if (isListEnrichFollowUp(message)) return false;
 
   const wantsFullPipeline =
     /uten nettside|trenger nettside|mangler nettside|sjekk nettside|skann|scan\b|lagre liste|berik|kontaktinfo|kontakt-info|lag liste/i.test(

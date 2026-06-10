@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { LEAD_STATUSES, statusLabel } from "@/lib/sales/constants";
 import { explainQueueScore } from "@/lib/sales/queue-score";
 import type { CompanyWithLead } from "@/types/database";
@@ -328,6 +328,24 @@ function EmailCell({ resolved }: { resolved: ResolvedCompanyEmail }) {
       )}
     </a>
   );
+}
+
+function EmailContactCell({
+  company,
+  scan,
+}: {
+  company: CompanyWithLead;
+  scan?: WebsiteScanResult;
+}) {
+  const resolved = resolveCompanyEmail(company, scan);
+  if (!resolved) {
+    return (
+      <span className="cv-muted inline-flex items-center rounded-full border border-[var(--cv-border)] px-1.5 py-0.5 text-[10px] font-medium">
+        Ingen e-post
+      </span>
+    );
+  }
+  return <EmailCell resolved={resolved} />;
 }
 
 /** Klikk på navn → Google-iframe-popup (add-on, endrer ikke andre innstillinger). */
@@ -861,16 +879,6 @@ export function CompanyTable({
 
   const showCol = (id: ColumnId) => visibleColumns.has(id);
 
-  // Skjul e-postkolonnen automatisk når ingen rader har e-post (unngå kolonne full av «—»)
-  const anyRowHasEmail = useMemo(
-    () =>
-      companies.some((c) =>
-        Boolean(resolveCompanyEmail(c, websiteScans?.get(c.orgnr)))
-      ),
-    [companies, websiteScans]
-  );
-  const showEmailCol = showCol("email") && anyRowHasEmail;
-
   function openGoogleSearch(company: CompanyWithLead) {
     setGoogleSearchCompany(company);
     onGoogleSearch?.(company);
@@ -1014,7 +1022,7 @@ export function CompanyTable({
                 </th>
                 <th>Firma</th>
                 {queueScores && <th className="w-14">Score</th>}
-                {showEmailCol && <th>E-post</th>}
+                {showCol("email") && <th>E-post</th>}
                 {showCol("phone") && <th className="cv-phone-cell">Tlf</th>}
                 {showCol("website") && <th>Nettside</th>}
                 {showCol("facebook") && <th>Facebook</th>}
@@ -1087,16 +1095,9 @@ export function CompanyTable({
                         )}
                       </td>
                     )}
-                    {showEmailCol && (
+                    {showCol("email") && (
                       <td className="max-w-[12rem]">
-                        {(() => {
-                          const resolved = resolveCompanyEmail(c, scan);
-                          return resolved ? (
-                            <EmailCell resolved={resolved} />
-                          ) : (
-                            <span className="cv-muted">—</span>
-                          );
-                        })()}
+                        <EmailContactCell company={c} scan={scan} />
                       </td>
                     )}
                     {showCol("phone") && (

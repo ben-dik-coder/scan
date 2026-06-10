@@ -36,9 +36,16 @@ import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
 import { isDemoMode } from "@/lib/demo/config";
 import {
   filtersForLeadMode,
+  listTabForLeadMode,
   persistScanAudienceFilters,
   type ScanLeadMode,
 } from "@/lib/scan/lead-modes";
+import {
+  GeolocationError,
+  GPS_PRIVACY_HINT,
+  requestUserPosition,
+} from "@/lib/scan/geolocation";
+import { resolveLocalKommuneFallback } from "@/lib/scan/local-kommune-pref";
 import {
   agentOrgnrsFromFilters,
   AGENT_LIST_PERIOD_DAYS,
@@ -156,6 +163,29 @@ export function AppPageClient(props: Props) {
   }, [socialOptions]);
 
   useEffect(() => {
+    if (!listMessage) return;
+    const t = window.setTimeout(() => setListMessage(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [listMessage]);
+
+  useEffect(() => {
+    if (!saveMessage) return;
+    const t = window.setTimeout(() => setSaveMessage(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [saveMessage]);
+
+  useEffect(() => {
+    if (selected.size > 0) {
+      document.body.dataset.scanSelectionBar = "open";
+    } else {
+      delete document.body.dataset.scanSelectionBar;
+    }
+    return () => {
+      delete document.body.dataset.scanSelectionBar;
+    };
+  }, [selected.size]);
+
+  useEffect(() => {
     setListFilter(websitePresenceToListFilter(searchParams.get("web")));
   }, [searchParams]);
 
@@ -237,6 +267,8 @@ export function AppPageClient(props: Props) {
   const [scanSelectionMessage, setScanSelectionMessage] = useState<string | null>(
     null
   );
+  const [geoLocationMessage, setGeoLocationMessage] = useState<string | null>(null);
+  const [geoLocationLoading, setGeoLocationLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
 
@@ -473,6 +505,7 @@ export function AppPageClient(props: Props) {
       agentOrgnrs?: string[] | null;
       listName?: string | null;
       listSource?: "agent" | "user" | null;
+      modus?: ScanLeadMode | null;
     }
   ) {
     if (
@@ -529,6 +562,8 @@ export function AppPageClient(props: Props) {
     if (next.instagramPresence !== "all") params.set("ig", next.instagramPresence);
     else params.delete("ig");
     params.delete("page");
+    if (options?.modus) params.set("modus", options.modus);
+    else if (options?.modus === null) params.delete("modus");
     if (options?.listId) params.set("liste", options.listId);
     else params.delete("liste");
     persistScanAudienceFilters(next);
@@ -571,32 +606,148 @@ export function AppPageClient(props: Props) {
     });
   }
 
+  function applyProfessionModeFilters(
+    municipalityCode: string,
+    regionId: string,
+    options?: { openFilters?: boolean }
+  ) {
+    const listTab = listTabForLeadMode("profession");
+    const next = filtersForLeadMode("profession", {
+      ...filters,
+      municipalityCode,
+      regionId,
+    });
+    applyFilters(next, {
+      preserveListFilter: true,
+      listFilter: listTab,
+      listId: null,
+      agentOrgnrs: null,
+      listName: null,
+      listSource: null,
+      modus: "profession",
+    });
+    setNoWebsiteBanner(false);
+    if (
+      options?.openFilters &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches
+    ) {
+      setFilterSheetOpen(true);
+    }
+  }
+
+  async function fetchDefaultMunicipalityPreference(): Promise<string | null> {
+    if (isDemoMode()) return null;
+    try {
+      const res = await fetch("/api/user/memory?key=default_municipality");
+      if (!res.ok) return null;
+      const data = (await res.json()) as { value?: string | null };
+      return data.value?.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function applyProfessionModeWithGps() {
+    setGeoLocationLoading(true);
+    setGeoLocationMessage(`${GPS_PRIVACY_HINT} Henter posisjon…`);
+
+    try {
+      const pos = await requestUserPosition();
+      const res = await fetch(
+        `/api/geo/kommune?lat=${encodeURIComponent(String(pos.lat))}&lng=${encodeURIComponent(String(pos.lng))}`
+      );
+      const data = (await res.json()) as {
+        kommunenummer?: string;
+        kommunenavn?: string;
+        regionId?: string;
+        error?: string;
+      };
+
+      if (res.ok && data.kommunenummer) {
+        applyProfessionModeFilters(
+          data.kommunenummer,
+          data.regionId ?? "",
+          { openFilters: true }
+        );
+        setGeoLocationMessage(`Viser firma i ${data.kommunenavn ?? "ditt område"} (fra GPS).`);
+        return;
+      }
+
+      await applyProfessionModeFallback(
+        data.error ?? "Fant ikke kommune for posisjonen din."
+      );
+    } catch (err) {
+      const reason =
+        err instanceof GeolocationError
+          ? err.message
+          : "Kunne ikke hente posisjon.";
+      await applyProfessionModeFallback(reason);
+    } finally {
+      setGeoLocationLoading(false);
+    }
+  }
+
+  async function applyProfessionModeFallback(reason: string) {
+    const memoryValue = await fetchDefaultMunicipalityPreference();
+    const fallback = resolveLocalKommuneFallback({
+      memoryValue,
+      currentMunicipalityCode: filters.municipalityCode,
+      municipalities: props.municipalities,
+    });
+
+    if (fallback) {
+      applyProfessionModeFilters(
+        fallback.municipalityCode,
+        fallback.regionId,
+        { openFilters: true }
+      );
+      const placeLabel = fallback.municipalityName ?? fallback.municipalityCode;
+      const sourceLabel =
+        fallback.source === "memory"
+          ? "lagret preferanse"
+          : fallback.source === "saved_filters"
+            ? "tidligere valg"
+            : "nåværende filter";
+      setGeoLocationMessage(`${reason} Bruker ${placeLabel} (${sourceLabel}).`);
+      return;
+    }
+
+    const listTab = listTabForLeadMode("profession");
+    const next = filtersForLeadMode("profession", filters);
+    applyFilters(next, {
+      preserveListFilter: true,
+      listFilter: listTab,
+      listId: null,
+      agentOrgnrs: null,
+      listName: null,
+      listSource: null,
+      modus: "profession",
+    });
+    setNoWebsiteBanner(false);
+    setFilterSheetOpen(true);
+    setGeoLocationMessage(`${reason} Velg kommune under.`);
+  }
+
   function applyLeadMode(mode: ScanLeadMode) {
+    if (mode === "profession") {
+      void applyProfessionModeWithGps();
+      return;
+    }
+
+    setGeoLocationMessage(null);
+    const listTab = listTabForLeadMode(mode);
     const next = filtersForLeadMode(mode, filters);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("modus", mode);
-    params.delete("page");
-    persistScanAudienceFilters(next);
-    if (next.regionId) params.set("omrade", next.regionId);
-    else params.delete("omrade");
-    if (next.municipalityCode) params.set("kommune", next.municipalityCode);
-    else params.delete("kommune");
-    params.set("dager", String(next.days));
-    params.set("epost", next.hasEmail ? "1" : "0");
-    params.set("generisk", next.genericEmailOnly ? "1" : "0");
-    if (next.industryGroup) params.set("bransje", next.industryGroup);
-    else params.delete("bransje");
-    if (next.professionId) params.set("yrke", next.professionId);
-    else params.delete("yrke");
-    const trimmedNameQuery = (next.nameQuery ?? "").trim();
-    if (trimmedNameQuery) params.set("navn", trimmedNameQuery);
-    else params.delete("navn");
-    params.delete("web");
-    params.delete("fb");
-    params.delete("ig");
-    setListFilter("all");
-    setSelected(new Set());
-    router.push(`/app?${params.toString()}`);
+    applyFilters(next, {
+      preserveListFilter: true,
+      listFilter: listTab,
+      listId: null,
+      agentOrgnrs: null,
+      listName: null,
+      listSource: null,
+      modus: mode,
+    });
+    setNoWebsiteBanner(false);
   }
 
   const selectable = useMemo(() => rankedDisplayCompanies, [rankedDisplayCompanies]);
@@ -1100,7 +1251,11 @@ export function AppPageClient(props: Props) {
           )}
 
           <div className="scan-page-controls-row mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <ScanLeadModes activeMode={activeLeadMode} onSelect={applyLeadMode} />
+            <ScanLeadModes
+              activeMode={activeLeadMode}
+              onSelect={applyLeadMode}
+              disabled={geoLocationLoading}
+            />
             <ScanActiveFilterChips
               filters={filters}
               municipalities={props.municipalities}
@@ -1108,6 +1263,16 @@ export function AppPageClient(props: Props) {
               variant="inline"
             />
           </div>
+
+          {geoLocationMessage && (
+            <p
+              className="scan-glass-muted mt-1.5 text-[11px] leading-snug"
+              role="status"
+              aria-live="polite"
+            >
+              {geoLocationMessage}
+            </p>
+          )}
 
           <ScanQueueHint />
         </header>
@@ -1148,12 +1313,16 @@ export function AppPageClient(props: Props) {
               onClose={() => setFilterSheetOpen(false)}
               filters={filters}
               municipalities={props.municipalities}
-              onChange={(next) => {
-                applyFilters(next);
-                setFilterSheetOpen(false);
-              }}
+              onChange={applyFilters}
               activeFilterCount={activeFilterCount}
               hideTrigger
+              listTabs={listTabs.map((tab) => ({
+                id: tab.id,
+                label: tab.label,
+                count: tab.count,
+              }))}
+              activeListTab={listFilter}
+              onListTabChange={handleListTabChange}
             />
 
             {props.dataSource === "brreg" &&
@@ -1354,7 +1523,7 @@ export function AppPageClient(props: Props) {
       </section>
 
       {selected.size > 0 && (
-        <div className="scan-glass-floating-bar fixed inset-x-3 bottom-4 z-20 flex items-center justify-between gap-2 border px-3 py-2 sm:inset-x-auto sm:right-6 sm:max-w-lg">
+        <div className="scan-glass-floating-bar fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between gap-2 border px-3 py-2 sm:inset-x-auto sm:right-6 sm:max-w-lg">
           <span className="text-xs font-semibold text-white">
             {selected.size} valgt
             {scanQueueCount < selected.size && (

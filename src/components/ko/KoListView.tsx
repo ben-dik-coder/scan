@@ -74,7 +74,7 @@ export function KoListView({
           <button
             type="button"
             onClick={() => onContactedOpenChange(!contactedOpen)}
-            className="ko-queue-section-toggle flex w-full items-center gap-2 rounded-lg border border-white/10 bg-slate-950/40 px-4 py-2.5 text-left text-sm font-semibold text-slate-200"
+            className="ko-queue-section-toggle flex w-full items-center gap-2 rounded-lg border border-white/10 px-4 py-2.5 text-left text-sm font-semibold text-slate-200"
           >
             Kontaktet i dag ({contactedItems.length})
           </button>

@@ -44,6 +44,8 @@ type Props = {
   layout?: "stack" | "sidebar" | "mobile-bar";
   /** Skjul navnesøk (brukes når søk vises andre steder, f.eks. mobil quick bar) */
   hideNameSearch?: boolean;
+  /** Skjul hint om nettside-faner (når de vises i mobil filter-sheet) */
+  hideWebsiteTabHint?: boolean;
 };
 
 function DebouncedNameQueryInput({
@@ -89,6 +91,7 @@ export function CompanyFilters({
   onChange,
   layout = "stack",
   hideNameSearch = false,
+  hideWebsiteTabHint = false,
 }: Props) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -344,9 +347,11 @@ export function CompanyFilters({
             )}
           </summary>
           <div className="scan-filter-section-body">
-            <p className="scan-glass-muted text-[11px] leading-snug">
-              Nettside-status velger du med fanene under listen (Alle / Uten web / Med web).
-            </p>
+            {!hideWebsiteTabHint && (
+              <p className="scan-glass-muted text-[11px] leading-snug">
+                Nettside-status velger du med fanene under listen (Alle / Uten web / Med web).
+              </p>
+            )}
             <label className="flex flex-col gap-0.5">
               <span className="scan-label">Facebook</span>
               <select
@@ -527,9 +532,11 @@ export function CompanyFilters({
             </span>
           )}
         </summary>
-        <p className="scan-glass-muted mt-1 text-[10px] leading-snug">
-          Nettside-status velger du med fanene under listen (Alle / Uten web / Med web).
-        </p>
+        {!hideWebsiteTabHint && (
+          <p className="scan-glass-muted mt-1 text-[10px] leading-snug">
+            Nettside-status velger du med fanene under listen (Alle / Uten web / Med web).
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           <label className="flex min-w-[7rem] flex-col gap-0.5">
             <span className="scan-label">Facebook</span>

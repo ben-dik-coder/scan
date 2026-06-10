@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Loader2, Mail } from "lucide-react";
+import { ExternalLink, Loader2, Mail, Phone } from "lucide-react";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
+import { normalizeDisplayPhone } from "@/lib/website-scan/resolve-company-contact";
 import { ScoreRing, StatusPill } from "@/components/ui/primitives";
 import { statusLabel } from "@/lib/sales/constants";
 import type { LeadActivity, LeadStatus } from "@/types/database";
@@ -65,6 +66,8 @@ export function LeadDetailDrawer({
   if (!item) return null;
 
   const { lead, company } = item;
+  const phoneRaw = (company.mobile ?? company.phone)?.trim();
+  const phoneDisplay = phoneRaw ? normalizeDisplayPhone(phoneRaw) : null;
 
   async function saveDetails() {
     setSaving(true);
@@ -176,13 +179,14 @@ export function LeadDetailDrawer({
           ) : (
             <p className="text-slate-500">Ingen e-post</p>
           )}
-          {(company.phone || company.mobile) && (
-            <a
-              href={`tel:${company.mobile ?? company.phone}`}
-              className="block text-slate-300 hover:underline"
-            >
-              {company.mobile ?? company.phone}
-            </a>
+          {phoneRaw && phoneDisplay && (
+            <p className="flex flex-wrap items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+              <span className="text-slate-400">Tlf</span>
+              <a href={`tel:${phoneRaw.replace(/\s/g, "")}`} className="text-sky-300 hover:underline">
+                {phoneDisplay}
+              </a>
+            </p>
           )}
           {company.daglig_leder && (
             <p className="text-slate-400">Daglig leder: {company.daglig_leder}</p>

@@ -101,7 +101,24 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "restaurant",
     label: "Restaurant / servering",
-    aliases: ["restaurant", "restauranter", "servering", "kafé", "kafe", "café", "cafe", "bar", "pub", "pizzeria", "pizza", "sushi", "mat"],
+    aliases: [
+      "restaurant",
+      "restauranter",
+      "resturanter",
+      "resturant",
+      "restuarant",
+      "servering",
+      "kafé",
+      "kafe",
+      "café",
+      "cafe",
+      "bar",
+      "pub",
+      "pizzeria",
+      "pizza",
+      "sushi",
+      "mat",
+    ],
     codes: ["56.10", "56.30"],
     prefixes: ["56"],
     nameKeywords: ["restaurant", "kafé", "kafe", "café", "cafe", "bar", "pub", "pizzeria", "sushi"],
@@ -430,6 +447,17 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const QUERY_FILLER_TOKENS = new Set([
+  "meg",
+  "oss",
+  "litt",
+  "mer",
+  "noen",
+  "gode",
+  "nyeste",
+  "nye",
+]);
+
 function scoreAliasMatch(query: string, alias: string): number {
   const q = normalizeText(query);
   const a = normalizeText(alias);
@@ -445,8 +473,10 @@ function scoreAliasMatch(query: string, alias: string): number {
   const qTokens = q.split(/\s+/).filter((t) => t.length >= 3);
   const aTokens = a.split(/\s+/).filter(Boolean);
   for (const qt of qTokens) {
+    if (QUERY_FILLER_TOKENS.has(qt)) continue;
     for (const at of aTokens) {
-      if (at.startsWith(qt) || qt.startsWith(at)) return 55;
+      if (qt.length >= 4 && at.startsWith(qt)) return 55;
+      if (at.length >= 4 && qt.startsWith(at)) return 55;
     }
   }
 

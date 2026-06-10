@@ -927,7 +927,8 @@ html[data-app-theme="apple"].app-glass-theme::before {
   --tw-ring-color: rgba(10, 132, 255, 0.15);
 }
 
-[data-app-theme="apple"] .scan-glass-shell .btn-primary {
+[data-app-theme="apple"] .scan-glass-shell .btn-primary,
+[data-app-theme="apple"] .app-side-drawer .btn-primary {
   box-shadow: 0 4px 14px rgba(10, 132, 255, 0.22);
 }
 
@@ -950,9 +951,17 @@ html[data-app-theme="apple"].app-glass-theme::before {
   background: rgba(58, 58, 60, 0.98);
 }
 
-[data-app-theme="apple"] .scan-glass-shell .ko-focus-card {
-  background: #2c2c2e;
-  border-color: rgba(255, 255, 255, 0.08);
+[data-app-theme="apple"] .scan-glass-shell .ko-queue-card,
+[data-app-theme="apple"] .scan-glass-shell .ko-queue-section-toggle,
+[data-app-theme="apple"] .scan-glass-shell .ko-filter-dropdown,
+[data-app-theme="apple"] .scan-glass-shell .scan-glass-dropdown {
+  background: rgba(44, 44, 46, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-app-theme="apple"] .scan-glass-shell .ko-queue-card.ko-focus-card {
+  background: #2c2c2e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 [data-app-theme="apple"] .scan-glass-shell .ko-focus-progress-fill {

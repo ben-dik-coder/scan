@@ -11,6 +11,7 @@ import {
 import { capScanJobOrgnrs } from "../src/lib/agent/chunked-scan.ts";
 import {
   isContextualListFollowUp,
+  isListEnrichFollowUp,
   isScopeClarificationReply,
   isSaveListFollowUp,
   isScanWebsitesFollowUp,
@@ -21,6 +22,7 @@ import {
   parseSaveListRequest,
   collectAlreadyScannedOrgnrs,
   parseScanWebsitesRequest,
+  wantsFacebookInScan,
   parseSearchAndScanRequest,
   parseSimpleListRequest,
   parseWebsiteSalesLeadRequest,
@@ -46,6 +48,7 @@ import {
   resolveAgentSearchIndustryFilters,
   resolveIndustryKeyword,
 } from "../src/lib/agent/search-filters.ts";
+import { resolveProfessionQuery } from "../src/lib/constants/professions.ts";
 import {
   formatNearbyPlaceSuggestion,
   getNearbyMunicipalitySuggestions,
@@ -320,6 +323,56 @@ async function testSaveAndScanFollowUp() {
   assert.equal(capped.remaining, 2);
 }
 
+async function testListEnrichFollowUp() {
+  const restaurantHistory = [
+    { role: "user", content: "finn meg de 5 nyeste restaurantene i norge" },
+    {
+      role: "assistant",
+      content:
+        "Her er 5 restauranter i Norge:\n\n" +
+        "1. **JAHU CATERING** · orgnr 933492573 · OSLO\n" +
+        "2. **HEGGEDAL PIZZA & BAR** · orgnr 933492574 · ASKER\n" +
+        "3. **NORDLYS RESTAURANT** · orgnr 933492575 · TROMSØ\n" +
+        "4. **FJORD MAT** · orgnr 933492576 · BERGEN\n" +
+        "5. **SMAK KJØKKEN** · orgnr 933492577 · TRONDHEIM",
+    },
+  ];
+
+  const followUp = "finn fb og evt nettside på disse";
+
+  assert.equal(isListEnrichFollowUp(followUp), true);
+  assert.equal(isScanWebsitesFollowUp(followUp), true);
+  assert.equal(isSimpleListIntent(followUp), false);
+  assert.equal(isWebsiteSalesLeadListIntent(followUp), false);
+  assert.equal(wantsFacebookInScan(followUp), true);
+  assert.match(resolveIndustryKeyword(followUp)?.label ?? "", /webdesign/i);
+
+  const scan = parseScanWebsitesRequest(followUp, restaurantHistory);
+  assert.ok(scan);
+  assert.equal(scan.count, 5);
+  assert.equal(scan.includeFacebook, true);
+  assert.deepEqual(scan.orgnrs, [
+    "933492573",
+    "933492574",
+    "933492575",
+    "933492576",
+    "933492577",
+  ]);
+
+  assert.equal(isListEnrichFollowUp("sjekk nettside på disse"), true);
+  assert.equal(isScanWebsitesFollowUp("skann disse"), true);
+  assert.equal(isListEnrichFollowUp("finn fb på den listen"), true);
+  assert.equal(isListEnrichFollowUp("finn 5 webdesign i Oslo"), false);
+  assert.equal(isSimpleListIntent("finn 5 webdesign i Oslo"), true);
+
+  const scanWithoutFb = parseScanWebsitesRequest(
+    "sjekk nettside på disse",
+    restaurantHistory
+  );
+  assert.ok(scanWithoutFb);
+  assert.equal(scanWithoutFb.includeFacebook, false);
+}
+
 async function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn meg 5 byggevarehandlere"), true);
   assert.equal(isSimpleListIntent("finn 5 byggevarehandler i Bodø"), true);
@@ -327,6 +380,7 @@ async function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn 3 kulturfirma i Narvik"), true);
   assert.equal(isSimpleListIntent("finn grillbar i Norge"), true);
   assert.equal(isSimpleListIntent("finn 5 grillbar i Bergen"), true);
+  assert.equal(isSimpleListIntent("finn meg 5 nyeste resturanter"), true);
   assert.equal(isSimpleListIntent("finn 3 tatovering i Oslo"), true);
   assert.equal(isSimpleListIntent("finn frisører uten nettside"), false);
   assert.equal(isSimpleListIntent("skann nettside for disse"), false);
@@ -430,6 +484,28 @@ async function testSimpleListIntent() {
   const grillBergen = await parseSimpleListRequest("finn 5 grillbar i Bergen");
   assert.ok(grillBergen);
   assert.equal(grillBergen.searchArgs.municipalityCode, "4601");
+
+  const resturanterKeyword = resolveIndustryKeyword("finn meg 5 nyeste resturanter");
+  assert.notEqual(resturanterKeyword?.filters.professionId, "megler");
+  assert.equal(resturanterKeyword?.filters.professionId, "restaurant");
+  assert.equal(resturanterKeyword?.filters.nameQuery, "restaurant");
+  assert.equal(resturanterKeyword?.filters.industryGroup, undefined);
+
+  const resturanterParsed = await parseSimpleListRequest("finn meg 5 nyeste resturanter");
+  assert.ok(resturanterParsed);
+  assert.equal(resturanterParsed.limit, 5);
+  assert.equal(resturanterParsed.searchArgs.professionId, "restaurant");
+  assert.equal(resturanterParsed.searchArgs.nameQuery, "restaurant");
+  assert.equal(resturanterParsed.searchArgs.industryGroup, undefined);
+  assert.equal(resturanterParsed.searchArgs.days, 0);
+  assert.equal(resturanterParsed.locationLabel, "Norge");
+
+  const restauranterKeyword = resolveIndustryKeyword("finn 5 nyeste restauranter i Oslo");
+  assert.equal(restauranterKeyword?.filters.professionId, "restaurant");
+  assert.notEqual(
+    resolveProfessionQuery("finn meg 5 nyeste resturanter")?.professionId,
+    "megler"
+  );
 }
 
 function testNearbySuggestions() {
@@ -799,6 +875,7 @@ async function main() {
   await testContextualFollowUp();
   await testNationwidePaginationFollowUp();
   await testSaveAndScanFollowUp();
+  await testListEnrichFollowUp();
   await testSearchAndScanIntent();
   await testSimpleListIntent();
   testNearbySuggestions();
@@ -809,7 +886,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 17/17 OK");
+  console.log("eval-agent-scenarios: 18/18 OK");
 }
 
 main().catch((err) => {

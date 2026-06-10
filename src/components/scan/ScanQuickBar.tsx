@@ -125,12 +125,13 @@ export function ScanQuickBar({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full flex-col gap-2 lg:w-auto lg:flex-row lg:flex-wrap">
           {onOpenFilters && (
             <button
               type="button"
               onClick={onOpenFilters}
-              className="scan-btn-ghost lg:hidden inline-flex min-h-[36px] items-center gap-1.5 px-3 text-xs"
+              aria-haspopup="dialog"
+              className="scan-btn-ghost lg:hidden inline-flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-1.5 px-4 py-2 text-xs lg:w-auto"
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
               Filter
@@ -145,7 +146,7 @@ export function ScanQuickBar({
             type="button"
             onClick={onSelectWithEmail}
             disabled={withEmailCount === 0}
-            className="scan-btn-ghost min-h-[36px] px-3 text-xs disabled:opacity-40"
+            className="scan-btn-ghost inline-flex min-h-[44px] w-full items-center justify-center px-4 py-2 text-xs disabled:opacity-40 lg:w-auto"
           >
             Velg med e-post
           </button>
@@ -153,7 +154,7 @@ export function ScanQuickBar({
             type="button"
             onClick={onCheckAndQueue}
             disabled={scanning || addingToQueue || withEmailCount === 0}
-            className="scan-btn-primary min-h-[36px] px-4 text-xs disabled:opacity-40"
+            className="scan-btn-primary inline-flex min-h-[44px] w-full items-center justify-center px-4 py-2 text-xs disabled:opacity-40 lg:w-auto"
           >
             {addingToQueue ? "Legger i kø…" : "Rask start: topp 10 → kø"}
           </button>

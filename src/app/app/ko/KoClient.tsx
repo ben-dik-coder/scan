@@ -51,6 +51,7 @@ export function KoClient() {
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(templates);
   const [queueToast, setQueueToast] = useState<string | null>(null);
   const [contactedHint, setContactedHint] = useState<string | null>(null);
+  const [loadingList, setLoadingList] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -254,9 +255,52 @@ export function KoClient() {
     setSkippedOrgnrs((prev) => new Set(prev).add(orgnr));
   }
 
+  async function loadSavedListToQueue(orgnrs: string[], listName: string) {
+    if (orgnrs.length === 0) return;
+    setLoadingList(true);
+    setError(null);
+    try {
+      let failed = 0;
+      if (isDemoMode()) {
+        for (const orgnr of orgnrs) {
+          setLeadStatus(orgnr, "ny", { queue: true });
+        }
+      } else {
+        const results = await Promise.all(
+          orgnrs.map(async (orgnr) => {
+            const res = await fetch("/api/leads/status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orgnr, status: "ny", queue: true }),
+            });
+            return res.ok;
+          })
+        );
+        failed = results.filter((ok) => !ok).length;
+      }
+      const queued = orgnrs.length - failed;
+      if (queued === 0) {
+        setError("Kunne ikke legge firma i kø — prøv igjen.");
+        return;
+      }
+      setQueueToast(
+        failed > 0
+          ? `${queued} fra «${listName}» lagt i kø. ${failed} feilet.`
+          : `${queued} fra «${listName}» lagt i kø`
+      );
+      setTimeout(() => setQueueToast(null), 6000);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke laste liste");
+    } finally {
+      setLoadingList(false);
+    }
+  }
+
   const showInitialLoading = loading && items.length === 0 && !error;
   const hasAnyItems = items.length > 0;
-  const allNyDone = hasAnyItems && nyItems.length === 0 && contactedItems.length > 0;
+  const nyReadyCount = nyItems.length;
+  const allNyDone = hasAnyItems && nyReadyCount === 0 && contactedItems.length > 0;
 
   return (
     <div className="scan-glass-kommand space-y-6 pb-8">
@@ -266,11 +310,12 @@ export function KoClient() {
           <span className="text-xs font-semibold uppercase tracking-wide">Arbeidskø</span>
         </div>
         <h1 className="scan-glass-strong mt-2 font-display text-2xl font-bold">
-          Ring / send i dag
+          {nyReadyCount > 0
+            ? `${nyReadyCount} firma venter på deg`
+            : "Ta kontakt med neste firma"}
         </h1>
         <p className="scan-glass-muted mt-2 max-w-xl text-sm">
-          Bare firma du har lagt i kø fra Skann. Jobb én og én i fokusmodus — eller se hele
-          listen.
+          Håndplukket fra Skann — ofte uten egen nettside. Ring eller send e-post, én og én.
         </p>
       </header>
 
@@ -288,22 +333,23 @@ export function KoClient() {
         </p>
       )}
 
-      {hasAnyItems && (
-        <KoToolbar
-          nyCount={items.filter((i) => i.status === "ny").length}
-          contactedCount={contactedItems.length}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          search={search}
-          onSearchChange={setSearch}
-          noWebsite={noWebsite}
-          onNoWebsiteChange={setNoWebsite}
-          hasPhone={hasPhone}
-          onHasPhoneChange={setHasPhone}
-          loading={loading}
-          onRefresh={() => void load()}
-        />
-      )}
+      <KoToolbar
+        hasItems={hasAnyItems}
+        nyCount={items.filter((i) => i.status === "ny").length}
+        contactedCount={contactedItems.length}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        search={search}
+        onSearchChange={setSearch}
+        noWebsite={noWebsite}
+        onNoWebsiteChange={setNoWebsite}
+        hasPhone={hasPhone}
+        onHasPhoneChange={setHasPhone}
+        loading={loading}
+        loadingList={loadingList}
+        onRefresh={() => void load()}
+        onLoadSavedList={loadSavedListToQueue}
+      />
 
       {error && (
         <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
@@ -316,10 +362,10 @@ export function KoClient() {
       ) : !loading && !hasAnyItems ? (
         <div className="ko-empty rounded-xl border border-dashed border-white/15 px-6 py-12 text-center">
           <p className="scan-glass-strong text-sm font-semibold">
-            Du har ingen firma i køen ennå
+            Køen er tom — finn firma i Skann først
           </p>
           <p className="scan-glass-muted mt-2 text-sm">
-            Gå til Skann, velg firma og legg dem i kø. Etterpå tar du kontakt her — én og én.
+            Velg en lagret firmaliste over, eller finn nye firma i Skann og legg dem i kø.
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <Link href="/app" className="btn-primary text-sm">
@@ -398,7 +444,7 @@ export function KoClient() {
           <button
             type="button"
             onClick={() => setContactedOpen((o) => !o)}
-            className="ko-queue-section-toggle flex w-full items-center gap-2 rounded-lg border border-white/10 bg-slate-950/40 px-4 py-2.5 text-left text-sm font-semibold text-slate-200"
+            className="ko-queue-section-toggle flex w-full items-center gap-2 rounded-lg border border-white/10 px-4 py-2.5 text-left text-sm font-semibold text-slate-200"
           >
             Kontaktet i dag ({contactedItems.length})
           </button>
