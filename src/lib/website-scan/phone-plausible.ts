@@ -93,3 +93,22 @@ export function pickPlausiblePhone(
   }
   return null;
 }
+
+/** Trekk ut norsk telefon fra fritekst (søkesnippets, titler). */
+export function extractPhoneFromText(text: string): string | null {
+  const patterns = [
+    /(?:\+47|0047)[\s.-]?(?:\d[\s.-]?){7}\d/g,
+    /\b\d{2}[\s.-]\d{2}[\s.-]\d{2}[\s.-]\d{2}\b/g,
+    /\b\d{3}[\s.-]\d{2}[\s.-]\d{3}\b/g,
+    /\b[49]\d{7}\b/g,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[0]) {
+      const digits = match[0].replace(/\D/g, "");
+      if (digits.length >= 8) return match[0].trim();
+    }
+  }
+  return null;
+}

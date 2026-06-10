@@ -56,6 +56,7 @@ const DIRECTORY_DOMAINS = [
   "yelp.no",
   "eniro.se",
   "firmanett.no",
+  "firmalisten.no",
   "kart.gulesider.no",
   "kommune.no",
 ];
@@ -761,6 +762,10 @@ function scoreHit(
   if (domainMatch) {
     nameInDomain = true;
     score += 10;
+    const domainCompact = compactAlnum(domainBase);
+    const companyCompact = compactAlnum(strippedName);
+    if (domainCompact === companyCompact) score += 3;
+    if (domainBase.endsWith("as") && !companyCompact.endsWith("as")) score -= 2;
   }
 
   for (const token of tokens) {
@@ -1007,6 +1012,12 @@ export function buildWebsiteSearchQueries(company: {
       if (brand) add(`${brand} ${place}`);
       add(`${stripped} ${place}`);
       if (name !== stripped) add(`${name} ${place}`);
+      const compact = compactAlnum(stripped);
+      if (compact.length >= 5) {
+        add(`${compact} ${place}`);
+        add(`${compact} ${place} nettside`);
+      }
+      add(`"${stripped}" ${place} nettside`);
     }
   } else {
     add(stripped);

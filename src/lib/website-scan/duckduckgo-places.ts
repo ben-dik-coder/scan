@@ -4,7 +4,10 @@ import {
   companyMatchesResult,
   pickBestWebsite,
 } from "./parse-results";
-import { phonePlausibleForCompany } from "./phone-plausible";
+import {
+  extractPhoneFromText,
+  phonePlausibleForCompany,
+} from "./phone-plausible";
 import {
   buildPlacesSearchQuery,
   normalizePlaceWebsite,
@@ -33,24 +36,6 @@ function cleanMapsTitle(title: string): string {
     .replace(/\s*[-–|·]\s*Kart.*$/i, "")
     .replace(/\s*\|\s*Google.*$/i, "")
     .trim();
-}
-
-function extractPhoneFromText(text: string): string | null {
-  const patterns = [
-    /(?:\+47|0047)[\s.-]?(?:\d[\s.-]?){7}\d/g,
-    /\b\d{2}[\s.-]\d{2}[\s.-]\d{2}[\s.-]\d{2}\b/g,
-    /\b\d{3}[\s.-]\d{2}[\s.-]\d{3}\b/g,
-    /\b\d{8}\b/g,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[0]) {
-      const digits = match[0].replace(/\D/g, "");
-      if (digits.length >= 8) return match[0].trim();
-    }
-  }
-  return null;
 }
 
 async function searchDdgMapsHits(query: string) {

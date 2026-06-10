@@ -133,6 +133,30 @@ export function buildPlacesSearchQuery(company: WebsiteScanCompanyInput): string
   return geo ? `${display} ${geo}` : display;
 }
 
+export function buildPlacesSearchQueries(company: WebsiteScanCompanyInput): string[] {
+  const stripped = stripCompanySuffix(company.name).trim();
+  const brand = extractBrandPortion(company.name);
+  const brandTitle = brand ? toTitleCaseName(brand) : null;
+  const places = companyGeoPlaces(company);
+  const queries: string[] = [];
+  const seen = new Set<string>();
+  const add = (q: string) => {
+    const key = q.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    queries.push(q);
+  };
+
+  add(buildPlacesSearchQuery(company));
+  for (const place of places) {
+    if (brandTitle) add(`"${brandTitle}" ${place}`);
+    if (brand) add(`${brand} ${place}`);
+    add(`${stripped} ${place}`);
+    add(`"${stripped}" ${place}`);
+  }
+  return queries.slice(0, 3);
+}
+
 export async function searchSerperPlaces(
   query: string,
   options?: { userId?: string }
@@ -201,10 +225,6 @@ export async function discoverFromSerperPlaces(
   company: WebsiteScanCompanyInput,
   userId?: string
 ): Promise<GooglePlacesDiscovery | null> {
-  const query = buildPlacesSearchQuery(company);
-  const places = await searchSerperPlaces(query, { userId });
-  if (!places.length) return null;
-
   const geoPlaces = companyGeoPlaces(company);
   let best: {
     place: SerperPlaceHit;
@@ -213,19 +233,23 @@ export async function discoverFromSerperPlaces(
     website: { websiteUrl: string; websiteDomain: string } | null;
   } | null = null;
 
-  for (const place of places) {
-    const scored = scorePlaceHit(place, company.name, geoPlaces);
-    if (!scored) continue;
+  for (const query of buildPlacesSearchQueries(company)) {
+    const places = await searchSerperPlaces(query, { userId }).catch(() => []);
+    for (const place of places) {
+      const scored = scorePlaceHit(place, company.name, geoPlaces);
+      if (!scored) continue;
 
-    const website = normalizePlaceWebsite(place.website, company.name, place.title);
-    if (!best || scored.score > best.score) {
-      best = {
-        place,
-        score: scored.score,
-        confidence: scored.confidence,
-        website,
-      };
+      const website = normalizePlaceWebsite(place.website, company.name, place.title);
+      if (!best || scored.score > best.score) {
+        best = {
+          place,
+          score: scored.score,
+          confidence: scored.confidence,
+          website,
+        };
+      }
     }
+    if (best?.place.phoneNumber && best.score >= 10) break;
   }
 
   if (!best) return null;
