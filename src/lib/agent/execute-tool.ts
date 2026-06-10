@@ -380,20 +380,32 @@ async function executeFilterLeads(
   const minConfidence =
     typeof args.minConfidence === "string" ? args.minConfidence : undefined;
 
-  const scans = await loadCachedWebsiteScans(orgnrs);
+  const [scans, companies] = await Promise.all([
+    loadCachedWebsiteScans(orgnrs),
+    loadCompaniesByOrgnr(orgnrs),
+  ]);
   const scanByOrgnr = new Map(scans.map((s) => [s.orgnr, s]));
+  const companyByOrgnr = new Map(companies.map((c) => [c.orgnr, c]));
 
   const matched = orgnrs.filter((orgnr) => {
     const scan = scanByOrgnr.get(orgnr);
+    const company = companyByOrgnr.get(orgnr);
+    if (facebookOnly) {
+      if (scan?.facebookUrl) return true;
+      return false;
+    }
+    if (hasPhone) {
+      if (scan?.enrichedPhone) return true;
+      if (company && hasCompanyPhone(company)) return true;
+      return false;
+    }
     if (!scan) return false;
-    if (facebookOnly && !scan.facebookUrl) return false;
-    if (hasPhone && !scan.enrichedPhone) return false;
     if (minConfidence === "high" && scan.confidence !== "high") return false;
     if (minConfidence === "medium" && scan.confidence === "low") return false;
     return true;
   });
 
-  const companies = await loadCompaniesByOrgnr(matched);
+  const matchedCompanies = await loadCompaniesByOrgnr(matched);
 
   return {
     summary: `Filtrerte til ${matched.length} av ${orgnrs.length} firma`,
@@ -401,11 +413,12 @@ async function executeFilterLeads(
       orgnrs: matched,
       count: matched.length,
       filters: { facebookOnly, hasPhone, minConfidence },
-      companies: companies.map((c) => ({
+      companies: matchedCompanies.map((c) => ({
         orgnr: c.orgnr,
         name: c.name,
         phone: c.phone ?? c.mobile,
         email: c.email,
+        facebookUrl: scanByOrgnr.get(c.orgnr)?.facebookUrl ?? null,
       })),
     },
   };
@@ -455,7 +468,8 @@ async function runCompanySearch(
 
 const NAME_QUERY_ALTERNATES: Record<string, string[]> = {
   negler: ["negler", "nail", "manikyr"],
-  tatover: ["tatover", "tattoo", "tattover"],
+  tatover: ["tatover", "tattoo", "tattover", "tatoveringsstudio"],
+  tattoo: ["tattoo", "tatover", "tatoveringsstudio"],
   byggevare: ["byggevare", "byggmakker", "trelast"],
 };
 
@@ -485,6 +499,7 @@ async function executeSearchCompanies(
     typeof args.days === "number" && Number.isFinite(args.days)
       ? args.days
       : defaultDays;
+  const requirePhone = args.requirePhone === true;
   const requestedLimit =
     typeof args.limit === "number" && Number.isFinite(args.limit)
       ? Math.floor(args.limit)
@@ -573,7 +588,10 @@ async function executeSearchCompanies(
     companies = rankAgentLeadCompanies(companies);
     const missingPhone = companies.filter((company) => !hasCompanyPhone(company));
     if (missingPhone.length > 0) {
-      const lookupTargets = missingPhone.slice(0, resultLimit);
+      const lookupTargets = missingPhone.slice(
+        0,
+        Math.min(missingPhone.length, pageSize)
+      );
       await Promise.all(
         lookupTargets.map(async (company) => {
           const hit = await lookupFreeContact({
@@ -591,9 +609,16 @@ async function executeSearchCompanies(
       );
       companies = rankAgentLeadCompanies(companies);
     }
+    if (requirePhone) {
+      companies = companies.filter((company) => hasCompanyPhone(company));
+    }
     companies = companies.slice(0, resultLimit);
   } else {
-    companies = rankAgentLeadCompanies(companies).slice(0, resultLimit);
+    companies = rankAgentLeadCompanies(companies);
+    if (requirePhone) {
+      companies = companies.filter((company) => hasCompanyPhone(company));
+    }
+    companies = companies.slice(0, resultLimit);
   }
 
   const truncated = result.total > AGENT_MAX_COMPANIES_PER_JOB;
