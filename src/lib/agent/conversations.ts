@@ -108,7 +108,7 @@ export async function createConversation(
 ): Promise<AgentConversation> {
   await enforceConversationLimit(userId);
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("agent_conversations")
     .insert({ user_id: userId, title })
@@ -200,7 +200,7 @@ export async function saveMessage(
   content: string,
   extras?: { tool_calls?: unknown; tool_name?: string }
 ) {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   await supabase.from("agent_messages").insert({
     conversation_id: conversationId,
     role,

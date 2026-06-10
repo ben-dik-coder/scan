@@ -34,6 +34,7 @@ import { shouldUseBrregDb } from "@/lib/brreg/db-source";
 import { fetchCompaniesFromDb } from "@/lib/brreg/fetch-companies-db";
 import { fetchCompaniesFromBrreg } from "@/lib/brreg/fetch-companies";
 import { mapBrregEnhet } from "@/lib/brreg/map-company";
+import { lookupFreeContact } from "@/lib/website-scan/lookup-directory-contact";
 import {
   enrichScanContacts,
   scanCompanyWebsite,
@@ -421,6 +422,37 @@ async function executeRememberPreference(
   };
 }
 
+type CompanySearchFilters = {
+  municipalityCode?: string;
+  regionId?: string;
+  industryGroup?: string;
+  professionId?: string;
+  nameQuery?: string;
+  days: number;
+  hasEmail: boolean;
+  page: number;
+  pageSize: number;
+};
+
+async function runCompanySearch(
+  searchArgs: CompanySearchFilters,
+  useDb: boolean
+) {
+  return withTimeout(
+    useDb
+      ? fetchCompaniesFromDb(searchArgs)
+      : fetchCompaniesFromBrreg(searchArgs),
+    AGENT_TOOL_SEARCH_TIMEOUT_MS,
+    "Søk"
+  );
+}
+
+const NAME_QUERY_ALTERNATES: Record<string, string[]> = {
+  negler: ["negler", "nail", "manikyr"],
+  tatover: ["tatover", "tattoo", "tattover"],
+  byggevare: ["byggevare", "byggmakker", "trelast"],
+};
+
 async function executeSearchCompanies(
   ctx: AgentToolContext,
   args: Record<string, unknown>
@@ -456,7 +488,7 @@ async function executeSearchCompanies(
       ? Math.min(requestedLimit, AGENT_MAX_FAST_LIST_LIMIT)
       : AGENT_MAX_COMPANIES_PER_JOB;
 
-  const searchArgs = {
+  const searchArgs: CompanySearchFilters = {
     municipalityCode,
     regionId,
     industryGroup,
@@ -470,14 +502,33 @@ async function executeSearchCompanies(
 
   const useDb = await shouldUseBrregDb();
   let result;
+  let retriedBroader = false;
   try {
-    result = await withTimeout(
-      useDb
-        ? fetchCompaniesFromDb(searchArgs)
-        : fetchCompaniesFromBrreg(searchArgs),
-      AGENT_TOOL_SEARCH_TIMEOUT_MS,
-      "Søk"
-    );
+    result = await runCompanySearch(searchArgs, useDb);
+
+    if (result.companies.length === 0) {
+      if (nameQuery && industryGroup) {
+        const broader = { ...searchArgs, nameQuery: undefined };
+        const retry = await runCompanySearch(broader, useDb);
+        if (retry.companies.length > 0) {
+          result = retry;
+          searchArgs.nameQuery = undefined;
+          retriedBroader = true;
+        }
+      } else if (nameQuery) {
+        const alternates = NAME_QUERY_ALTERNATES[nameQuery] ?? [nameQuery];
+        for (const alt of alternates) {
+          if (alt === nameQuery) continue;
+          const retry = await runCompanySearch({ ...searchArgs, nameQuery: alt }, useDb);
+          if (retry.companies.length > 0) {
+            result = retry;
+            searchArgs.nameQuery = alt;
+            retriedBroader = true;
+            break;
+          }
+        }
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Søket feilet";
     return {
@@ -524,9 +575,12 @@ async function executeSearchCompanies(
     total: orgnrs.length,
   });
 
+  const retryNote = retriedBroader ? " (bredere søk etter 0 treff)" : "";
+
   return {
-    summary: `Fant ${companies.length} firma${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}${formatCompanyExamples(companies.map((c) => c.name))}`,
+    summary: `Fant ${companies.length} firma${retryNote}${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}${formatCompanyExamples(companies.map((c) => c.name))}`,
     data: {
+      retriedBroader,
       companies: companies.map((c) => ({
         orgnr: c.orgnr,
         name: c.name,
@@ -797,6 +851,31 @@ async function executeEnrichContacts(
     if (!hadEmail && !patch.email && scan?.enrichedEmail) {
       patch.email = scan.enrichedEmail;
       patch.has_email = true;
+    }
+
+    const stillNeedPhone =
+      !hadPhone && !(patch.phone || patch.mobile);
+    const stillNeedEmail = !hadEmail && !patch.email;
+    if (stillNeedPhone || stillNeedEmail) {
+      const hit = await lookupFreeContact({
+        orgnr: company.orgnr,
+        name: company.name,
+        email: company.email,
+        website: company.website,
+        municipality_name: company.municipality_name,
+        city: company.city,
+        industry_code: company.industry_code,
+      }).catch(() => null);
+
+      if (hit) {
+        if (stillNeedPhone && hit.phone) {
+          Object.assign(patch, storePhone(hit.phone));
+        }
+        if (stillNeedEmail && hit.email) {
+          patch.email = hit.email;
+          patch.has_email = true;
+        }
+      }
     }
 
     if (Object.keys(patch).length > 0) {

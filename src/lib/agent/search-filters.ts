@@ -32,8 +32,6 @@ const PROFESSION_TO_INDUSTRY_GROUP: Record<string, string> = {
   fotograf: "reklame",
   webdesign: "webbyra",
   it: "it",
-  regnskap: "it",
-  advokat: "it",
   arkitekt: "bygg",
   rengjoring: "handel",
   bilvask: "handel",
@@ -91,6 +89,10 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "frisører", filters: { industryGroup: "frisor" } },
   },
   {
+    pattern: /\b(elektriker|elektrikere|el-installatør|el installatør|el-installator)\b/,
+    match: { label: "elektrikere", filters: { industryGroup: "bygg", nameQuery: "elektro" } },
+  },
+  {
     pattern: /\b(restaurant|restauranter|servering|kafe|café|cafe)\b/,
     match: { label: "serveringssteder", filters: { industryGroup: "servering" } },
   },
@@ -123,10 +125,17 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "kulturfirma", filters: { industryGroup: "kultur" } },
   },
   {
-    pattern: /\b(negler|nails|manikyr|pedikyr|vipper)\b/,
+    pattern: /\b(neglesalong|neglesalonger|negler|nails|manikyr|pedikyr|vipper)\b/,
     match: {
       label: "neglesalonger",
       filters: { industryGroup: "skjonnhet", nameQuery: "negler" },
+    },
+  },
+  {
+    pattern: /\b(tatoveringsstudio|tatovering|tattovering|tattoo|tatoverer)\b/,
+    match: {
+      label: "tatoveringsstudio",
+      filters: { industryGroup: "kultur", nameQuery: "tatover" },
     },
   },
   {
@@ -253,6 +262,12 @@ export function resolveAgentSearchIndustryFilters(args: {
       : undefined;
 
   if (industryGroup || !professionId) {
+    return { industryGroup, professionId };
+  }
+
+  /** Yrker med egne NACE-koder — ikke mapp til bred bransje (f.eks. advokat → IT). */
+  const KEEP_AS_PROFESSION = new Set(["advokat", "regnskap"]);
+  if (KEEP_AS_PROFESSION.has(professionId)) {
     return { industryGroup, professionId };
   }
 

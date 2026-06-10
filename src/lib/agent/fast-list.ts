@@ -2,6 +2,7 @@ import {
   AGENT_DEFAULT_LIST_LIMIT,
   AGENT_MAX_FAST_LIST_LIMIT,
 } from "@/lib/agent/constants";
+import { parseMunicipalityFromMessage } from "@/lib/agent/municipality";
 import { isSimpleSearchIntent } from "@/lib/agent/prompt";
 import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
 import { formatCompanyName } from "@/lib/utils";
@@ -18,23 +19,6 @@ export type ParsedSimpleListRequest = {
   industryLabel: string;
   locationLabel: string;
   searchArgs: Record<string, unknown>;
-};
-
-const MUNICIPALITY_ALIASES: Record<string, string> = {
-  oslo: "0301",
-  bergen: "4601",
-  trondheim: "5001",
-  stavanger: "1103",
-  bodø: "1804",
-  bodo: "1804",
-  narvik: "1806",
-  tromsø: "5501",
-  tromso: "5501",
-  harstad: "5503",
-  "mo i rana": "1833",
-  "mo-i-rana": "1833",
-  alta: "5601",
-  hammerfest: "5603",
 };
 
 const REGION_ALIASES: Record<string, string> = {
@@ -67,16 +51,6 @@ function parseLimit(message: string): number | undefined {
   return Math.min(parsed, AGENT_MAX_FAST_LIST_LIMIT);
 }
 
-function parseMunicipality(message: string): { code?: string; label?: string } {
-  for (const [alias, code] of Object.entries(MUNICIPALITY_ALIASES)) {
-    const pattern = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (pattern.test(message)) {
-      return { code, label: alias };
-    }
-  }
-  return {};
-}
-
 function parseRegion(message: string): { id?: string; label?: string } {
   for (const [alias, id] of Object.entries(REGION_ALIASES)) {
     if (!id) continue;
@@ -96,12 +70,21 @@ export function isSimpleListIntent(message: string): boolean {
   if (!isSimpleSearchIntent(message)) return false;
 
   const normalized = normalizeText(message);
+  const industry = resolveIndustryKeyword(normalized);
+  if (!industry) return false;
+
   const hasListVerb =
     /^(finn|sok|søk|list|vis|hent|gi meg|gi)\b/.test(normalized) ||
-    /\b(finn|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized);
-  if (!hasListVerb) return false;
+    /\b(finn|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized) ||
+    /^\d{1,2}\s+\w+/.test(normalized);
 
-  return resolveIndustryKeyword(normalized) !== null;
+  const hasPlace = Boolean(parseMunicipalityFromMessage(normalized).code);
+  const shortIndustryPlace =
+    !/uten nettside|facebook|skann|lagre/i.test(normalized) &&
+    hasPlace &&
+    normalized.split(/\s+/).length <= 4;
+
+  return hasListVerb || shortIndustryPlace;
 }
 
 export function parseSimpleListRequest(
@@ -114,7 +97,7 @@ export function parseSimpleListRequest(
   if (!industry) return null;
 
   const limit = parseLimit(normalized) ?? AGENT_DEFAULT_LIST_LIMIT;
-  const municipality = parseMunicipality(normalized);
+  const municipality = parseMunicipalityFromMessage(normalized);
   const region = parseRegion(normalized);
 
   const searchArgs: Record<string, unknown> = {

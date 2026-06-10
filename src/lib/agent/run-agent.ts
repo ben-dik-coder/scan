@@ -364,9 +364,26 @@ export async function runAgentChat(
         summary: result.summary,
       });
 
-      const companies = Array.isArray(result.data.companies)
+      let companies = Array.isArray(result.data.companies)
         ? (result.data.companies as SimpleListCompany[])
         : [];
+
+      if (
+        companies.length === 0 &&
+        typeof parsed.searchArgs.nameQuery === "string"
+      ) {
+        const broaderArgs = { ...parsed.searchArgs };
+        delete broaderArgs.nameQuery;
+        const retry = await executeAgentTool(
+          toolCtx,
+          "search_companies",
+          broaderArgs
+        );
+        if (Array.isArray(retry.data.companies) && retry.data.companies.length > 0) {
+          companies = retry.data.companies as SimpleListCompany[];
+        }
+      }
+
       assistantText = formatFastListReply(companies, parsed);
       await onEvent({ type: "text", content: assistantText });
       await onEvent({ type: "done", content: assistantText });

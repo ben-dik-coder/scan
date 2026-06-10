@@ -82,7 +82,11 @@ function testHistoryWithTools() {
 
 function testProfessionMapping() {
   assert.equal(mapProfessionToIndustryGroup("bilverksted"), "handel");
-  assert.equal(mapProfessionToIndustryGroup("advokat"), "it");
+  assert.equal(mapProfessionToIndustryGroup("advokat"), undefined);
+  assert.equal(
+    resolveAgentSearchIndustryFilters({ professionId: "advokat" }).professionId,
+    "advokat"
+  );
   assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).industryGroup, "frisor");
 }
 
@@ -125,6 +129,15 @@ function testSimpleListIntent() {
   const bygg = resolveIndustryKeyword("byggevarehandler i norge");
   assert.equal(bygg?.filters.industryGroup, "bygg");
   assert.equal(bygg?.filters.nameQuery, "byggevare");
+
+  const negle = resolveIndustryKeyword("neglesalong Tromsø");
+  assert.equal(negle?.filters.industryGroup, "skjonnhet");
+  assert.equal(negle?.filters.nameQuery, "negler");
+
+  const short = parseSimpleListRequest("byggevare Bodø");
+  assert.ok(short);
+  assert.equal(short.searchArgs.municipalityCode, "1804");
+  assert.equal(short.searchArgs.industryGroup, "bygg");
 }
 
 function testConcreteSummaryGate() {

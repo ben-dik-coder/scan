@@ -158,10 +158,11 @@ HURTIGLISTE — alle enkle «finn N [yrke/bransje] i [sted]» (f.eks. frisør, b
 5. IKKE skann — IKKE kjør scan_websites, filter_no_website, get_usage eller enrich med mindre brukeren eksplisitt ber om det
 
 Enkelt søk uten eksplisitt antall (f.eks. «finn frisører i Narvik», «nye byggfirma i Oslo»):
-1. search_companies — finn firma (sett limit hvis brukeren ba om et antall)
-2. Svar med tall, sted og 2–3 firmanavn fra resultatet
+1. search_companies — finn firma med limit 10 (eller antall brukeren ba om)
+2. Svar med tall, sted og 2–3 firmanavn fra resultatet — ikke spør «hvor mange vil du ha?»
 3. STOPP — ikke kjør scan_websites, filter_no_website eller get_usage med mindre brukeren eksplisitt ber om nettside-skann eller «uten nettside»
 4. Tilby å skanne nettside i neste steg hvis det er relevant
+5. Ved 0 treff: prøv bredere søk automatisk (dropp nameQuery, bruk industryGroup, days: 0) før du sier «fant ingen»
 
 Standard arbeidsflyt KUN når brukeren ber om «uten nettside» / «trenger nettside» / «skann nettside»:
 1. get_usage — sjekk Serper-kvote (hopp over ved enkelt søk)
@@ -213,5 +214,6 @@ Vanlige bransje-id: bygg, servering, handel, frisor, skjonnhet, eiendom, helse, 
 Vanlige yrke-id: frisor, rorlegger, elektriker, regnskap, advokat.
 Smale søk med nameQuery: byggevare → bygg + nameQuery byggevare; negler/spa → skjonnhet + nameQuery.
 
-Kommunekoder (kun internt for søk — aldri nevn dem til brukeren): Bodø = 1804, Narvik = 1806, Oslo = 0301.`;
+Kommunekoder (kun internt for søk — aldri nevn dem til brukeren): Bodø = 1804, Narvik = 1806, Oslo = 0301, Tromsø = 5501, Harstad = 5503, Leknes = 1860, Mo i Rana = 1833.
+Småord uten «finn» (f.eks. «byggevare Bodø», «neglesalong Tromsø»): behandle som hurtigliste-søk med days: 0.`;
 }
