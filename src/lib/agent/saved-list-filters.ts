@@ -2,6 +2,33 @@ import type { FilterState } from "@/components/CompanyFilters";
 import { hasOwnWebsite, isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
+export type AgentListTab = "all" | "no_website" | "with_website" | "not_scanned";
+
+/** Kartlegger listefane ↔ web-filter i URL (web=without|with|not_scanned). */
+export function listFilterToWebsitePresence(
+  tabId: AgentListTab
+): FilterState["websitePresence"] {
+  switch (tabId) {
+    case "no_website":
+      return "without";
+    case "with_website":
+      return "with";
+    case "not_scanned":
+      return "not_scanned";
+    default:
+      return "all";
+  }
+}
+
+export function websitePresenceToListFilter(
+  web: string | null | undefined
+): AgentListTab {
+  if (web === "without") return "no_website";
+  if (web === "with") return "with_website";
+  if (web === "not_scanned") return "not_scanned";
+  return "all";
+}
+
 export type AgentSavedListFilters = Partial<FilterState> & {
   agentOrgnrs?: string[];
   modus?: string;

@@ -45,6 +45,9 @@ import {
   filtersForAgentListApplication,
   matchesAgentListNoWebsiteTab,
   matchesAgentListWithWebsiteTab,
+  type AgentListTab,
+  listFilterToWebsitePresence,
+  websitePresenceToListFilter,
 } from "@/lib/agent/saved-list-filters";
 import { buildLeadGoogleSearchQuery } from "@/lib/scan/google-search-query";
 import { computeQueueScore } from "@/lib/sales/queue-score";
@@ -120,9 +123,9 @@ export function AppPageClient(props: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [localCompanies, setLocalCompanies] = useState(props.companies);
-  const [listFilter, setListFilter] = useState<
-    "all" | "no_website" | "with_website" | "not_scanned"
-  >("all");
+  const [listFilter, setListFilter] = useState<AgentListTab>(() =>
+    websitePresenceToListFilter(searchParams.get("web"))
+  );
   const [socialOptions, setSocialOptions] = useState<ScanSocialOptions>(() =>
     loadScanSocialOptions()
   );
@@ -134,6 +137,7 @@ export function AppPageClient(props: Props) {
   const [addingToQueue, setAddingToQueue] = useState(false);
   const emailSectionRef = useRef<HTMLDetailsElement>(null);
   const wasScanningRef = useRef(false);
+  const loadedSavedListIdRef = useRef<string | null>(null);
   const [pinnedOrgnrs, setPinnedOrgnrs] = useState<Set<string> | null>(null);
   const [activeListName, setActiveListName] = useState<string | null>(null);
   const [activeListSource, setActiveListSource] = useState<"agent" | "user" | null>(null);
@@ -152,15 +156,15 @@ export function AppPageClient(props: Props) {
   }, [socialOptions]);
 
   useEffect(() => {
-    const web = searchParams.get("web");
-    if (web === "without") setListFilter("no_website");
-    else if (web === "with") setListFilter("with_website");
-    else if (web === "not_scanned") setListFilter("not_scanned");
+    setListFilter(websitePresenceToListFilter(searchParams.get("web")));
   }, [searchParams]);
 
   useEffect(() => {
     const listId = searchParams.get("liste");
-    if (!listId || isDemoMode()) return;
+    if (!listId || isDemoMode()) {
+      loadedSavedListIdRef.current = null;
+      return;
+    }
 
     fetch(`/api/saved-lists?id=${encodeURIComponent(listId)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -178,23 +182,24 @@ export function AppPageClient(props: Props) {
         );
         if (!orgnrs.length) return;
 
-        setListFilter("no_website");
         setNoWebsiteBanner(false);
 
         const currentDays = searchParams.get("dager");
         const needsPeriodFix =
           currentDays !== "0" && currentDays !== "alle";
         const hasPresenceFilter =
-          searchParams.has("web") ||
-          searchParams.has("fb") ||
-          searchParams.has("ig");
+          searchParams.has("fb") || searchParams.has("ig");
+        const isNewList = loadedSavedListIdRef.current !== listId;
+        loadedSavedListIdRef.current = listId;
 
-        if (needsPeriodFix || hasPresenceFilter) {
+        if (isNewList || needsPeriodFix || hasPresenceFilter) {
           const params = new URLSearchParams(searchParams.toString());
           params.set("dager", String(AGENT_LIST_PERIOD_DAYS));
-          params.delete("web");
           params.delete("fb");
           params.delete("ig");
+          if (isNewList) {
+            params.set("web", "without");
+          }
           router.replace(`/app?${params.toString()}`);
         }
       })
@@ -356,9 +361,15 @@ export function AppPageClient(props: Props) {
   useEffect(() => {
     setSelected(new Set());
     if (!isAgentListActive) {
-      setListFilter("all");
       setNoWebsiteBanner(false);
+      const params = new URLSearchParams(searchParams.toString());
+      if (params.get("web")) {
+        params.delete("web");
+        params.delete("page");
+        router.replace(`/app?${params.toString()}`);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- kun ved ny firmaliste
   }, [companyListKey, isAgentListActive]);
 
   const activeFilterCount = countActiveMarketFilters(
@@ -831,8 +842,13 @@ export function AppPageClient(props: Props) {
       }
       setScanSelectionMessage("Alle valgte er allerede sjekket — ingen nytt Google-søk.");
       if (noWebsiteCount > 0) {
-        setListFilter("no_website");
         setNoWebsiteBanner(true);
+        if (searchParams.get("web") !== "without") {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set("web", "without");
+          params.delete("page");
+          router.replace(`/app?${params.toString()}`);
+        }
       }
       return result;
     }
@@ -897,11 +913,16 @@ export function AppPageClient(props: Props) {
 
   useEffect(() => {
     if (wasScanningRef.current && !scanning && scanComplete && noWebsiteCount > 0) {
-      setListFilter("no_website");
       setNoWebsiteBanner(true);
+      if (searchParams.get("web") !== "without") {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("web", "without");
+        params.delete("page");
+        router.replace(`/app?${params.toString()}`);
+      }
     }
     wasScanningRef.current = scanning;
-  }, [scanning, scanComplete, noWebsiteCount]);
+  }, [scanning, scanComplete, noWebsiteCount, searchParams, router]);
 
   useEffect(() => {
     if (!queueAfterScan || scanning || !scanComplete) return;
@@ -916,15 +937,11 @@ export function AppPageClient(props: Props) {
     }
   }, [queueAfterScan, scanning, scanComplete, visibleCompanies, selected, websiteScans]);
 
-  function handleListTabChange(tabId: typeof listFilter) {
-    if (filters.websitePresence !== "all") {
-      applyFilters(
-        { ...filters, websitePresence: "all" },
-        { preserveListFilter: true, listFilter: tabId }
-      );
-    } else {
-      setListFilter(tabId);
-    }
+  function handleListTabChange(tabId: AgentListTab) {
+    applyFilters(
+      { ...filters, websitePresence: listFilterToWebsitePresence(tabId) },
+      { preserveListFilter: true, listFilter: tabId }
+    );
   }
 
   const listTabs = [
