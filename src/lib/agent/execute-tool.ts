@@ -13,6 +13,7 @@ import {
   AGENT_MAX_SCAN_PER_CALL,
   AGENT_SCAN_DELAY_MS,
   AGENT_SCAN_ONE_TIMEOUT_MS,
+  AGENT_SEARCH_OVERFETCH_MIN,
   AGENT_TOOL_SCAN_TIMEOUT_MS,
   AGENT_TOOL_SEARCH_TIMEOUT_MS,
 } from "@/lib/agent/constants";
@@ -33,6 +34,11 @@ import { fetchEnhet } from "@/lib/brreg/client";
 import { shouldUseBrregDb } from "@/lib/brreg/db-source";
 import { fetchCompaniesFromDb } from "@/lib/brreg/fetch-companies-db";
 import { fetchCompaniesFromBrreg } from "@/lib/brreg/fetch-companies";
+import {
+  filterAgentLeadCompanies,
+  hasCompanyPhone,
+  rankAgentLeadCompanies,
+} from "@/lib/brreg/lead-quality";
 import { mapBrregEnhet } from "@/lib/brreg/map-company";
 import { lookupFreeContact } from "@/lib/website-scan/lookup-directory-contact";
 import {
@@ -483,9 +489,16 @@ async function executeSearchCompanies(
     typeof args.limit === "number" && Number.isFinite(args.limit)
       ? Math.floor(args.limit)
       : undefined;
-  const pageSize =
+  const resultLimit =
     requestedLimit && requestedLimit > 0
       ? Math.min(requestedLimit, AGENT_MAX_FAST_LIST_LIMIT)
+      : AGENT_MAX_COMPANIES_PER_JOB;
+  const pageSize =
+    requestedLimit && requestedLimit > 0
+      ? Math.min(
+          Math.max(requestedLimit * 8, AGENT_SEARCH_OVERFETCH_MIN),
+          AGENT_MAX_COMPANIES_PER_JOB
+        )
       : AGENT_MAX_COMPANIES_PER_JOB;
 
   const searchArgs: CompanySearchFilters = {
@@ -543,7 +556,7 @@ async function executeSearchCompanies(
     loadDbContactPatches(orgnrs),
   ]);
 
-  const companies = result.companies.map((company) => {
+  let companies = result.companies.map((company) => {
     const brregMissingContact =
       !(company.mobile ?? "").trim() && !(company.phone ?? "").trim();
     const override =
@@ -551,6 +564,37 @@ async function executeSearchCompanies(
       (brregMissingContact ? dbPatchMap.get(company.orgnr) : undefined);
     return mergeContactOverride(company, override);
   });
+
+  const filteredCount = companies.length;
+  companies = filterAgentLeadCompanies(companies);
+  const removedBadLeads = filteredCount - companies.length;
+
+  if (requestedLimit && requestedLimit > 0) {
+    companies = rankAgentLeadCompanies(companies);
+    const missingPhone = companies.filter((company) => !hasCompanyPhone(company));
+    if (missingPhone.length > 0) {
+      const lookupTargets = missingPhone.slice(0, resultLimit);
+      await Promise.all(
+        lookupTargets.map(async (company) => {
+          const hit = await lookupFreeContact({
+            orgnr: company.orgnr,
+            name: company.name,
+            email: company.email,
+            website: company.website,
+            municipality_name: company.municipality_name,
+            city: company.city,
+            industry_code: company.industry_code,
+          }).catch(() => null);
+          if (!hit?.phone) return;
+          Object.assign(company, storePhone(hit.phone));
+        })
+      );
+      companies = rankAgentLeadCompanies(companies);
+    }
+    companies = companies.slice(0, resultLimit);
+  } else {
+    companies = rankAgentLeadCompanies(companies).slice(0, resultLimit);
+  }
 
   const truncated = result.total > AGENT_MAX_COMPANIES_PER_JOB;
   const truncatedHint = truncated
@@ -576,11 +620,16 @@ async function executeSearchCompanies(
   });
 
   const retryNote = retriedBroader ? " (bredere søk etter 0 treff)" : "";
+  const badLeadNote =
+    removedBadLeads > 0 ? ` — filtrerte bort ${removedBadLeads} konkurs/avvikling` : "";
+  const withPhoneCount = companies.filter((c) => hasCompanyPhone(c)).length;
 
   return {
-    summary: `Fant ${companies.length} firma${retryNote}${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}${formatCompanyExamples(companies.map((c) => c.name))}`,
+    summary: `Fant ${companies.length} firma${retryNote}${badLeadNote} (${withPhoneCount} med telefon)${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}${formatCompanyExamples(companies.map((c) => c.name))}`,
     data: {
       retriedBroader,
+      removedBadLeads,
+      withPhoneCount,
       companies: companies.map((c) => ({
         orgnr: c.orgnr,
         name: c.name,

@@ -22,6 +22,9 @@ export const AGENT_DEFAULT_LIST_LIMIT = 5;
 /** Maks limit i search_companies for hurtigliste */
 export const AGENT_MAX_FAST_LIST_LIMIT = 20;
 
+/** Hent flere treff enn limit slik at vi kan filtrere dårlige leads */
+export const AGENT_SEARCH_OVERFETCH_MIN = 40;
+
 /** Timeout for search_companies */
 export const AGENT_TOOL_SEARCH_TIMEOUT_MS = 15_000;
 
