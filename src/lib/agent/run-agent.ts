@@ -648,16 +648,25 @@ export async function runAgentChat(
       summary: scanResult.summary,
     });
 
-    const scans = Array.isArray(scanResult.data.scans)
-      ? (scanResult.data.scans as Array<{
-          orgnr?: string;
-          displayName?: string | null;
-          hasWebsite?: boolean;
-          websiteUrl?: string | null;
-          facebookUrl?: string | null;
-          countsAsNoWebsite?: boolean;
-        }>)
-      : [];
+    const scans = (
+      Array.isArray(scanResult.data.scans)
+        ? (scanResult.data.scans as Array<{
+            orgnr?: string;
+            displayName?: string | null;
+            hasWebsite?: boolean;
+            websiteUrl?: string | null;
+            facebookUrl?: string | null;
+            countsAsNoWebsite?: boolean;
+          }>)
+        : []
+    ).filter((scan): scan is {
+      orgnr: string;
+      displayName?: string | null;
+      hasWebsite?: boolean;
+      websiteUrl?: string | null;
+      facebookUrl?: string | null;
+      countsAsNoWebsite?: boolean;
+    } => Boolean(scan.orgnr));
 
     assistantText = formatScanWebsitesReply(scans, {
       serperLimited: scanResult.data.serperLimitReached === true,
