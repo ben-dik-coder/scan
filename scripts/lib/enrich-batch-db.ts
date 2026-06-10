@@ -1,8 +1,6 @@
 import type { BrregEnhet } from "../../src/lib/brreg/client.ts";
-import {
-  mapBrregEnhet,
-  preserveExistingContactFields,
-} from "../../src/lib/brreg/map-company.ts";
+import { mapBrregEnhet } from "../../src/lib/brreg/map-company.ts";
+import { preserveExistingContactFields } from "../../src/lib/brreg/upsert-enhet.ts";
 import { createServiceClient } from "../../src/lib/supabase/service.ts";
 import type { WebsiteScanResult } from "../../src/lib/website-scan/types.ts";
 import type { Company } from "../../src/types/database.ts";
