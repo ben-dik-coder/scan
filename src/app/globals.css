@@ -1376,17 +1376,75 @@ html.app-glass-theme body {
   border-radius: 4px;
 }
 
-/* Agent chat — iMessage-style typing indicator while thinking */
+/* Agent chat — ChatGPT-like prose and typing indicator */
+.agent-chat-scroll {
+  scroll-behavior: smooth;
+}
+
+.agent-chat-prose {
+  line-height: 1.65;
+  color: #ececec;
+}
+
+.agent-chat-prose > p {
+  margin: 0 0 0.75rem;
+}
+
+.agent-chat-prose > p:last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat-prose strong {
+  font-weight: 600;
+  color: #f5f5f5;
+}
+
+.agent-chat-list {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.agent-chat-list--ordered {
+  list-style: decimal;
+}
+
+.agent-chat-list li {
+  margin-bottom: 0.35rem;
+}
+
+.agent-chat-list li:last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat-inline-code {
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.agent-chat-code-block {
+  margin: 0.5rem 0 0.75rem;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: #171717;
+  padding: 0.85rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.agent-chat-code-block code {
+  white-space: pre;
+}
+
 .agent-thinking-bubble {
-  align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  max-width: 85%;
-  padding: 0.7rem 0.95rem;
-  border-radius: 18px;
-  border-bottom-left-radius: 6px;
-  background: #2c2c2e;
+  gap: 0.5rem;
+  padding: 0.55rem 0.2rem;
   animation: agent-thinking-in 0.35s cubic-bezier(0.21, 1.02, 0.55, 1) both;
 }
 
@@ -1415,7 +1473,7 @@ html.app-glass-theme body {
 .agent-thinking-bubble__label {
   font-size: 0.75rem;
   line-height: 1rem;
-  color: #98989d;
+  color: #6b6b6b;
 }
 
 @keyframes agent-thinking-dot {
