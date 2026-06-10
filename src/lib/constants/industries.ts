@@ -106,9 +106,34 @@ export const INDUSTRY_GROUPS: IndustryGroup[] = [
   },
   {
     id: "frisor",
-    label: "Frisør og skjønnhet",
-    prefixes: ["96"],
-    codes: ["96.02", "96.04"],
+    label: "Frisør",
+    prefixes: [],
+    codes: ["96.210", "96.02"],
+    nameKeywords: [
+      "frisør",
+      "frisor",
+      "hair",
+      "klipp",
+      "salong",
+      "barber",
+      "hår",
+      "har",
+    ],
+    excludeKeywords: [
+      "massasje",
+      "massør",
+      "fotpleie",
+      "feet",
+      "fot",
+      "pedikyr",
+      "negler",
+      "nails",
+      "manikyr",
+      "vipper",
+      "spa",
+      "velvære",
+      "velvaere",
+    ],
   },
   { id: "kultur", label: "Kultur og underholdning", prefixes: ["90", "91", "93", "59"] },
   { id: "transport", label: "Transport og logistikk", prefixes: ["49", "50", "51", "52", "53"] },
@@ -150,15 +175,36 @@ export function matchesNaceCode(
   });
 }
 
+function industryMatchText(context?: IndustryMatchContext): string {
+  return [context?.name, context?.industryDescription].filter(Boolean).join(" ");
+}
+
 function matchesWebSellerKeywords(context?: IndustryMatchContext): boolean {
-  const text = [context?.name, context?.industryDescription].filter(Boolean).join(" ");
-  return matchesAnyKeyword(text, WEBBYRA_NAME_KEYWORDS);
+  return matchesAnyKeyword(industryMatchText(context), WEBBYRA_NAME_KEYWORDS);
 }
 
 function isExcludedWebSeller(context?: IndustryMatchContext): boolean {
-  const text = [context?.name, context?.industryDescription].filter(Boolean).join(" ");
+  const text = industryMatchText(context);
   if (!matchesAnyKeyword(text, WEBBYRA_EXCLUDE_KEYWORDS)) return false;
   return !matchesWebSellerKeywords(context);
+}
+
+function matchesGroupNameKeywords(
+  group: IndustryGroup,
+  context?: IndustryMatchContext
+): boolean {
+  if (!group.nameKeywords?.length) return true;
+  return matchesAnyKeyword(industryMatchText(context), group.nameKeywords);
+}
+
+function isExcludedByGroupKeywords(
+  group: IndustryGroup,
+  context?: IndustryMatchContext
+): boolean {
+  if (!group.excludeKeywords?.length) return false;
+  const text = industryMatchText(context);
+  if (!matchesAnyKeyword(text, group.excludeKeywords)) return false;
+  return !matchesGroupNameKeywords(group, context);
 }
 
 export function matchesIndustryGroup(
@@ -176,10 +222,19 @@ export function matchesIndustryGroup(
       group.prefixes.length > 0 &&
       group.prefixes.includes(industryDivision(industryCode) ?? "");
     if (!codeMatch && !prefixMatch) return false;
-    if (group.nameKeywords?.length && !matchesWebSellerKeywords(context)) {
+    if (group.id === "webbyra") {
+      if (group.nameKeywords?.length && !matchesWebSellerKeywords(context)) {
+        return false;
+      }
+      if (group.excludeKeywords?.length && isExcludedWebSeller(context)) {
+        return false;
+      }
+      return true;
+    }
+    if (group.nameKeywords?.length && !matchesGroupNameKeywords(group, context)) {
       return false;
     }
-    if (group.excludeKeywords?.length && isExcludedWebSeller(context)) {
+    if (group.excludeKeywords?.length && isExcludedByGroupKeywords(group, context)) {
       return false;
     }
     return true;

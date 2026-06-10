@@ -196,6 +196,11 @@ export async function fetchCompaniesFromDb(
       matchesIndustryGroup(c.industry_code, "webbyra", { name: c.name })
     );
   }
+  if (filters.industryGroup === "frisor") {
+    rows = rows.filter((c) =>
+      matchesIndustryGroup(c.industry_code, "frisor", { name: c.name })
+    );
+  }
   if (filters.professionId?.trim()) {
     const professionMatch = resolveProfessionFilter(filters.professionId);
     if (professionMatch) {

@@ -75,6 +75,7 @@ const KEEP_AS_PROFESSION = new Set([
   "bilverksted",
   "rengjoring",
   "tatovering",
+  "frisor",
 ]);
 
 /** Vanlige brukerord → søkefilter (f.eks. byggevarehandler → bygg). */
@@ -92,7 +93,7 @@ const INDUSTRY_KEYWORD_RULES: Array<{
   },
   {
     pattern: /\b(frisor|frisør|frisører|frisor\s*salong|hårstudio|harstudio)\b/,
-    match: { label: "frisører", filters: { industryGroup: "frisor" } },
+    match: { label: "frisører", filters: { professionId: "frisor" } },
   },
   {
     pattern: /\b(elektriker|elektrikere|el-installatør|el installatør|el-installator)\b/,

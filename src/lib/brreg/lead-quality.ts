@@ -1,4 +1,5 @@
 import { computeLeadScore } from "@/lib/sales/lead-score";
+import { phonePlausibleForCompany } from "@/lib/website-scan/phone-plausible";
 import type { Company } from "@/types/database";
 
 const COMPANY_FORM_SUFFIX = /\b(AS|ASA|ANS|DA|NUF|SA|BA|KS|ENK|IKS|STI)\b/i;
@@ -20,11 +21,25 @@ export function isBadLeadCompany(company: Pick<Company, "name">): boolean {
 }
 
 export function hasCompanyPhone(
-  company: Pick<Company, "phone" | "mobile">
+  company: Pick<Company, "phone" | "mobile" | "orgnr">
 ): boolean {
-  return Boolean(
-    (company.phone ?? "").trim() || (company.mobile ?? "").trim()
-  );
+  const phone = (company.phone ?? "").trim();
+  const mobile = (company.mobile ?? "").trim();
+  const orgnr = (company.orgnr ?? "").trim();
+  if (phone && phonePlausibleForCompany(phone, orgnr)) return true;
+  if (mobile && phonePlausibleForCompany(mobile, orgnr)) return true;
+  return false;
+}
+
+export function getPlausibleCompanyPhone(
+  company: Pick<Company, "phone" | "mobile" | "orgnr">
+): string | null {
+  const orgnr = (company.orgnr ?? "").trim();
+  const phone = (company.phone ?? "").trim();
+  if (phone && phonePlausibleForCompany(phone, orgnr)) return phone;
+  const mobile = (company.mobile ?? "").trim();
+  if (mobile && phonePlausibleForCompany(mobile, orgnr)) return mobile;
+  return null;
 }
 
 /** ENK eller personnavn uten vanlig selskapsform. */

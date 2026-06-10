@@ -57,10 +57,37 @@ export function phoneLooksLikeOrgnr(core: string, orgnr: string): boolean {
   return false;
 }
 
+const PLACEHOLDER_PHONE_CORES = new Set([
+  "00000000",
+  "11111111",
+  "12121212",
+  "12345678",
+  "22222222",
+  "33333332",
+  "33333333",
+  "44444444",
+  "55555555",
+  "66666666",
+  "77777777",
+  "87654321",
+  "88888888",
+  "99999999",
+]);
+
+/** Åpenbart falske/placeholder-telefoner i registeret. */
+export function isPlaceholderPhoneCore(core: string): boolean {
+  if (core.length !== 8) return false;
+  if (PLACEHOLDER_PHONE_CORES.has(core)) return true;
+  if (/^(\d)\1{7}$/.test(core)) return true;
+  if (core === "23456789" || core === "34567890") return true;
+  return false;
+}
+
 /** Gyldig norsk telefonformat (uten org.nr-sjekk). */
 export function isPlausibleNorwegianPhone(phone: string): boolean {
   const core = phoneCoreDigits(phone);
   if (!core) return false;
+  if (isPlaceholderPhoneCore(core)) return false;
   return isValidNorwegianPhoneCore(core);
 }
 
@@ -72,6 +99,7 @@ export function phonePlausibleForCompany(
   const core = phoneCoreDigits(phone);
   if (!core) return false;
   if (!isValidNorwegianPhoneCore(core)) return false;
+  if (isPlaceholderPhoneCore(core)) return false;
   if (phoneLooksLikeDate(core)) return false;
   const normalizedOrgnr = orgnr.replace(/\D/g, "");
   if (normalizedOrgnr.length === 9 && phoneLooksLikeOrgnr(core, normalizedOrgnr)) {

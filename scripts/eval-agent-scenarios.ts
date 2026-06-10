@@ -88,7 +88,8 @@ function testProfessionMapping() {
     resolveAgentSearchIndustryFilters({ professionId: "advokat" }).professionId,
     "advokat"
   );
-  assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).industryGroup, "frisor");
+  assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).professionId, "frisor");
+  assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).industryGroup, undefined);
 }
 
 function testSimpleSearchIntent() {
@@ -118,7 +119,8 @@ async function testSimpleListIntent() {
   assert.ok(frisor);
   assert.equal(frisor.limit, 5);
   assert.equal(frisor.searchArgs.municipalityCode, "1804");
-  assert.equal(frisor.searchArgs.industryGroup, "frisor");
+  assert.equal(frisor.searchArgs.professionId, "frisor");
+  assert.equal(frisor.searchArgs.industryGroup, undefined);
   assert.equal(frisor.searchArgs.nameQuery, undefined);
   assert.equal(frisor.searchArgs.days, 0);
 

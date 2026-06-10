@@ -35,7 +35,12 @@ import { shouldUseBrregDb } from "@/lib/brreg/db-source";
 import { fetchCompaniesFromDb } from "@/lib/brreg/fetch-companies-db";
 import { fetchCompaniesFromBrreg } from "@/lib/brreg/fetch-companies";
 import {
+  isFrisorRelevantCompany,
+  isFrisorSearchFilter,
+} from "@/lib/brreg/frisor-search";
+import {
   filterAgentLeadCompanies,
+  getPlausibleCompanyPhone,
   hasCompanyPhone,
   rankAgentLeadCompanies,
 } from "@/lib/brreg/lead-quality";
@@ -508,10 +513,16 @@ async function executeSearchCompanies(
     requestedLimit && requestedLimit > 0
       ? Math.min(requestedLimit, AGENT_MAX_FAST_LIST_LIMIT)
       : AGENT_MAX_COMPANIES_PER_JOB;
+  const frisorSearch = isFrisorSearchFilter({
+    professionId,
+    industryGroup,
+    mappedFromProfession,
+  });
+  const overfetchMultiplier = frisorSearch ? 16 : 8;
   const pageSize =
     requestedLimit && requestedLimit > 0
       ? Math.min(
-          Math.max(requestedLimit * 8, AGENT_SEARCH_OVERFETCH_MIN),
+          Math.max(requestedLimit * overfetchMultiplier, AGENT_SEARCH_OVERFETCH_MIN),
           AGENT_MAX_COMPANIES_PER_JOB
         )
       : AGENT_MAX_COMPANIES_PER_JOB;
@@ -577,12 +588,24 @@ async function executeSearchCompanies(
     const override =
       overrideMap.get(company.orgnr) ??
       (brregMissingContact ? dbPatchMap.get(company.orgnr) : undefined);
-    return mergeContactOverride(company, override);
+    const merged = mergeContactOverride(company, override);
+    const plausiblePhone = getPlausibleCompanyPhone(merged);
+    return {
+      ...merged,
+      phone: plausiblePhone,
+      mobile: plausiblePhone ? null : merged.mobile,
+    };
   });
 
   const filteredCount = companies.length;
   companies = filterAgentLeadCompanies(companies);
-  const removedBadLeads = filteredCount - companies.length;
+  let removedBadLeads = filteredCount - companies.length;
+
+  if (frisorSearch) {
+    const beforeFrisor = companies.length;
+    companies = companies.filter((company) => isFrisorRelevantCompany(company));
+    removedBadLeads += beforeFrisor - companies.length;
+  }
 
   if (requestedLimit && requestedLimit > 0) {
     companies = rankAgentLeadCompanies(companies);
