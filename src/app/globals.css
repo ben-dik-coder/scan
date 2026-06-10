@@ -1068,6 +1068,17 @@ html.app-glass-theme body {
     top: calc(3.5rem + env(safe-area-inset-top, 0px));
   }
 
+  @media (max-width: 639px) {
+    .app-side-drawer.app-side-drawer--fullscreen-mobile {
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 100dvh;
+      max-height: 100dvh;
+    }
+  }
+
   .scan-glass-shell .campaign-empty {
     background: rgba(255, 255, 255, 0.03);
   }
