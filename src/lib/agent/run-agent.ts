@@ -4,10 +4,12 @@ import {
   AGENT_MAX_SCAN_PER_CALL,
   AGENT_MAX_TOOL_LOOPS,
   AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH,
+  AGENT_SSE_HEARTBEAT_MS,
   isAgentEnabled,
 } from "@/lib/agent/constants";
 import { executeAgentTool } from "@/lib/agent/execute-tool";
 import type { AgentToolContext, ToolExecutionResult } from "@/lib/agent/execute-tool";
+import { runChunkedWebsiteScans } from "@/lib/agent/chunked-scan";
 import {
   formatFacebookListReply,
   formatFastListReply,
@@ -23,6 +25,7 @@ import {
   parseContextualListRequest,
   parseSaveListRequest,
   parseScanWebsitesRequest,
+  parseSearchAndScanRequest,
   type ParsedSimpleListRequest,
   type SimpleListCompany,
 } from "@/lib/agent/fast-list";
@@ -32,13 +35,14 @@ import {
   isSimpleSearchIntent,
 } from "@/lib/agent/prompt";
 import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
+import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import { compactToolResultForModel } from "@/lib/agent/tool-payload";
 import { isBadLeadCompany } from "@/lib/brreg/lead-quality";
 
 export type AgentStreamEvent =
   | { type: "text"; content: string }
   | { type: "text_delta"; content: string }
-  | { type: "tool_start"; tool: string }
+  | { type: "tool_start"; tool: string; label?: string }
   | {
       type: "tool_progress";
       tool: string;
@@ -125,11 +129,14 @@ export function needsConcreteSummary(assistantText: string, hadTools: boolean): 
   if (!hadTools) return false;
   const text = assistantText.trim();
   if (!text) return true;
+  if (isLikelyTruncatedAgentResponse(text)) return true;
 
   const hasNumbers = /\d/.test(text);
   const hasExamples = /f\.?eks\.| — |«|»/i.test(text);
   if (hasNumbers && hasExamples) return false;
-  if (hasNumbers && text.length >= 90) return false;
+  if (hasNumbers && text.length >= 90 && !isLikelyTruncatedAgentResponse(text)) {
+    return false;
+  }
 
   if (text.length < 70) return true;
   if (!hasNumbers) return true;
@@ -160,15 +167,36 @@ async function searchCompaniesForFastList(
   toolCtx: AgentToolContext,
   onEvent: (event: AgentStreamEvent) => Promise<void>,
   searchArgs: Record<string, unknown>,
-  retryWithoutNameQuery: boolean
+  retryWithoutNameQuery: boolean,
+  options?: { progressLabel?: string; resultLimit?: number }
 ): Promise<SimpleListCompany[]> {
-  await onEvent({ type: "tool_start", tool: "search_companies" });
+  const progressLabel = options?.progressLabel;
+  await onEvent({
+    type: "tool_start",
+    tool: "search_companies",
+    label: progressLabel,
+  });
+
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  if (progressLabel) {
+    heartbeat = setInterval(() => {
+      void onEvent({
+        type: "tool_progress",
+        tool: "search_companies",
+        scanned: 0,
+        total: options?.resultLimit ?? 1,
+      });
+    }, AGENT_SSE_HEARTBEAT_MS);
+  }
+
   let result: ToolExecutionResult;
   try {
     result = await executeAgentTool(toolCtx, "search_companies", searchArgs);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ukjent feil";
     result = { summary: `Feil: ${message}`, data: { error: message } };
+  } finally {
+    if (heartbeat) clearInterval(heartbeat);
   }
 
   await onEvent({
@@ -176,6 +204,10 @@ async function searchCompaniesForFastList(
     tool: "search_companies",
     summary: result.summary,
   });
+
+  if (result.data.error === "search_timeout") {
+    return [];
+  }
 
   let companies = Array.isArray(result.data.companies)
     ? (result.data.companies as SimpleListCompany[])
@@ -290,6 +322,7 @@ async function streamAssistantCompletion(
     tools: AGENT_OPENAI_TOOLS,
     tool_choice: "auto",
     stream: true,
+    max_completion_tokens: 1800,
   });
 
   let content = "";
@@ -362,8 +395,6 @@ export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
     parts.unshift("Jobben tok mange steg og stoppet ved grensen.");
   } else if (parts.length === 0) {
     return "Ferdig — men jeg fikk ikke skrevet et godt sammendrag. Se statusmeldingene over, eller spør meg «hva fant du?»";
-  } else if (!summary.listName) {
-    parts.unshift("Oppsummert:");
   }
 
   return parts.join("\n\n");
@@ -411,6 +442,20 @@ export async function runAgentChat(
   let orgnrCount: number | undefined;
   const toolSummaries: string[] = [];
   const toolsUsed = new Set<string>();
+  let lastScanReplyData:
+    | {
+        scans: Array<{
+          orgnr: string;
+          displayName?: string | null;
+          hasWebsite?: boolean;
+          websiteUrl?: string | null;
+          facebookUrl?: string | null;
+          countsAsNoWebsite?: boolean;
+        }>;
+        serperLimited: boolean;
+        remaining: number;
+      }
+    | undefined;
   let loops = 0;
   const lastUserMessage =
     [...history].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -594,6 +639,10 @@ export async function runAgentChat(
     { defaultMunicipality }
   );
   if (contextualParsed) {
+    const progressLabel =
+      (contextualParsed.excludeOrgnrs?.length ?? 0) > 0
+        ? `Henter ${contextualParsed.limit} til`
+        : undefined;
     const companies = (
       await searchCompaniesForFastList(
         toolCtx,
@@ -601,13 +650,22 @@ export async function runAgentChat(
           await onEvent(event);
         },
         contextualParsed.searchArgs,
-        true
+        true,
+        {
+          progressLabel,
+          resultLimit: contextualParsed.limit,
+        }
       )
     ).filter((company) => !isBadLeadCompany(company));
 
     const listedCompanies = filterListedCompanies(companies, contextualParsed);
 
-    assistantText = formatFastListReply(listedCompanies, contextualParsed);
+    if (listedCompanies.length === 0 && progressLabel) {
+      assistantText =
+        "Søket tok for lang tid eller fant ingen flere treff. Prøv å snevre inn til fylke/kommune, eller trykk Prøv igjen.";
+    } else {
+      assistantText = formatFastListReply(listedCompanies, contextualParsed);
+    }
     await onEvent({ type: "text", content: assistantText });
     await onEvent({ type: "done", content: assistantText });
     return { assistantText };
@@ -674,49 +732,117 @@ export async function runAgentChat(
     return { assistantText, link };
   }
 
+  const searchScanParsed = await parseSearchAndScanRequest(lastUserMessage, {
+    defaultMunicipality,
+    systemPromptExtra: options?.systemPromptExtra,
+  });
+  if (searchScanParsed) {
+    const companies = (
+      await searchCompaniesForFastList(
+        toolCtx,
+        async (event) => {
+          await onEvent(event);
+        },
+        searchScanParsed.listRequest.searchArgs,
+        true
+      )
+    ).filter((company) => !isBadLeadCompany(company));
+
+    const listedCompanies = filterListedCompanies(
+      companies,
+      searchScanParsed.listRequest
+    );
+
+    const scanOrgnrs = listedCompanies
+      .slice(0, searchScanParsed.scanLimit)
+      .map((company) => company.orgnr)
+      .filter(Boolean);
+
+    let scanPayload = {
+      scans: [] as Array<{
+        orgnr: string;
+        displayName?: string | null;
+        hasWebsite?: boolean;
+        websiteUrl?: string | null;
+        facebookUrl?: string | null;
+        countsAsNoWebsite?: boolean;
+      }>,
+      serperLimited: false,
+      remaining: 0,
+    };
+
+    if (scanOrgnrs.length > 0) {
+      await onEvent({ type: "tool_start", tool: "scan_websites" });
+      const chunked = await runChunkedWebsiteScans(toolCtx, scanOrgnrs, {
+        onProgress: async (scanned, total) => {
+          await onEvent({
+            type: "tool_progress",
+            tool: "scan_websites",
+            scanned,
+            total,
+          });
+        },
+      });
+      scanPayload = {
+        scans: chunked.scans,
+        serperLimited: chunked.serperLimited,
+        remaining: chunked.remaining,
+      };
+      await onEvent({
+        type: "tool_end",
+        tool: "scan_websites",
+        summary:
+          chunked.summaries[chunked.summaries.length - 1] ??
+          `Sjekket nettside for ${chunked.scans.length} firma`,
+      });
+    }
+
+    if (scanPayload.scans.length > 0) {
+      assistantText = formatScanWebsitesReply(scanPayload.scans, {
+        serperLimited: scanPayload.serperLimited,
+        remaining: scanPayload.remaining,
+      });
+    } else if (searchScanParsed.websiteSales) {
+      assistantText = formatWebsiteSalesLeadReply(
+        listedCompanies,
+        searchScanParsed.listRequest
+      );
+    } else {
+      assistantText = formatFastListReply(
+        listedCompanies,
+        searchScanParsed.listRequest
+      );
+    }
+
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({ type: "done", content: assistantText });
+    return { assistantText };
+  }
+
   const scanParsed = parseScanWebsitesRequest(lastUserMessage, history);
   if (scanParsed) {
     await onEvent({ type: "tool_start", tool: "scan_websites" });
-    let scanResult: ToolExecutionResult;
-    try {
-      scanResult = await executeAgentTool(toolCtx, "scan_websites", {
-        orgnrs: scanParsed.orgnrs,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Ukjent feil";
-      scanResult = { summary: `Feil: ${message}`, data: { error: message } };
-    }
+    const chunked = await runChunkedWebsiteScans(toolCtx, scanParsed.orgnrs, {
+      onProgress: async (scanned, total) => {
+        await onEvent({
+          type: "tool_progress",
+          tool: "scan_websites",
+          scanned,
+          total,
+        });
+      },
+    });
     await onEvent({
       type: "tool_end",
       tool: "scan_websites",
-      summary: scanResult.summary,
+      summary:
+        chunked.summaries[chunked.summaries.length - 1] ??
+        `Sjekket nettside for ${chunked.scans.length} firma`,
     });
 
-    const scans = (
-      Array.isArray(scanResult.data.scans)
-        ? (scanResult.data.scans as Array<{
-            orgnr?: string;
-            displayName?: string | null;
-            hasWebsite?: boolean;
-            websiteUrl?: string | null;
-            facebookUrl?: string | null;
-            countsAsNoWebsite?: boolean;
-          }>)
-        : []
-    ).filter((scan): scan is {
-      orgnr: string;
-      displayName?: string | null;
-      hasWebsite?: boolean;
-      websiteUrl?: string | null;
-      facebookUrl?: string | null;
-      countsAsNoWebsite?: boolean;
-    } => Boolean(scan.orgnr));
-
-    assistantText = formatScanWebsitesReply(scans, {
-      serperLimited: scanResult.data.serperLimitReached === true,
-      remaining: Array.isArray(scanResult.data.remainingOrgnrs)
-        ? (scanResult.data.remainingOrgnrs as string[]).length
-        : 0,
+    assistantText = formatScanWebsitesReply(chunked.scans, {
+      serperLimited: chunked.serperLimited,
+      remaining: chunked.remaining,
     });
     await onEvent({ type: "text", content: assistantText });
     await onEvent({ type: "done", content: assistantText });
@@ -823,6 +949,38 @@ export async function runAgentChat(
         }
       }
 
+      if (toolName === "scan_websites") {
+        const scans = (
+          Array.isArray(result.data.scans)
+            ? (result.data.scans as Array<{
+                orgnr?: string;
+                displayName?: string | null;
+                hasWebsite?: boolean;
+                websiteUrl?: string | null;
+                facebookUrl?: string | null;
+                countsAsNoWebsite?: boolean;
+              }>)
+            : []
+        ).filter((scan): scan is {
+          orgnr: string;
+          displayName?: string | null;
+          hasWebsite?: boolean;
+          websiteUrl?: string | null;
+          facebookUrl?: string | null;
+          countsAsNoWebsite?: boolean;
+        } => Boolean(scan.orgnr));
+
+        if (scans.length > 0) {
+          lastScanReplyData = {
+            scans,
+            serperLimited: result.data.serperLimitReached === true,
+            remaining: Array.isArray(result.data.remainingOrgnrs)
+              ? (result.data.remainingOrgnrs as string[]).length
+              : 0,
+          };
+        }
+      }
+
       if (toolName === "save_list") {
         if (typeof result.data.url === "string") link = result.data.url;
         if (typeof result.data.savedListId === "string") {
@@ -876,7 +1034,16 @@ export async function runAgentChat(
     });
   }
 
-  if (needsConcreteSummary(assistantText, hadTools)) {
+  if (
+    lastScanReplyData &&
+    (!assistantText.trim() || isLikelyTruncatedAgentResponse(assistantText))
+  ) {
+    assistantText = formatScanWebsitesReply(lastScanReplyData.scans, {
+      serperLimited: lastScanReplyData.serperLimited,
+      remaining: lastScanReplyData.remaining,
+    });
+    await onEvent({ type: "text", content: assistantText });
+  } else if (needsConcreteSummary(assistantText, hadTools)) {
     const builtSummary = buildAgentCompletionSummary(runSummary);
     if (
       shouldSkipSynthesis(toolsUsed, toolSummaries) ||

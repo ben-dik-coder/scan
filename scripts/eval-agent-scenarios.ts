@@ -8,15 +8,20 @@ import {
   buildAgentStartupContextPrompt,
   type AgentStartupContext,
 } from "../src/lib/agent/context.ts";
+import { capScanJobOrgnrs } from "../src/lib/agent/chunked-scan.ts";
 import {
   isContextualListFollowUp,
+  isScopeClarificationReply,
   isSaveListFollowUp,
   isScanWebsitesFollowUp,
+  isSearchAndScanIntent,
   isSimpleListIntent,
   isWebsiteSalesLeadListIntent,
   parseContextualListRequest,
   parseSaveListRequest,
+  collectAlreadyScannedOrgnrs,
   parseScanWebsitesRequest,
+  parseSearchAndScanRequest,
   parseSimpleListRequest,
   parseWebsiteSalesLeadRequest,
   formatWebsiteSalesLeadReply,
@@ -26,7 +31,14 @@ import {
   isAgentPostCancelFollowUp,
   isSimpleSearchIntent,
 } from "../src/lib/agent/prompt.ts";
-import { needsConcreteSummary } from "../src/lib/agent/run-agent.ts";
+import {
+  buildAgentCompletionSummary,
+  needsConcreteSummary,
+} from "../src/lib/agent/run-agent.ts";
+import {
+  isLikelyTruncatedAgentResponse,
+  isStreamLikelyIncomplete,
+} from "../src/lib/agent/response-complete.ts";
 import { formatCompanyExamples } from "../src/lib/agent/format-summary.ts";
 import {
   mapProfessionToIndustryGroup,
@@ -175,10 +187,56 @@ async function testContextualFollowUp() {
   assert.equal(switched.searchArgs.professionId, "advokat");
 }
 
+async function testNationwidePaginationFollowUp() {
+  const grillHistory = [
+    { role: "user", content: "finn grillbar i Norge" },
+    {
+      role: "assistant",
+      content:
+        "Her er 10 grillbar i Norge:\n\n1. **Grill 1 AS** · orgnr 111111111 · OSLO\n2. **Grill 2 AS** · orgnr 222222222 · BERGEN",
+    },
+    { role: "user", content: "finn 10 til" },
+    {
+      role: "assistant",
+      content:
+        "Skal jeg hente 10 til fra hele landet, eller vil du snevre inn til fylke/kommune?",
+    },
+  ];
+
+  assert.equal(isScopeClarificationReply("fra hele landet"), true);
+  assert.equal(isScopeClarificationReply("i norge"), true);
+
+  const moreParsed = await parseContextualListRequest("finn 10 til", grillHistory);
+  assert.ok(moreParsed);
+  assert.equal(moreParsed.limit, 10);
+  assert.equal(moreParsed.searchArgs.nameQuery, "grillbar");
+  assert.equal(moreParsed.searchArgs.displayLimit, 10);
+  assert.equal(moreParsed.searchArgs.municipalityCode, undefined);
+  assert.deepEqual(moreParsed.excludeOrgnrs, ["111111111", "222222222"]);
+  assert.ok(Number(moreParsed.searchArgs.limit) >= 14);
+
+  const scopeParsed = await parseContextualListRequest(
+    "fra hele landet",
+    [
+      ...grillHistory,
+      { role: "user", content: "fra hele landet" },
+    ]
+  );
+  assert.ok(scopeParsed);
+  assert.equal(scopeParsed.limit, 10);
+  assert.equal(scopeParsed.locationLabel, "Norge");
+  assert.equal(scopeParsed.searchArgs.nameQuery, "grillbar");
+  assert.equal(scopeParsed.searchArgs.municipalityCode, undefined);
+  assert.equal(scopeParsed.searchArgs.regionId, undefined);
+  assert.equal(scopeParsed.searchArgs.displayLimit, 10);
+}
+
 async function testSaveAndScanFollowUp() {
   assert.equal(isSaveListFollowUp("lagre som liste"), true);
   assert.equal(isScanWebsitesFollowUp("skann nettside på de to første"), true);
   assert.equal(isScanWebsitesFollowUp("skann de tre første"), true);
+  assert.equal(isScanWebsitesFollowUp("skann de neste 5"), true);
+  assert.equal(isScanWebsitesFollowUp("skann neste fem"), true);
 
   const history = [
     { role: "user", content: "finn 3 advokater i Oslo" },
@@ -199,6 +257,55 @@ async function testSaveAndScanFollowUp() {
   assert.ok(scan);
   assert.equal(scan.count, 2);
   assert.deepEqual(scan.orgnrs, ["935001684", "935987717"]);
+
+  const longHistory = [
+    ...history,
+    {
+      role: "assistant",
+      content:
+        "Skannet 2 nettsider:\n\n1. **Advokat AS** · orgnr 935001684 · ingen egen nettside\n2. **Lexx Advokat AS** · orgnr 935987717 · https://lexx.no",
+    },
+    {
+      role: "user",
+      content: "finn 5 advokater til i Oslo",
+    },
+    {
+      role: "assistant",
+      content:
+        "Her er 3 til:\n\n3. **Jus AS** · orgnr 911111111 · tlf 22 00 00 00 · OSLO\n4. **Rett AS** · orgnr 922222222 · tlf 22 00 00 01 · OSLO\n5. **Dom AS** · orgnr 933333333 · tlf 22 00 00 02 · OSLO",
+    },
+  ];
+
+  assert.deepEqual(collectAlreadyScannedOrgnrs(longHistory), [
+    "935001684",
+    "935987717",
+  ]);
+
+  const nextScan = parseScanWebsitesRequest("skann de neste 3", longHistory);
+  assert.ok(nextScan);
+  assert.equal(nextScan.count, 3);
+  assert.deepEqual(nextScan.orgnrs, ["911111111", "922222222", "933333333"]);
+
+  const tenOrgnrs = Array.from({ length: 12 }, (_, i) =>
+    String(910000000 + i)
+  );
+  const tenHistory = [
+    { role: "user", content: "finn 12 advokater i Oslo" },
+    {
+      role: "assistant",
+      content: `Her er 12 advokater:\n\n${tenOrgnrs
+        .map((orgnr, index) => `${index + 1}. **Firma ${index + 1}** · orgnr ${orgnr}`)
+        .join("\n")}`,
+    },
+  ];
+  const scanTen = parseScanWebsitesRequest("skann de 10 første", tenHistory);
+  assert.ok(scanTen);
+  assert.equal(scanTen.count, 10);
+  assert.equal(scanTen.orgnrs.length, 10);
+
+  const capped = capScanJobOrgnrs(tenOrgnrs);
+  assert.equal(capped.orgnrs.length, 10);
+  assert.equal(capped.remaining, 2);
 }
 
 async function testSimpleListIntent() {
@@ -299,6 +406,39 @@ async function testSimpleListIntent() {
   assert.equal(svalbard.unknownPlace, true);
 }
 
+async function testSearchAndScanIntent() {
+  assert.equal(
+    isSearchAndScanIntent("finn 5 frisører i Bodø og skann nettside"),
+    true
+  );
+  assert.equal(isSearchAndScanIntent("skann de neste 5"), false);
+  assert.equal(isSearchAndScanIntent("finn 5 frisører i Bodø"), false);
+
+  const parsed = await parseSearchAndScanRequest(
+    "finn 5 frisører i Bodø og skann nettside",
+    { defaultMunicipality: { code: "1804", label: "Bodø" } }
+  );
+  assert.ok(parsed);
+  assert.equal(parsed.scanLimit, 5);
+  assert.equal(parsed.listRequest.searchArgs.professionId, "frisor");
+  assert.equal(parsed.listRequest.searchArgs.municipalityCode, "1804");
+}
+
+function testLargeJobCompletionSummary() {
+  const summary = buildAgentCompletionSummary({
+    toolSummaries: ["Sjekket nettside for 5 firma", "Fant 3 uten egen nettside"],
+    hitMaxLoops: false,
+  });
+  assert.match(summary, /Sjekket nettside for 5 firma/);
+  assert.doesNotMatch(summary, /Oppsummert|verktøy|filter/i);
+
+  const capped = buildAgentCompletionSummary({
+    toolSummaries: ["Sjekket nettside for 5 firma"],
+    hitMaxLoops: true,
+  });
+  assert.match(capped, /mange steg/i);
+}
+
 function testConcreteSummaryGate() {
   assert.equal(needsConcreteSummary("", true), true);
   assert.equal(needsConcreteSummary("Jeg skal søke nå.", true), true);
@@ -307,6 +447,27 @@ function testConcreteSummaryGate() {
     false
   );
   assert.equal(needsConcreteSummary("Hei!", false), false);
+  assert.equal(
+    isLikelyTruncatedAgentResponse(
+      "Jeg har skannet de fem neste. Kort oppsummering: 3 av 5 har egen nettside, 2 mangler. Detaljer: 1."
+    ),
+    true
+  );
+  assert.equal(
+    needsConcreteSummary(
+      "Jeg har skannet de fem neste. Kort oppsummering: 3 av 5 har egen nettside, 2 mangler. Detaljer: 1.",
+      true
+    ),
+    true
+  );
+  assert.equal(
+    isStreamLikelyIncomplete({
+      assistantText: "Detaljer: 1.",
+      receivedDone: false,
+      hadActiveTool: true,
+    }),
+    true
+  );
 }
 
 function testFormatExamples() {
@@ -581,15 +742,18 @@ async function main() {
   testMalerRelevanceFilter();
   testSimpleSearchIntent();
   await testContextualFollowUp();
+  await testNationwidePaginationFollowUp();
   await testSaveAndScanFollowUp();
+  await testSearchAndScanIntent();
   await testSimpleListIntent();
   await testWebsiteSalesLeadIntent();
   testWebsiteSalesLeadQuality();
   testWebsiteSalesLeadReplyFormat();
+  testLargeJobCompletionSummary();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 13/13 OK");
+  console.log("eval-agent-scenarios: 16/16 OK");
 }
 
 main().catch((err) => {

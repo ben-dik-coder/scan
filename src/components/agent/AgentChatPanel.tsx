@@ -19,7 +19,12 @@ import {
   planConfirmActions,
   type PlanConfirmKind,
 } from "@/lib/agent/plan-confirm";
+import { AGENT_CLIENT_TIMEOUT_MS } from "@/lib/agent/constants";
 import { isAgentResumeIntent } from "@/lib/agent/prompt";
+import {
+  isLikelyTruncatedAgentResponse,
+  isStreamLikelyIncomplete,
+} from "@/lib/agent/response-complete";
 import { ArrowUp, Clock, Square } from "lucide-react";
 
 type ChatMessage = {
@@ -93,7 +98,9 @@ export function AgentChatPanel({
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [pendingRetryText, setPendingRetryText] = useState<string | null>(null);
   const [showResumeButton, setShowResumeButton] = useState(false);
+  const [showIncompleteRetry, setShowIncompleteRetry] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [activeToolLabel, setActiveToolLabel] = useState<string | null>(null);
   const [toolProgress, setToolProgress] = useState<{
     scanned: number;
     total: number;
@@ -161,6 +168,7 @@ export function AgentChatPanel({
       setBlockedMessage(null);
       setPendingRetryText(null);
       setShowResumeButton(false);
+      setShowIncompleteRetry(false);
       setInput("");
 
       if (!initialConversationId) {
@@ -257,10 +265,14 @@ export function AgentChatPanel({
       await cancelAgentRuns();
       const abortController = new AbortController();
       abortRef.current = abortController;
+      const clientTimeoutId = window.setTimeout(() => {
+        abortController.abort();
+      }, AGENT_CLIENT_TIMEOUT_MS);
 
       setInput("");
       setBlockedMessage(null);
       setPendingRetryText(null);
+      setShowIncompleteRetry(false);
       if (isAgentResumeIntent(trimmed)) {
         setShowResumeButton(false);
       }
@@ -273,6 +285,7 @@ export function AgentChatPanel({
       setLoading(true);
       sendingRef.current = true;
       setActiveTool(null);
+      setActiveToolLabel(null);
       setToolProgress(null);
 
       try {
@@ -329,6 +342,8 @@ export function AgentChatPanel({
         let savedListId: string | undefined;
         let savedListName: string | undefined;
         let savedOrgnrCount: number | undefined;
+        let receivedDone = false;
+        let hadToolActivity = false;
         const statusSummaries: string[] = [];
 
         const ensureStreamingMessage = () => {
@@ -373,7 +388,11 @@ export function AgentChatPanel({
           } else if (event.type === "text" && typeof event.content === "string") {
             setAssistantContent(event.content);
           } else if (event.type === "tool_start" && typeof event.tool === "string") {
+            hadToolActivity = true;
             setActiveTool(event.tool);
+            setActiveToolLabel(
+              typeof event.label === "string" ? event.label : null
+            );
             setToolProgress(null);
           } else if (
             event.type === "tool_progress" &&
@@ -389,6 +408,7 @@ export function AgentChatPanel({
             typeof event.summary === "string"
           ) {
             setActiveTool(null);
+            setActiveToolLabel(null);
             setToolProgress(null);
             statusSummaries.push(event.summary);
           } else if (event.type === "confirm_save") {
@@ -414,7 +434,10 @@ export function AgentChatPanel({
               orgnrCount:
                 typeof event.orgnrCount === "number" ? event.orgnrCount : undefined,
             });
+          } else if (event.type === "ping") {
+            // Hold streamen i live under lange skann.
           } else if (event.type === "done") {
+            receivedDone = true;
             if (typeof event.link === "string") resultLink = event.link;
             if (typeof event.listId === "string") savedListId = event.listId;
             if (typeof event.listName === "string") savedListName = event.listName;
@@ -473,6 +496,33 @@ export function AgentChatPanel({
           }
         }
 
+        const streamIncomplete = isStreamLikelyIncomplete({
+          assistantText,
+          receivedDone,
+          hadActiveTool: hadToolActivity,
+        });
+        if (
+          streamIncomplete &&
+          statusSummaries.length > 0 &&
+          isLikelyTruncatedAgentResponse(assistantText)
+        ) {
+          assistantText = `${statusSummaries.slice(-2).join(" ")}\n\n${assistantText.trim()}`;
+        }
+        if (streamIncomplete) {
+          if (!assistantText.trim()) {
+            assistantText =
+              statusSummaries.length > 0
+                ? `Jobben stoppet før svaret var ferdig. ${statusSummaries.slice(-2).join(" ")}`
+                : "Svaret ble avbrutt før det ble ferdig.";
+          } else if (isLikelyTruncatedAgentResponse(assistantText)) {
+            assistantText = `${assistantText.trim()}\n\n(Svaret ble kuttet av — trykk Prøv igjen for full oppsummering.)`;
+          } else if (!receivedDone) {
+            assistantText = `${assistantText.trim()}\n\n(Svaret ble avbrutt — trykk Prøv igjen.)`;
+          }
+          setPendingRetryText(trimmed);
+          setShowIncompleteRetry(true);
+        }
+
         const planConfirm = detectPlanConfirmKind(assistantText) ?? undefined;
         if (streamingMessageId) {
           setMessages((prev) => {
@@ -513,11 +563,13 @@ export function AgentChatPanel({
           content: "Kunne ikke nå agenten. Sjekk nettverket og prøv igjen.",
         });
       } finally {
+        window.clearTimeout(clientTimeoutId);
         sendingRef.current = false;
         if (abortRef.current === abortController) {
           abortRef.current = null;
           setLoading(false);
           setActiveTool(null);
+          setActiveToolLabel(null);
           setToolProgress(null);
         }
       }
@@ -754,7 +806,20 @@ export function AgentChatPanel({
           </div>
         )}
 
-        {showResumeButton && !loading && (
+        {showIncompleteRetry && pendingRetryText && !loading && (
+          <div className="flex flex-col items-start gap-2 rounded-2xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/90">
+            <p>Svaret ble ikke ferdig. Skanningen kan ha gått bra — prøv igjen for full tekst.</p>
+            <button
+              type="button"
+              onClick={() => void retryAfterCancel()}
+              className="min-h-[44px] rounded-full bg-amber-400/15 px-4 py-2 text-sm font-medium text-amber-50 transition hover:bg-amber-400/25 active:scale-[0.98] sm:min-h-0 sm:py-1.5 sm:text-xs"
+            >
+              Prøv igjen
+            </button>
+          </div>
+        )}
+
+        {showResumeButton && !loading && !showIncompleteRetry && (
           <div className="flex flex-col items-start gap-1">
             <button
               type="button"
@@ -777,8 +842,8 @@ export function AgentChatPanel({
               {activeTool ? (
                 <span className="agent-thinking-bubble__label">
                   {toolProgress
-                    ? `${TOOL_STATUS_LABELS[activeTool] ?? "Jobber"}… ${toolProgress.scanned}/${toolProgress.total}`
-                    : TOOL_STATUS_LABELS[activeTool] ?? "Jobber…"}
+                    ? `${activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber"}… ${toolProgress.scanned}/${toolProgress.total}`
+                    : activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber…"}
                 </span>
               ) : (
                 <span className="sr-only">Tenker…</span>

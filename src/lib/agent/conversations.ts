@@ -177,6 +177,16 @@ export async function createRun(
   return data as AgentRun;
 }
 
+/** Holder kjøringen «levende» under lange skann (unngår stale-avbryt). */
+export async function touchAgentRun(runId: string): Promise<void> {
+  const supabase = createServiceClient();
+  await supabase
+    .from("agent_runs")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", runId)
+    .eq("status", "running");
+}
+
 export async function finishRun(
   runId: string,
   result: Record<string, unknown> | null,

@@ -1,7 +1,9 @@
 import {
   AGENT_DEFAULT_LIST_LIMIT,
+  AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_FAST_LIST_LIMIT,
   AGENT_MAX_SCAN_PER_CALL,
+  AGENT_MAX_SCAN_PER_JOB,
 } from "@/lib/agent/constants";
 import {
   extractPlaceMention,
@@ -76,6 +78,10 @@ export function isContextualFollowUp(message: string): boolean {
   const normalized = normalizeText(message);
   if (!normalized) return false;
 
+  const combinedSearchScan =
+    /\b(finn|list|vis|hent|gi|sok|søk)\b/.test(normalized) &&
+    /\b(skann|sjekk)\b/.test(normalized);
+
   return (
     isContextualListFollowUp(message) ||
     /\b(de|disse|forrige|siste)\s+(to|tre|\d+|første|siste|resultat)\b/.test(
@@ -83,7 +89,7 @@ export function isContextualFollowUp(message: string): boolean {
     ) ||
     /\bhvilken av disse\b/.test(normalized) ||
     /\blagre\s+(som\s+)?liste\b/.test(normalized) ||
-    /\bskann\s+(nettside|de)\b/.test(normalized)
+    (!combinedSearchScan && /\bskann\s+(nettside|de)\b/.test(normalized))
   );
 }
 
@@ -143,11 +149,44 @@ export function isSaveListFollowUp(message: string): boolean {
 
 export function isScanWebsitesFollowUp(message: string): boolean {
   const normalized = normalizeText(message);
+  if (
+    /\b(finn|list|vis|hent|gi|sok|søk)\b/.test(normalized) &&
+    /\b(skann|sjekk)\b/.test(normalized)
+  ) {
+    return false;
+  }
   return (
     /\bskann\s+(nettside|de|disse)\b/.test(normalized) ||
-    /\bskann\s+(de|disse)\s+(to|tre|\d+|første|forste)\b/.test(normalized)
+    /\bskann\s+(de|disse)\s+(to|tre|\d+|første|forste|neste)\b/.test(normalized) ||
+    /\bskann\s+(de\s+)?neste\b/.test(normalized) ||
+    /\bskan\s+(de\s+)?neste\b/.test(normalized)
   );
 }
+
+function wantsWebsiteScan(message: string): boolean {
+  const normalized = normalizeText(message);
+  return (
+    /\b(skann|sjekk|scan)\b/.test(normalized) &&
+    /\b(nettside|nettsider|web|website|webside|hjemmeside)\b/.test(normalized)
+  );
+}
+
+/** Søk + skann i samme melding — f.eks. «finn 10 frisører i Bodø og skann nettside». */
+export function isSearchAndScanIntent(message: string): boolean {
+  if (isScanWebsitesFollowUp(message)) return false;
+  if (isContextualFollowUp(message)) return false;
+  if (!wantsWebsiteScan(message)) return false;
+
+  if (isWebsiteSalesLeadListIntent(message)) return true;
+  if (resolveIndustryKeyword(normalizeText(message))) return true;
+  return /\b(finn|list|vis|hent|gi)\b/.test(normalizeText(message));
+}
+
+export type ParsedSearchAndScanRequest = {
+  listRequest: ParsedSimpleListRequest;
+  scanLimit: number;
+  websiteSales?: boolean;
+};
 
 function parseScanCount(message: string): number {
   const normalized = normalizeText(message);
@@ -158,14 +197,42 @@ function parseScanCount(message: string): number {
     tre: 3,
     fire: 4,
     fem: 5,
+    seks: 6,
+    syv: 7,
+    atte: 8,
+    ni: 9,
+    ti: 10,
   };
+
+  const nesteWordMatch = normalized.match(
+    /\bneste\s+(en|ett|to|tre|fire|fem|seks|syv|atte|ni|ti)\b/
+  );
+  if (nesteWordMatch) {
+    return Math.min(
+      wordCounts[nesteWordMatch[1]] ?? AGENT_MAX_SCAN_PER_CALL,
+      AGENT_MAX_SCAN_PER_JOB
+    );
+  }
+
+  const nesteDigitMatch = normalized.match(/\bneste\s+(\d{1,2})\b/);
+  if (nesteDigitMatch) {
+    return Math.min(
+      Number.parseInt(nesteDigitMatch[1], 10),
+      AGENT_MAX_SCAN_PER_JOB
+    );
+  }
+
+  if (/\bneste\b/.test(normalized)) {
+    return AGENT_MAX_SCAN_PER_CALL;
+  }
+
   for (const [word, count] of Object.entries(wordCounts)) {
     if (new RegExp(`\\b(de|disse)\\s+${word}\\b`).test(normalized)) {
       return count;
     }
   }
   const digitMatch = normalized.match(
-    /\b(de|disse)\s+(\d{1,2})\s+(første|forste|siste)\b/
+    /\b(de|disse)\s+(\d{1,2})\s+(første|forste|siste|neste)\b/
   );
   if (digitMatch) {
     return Math.min(Number.parseInt(digitMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT);
@@ -173,6 +240,23 @@ function parseScanCount(message: string): number {
   const firstMatch = normalized.match(/\b(de|disse)\s+(første|forste)\b/);
   if (firstMatch) return 2;
   return AGENT_MAX_SCAN_PER_CALL;
+}
+
+function isNextScanBatchRequest(message: string): boolean {
+  return /\bneste\b/.test(normalizeText(message));
+}
+
+/** Orgnr som allerede er skannet i denne samtalen. */
+export function collectAlreadyScannedOrgnrs(history: ChatTurn[]): string[] {
+  const scanned = new Set<string>();
+  for (const msg of history) {
+    if (msg.role !== "assistant") continue;
+    if (!/\bskann/i.test(msg.content)) continue;
+    for (const orgnr of extractOrgnrsFromText(msg.content)) {
+      scanned.add(orgnr);
+    }
+  }
+  return [...scanned];
 }
 
 export type ParsedSaveListRequest = {
@@ -233,7 +317,7 @@ export async function parseSaveListRequest(
   };
 }
 
-/** «skann de to første» — bruk orgnr fra siste liste. */
+/** «skann de to første» / «skann de neste 5» — bruk orgnr fra siste liste. */
 export function parseScanWebsitesRequest(
   message: string,
   history: ChatTurn[]
@@ -244,7 +328,80 @@ export function parseScanWebsitesRequest(
   if (allOrgnrs.length === 0) return null;
 
   const count = Math.min(parseScanCount(message), allOrgnrs.length);
-  return { orgnrs: allOrgnrs.slice(0, count), count };
+  const pool = isNextScanBatchRequest(message)
+    ? allOrgnrs.filter((orgnr) => !collectAlreadyScannedOrgnrs(history).includes(orgnr))
+    : allOrgnrs;
+
+  if (pool.length === 0) return null;
+
+  const batchCount = Math.min(count, pool.length, AGENT_MAX_SCAN_PER_JOB);
+  return { orgnrs: pool.slice(0, batchCount), count: batchCount };
+}
+
+function parseExplicitScanLimit(message: string): number | undefined {
+  const normalized = normalizeText(message);
+  const wordCounts: Record<string, number> = {
+    en: 1,
+    ett: 1,
+    to: 2,
+    tre: 3,
+    fire: 4,
+    fem: 5,
+    seks: 6,
+    syv: 7,
+    atte: 8,
+    ni: 9,
+    ti: 10,
+  };
+
+  const scanWordMatch = normalized.match(
+    /\b(skann|sjekk)\s+(en|ett|to|tre|fire|fem|seks|syv|atte|ni|ti)\b/
+  );
+  if (scanWordMatch) {
+    return Math.min(wordCounts[scanWordMatch[1]] ?? AGENT_MAX_SCAN_PER_CALL, AGENT_MAX_SCAN_PER_JOB);
+  }
+
+  const scanDigitMatch = normalized.match(/\b(skann|sjekk)\s+(\d{1,2})\b/);
+  if (scanDigitMatch) {
+    return Math.min(Number.parseInt(scanDigitMatch[2], 10), AGENT_MAX_SCAN_PER_JOB);
+  }
+
+  return undefined;
+}
+
+/** «finn 10 frisører i Bodø og skann nettside» — søk + skann uten LLM-verktøykjede. */
+export async function parseSearchAndScanRequest(
+  message: string,
+  options?: { defaultMunicipality?: { code?: string; label?: string }; systemPromptExtra?: string }
+): Promise<ParsedSearchAndScanRequest | null> {
+  if (!isSearchAndScanIntent(message)) return null;
+
+  const cleaned = message
+    .replace(/\s*(,|og)?\s*(skann|sjekk)\s+(nettside|nettsider|web|webside|hjemmeside).*/i, "")
+    .trim();
+
+  let listRequest: ParsedSimpleListRequest | null = null;
+  let websiteSales = false;
+
+  if (isWebsiteSalesLeadListIntent(message)) {
+    const parsed = await parseWebsiteSalesLeadRequest(message, options);
+    if (!parsed || parsed.unknownPlace || parsed.needsClarification) return null;
+    listRequest = parsed;
+    websiteSales = true;
+  } else {
+    listRequest =
+      (await parseSimpleListRequest(cleaned || message, options)) ??
+      (await buildListRequest(cleaned || message, options));
+  }
+
+  if (!listRequest || listRequest.unknownPlace) return null;
+
+  const scanLimit = Math.min(
+    parseExplicitScanLimit(message) ?? listRequest.limit,
+    AGENT_MAX_SCAN_PER_JOB
+  );
+
+  return { listRequest, scanLimit, websiteSales };
 }
 
 type ScanSummary = {
@@ -305,6 +462,143 @@ function shouldSkipLatestUserMessage(history: ChatTurn[], currentMessage: string
   return normalizeText(history[idx].content) === normalizeText(currentMessage);
 }
 
+const SEARCH_STOP_WORDS = new Set([
+  "finn",
+  "vis",
+  "gi",
+  "hent",
+  "list",
+  "sok",
+  "søk",
+  "meg",
+  "oss",
+  "litt",
+  "i",
+  "og",
+  "med",
+  "telefon",
+  "norge",
+  "hele",
+  "landet",
+  "fra",
+  "til",
+  "flere",
+  "mer",
+  "noen",
+  "gode",
+  "firma",
+  "bedrift",
+  "selskap",
+  "selskaper",
+  "foretak",
+]);
+
+/** Svar på «hele landet eller snevre inn?» etter «finn N til». */
+export function isScopeClarificationReply(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+
+  const scopePhrase =
+    /\b(fra\s+)?hele\s+landet\b/.test(normalized) ||
+    /\bhele\s+norge\b/.test(normalized) ||
+    /^(i\s+)?norge$/.test(normalized) ||
+    /^fra\s+norge$/.test(normalized);
+
+  if (!scopePhrase) return false;
+
+  // «finn grillbar i norge» er et nytt søk, ikke et kort scope-svar.
+  if (
+    hasListVerb(normalized) &&
+    normalized.split(/\s+/).filter(Boolean).length > 2
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function isNationwideScopeMessage(message: string): boolean {
+  const normalized = normalizeText(message);
+  return (
+    /\b(fra\s+)?hele\s+landet\b/.test(normalized) ||
+    /\bhele\s+norge\b/.test(normalized) ||
+    /\bi\s+norge\b/.test(normalized) ||
+    parseRegion(normalized).label === "Norge"
+  );
+}
+
+function looksLikeCompanySearchMessage(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+  if (isContextualListFollowUp(message)) return false;
+  if (isScopeClarificationReply(message)) return false;
+  if (isSaveListFollowUp(message)) return false;
+  if (isScanWebsitesFollowUp(message)) return false;
+  if (resolveIndustryKeyword(normalized)) return true;
+  if (extractNameQueryFromMessage(message)) return true;
+  return hasListVerb(normalized);
+}
+
+function extractNameQueryFromMessage(message: string): string | undefined {
+  const quoted = message.match(/[«"']([^»"']{2,})[»"']/);
+  if (quoted?.[1]) {
+    return quoted[1].trim().slice(0, 40);
+  }
+
+  const normalized = normalizeText(message);
+  const tokens = normalized
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token));
+  return tokens[0];
+}
+
+function buildPaginationSearchArgs(
+  baseArgs: Record<string, unknown>,
+  limit: number,
+  shownOrgnrs: string[]
+): Record<string, unknown> {
+  return {
+    ...baseArgs,
+    limit: Math.min(
+      limit + shownOrgnrs.length + 4,
+      AGENT_MAX_COMPANIES_PER_JOB
+    ),
+    displayLimit: limit,
+    days: 0,
+  };
+}
+
+function findPendingMoreLimit(
+  history: ChatTurn[],
+  currentMessage: string
+): number | null {
+  const skipLatest = shouldSkipLatestUserMessage(history, currentMessage);
+  let skippedLatest = false;
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role !== "user") continue;
+    if (skipLatest && !skippedLatest) {
+      skippedLatest = true;
+      continue;
+    }
+
+    const normalized = normalizeText(msg.content);
+    const moreMatch = matchMoreCompaniesRequest(normalized);
+    if (moreMatch) {
+      return Math.min(Number.parseInt(moreMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT);
+    }
+    if (isGenericMoreRequest(normalized)) {
+      return AGENT_DEFAULT_LIST_LIMIT;
+    }
+    if (looksLikeCompanySearchMessage(msg.content)) {
+      break;
+    }
+  }
+
+  return null;
+}
+
 function findLastSearchUserMessage(
   history: ChatTurn[],
   currentMessage: string
@@ -318,7 +612,7 @@ function findLastSearchUserMessage(
       skippedLatest = true;
       continue;
     }
-    if (resolveIndustryKeyword(normalizeText(msg.content))) return msg.content;
+    if (looksLikeCompanySearchMessage(msg.content)) return msg.content;
   }
   return undefined;
 }
@@ -334,7 +628,7 @@ function collectShownOrgnrs(history: ChatTurn[], currentMessage: string): string
         skippedLatest = true;
         continue;
       }
-      if (resolveIndustryKeyword(normalizeText(msg.content))) {
+      if (looksLikeCompanySearchMessage(msg.content)) {
         break;
       }
     }
@@ -346,20 +640,110 @@ function collectShownOrgnrs(history: ChatTurn[], currentMessage: string): string
 }
 
 /** «finn 2 til», «samme by», «advokater i stedet» — gjenbruk forrige søk fra historikk. */
+async function buildListRequestFromSearchMessage(
+  message: string,
+  options?: { defaultMunicipality?: { code?: string; label?: string } }
+): Promise<ParsedSimpleListRequest | null> {
+  const fromSimple = await parseSimpleListRequest(message, options);
+  if (fromSimple && !fromSimple.unknownPlace) return fromSimple;
+
+  const normalized = normalizeText(message);
+  const nameQuery = extractNameQueryFromMessage(message);
+  if (!nameQuery) return null;
+
+  const limit = parseLimit(normalized) ?? AGENT_DEFAULT_LIST_LIMIT;
+  const municipality = await resolveMunicipalityFromMessage(normalized, {
+    defaultCode: options?.defaultMunicipality?.code,
+    defaultLabel: options?.defaultMunicipality?.label,
+  });
+  const region = parseRegion(normalized);
+  const nationwide =
+    isNationwideScopeMessage(message) ||
+    (!municipality.code && !region.id && /\bnorge\b/.test(normalized));
+
+  if (municipality.unknown && !nationwide) {
+    const placeLabel =
+      municipality.label ?? extractPlaceMention(normalized) ?? "valgt sted";
+    return {
+      limit,
+      industryLabel: nameQuery,
+      locationLabel: placeLabel,
+      searchArgs: { limit, days: 0, nameQuery },
+      unknownPlace: true,
+    };
+  }
+
+  const searchArgs: Record<string, unknown> = {
+    limit,
+    days: 0,
+    nameQuery,
+  };
+  if (municipality.code) {
+    searchArgs.municipalityCode = municipality.code;
+  } else if (region.id) {
+    searchArgs.regionId = region.id;
+  }
+
+  if (wantsPhoneInList(normalized)) {
+    searchArgs.requirePhone = true;
+  }
+
+  const locationLabel = nationwide
+    ? "Norge"
+    : formatPlaceLabel(
+        municipality.label ??
+          region.label ??
+          (municipality.code || region.id ? "valgt område" : "Norge"),
+        municipality.code
+      );
+
+  return {
+    limit,
+    industryLabel: nameQuery,
+    locationLabel,
+    searchArgs,
+    requirePhone: searchArgs.requirePhone === true,
+  };
+}
+
 export async function parseContextualListRequest(
   message: string,
   history: ChatTurn[],
   options?: { defaultMunicipality?: { code?: string; label?: string } }
 ): Promise<ParsedSimpleListRequest | null> {
-  if (!isContextualListFollowUp(message)) return null;
+  if (!isContextualListFollowUp(message) && !isScopeClarificationReply(message)) {
+    return null;
+  }
 
   const normalized = normalizeText(message);
   const lastSearch = findLastSearchUserMessage(history, message);
   const shownOrgnrs = collectShownOrgnrs(history, message);
 
+  if (isScopeClarificationReply(message)) {
+    const pendingLimit = findPendingMoreLimit(history, message);
+    if (!pendingLimit || !lastSearch) return null;
+
+    const base = await buildListRequestFromSearchMessage(lastSearch, options);
+    if (!base || base.unknownPlace) return null;
+
+    const searchArgs = { ...base.searchArgs };
+    delete searchArgs.municipalityCode;
+    delete searchArgs.regionId;
+
+    return {
+      ...base,
+      limit: pendingLimit,
+      locationLabel: "Norge",
+      searchArgs: buildPaginationSearchArgs(searchArgs, pendingLimit, shownOrgnrs),
+      excludeOrgnrs: shownOrgnrs,
+    };
+  }
+
   const moreMatch = matchMoreCompaniesRequest(normalized);
   if ((moreMatch || isGenericMoreRequest(normalized)) && lastSearch) {
-    const base = await parseSimpleListRequest(lastSearch, options);
+    const base =
+      (await parseSimpleListRequest(lastSearch, options)) ??
+      (await buildListRequestFromSearchMessage(lastSearch, options));
     if (!base || base.unknownPlace) return null;
     const limit = moreMatch
       ? Math.min(Number.parseInt(moreMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT)
@@ -367,11 +751,7 @@ export async function parseContextualListRequest(
     return {
       ...base,
       limit,
-      searchArgs: {
-        ...base.searchArgs,
-        limit: Math.min(limit + shownOrgnrs.length + 4, AGENT_MAX_FAST_LIST_LIMIT),
-        days: 0,
-      },
+      searchArgs: buildPaginationSearchArgs(base.searchArgs, limit, shownOrgnrs),
       excludeOrgnrs: shownOrgnrs,
     };
   }
@@ -745,7 +1125,10 @@ export function formatFastListReply(
   const phoneNote = request.requirePhone
     ? ` (alle med telefon)`
     : "";
-  const header = `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}${phoneNote}:`;
+  const isMoreBatch = (request.excludeOrgnrs?.length ?? 0) > 0;
+  const header = isMoreBatch
+    ? `Her er ${companies.length} til (${request.industryLabel} i ${request.locationLabel}${phoneNote}):`
+    : `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}${phoneNote}:`;
   const footer =
     companies.length < request.limit
       ? `\n\nFant bare ${companies.length} i databasen. Si fra om du vil skanne nettside eller lagre som liste.`

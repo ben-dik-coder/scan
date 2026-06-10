@@ -16,6 +16,9 @@ export const AGENT_MAX_COMPANIES_PER_JOB = 100;
 /** Maks firma per scan_websites-kall — hindrer 20-min skann av hele søket */
 export const AGENT_MAX_SCAN_PER_CALL = 5;
 
+/** Maks firma skannet i én brukerforespørsel (deles i batcher à AGENT_MAX_SCAN_PER_CALL) */
+export const AGENT_MAX_SCAN_PER_JOB = 10;
+
 /** Standard antall firma ved «finn meg 5 …» uten eksplisitt tall */
 export const AGENT_DEFAULT_LIST_LIMIT = 5;
 
@@ -50,6 +53,12 @@ export const AGENT_SCAN_DELAY_MS = 200;
 
 /** Kjøringer uten oppdatering lenger enn dette regnes som hengende og avbrytes automatisk. */
 export const AGENT_RUN_STALE_MS = 5 * 60 * 1000;
+
+/** Klient-timeout for agent-chat (litt under server maxDuration 300s) */
+export const AGENT_CLIENT_TIMEOUT_MS = 280_000;
+
+/** SSE heartbeat under lange skann — holder streamen i live */
+export const AGENT_SSE_HEARTBEAT_MS = 15_000;
 
 /** Maks lagrede AI-samtaler per bruker */
 export const MAX_AGENT_CONVERSATIONS = 5;

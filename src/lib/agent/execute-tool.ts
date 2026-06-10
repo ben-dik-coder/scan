@@ -538,9 +538,18 @@ async function executeSearchCompanies(
     typeof args.limit === "number" && Number.isFinite(args.limit)
       ? Math.floor(args.limit)
       : undefined;
+  const displayLimit =
+    typeof args.displayLimit === "number" && Number.isFinite(args.displayLimit)
+      ? Math.min(Math.floor(args.displayLimit), AGENT_MAX_FAST_LIST_LIMIT)
+      : undefined;
   const resultLimit =
-    requestedLimit && requestedLimit > 0
+    displayLimit ??
+    (requestedLimit && requestedLimit > 0
       ? Math.min(requestedLimit, AGENT_MAX_FAST_LIST_LIMIT)
+      : AGENT_MAX_COMPANIES_PER_JOB);
+  const fetchLimit =
+    requestedLimit && requestedLimit > 0
+      ? requestedLimit
       : AGENT_MAX_COMPANIES_PER_JOB;
   const frisorSearch = isFrisorSearchFilter({
     professionId,
@@ -563,9 +572,9 @@ async function executeSearchCompanies(
         ? 16
         : 8;
   const pageSize =
-    requestedLimit && requestedLimit > 0
+    fetchLimit && fetchLimit > 0
       ? Math.min(
-          Math.max(requestedLimit * overfetchMultiplier, AGENT_SEARCH_OVERFETCH_MIN),
+          Math.max(fetchLimit * overfetchMultiplier, AGENT_SEARCH_OVERFETCH_MIN),
           AGENT_MAX_COMPANIES_PER_JOB
         )
       : AGENT_MAX_COMPANIES_PER_JOB;

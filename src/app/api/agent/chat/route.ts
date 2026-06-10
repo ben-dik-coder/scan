@@ -4,6 +4,7 @@ import {
   cancelRun,
   createConversation,
   createRun,
+  touchAgentRun,
   deriveConversationTitle,
   finishRun,
   getActiveRunForUser,
@@ -12,7 +13,11 @@ import {
   loadConversationMessagesForUser,
   saveMessage,
 } from "@/lib/agent/conversations";
-import { AGENT_DISABLED_MESSAGE, isAgentEnabled } from "@/lib/agent/constants";
+import {
+  AGENT_DISABLED_MESSAGE,
+  AGENT_SSE_HEARTBEAT_MS,
+  isAgentEnabled,
+} from "@/lib/agent/constants";
 import {
   buildAgentStartupContextPrompt,
   loadAgentStartupContext,
@@ -24,7 +29,8 @@ import {
   buildAgentResumePrompt,
   buildAgentCancelledRunContextPrompt,
 } from "@/lib/agent/prompt";
-import { runAgentChat } from "@/lib/agent/run-agent";
+import { buildAgentCompletionSummary, runAgentChat } from "@/lib/agent/run-agent";
+import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import {
   resolveAgentRequestAuth,
   shouldPersistAgentData,
@@ -117,6 +123,9 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let runFinished = false;
+      let doneSent = false;
+      let lastAssistantText = "";
+      const toolSummaries: string[] = [];
       const completeRun = async (
         status: "done" | "failed",
         result: Record<string, unknown> | null = null,
@@ -136,6 +145,14 @@ export async function POST(request: NextRequest) {
         if (request.signal.aborted) return;
         controller.enqueue(encoder.encode(sseLine(data)));
       };
+
+      const heartbeat = setInterval(() => {
+        if (request.signal.aborted) return;
+        send({ type: "ping" });
+        if (persist) {
+          void touchAgentRun(run.id);
+        }
+      }, AGENT_SSE_HEARTBEAT_MS);
 
       send({ type: "conversation", conversationId });
       send({ type: "run", runId: run.id });
@@ -178,17 +195,23 @@ export async function POST(request: NextRequest) {
         const systemPromptExtra =
           systemPromptParts.length > 0 ? systemPromptParts.join("\n\n") : undefined;
 
-        const { assistantText, link } = await runAgentChat(
+        const { assistantText: agentText, link } = await runAgentChat(
           history,
           { userId: user?.id ?? "demo", runId: run.id },
           async (event) => {
             if (request.signal.aborted) return;
             if (event.type === "text") {
+              if (event.content.trim()) lastAssistantText = event.content;
               send({ type: "text", content: event.content });
             } else if (event.type === "text_delta") {
+              lastAssistantText += event.content;
               send({ type: "text_delta", content: event.content });
             } else if (event.type === "tool_start") {
-              send({ type: "tool_start", tool: event.tool });
+              send({
+                type: "tool_start",
+                tool: event.tool,
+                label: event.label,
+              });
             } else if (event.type === "tool_progress") {
               send({
                 type: "tool_progress",
@@ -197,6 +220,7 @@ export async function POST(request: NextRequest) {
                 total: event.total,
               });
             } else if (event.type === "tool_end") {
+              toolSummaries.push(event.summary);
               send({
                 type: "tool_end",
                 tool: event.tool,
@@ -220,13 +244,17 @@ export async function POST(request: NextRequest) {
                 orgnrCount: event.orgnrCount,
               });
             } else if (event.type === "done") {
+              doneSent = true;
+              if (typeof event.content === "string" && event.content.trim()) {
+                lastAssistantText = event.content;
+              }
               send({
                 type: "done",
                 link: event.link,
                 listId: event.listId,
                 listName: event.listName,
                 orgnrCount: event.orgnrCount,
-                content: event.content,
+                content: lastAssistantText || event.content,
               });
             }
           },
@@ -248,6 +276,30 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        const assistantText = agentText.trim() || lastAssistantText.trim();
+        if (!doneSent) {
+          let fallbackText = assistantText;
+          if (
+            !fallbackText ||
+            isLikelyTruncatedAgentResponse(fallbackText)
+          ) {
+            const built = buildAgentCompletionSummary({
+              toolSummaries,
+              hitMaxLoops: false,
+            });
+            if (built.trim()) fallbackText = built;
+          }
+          if (fallbackText) {
+            send({ type: "text", content: fallbackText });
+          }
+          send({
+            type: "done",
+            link,
+            content: fallbackText || undefined,
+          });
+          doneSent = true;
+        }
+
         if (persist && assistantText) {
           await saveMessage(conversationId!, "assistant", assistantText);
         }
@@ -264,10 +316,47 @@ export async function POST(request: NextRequest) {
           return;
         }
         const errMsg = err instanceof Error ? err.message : "Ukjent feil";
-        send({ type: "error", message: errMsg });
-        await completeRun("failed", null, errMsg);
+        if (!doneSent) {
+          const built = buildAgentCompletionSummary({
+            toolSummaries,
+            hitMaxLoops: false,
+          });
+          const fallbackText = lastAssistantText.trim() || built.trim();
+          if (fallbackText) {
+            send({ type: "text", content: fallbackText });
+            send({ type: "done", content: fallbackText });
+            doneSent = true;
+            if (persist && conversationId) {
+              await saveMessage(conversationId, "assistant", fallbackText);
+            }
+            await completeRun("done", { assistantText: fallbackText, link: null });
+          } else {
+            send({ type: "error", message: errMsg });
+            await completeRun("failed", null, errMsg);
+          }
+        } else {
+          send({ type: "error", message: errMsg });
+          await completeRun("failed", null, errMsg);
+        }
       } finally {
+        clearInterval(heartbeat);
         request.signal.removeEventListener("abort", onAbort);
+        if (!doneSent && !request.signal.aborted) {
+          const built = buildAgentCompletionSummary({
+            toolSummaries,
+            hitMaxLoops: false,
+          });
+          const fallbackText = lastAssistantText.trim() || built.trim();
+          if (fallbackText) {
+            send({ type: "text", content: fallbackText });
+            send({ type: "done", content: fallbackText });
+            doneSent = true;
+            if (persist && conversationId) {
+              await saveMessage(conversationId, "assistant", fallbackText);
+            }
+            await completeRun("done", { assistantText: fallbackText, link: null });
+          }
+        }
         if (persist && !runFinished) {
           await completeRun("failed", null, "Avsluttet uten fullføring");
         }
