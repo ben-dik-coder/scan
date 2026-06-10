@@ -120,7 +120,11 @@ export function AgentChatPanel({
         if (usage) setSerperUsage(usage);
       })
       .catch(() => {});
-    refreshPendingScheduleCount();
+    void fetch("/api/agent/scheduled/run", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        refreshPendingScheduleCount();
+      });
   }, [open, loading, refreshPendingScheduleCount]);
 
   useEffect(() => {

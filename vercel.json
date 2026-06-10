@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/agent-scheduled",
-      "schedule": "* * * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
