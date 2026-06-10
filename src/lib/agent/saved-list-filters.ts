@@ -1,5 +1,5 @@
 import type { FilterState } from "@/components/CompanyFilters";
-import { isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
+import { hasOwnWebsite, isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
 export type AgentSavedListFilters = Partial<FilterState> & {
@@ -26,6 +26,14 @@ export function matchesAgentListNoWebsiteTab(
 ): boolean {
   if (!scan) return agentListActive;
   return isLeadWithoutOwnSite(scan);
+}
+
+/** Firma med egen nettside (kun etter Google-sjekk). */
+export function matchesAgentListWithWebsiteTab(
+  scan: WebsiteScanResult | undefined
+): boolean {
+  if (!scan) return false;
+  return hasOwnWebsite(scan);
 }
 
 /** AI-lister skal alltid vise orgnr uavhengig av registreringsdato. */

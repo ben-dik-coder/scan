@@ -44,6 +44,7 @@ import {
   AGENT_LIST_PERIOD_DAYS,
   filtersForAgentListApplication,
   matchesAgentListNoWebsiteTab,
+  matchesAgentListWithWebsiteTab,
 } from "@/lib/agent/saved-list-filters";
 import { buildLeadGoogleSearchQuery } from "@/lib/scan/google-search-query";
 import { computeQueueScore } from "@/lib/sales/queue-score";
@@ -272,6 +273,9 @@ export function AppPageClient(props: Props) {
   const matchesNoWebsiteTab = (orgnr: string) =>
     matchesAgentListNoWebsiteTab(websiteScans.get(orgnr), isAgentListActive);
 
+  const matchesWithWebsiteTab = (orgnr: string) =>
+    matchesAgentListWithWebsiteTab(websiteScans.get(orgnr));
+
   const noWebsiteOrgnrs = useMemo(() => {
     return visibleCompanies
       .filter((c) => matchesNoWebsiteTab(c.orgnr))
@@ -280,9 +284,7 @@ export function AppPageClient(props: Props) {
 
   const noWebsiteCount = noWebsiteOrgnrs.length;
   const withWebsiteCount = useMemo(
-    () =>
-      visibleCompanies.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true)
-        .length,
+    () => visibleCompanies.filter((c) => matchesWithWebsiteTab(c.orgnr)).length,
     [visibleCompanies, websiteScans]
   );
 
@@ -366,14 +368,10 @@ export function AppPageClient(props: Props) {
 
   const scanQueueCount = Math.min(selected.size, MAX_WEBSITE_SCAN_BATCH);
 
-  const matchesPresenceFilters = (c: CompanyWithLead) => {
+  const matchesSocialPresenceFilters = (c: CompanyWithLead) => {
     if (isAgentListActive) return true;
 
     const scan = websiteScans.get(c.orgnr);
-    const web = filters.websitePresence;
-    if (web === "with" && scan?.hasWebsite !== true) return false;
-    if (web === "without" && !matchesNoWebsiteTab(c.orgnr)) return false;
-    if (web === "not_scanned" && (scan || !c.has_email)) return false;
 
     const fb = filters.facebookPresence;
     if (fb === "with" && !scan?.facebookUrl) return false;
@@ -410,11 +408,11 @@ export function AppPageClient(props: Props) {
       if (tabId === "no_website") {
         list = list.filter((c) => matchesNoWebsiteTab(c.orgnr));
       } else if (tabId === "with_website") {
-        list = list.filter((c) => websiteScans.get(c.orgnr)?.hasWebsite === true);
+        list = list.filter((c) => matchesWithWebsiteTab(c.orgnr));
       } else if (tabId === "not_scanned") {
         list = list.filter((c) => c.has_email && !websiteScans.has(c.orgnr));
       }
-      return list.filter(matchesPresenceFilters);
+      return list.filter(matchesSocialPresenceFilters);
     };
 
     return {
@@ -943,6 +941,7 @@ export function AppPageClient(props: Props) {
       shortLabel: "Uten web",
       count: companiesByListTab.no_website.length,
       icon: Globe,
+      pinned: true,
     },
     {
       id: "with_website" as const,
@@ -950,6 +949,7 @@ export function AppPageClient(props: Props) {
       shortLabel: "Med web",
       count: companiesByListTab.with_website.length,
       icon: Globe2,
+      pinned: true,
     },
     {
       id: "not_scanned" as const,
@@ -1111,6 +1111,7 @@ export function AppPageClient(props: Props) {
           <div className="scan-main-panel min-w-0 flex-1">
             <ScanQuickBar
               withContactCount={withContactCount}
+              withWebsiteCount={withWebsiteCount}
               noWebsiteCount={noWebsiteCount}
               selectedCount={selected.size}
               withEmailCount={withEmailCount}
@@ -1235,6 +1236,12 @@ export function AppPageClient(props: Props) {
             {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
               <div className="scan-banner scan-banner-success" role="status">
                 <strong>{noWebsiteCount} firma uten nettside</strong> — gode leads for nettside-salg.
+              </div>
+            )}
+
+            {listFilter === "with_website" && withWebsiteCount > 0 && (
+              <div className="scan-banner scan-banner-accent" role="status">
+                <strong>{withWebsiteCount} firma med nettside</strong> — har allerede egen side på nett.
               </div>
             )}
 

@@ -6,6 +6,7 @@ import { ListTodo, Search, SlidersHorizontal, Users } from "lucide-react";
 
 type Props = {
   withContactCount: number;
+  withWebsiteCount: number;
   noWebsiteCount: number;
   selectedCount: number;
   withEmailCount: number;
@@ -59,6 +60,7 @@ function MobileNameSearch({
 
 export function ScanQuickBar({
   withContactCount,
+  withWebsiteCount,
   noWebsiteCount,
   selectedCount,
   withEmailCount,
@@ -113,7 +115,7 @@ export function ScanQuickBar({
             </span>
           </nav>
           <p className="scan-stat-inline">
-            {withContactCount} kontakt · {noWebsiteCount} uten nett
+            {withContactCount} kontakt · {withWebsiteCount} med nett · {noWebsiteCount} uten nett
             {selectedCount > 0 && (
               <>
                 {" "}

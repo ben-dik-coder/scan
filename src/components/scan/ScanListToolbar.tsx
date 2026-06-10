@@ -10,6 +10,8 @@ type Tab = {
   shortLabel: string;
   count: number;
   icon: LucideIcon;
+  /** Vis alltid — også når telling er 0 (nettside-faner). */
+  pinned?: boolean;
 };
 
 type Props = {
@@ -47,6 +49,7 @@ export function ScanListToolbar({
         <div className="scan-segmented min-w-0 max-w-full overflow-x-auto">
           {tabs.map((tab) => {
             const TabIcon = tab.icon;
+            const isWebsiteTab = tab.id === "no_website" || tab.id === "with_website";
             return (
               <button
                 key={tab.id}
@@ -54,7 +57,9 @@ export function ScanListToolbar({
                 onClick={() => onTabChange(tab.id)}
                 className={cn(
                   "scan-segmented-item",
-                  activeTab === tab.id && "scan-segmented-item-active"
+                  activeTab === tab.id && "scan-segmented-item-active",
+                  tab.pinned && "shrink-0",
+                  isWebsiteTab && tab.count === 0 && activeTab !== tab.id && "opacity-60"
                 )}
               >
                 <TabIcon className="h-3 w-3" />

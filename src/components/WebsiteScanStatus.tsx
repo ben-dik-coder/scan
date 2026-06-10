@@ -233,7 +233,12 @@ export function WebsiteScanStatus({
           )}
           {scanComplete && listFilter === "no_website" && noWebsiteCount > 0 && (
             <p className="text-amber-200">
-              Du ser bare firma uten nettside. Bytt til «Alle» for hele listen.
+              Du ser bare firma uten nettside. Bytt til «Med nettside» eller «Alle» for hele listen.
+            </p>
+          )}
+          {scanComplete && listFilter === "with_website" && withWebsiteCount > 0 && (
+            <p className="text-sky-200">
+              Du ser bare firma med egen nettside. Bytt til «Uten nettside» eller «Alle» for hele listen.
             </p>
           )}
           {scanComplete && notScannedCount > 0 && listFilter === "all" && (
