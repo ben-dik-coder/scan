@@ -209,7 +209,7 @@ async function testNationwidePaginationFollowUp() {
   const moreParsed = await parseContextualListRequest("finn 10 til", grillHistory);
   assert.ok(moreParsed);
   assert.equal(moreParsed.limit, 10);
-  assert.equal(moreParsed.searchArgs.nameQuery, "grillbar");
+  assert.equal(moreParsed.searchArgs.nameQuery, "grill");
   assert.equal(moreParsed.searchArgs.displayLimit, 10);
   assert.equal(moreParsed.searchArgs.municipalityCode, undefined);
   assert.deepEqual(moreParsed.excludeOrgnrs, ["111111111", "222222222"]);
@@ -225,7 +225,7 @@ async function testNationwidePaginationFollowUp() {
   assert.ok(scopeParsed);
   assert.equal(scopeParsed.limit, 10);
   assert.equal(scopeParsed.locationLabel, "Norge");
-  assert.equal(scopeParsed.searchArgs.nameQuery, "grillbar");
+  assert.equal(scopeParsed.searchArgs.nameQuery, "grill");
   assert.equal(scopeParsed.searchArgs.municipalityCode, undefined);
   assert.equal(scopeParsed.searchArgs.regionId, undefined);
   assert.equal(scopeParsed.searchArgs.displayLimit, 10);

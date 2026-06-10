@@ -661,8 +661,13 @@ export async function runAgentChat(
     const listedCompanies = filterListedCompanies(companies, contextualParsed);
 
     if (listedCompanies.length === 0 && progressLabel) {
+      const seen = contextualParsed.excludeOrgnrs?.length ?? 0;
+      const place = contextualParsed.locationLabel || "området";
+      const industry = contextualParsed.industryLabel || "firma";
       assistantText =
-        "Søket tok for lang tid eller fant ingen flere treff. Prøv å snevre inn til fylke/kommune, eller trykk Prøv igjen.";
+        seen > 0
+          ? `Fant ingen flere ${industry} i ${place}. Du har sett ${seen} fra før — prøv et annet sted eller bransje, eller si fra om du vil skanne eller lagre.`
+          : "Fant ingen flere treff. Prøv å snevre inn til fylke/kommune, eller trykk Prøv igjen.";
     } else {
       assistantText = formatFastListReply(listedCompanies, contextualParsed);
     }

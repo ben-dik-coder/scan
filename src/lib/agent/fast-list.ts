@@ -741,9 +741,10 @@ export async function parseContextualListRequest(
 
   const moreMatch = matchMoreCompaniesRequest(normalized);
   if ((moreMatch || isGenericMoreRequest(normalized)) && lastSearch) {
-    const base =
-      (await parseSimpleListRequest(lastSearch, options)) ??
-      (await buildListRequestFromSearchMessage(lastSearch, options));
+    let base = await parseSimpleListRequest(lastSearch, options);
+    if (!base || base.unknownPlace) {
+      base = await buildListRequestFromSearchMessage(lastSearch, options);
+    }
     if (!base || base.unknownPlace) return null;
     const limit = moreMatch
       ? Math.min(Number.parseInt(moreMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT)
@@ -1032,8 +1033,11 @@ async function buildListRequest(
     defaultLabel: options?.defaultMunicipality?.label,
   });
   const region = parseRegion(normalized);
+  const nationwide =
+    isNationwideScopeMessage(message) ||
+    (!municipality.code && !region.id && /\bnorge\b/.test(normalized));
 
-  if (municipality.unknown) {
+  if (municipality.unknown && !nationwide) {
     const placeLabel =
       municipality.label ?? extractPlaceMention(normalized) ?? "valgt sted";
     return {
@@ -1061,12 +1065,14 @@ async function buildListRequest(
     searchArgs.requirePhone = true;
   }
 
-  const locationLabel = formatPlaceLabel(
-    municipality.label ??
-      region.label ??
-      (municipality.code || region.id ? "valgt område" : "Norge"),
-    municipality.code
-  );
+  const locationLabel = nationwide
+    ? "Norge"
+    : formatPlaceLabel(
+        municipality.label ??
+          region.label ??
+          (municipality.code || region.id ? "valgt område" : "Norge"),
+        municipality.code
+      );
 
   return {
     limit,

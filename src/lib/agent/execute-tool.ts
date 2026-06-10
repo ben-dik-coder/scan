@@ -497,6 +497,8 @@ const NAME_QUERY_ALTERNATES: Record<string, string[]> = {
   tatover: ["tatover", "tattoo", "tattover", "tatoveringsstudio"],
   tattoo: ["tattoo", "tatover", "tatoveringsstudio"],
   byggevare: ["byggevare", "byggmakker", "trelast"],
+  grill: ["grill", "grillbar", "bbq", "kebab"],
+  grillbar: ["grillbar", "grill", "bbq", "kebab"],
 };
 
 async function executeSearchCompanies(

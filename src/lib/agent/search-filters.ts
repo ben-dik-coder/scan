@@ -186,6 +186,13 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "serveringssteder", filters: { industryGroup: "servering" } },
   },
   {
+    pattern: /\b(grillbar(?:er)?|grill\s*bar|bbq|kebab|pizzeria)\b/,
+    match: {
+      label: "grillbar",
+      filters: { industryGroup: "servering", nameQuery: "grill" },
+    },
+  },
+  {
     pattern: /\b(catering|kantine|matservering)\b/,
     match: {
       label: "catering",
