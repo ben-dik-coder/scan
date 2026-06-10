@@ -48,10 +48,13 @@ import {
   isProfessionSearchFilter,
 } from "@/lib/brreg/profession-relevance";
 import {
+  companyHasKnownWebsite,
   filterAgentLeadCompanies,
+  filterWebsiteSalesLeadCompanies,
   getPlausibleCompanyPhone,
   hasCompanyPhone,
   rankAgentLeadCompanies,
+  rankWebsiteSalesLeadCompanies,
 } from "@/lib/brreg/lead-quality";
 import { mapBrregEnhet } from "@/lib/brreg/map-company";
 import { lookupFreeContact } from "@/lib/website-scan/lookup-directory-contact";
@@ -422,7 +425,7 @@ async function executeFilterLeads(
   const matchedCompanies = await loadCompaniesByOrgnr(matched);
 
   return {
-    summary: `Filtrerte til ${matched.length} av ${orgnrs.length} firma`,
+    summary: `Fant ${matched.length} firma${formatCompanyExamples(matchedCompanies.map((c) => c.name))}`,
     data: {
       orgnrs: matched,
       count: matched.length,
@@ -480,6 +483,13 @@ async function runCompanySearch(
     AGENT_TOOL_SEARCH_TIMEOUT_MS,
     "Søk"
   );
+}
+
+function isWebsiteSalesSearch(
+  withoutWebsite: boolean,
+  excludeIndustryGroups?: string[]
+): boolean {
+  return withoutWebsite && (excludeIndustryGroups?.length ?? 0) > 0;
 }
 
 const NAME_QUERY_ALTERNATES: Record<string, string[]> = {
@@ -541,8 +551,13 @@ async function executeSearchCompanies(
     professionId,
     mappedFromProfession,
   });
-  const overfetchMultiplier =
-    withoutWebsite || excludeIndustryGroups?.length
+  const websiteSalesMode = isWebsiteSalesSearch(
+    withoutWebsite,
+    excludeIndustryGroups
+  );
+  const overfetchMultiplier = websiteSalesMode
+    ? 32
+    : withoutWebsite || excludeIndustryGroups?.length
       ? 24
       : frisorSearch || professionSearch
         ? 16
@@ -667,8 +682,27 @@ async function executeSearchCompanies(
     removedBadLeads += beforeCompetitors - companies.length;
   }
 
+  if (websiteSalesMode) {
+    const beforeWeak = companies.length;
+    companies = filterWebsiteSalesLeadCompanies(companies);
+    removedBadLeads += beforeWeak - companies.length;
+  }
+
+  let scanByOrgnr = new Map<string, WebsiteScanResult>();
+  if (withoutWebsite && companies.length > 0) {
+    const scans = await loadCachedWebsiteScans(companies.map((company) => company.orgnr));
+    scanByOrgnr = new Map(scans.map((scan) => [scan.orgnr, scan]));
+    const beforeScan = companies.length;
+    companies = companies.filter(
+      (company) => !companyHasKnownWebsite(company, scanByOrgnr.get(company.orgnr))
+    );
+    removedBadLeads += beforeScan - companies.length;
+  }
+
   if (requestedLimit && requestedLimit > 0) {
-    companies = rankAgentLeadCompanies(companies);
+    companies = websiteSalesMode
+      ? rankWebsiteSalesLeadCompanies(companies, scanByOrgnr)
+      : rankAgentLeadCompanies(companies);
     const missingPhone = companies.filter((company) => !hasCompanyPhone(company));
     if (missingPhone.length > 0) {
       const lookupTargets = missingPhone.slice(
@@ -690,14 +724,18 @@ async function executeSearchCompanies(
           Object.assign(company, storePhone(hit.phone));
         })
       );
-      companies = rankAgentLeadCompanies(companies);
+      companies = websiteSalesMode
+        ? rankWebsiteSalesLeadCompanies(companies, scanByOrgnr)
+        : rankAgentLeadCompanies(companies);
     }
     if (requirePhone) {
       companies = companies.filter((company) => hasCompanyPhone(company));
     }
     companies = companies.slice(0, resultLimit);
   } else {
-    companies = rankAgentLeadCompanies(companies);
+    companies = websiteSalesMode
+      ? rankWebsiteSalesLeadCompanies(companies, scanByOrgnr)
+      : rankAgentLeadCompanies(companies);
     if (requirePhone) {
       companies = companies.filter((company) => hasCompanyPhone(company));
     }
@@ -729,13 +767,15 @@ async function executeSearchCompanies(
     total: orgnrs.length,
   });
 
-  const retryNote = retriedBroader ? " (bredere søk etter 0 treff)" : "";
-  const badLeadNote =
-    removedBadLeads > 0 ? ` — filtrerte bort ${removedBadLeads} konkurs/avvikling` : "";
   const withPhoneCount = companies.filter((c) => hasCompanyPhone(c)).length;
+  const phonePart =
+    withPhoneCount > 0 ? ` (${withPhoneCount} med telefon)` : "";
+  const truncatedPart = truncated
+    ? ` — viste ${AGENT_MAX_COMPANIES_PER_JOB} av ${result.total}`
+    : "";
 
   return {
-    summary: `Fant ${companies.length} firma${retryNote}${badLeadNote} (${withPhoneCount} med telefon)${truncated ? ` (av ${result.total} totalt — begrenset til ${AGENT_MAX_COMPANIES_PER_JOB})` : ""}${formatCompanyExamples(companies.map((c) => c.name))}`,
+    summary: `Fant ${companies.length} firma${phonePart}${truncatedPart}${formatCompanyExamples(companies.map((c) => c.name))}`,
     data: {
       retriedBroader,
       removedBadLeads,
@@ -926,15 +966,15 @@ async function executeScanWebsites(
   const limitParts: string[] = [];
   if (capped) {
     limitParts.push(
-      `${remainingOrgnrs.length} gjenstår — kjør scan_websites på nytt for å fortsette`
+      `${remainingOrgnrs.length} gjenstår — si fra om du vil fortsette`
     );
   }
   if (timedOut) {
-    limitParts.push("stoppet pga tidsbegrensning");
+    limitParts.push("tok for lang tid — si fra om du vil fortsette");
   }
 
   return {
-    summary: `Skannet ${scans.length} firma — ${withoutSite} uten egen nettside (${bookingOnly} kun booking)${formatCompanyExamples(withoutSiteNames)}${limitParts.length > 0 ? `. ${limitParts.join(". ")}` : ""}`,
+    summary: `Sjekket nettside for ${scans.length} firma${formatCompanyExamples(withoutSiteNames)}${limitParts.length > 0 ? `. ${limitParts.join(". ")}` : ""}`,
     data: {
       scanned: scans.length,
       withoutWebsite: withoutSite,
@@ -1096,10 +1136,12 @@ async function executeFilterNoWebsite(
     loadCompaniesByOrgnr(notScanned),
   ]);
 
-  const summaryParts = [`${without.length} uten nettside${formatCompanyExamples(confirmedCompanies.map((c) => c.name), 4)}`];
+  const summaryParts = [
+    `Fant ${without.length} firma${formatCompanyExamples(confirmedCompanies.map((c) => c.name), 4)}`,
+  ];
   if (notScanned.length > 0) {
     summaryParts.push(
-      `${notScanned.length} utelatt fordi de ikke er skannet — kjør scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL} per kall) på disse orgnr først`
+      `${notScanned.length} gjenstår — si fra om du vil at jeg sjekker nettside for dem`
     );
   }
 

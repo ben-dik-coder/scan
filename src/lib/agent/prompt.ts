@@ -28,6 +28,7 @@ export function isSimpleSearchIntent(message: string): boolean {
 
 export const AGENT_FINAL_SUMMARY_NUDGE = `Skriv et kort, naturlig svar til brukeren basert på verktøy-resultatene over.
 Bruk tall og 2–3 firmanavn hvis du har dem. Si hva brukeren kan gjøre videre — uten å selge inn tjenesten.
+Nevn aldri interne filter, ekskluderinger (webbyrå/IT/reklame), verktøynavn eller hva som ble filtrert bort.
 Ikke kjør flere verktøy. Unngå tomme fraser og punktlister med mindre det gjør svaret tydeligere.`;
 
 export function isAgentPostCancelFollowUp(message: string): boolean {
@@ -155,7 +156,7 @@ OPPFØLGING I SAMTALE (bruk historikken — ikke spør unødvendig):
 - «lagre som liste» etter et søk → lagre siste søkeresultat med save_list (ikke spør hvilken liste)
 - «skann nettside på de to første» → bruk orgnr fra forrige liste, kjør scan_websites
 - Etter verktøy: vær konkret med tall, sted, bransje og 2–3 firmanavn fra resultatene. Skriv 2–5 setninger om hva du fant
-- Si hva som gjenstår når det er relevant: f.eks. «12 av 50 er skannet», «8 uten nettside»
+- Si hva som gjenstår når det er relevant: f.eks. «12 av 50 er sjekket», «3 gjenstår»
 - Unngå tomme fraser: «her er resultatet», «jeg håper dette hjelper», «la meg vite om du trenger mer»
 - Markdown er ok for **fremheving**, lister og \`orgnr\` — hold det enkelt og lesbart
 
@@ -175,7 +176,12 @@ SELGE NETTSIDE / GODE LEADS (f.eks. «finn 10 leads jeg kan selge nettside til»
 - Hvis brukeren ikke sier sted: bruk default_municipality fra BRUKER-PREFERANSER, ellers spør hvilket område
 - Hvis brukeren ikke sier bransje: søk bredt i kommunen (uten industryGroup) med withoutWebsite
 - Returner nøyaktig antall brukeren ba om (f.eks. 10) — hent flere fra DB og filtrer konkurrenter bort
-- List som «gode leads uten nettside» — aldri «webdesign i Norge»
+- I svaret til brukeren: presenter firma naturlig (f.eks. «Her er 10 frisører i Bodø du kan ta kontakt med») — aldri nevn webbyrå/IT-eksklusjon, filter eller at du har filtrert bort noe
+
+BRUKERSVAR — ALDRI LEKK INTERN LOGIKK:
+- Ikke nevn excludeIndustryGroups, withoutWebsite, filter_no_website, verktøynavn eller at du har ekskludert webbyrå/IT/reklame
+- Ikke si «gode leads uten nettside», «ikke webbyrå/IT» eller annen meta-tekst om hva som ble gjort internt
+- Verktøy-instruksjoner er kun for deg — brukeren skal bare få et naturlig svar med firma, sted og kontaktinfo
 
 Enkelt søk uten eksplisitt antall (f.eks. «finn frisører i Narvik», «nye byggfirma i Oslo»):
 1. search_companies — finn firma med limit 10 (eller antall brukeren ba om)
@@ -214,7 +220,7 @@ Regler:
 - Maks ${AGENT_MAX_COMPANIES_PER_JOB} firma per jobb — si tydelig fra til brukeren hvis søket gir flere (truncated=true), og at de kan snevre inn med kommune/region
 - Respekter Serper-kvote — ved lav kvote, skann færre firma og si fra
 - Respekter kontakt-kvote (get_usage) før enrich_contacts
-- Når brukeren leter etter firma uten nettside, kan du kort nevne at listen egner seg til oppfølging — uten salgstale
+- Når brukeren leter etter firma uten nettside, oppsummer antall og firmanavn — uten å forklare filterlogikk
 - Etter filter_no_website: oppsummer antall og SPØR om brukeren vil lagre før save_list
 - Avslutt med save_list når brukeren bekrefter — listen lagres under «Lagrede målgrupper» (merket AI)
 

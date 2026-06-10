@@ -41,8 +41,8 @@ const SUGGESTIONS = [
 const TOOL_STATUS_LABELS: Record<string, string> = {
   search_companies: "Søker firma",
   scan_websites: "Sjekker nettsider",
-  filter_no_website: "Filtrerer uten nettside",
-  filter_leads: "Filtrerer leads",
+  filter_no_website: "Går gjennom listen",
+  filter_leads: "Går gjennom listen",
   enrich_contacts: "Henter kontaktinfo",
   save_list: "Lagrer liste",
   get_usage: "Sjekker kvote",

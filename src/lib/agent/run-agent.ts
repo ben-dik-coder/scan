@@ -252,7 +252,7 @@ async function synthesizeAgentReply(
       {
         role: "system",
         content:
-          "Du skriver korte, konkrete svar på norsk til en B2B-selger basert på verktøy-resultater.",
+          "Du skriver korte, konkrete svar på norsk til en B2B-selger basert på verktøy-resultater. Nevn aldri interne filter, ekskluderinger eller verktøynavn.",
       },
       {
         role: "user",
@@ -818,7 +818,7 @@ export async function runAgentChat(
             type: "confirm_save",
             count,
             orgnrs,
-            message: `Fant ${count} firma uten nettside. Vil du lagre som liste?`,
+            message: `Fant ${count} firma. Vil du lagre som liste?`,
           });
         }
       }

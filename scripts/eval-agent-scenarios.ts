@@ -19,6 +19,7 @@ import {
   parseScanWebsitesRequest,
   parseSimpleListRequest,
   parseWebsiteSalesLeadRequest,
+  formatWebsiteSalesLeadReply,
 } from "../src/lib/agent/fast-list.ts";
 import {
   isAgentResumeIntent,
@@ -37,7 +38,16 @@ import {
   messageForIndustryResolution,
 } from "../src/lib/agent/website-sales-leads.ts";
 import { isProfessionRelevantCompany } from "../src/lib/brreg/profession-relevance.ts";
+import {
+  companyHasKnownWebsite,
+  filterWebsiteSalesLeadCompanies,
+  isHoldingCompany,
+  isWeakWebsiteSalesLead,
+  rankWebsiteSalesLeadCompanies,
+  websiteSalesLeadRankScore,
+} from "../src/lib/brreg/lead-quality.ts";
 import type { AgentMessage } from "../src/types/database.ts";
+import type { WebsiteScanResult } from "../src/lib/website-scan/types.ts";
 
 function testResumeIntent() {
   assert.equal(isAgentResumeIntent("Start søk igjen"), true);
@@ -370,6 +380,10 @@ async function testWebsiteSalesLeadIntent() {
   assert.equal(withoutPlace.limit, 10);
   assert.equal(withoutPlace.needsClarification, true);
   assert.match(withoutPlace.clarificationMessage ?? "", /område|Bodø|Narvik/i);
+  assert.doesNotMatch(
+    withoutPlace.clarificationMessage ?? "",
+    /webbyrå|uten nettside|ikke web/i
+  );
 
   const withDefault = await parseWebsiteSalesLeadRequest(query, {
     defaultMunicipality: { code: "1804", label: "Bodø" },
@@ -385,6 +399,8 @@ async function testWebsiteSalesLeadIntent() {
   ]);
   assert.equal(withDefault.searchArgs.industryGroup, undefined);
   assert.equal(withDefault.searchArgs.professionId, undefined);
+  assert.equal(withDefault.searchArgs.requirePhone, true);
+  assert.equal(withDefault.requirePhone, true);
 
   const withIndustry = await parseWebsiteSalesLeadRequest(
     "finn 10 gode leads frisører uten nettside i Bodø jeg kan selge nettside til"
@@ -393,6 +409,169 @@ async function testWebsiteSalesLeadIntent() {
   assert.equal(withIndustry.searchArgs.professionId, "frisor");
   assert.equal(withIndustry.searchArgs.withoutWebsite, true);
   assert.notEqual(withIndustry.searchArgs.industryGroup, "webbyra");
+}
+
+function testWebsiteSalesLeadQuality() {
+  const screenshotLeads = [
+    {
+      orgnr: "937402384",
+      name: "MILJØ SØNVISEN",
+      website: null,
+      phone: null,
+      mobile: null,
+      industry_code: null,
+      municipality_name: "BODØ",
+      email: null,
+      registered_at: "2024-01-01",
+      has_email: false,
+      email_is_generic: false,
+      municipality_code: "1804",
+      city: null,
+      brreg_updated_at: null,
+      daglig_leder: null,
+      created_at: "2024-01-01",
+      updated_at: "2024-01-01",
+    },
+    {
+      orgnr: "937775032",
+      name: "ANDREAS ØSTVIK HOLDING AS",
+      website: null,
+      phone: "12345678",
+      mobile: null,
+      industry_code: "00.000",
+      municipality_name: "BODØ",
+      email: null,
+      registered_at: "2024-01-01",
+      has_email: false,
+      email_is_generic: false,
+      municipality_code: "1804",
+      city: null,
+      brreg_updated_at: null,
+      daglig_leder: null,
+      created_at: "2024-01-01",
+      updated_at: "2024-01-01",
+    },
+    {
+      orgnr: "937731590",
+      name: "SEVERINSEN TAK- OG BYGGESERVICE AS",
+      website: null,
+      phone: "98765432",
+      mobile: null,
+      industry_code: "43.410",
+      municipality_name: "BODØ",
+      email: null,
+      registered_at: "2024-01-02",
+      has_email: false,
+      email_is_generic: false,
+      municipality_code: "1804",
+      city: null,
+      brreg_updated_at: null,
+      daglig_leder: null,
+      created_at: "2024-01-02",
+      updated_at: "2024-01-02",
+    },
+    {
+      orgnr: "937771460",
+      name: "VASJUCENKO ENK",
+      website: null,
+      phone: null,
+      mobile: null,
+      industry_code: "53.200",
+      municipality_name: "BODØ",
+      email: null,
+      registered_at: "2024-01-03",
+      has_email: false,
+      email_is_generic: false,
+      municipality_code: "1804",
+      city: null,
+      brreg_updated_at: null,
+      daglig_leder: null,
+      created_at: "2024-01-03",
+      updated_at: "2024-01-03",
+    },
+  ];
+
+  assert.equal(isHoldingCompany(screenshotLeads[1]), true);
+  assert.equal(isWeakWebsiteSalesLead(screenshotLeads[0]), true);
+  assert.equal(isWeakWebsiteSalesLead(screenshotLeads[1]), true);
+  assert.equal(isWeakWebsiteSalesLead(screenshotLeads[3]), true);
+  assert.equal(isWeakWebsiteSalesLead(screenshotLeads[2]), false);
+
+  const filtered = filterWebsiteSalesLeadCompanies(screenshotLeads);
+  assert.deepEqual(
+    filtered.map((company) => company.orgnr),
+    ["937731590"]
+  );
+
+  const scanWithSite: WebsiteScanResult = {
+    orgnr: "937731590",
+    hasWebsite: true,
+    websiteKind: "own",
+    websiteUrl: "https://severinsen-tak.no",
+    websiteDomain: "severinsen-tak.no",
+    bookingPlatform: null,
+    source: "google",
+    confidence: "high",
+    query: "test",
+    scannedAt: "2024-01-01",
+  };
+  assert.equal(companyHasKnownWebsite(screenshotLeads[2], scanWithSite), true);
+
+  const scanNoSite: WebsiteScanResult = {
+    ...scanWithSite,
+    hasWebsite: false,
+    websiteKind: "none",
+    websiteUrl: null,
+    websiteDomain: null,
+    confidence: "medium",
+  };
+  const scanMap = new Map<string, WebsiteScanResult>([
+    ["937731590", scanNoSite],
+  ]);
+  assert.equal(
+    websiteSalesLeadRankScore(screenshotLeads[2], scanNoSite) >
+      websiteSalesLeadRankScore(screenshotLeads[2]),
+    true
+  );
+  const ranked = rankWebsiteSalesLeadCompanies(
+    filterWebsiteSalesLeadCompanies(screenshotLeads),
+    scanMap
+  );
+  assert.equal(ranked[0]?.orgnr, "937731590");
+}
+
+function testWebsiteSalesLeadReplyFormat() {
+  const reply = formatWebsiteSalesLeadReply(
+    [
+      {
+        orgnr: "123456789",
+        name: "Klipp AS",
+        phone: "90000000",
+        municipality_name: "Bodø",
+      },
+    ],
+    {
+      limit: 10,
+      industryLabel: "frisører",
+      locationLabel: "Bodø",
+      searchArgs: {},
+    }
+  );
+
+  assert.match(reply, /Her er 1 frisører i Bodø du kan ta kontakt med/i);
+  assert.doesNotMatch(reply, /webbyrå|webbyra|uten nettside|gode leads|ekskluder|IT/i);
+
+  const clarification = formatWebsiteSalesLeadReply([], {
+    limit: 10,
+    industryLabel: "firma",
+    locationLabel: "",
+    searchArgs: {},
+    needsClarification: true,
+    clarificationMessage:
+      "Hvilket område vil du søke i? Si for eksempel «i Bodø» eller «i Narvik».",
+  });
+  assert.match(clarification, /område/i);
+  assert.doesNotMatch(clarification, /webbyrå|uten nettside|ikke web/i);
 }
 
 async function main() {
@@ -405,10 +584,12 @@ async function main() {
   await testSaveAndScanFollowUp();
   await testSimpleListIntent();
   await testWebsiteSalesLeadIntent();
+  testWebsiteSalesLeadQuality();
+  testWebsiteSalesLeadReplyFormat();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 11/11 OK");
+  console.log("eval-agent-scenarios: 13/13 OK");
 }
 
 main().catch((err) => {

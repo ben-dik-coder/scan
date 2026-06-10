@@ -527,12 +527,12 @@ export async function parseWebsiteSalesLeadRequest(
       searchArgs: {},
       needsClarification: true,
       clarificationMessage:
-        "Hvilket område vil du finne leads i? Si f.eks. «i Bodø» eller «i Narvik» — da finner jeg lokale firma uten nettside du kan kontakte (ikke webbyrå).",
+        "Hvilket område vil du søke i? Si for eksempel «i Bodø» eller «i Narvik».",
     };
   }
 
   const industryLabel =
-    industry?.label ?? defaultIndustry?.label ?? "lokale firma uten nettside";
+    industry?.label ?? defaultIndustry?.label ?? "firma";
   const searchArgs: Record<string, unknown> = {
     limit,
     days: 0,
@@ -550,9 +550,7 @@ export async function parseWebsiteSalesLeadRequest(
     searchArgs.regionId = regionId;
   }
 
-  if (wantsPhoneInList(message)) {
-    searchArgs.requirePhone = true;
-  }
+  searchArgs.requirePhone = true;
 
   const locationLabel = formatPlaceLabel(
     municipality.label ??
@@ -567,7 +565,7 @@ export async function parseWebsiteSalesLeadRequest(
     industryLabel,
     locationLabel,
     searchArgs,
-    requirePhone: searchArgs.requirePhone === true,
+    requirePhone: true,
   };
 }
 
@@ -585,7 +583,7 @@ export function formatWebsiteSalesLeadReply(
 
   if (companies.length === 0) {
     const phoneHint = request.requirePhone ? " med telefon" : "";
-    return `Fant ingen ${request.industryLabel}${phoneHint} i ${request.locationLabel}. Prøv et annet sted, en annen bransje, eller si fra om du vil skanne nettside for flere.`;
+    return `Fant ingen ${request.industryLabel}${phoneHint} i ${request.locationLabel}. Prøv et annet sted eller en annen bransje.`;
   }
 
   const lines = companies.map((company, index) => {
@@ -601,11 +599,11 @@ export function formatWebsiteSalesLeadReply(
   });
 
   const phoneNote = request.requirePhone ? " (alle med telefon)" : "";
-  const header = `Her er ${companies.length} gode leads uten nettside i ${request.locationLabel}${phoneNote} — lokale firma du kan kontakte, ikke webbyrå/IT:`;
+  const header = `Her er ${companies.length} ${request.industryLabel} i ${request.locationLabel}${phoneNote} du kan ta kontakt med:`;
   const footer =
     companies.length < request.limit
-      ? `\n\nFant bare ${companies.length} i databasen uten nettside. Si fra om du vil prøve en annen bransje eller skanne flere.`
-      : "\n\nVil du skanne nettside for å bekrefte, eller lagre som liste? Si fra.";
+      ? `\n\nFant bare ${companies.length} i databasen. Si fra om du vil prøve en annen bransje.`
+      : "\n\nVil du lagre som liste? Si fra.";
 
   return `${header}\n\n${lines.join("\n")}${footer}`;
 }
@@ -768,11 +766,11 @@ export function formatFacebookListReply(
   const withFacebook = companies.filter((c) => (c.facebookUrl ?? "").trim());
   if (withFacebook.length === 0) {
     const scanNote = meta?.serperLimited
-      ? " Serper-kvoten er lav, så jeg skannet ikke nettsider nå."
+      ? " Søkekvoten er lav akkurat nå."
       : meta?.scanned
-        ? ` Skannet ${meta.scanned} firma uten å finne Facebook.`
+        ? " Ingen av de jeg sjekket hadde Facebook-side."
         : "";
-    return `Fant ingen ${request.industryLabel} med Facebook i ${request.locationLabel}.${scanNote} Prøv et annet sted eller si fra om du vil skanne flere.`;
+    return `Fant ingen ${request.industryLabel} med Facebook i ${request.locationLabel}.${scanNote} Prøv et annet sted eller si fra om du vil sjekke flere.`;
   }
 
   const lines = withFacebook.map((company, index) => {
@@ -789,7 +787,7 @@ export function formatFacebookListReply(
   const header = `Her er ${withFacebook.length} ${request.industryLabel} med Facebook i ${request.locationLabel}:`;
   const scanNote =
     meta?.scanned && meta.scanned > withFacebook.length
-      ? `\n\nSkannet ${meta.scanned} firma — viste de med funnet Facebook-side.`
+      ? `\n\nViste de med funnet Facebook-side.`
       : "";
   const footer =
     "\n\nVil du lagre som liste eller skanne flere? Si fra.";
