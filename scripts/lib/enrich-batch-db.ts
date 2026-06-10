@@ -19,13 +19,24 @@ export class CompanyPatchBuffer {
     this.batchSize = batchSize;
   }
 
-  queue(orgnr: string, patch: Record<string, unknown>): Promise<void> {
+  queue(
+    orgnr: string,
+    patch: Record<string, unknown>,
+    keep?: { name: string }
+  ): Promise<void> {
     return this.run(async () => {
       const prev = this.patches.get(orgnr);
+      const name =
+        (typeof patch.name === "string" && patch.name.trim()) ||
+        keep?.name?.trim() ||
+        (typeof prev?.name === "string" && prev.name.trim()) ||
+        undefined;
       this.patches.set(orgnr, {
         ...(prev ?? { orgnr }),
+        ...(name ? { name } : {}),
         ...patch,
         orgnr,
+        ...(name ? { name } : {}),
       });
       if (this.patches.size >= this.batchSize) {
         await this.flushUnlocked();
@@ -155,7 +166,8 @@ export function brregRowForUpsert(enhet: BrregEnhet, existing: Company): Company
   const merged = preserveExistingContactFields(mapped, existing);
   const { industry_description, ...row } = merged;
   void industry_description;
-  return row as CompanyRow;
+  const name = (merged.name ?? "").trim() || (existing.name ?? "").trim();
+  return { ...row, name } as CompanyRow;
 }
 
 export class BrregRefreshBuffer {

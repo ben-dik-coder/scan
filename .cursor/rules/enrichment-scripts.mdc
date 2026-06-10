@@ -20,6 +20,45 @@ const { count } = await supabase.from("companies").select("*", { count: "exact" 
 
 - `addedEmail`, `addedPhone`, `addedOwner` i `results` er tellbare felter
 - Ikke kjør SELECT/COUNT mot Supabase bare for å svare «hvor mange e-poster er lagt til?»
+- Etter enrich-kjøring: ikke re-les hele kommunen fra DB for «gjenstår»-telling — bruk progress + startliste
+
+## Minimal Supabase – skriv og les lite
+
+### Enrichment: batch upsert (50)
+
+Bruk `CompanyPatchBuffer`, `BrregRefreshBuffer`, `WebsiteScanBuffer` fra `scripts/lib/enrich-batch-db.ts` (`ENRICH_BATCH_SIZE = 50`).
+
+```typescript
+// ❌ BAD – ett kall per firma
+await supabase.from("companies").update(patch).eq("orgnr", orgnr);
+
+// ✅ GOOD – buffer til 50, deretter upsert
+await companyBuffer.queue(orgnr, patch, { name: company.name });
+await companyBuffer.flush();
+```
+
+- Partial upsert **må** inkludere `name` (NOT NULL) — ellers nuller PostgREST `name` ved konflikt
+- `BrregRefreshBuffer`: bevar `existing.name` hvis Brreg mangler `navn`
+
+### Unngå unødvendige SELECT re-reads
+
+```typescript
+// ❌ BAD – re-les hele kommunen etter kjøring bare for oppsummering
+const after = await loadMunicipalityIndustry(kommune, industry);
+
+// ✅ GOOD – status fra progress-fil og shard-liste ved start
+const done = new Set(progress.done);
+const gjenstår = targets.filter((c) => !done.has(c.orgnr)).length;
+```
+
+- Én initial SELECT for arbeidsliste per shard er OK
+- Ikke SELECT samme firma på nytt etter hver patch — bruk data fra minnet/progress
+- Facebook/scan: batch via `loadWebsiteScansByOrgnr` (chunk 80), ikke per firma
+
+### Eval og debug
+
+- Eval-scripts: begrens antall rader og unngå COUNT mot prod uten grunn
+- Debug: bruk `--limit` / lokale JSONL, ikke brede `select("*")` mot `companies`
 
 ## Ikke bruk Serper
 

@@ -434,7 +434,7 @@ async function main() {
 
       if (Object.keys(patch).length > 0 && !dryRun) {
         patch.updated_at = new Date().toISOString();
-        await companyBuffer.queue(company.orgnr, patch);
+        await companyBuffer.queue(company.orgnr, patch, { name: company.name });
       }
 
       progress.done.push(company.orgnr);
@@ -475,23 +475,20 @@ async function main() {
   }
 
   const processed = progress.done.length;
-  let stillMissingInShard = 0;
-  let stillMissing = 0;
-  if (!dryRun) {
-    const after = await loadMunicipalityIndustry(kommune, industry);
-    const afterFacebook = withFacebook
-      ? await loadFacebookByOrgnr(after.map((c) => c.orgnr))
-      : new Map<string, string | null>();
-    const afterMissing = after.filter((c) =>
-      profile === "full"
-        ? needsFullProfile(c, afterFacebook, withFacebook)
-        : needsContact(c)
-    );
-    stillMissing = afterMissing.length;
-    let afterShard = [...afterMissing].sort((a, b) => a.orgnr.localeCompare(b.orgnr));
-    if (shard !== null) afterShard = sliceShard(afterShard, shard, shards);
-    stillMissingInShard = afterShard.filter((c) => !skipCompany(c)).length;
-  }
+  const doneSet = new Set(progress.done);
+  const stillMissingInShard = targets.filter((c) => {
+    if (skipCompany(c)) return false;
+    if (!doneSet.has(c.orgnr)) return true;
+    const r = progress.results[c.orgnr];
+    if (r?.skipped || r?.error) return false;
+    if (profile === "full") {
+      const gotContact = Boolean(r?.addedPhone || r?.addedEmail);
+      const gotOwner = Boolean(r?.addedOwner);
+      const gotFacebook = !withFacebook || Boolean(r?.addedFacebook);
+      return !(gotContact && gotOwner && gotFacebook);
+    }
+    return !(r?.addedPhone || r?.addedEmail);
+  }).length;
 
   console.log("\n--- Oppsummering ---");
   console.log(`Sted: ${slug} (${kommune}) · Bransje: ${industryLabel} (${industry})`);
@@ -503,8 +500,7 @@ async function main() {
   console.log(`Hoppet over: ${skipped}`);
   console.log(`Feil: ${errors}`);
   if (!dryRun) {
-    console.log(`Gjenstår i shard: ${stillMissingInShard}`);
-    console.log(`Gjenstår totalt: ${stillMissing}`);
+    console.log(`Gjenstår i shard (fra progress): ${stillMissingInShard}`);
   }
 }
 
