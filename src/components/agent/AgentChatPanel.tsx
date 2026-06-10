@@ -5,16 +5,19 @@ import type { SerperUsage } from "@/lib/billing/serper-usage";
 import { useRouter } from "next/navigation";
 import { notifySavedListChanged } from "@/lib/agent/saved-list-bus";
 import {
+  openAgentChat,
   setStoredAgentConversationId,
 } from "@/lib/agent/agent-chat-bus";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
 import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
+import { AgentScheduleModal } from "@/components/agent/AgentScheduleModal";
 import { AGENT_MAX_TOOL_LOOPS } from "@/lib/agent/constants";
 import { isAgentResumeIntent } from "@/lib/agent/prompt";
 import {
   ArrowUp,
   Building2,
+  Clock,
   Search,
   Square,
   UtensilsCrossed,
@@ -90,9 +93,24 @@ export function AgentChatPanel({
   } | null>(null);
   const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [pendingScheduleCount, setPendingScheduleCount] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
+
+  const refreshPendingScheduleCount = useCallback(() => {
+    void fetch("/api/agent/scheduled")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { scheduled?: Array<{ status: string }> } | null) => {
+        if (!data?.scheduled) return;
+        const count = data.scheduled.filter(
+          (s) => s.status === "pending" || s.status === "running"
+        ).length;
+        setPendingScheduleCount(count);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -102,7 +120,8 @@ export function AgentChatPanel({
         if (usage) setSerperUsage(usage);
       })
       .catch(() => {});
-  }, [open, loading]);
+    refreshPendingScheduleCount();
+  }, [open, loading, refreshPendingScheduleCount]);
 
   useEffect(() => {
     if (open) return;
@@ -485,6 +504,15 @@ export function AgentChatPanel({
   }, [loading, pendingRetryText, sendMessage]);
 
   return (
+    <>
+    <AgentScheduleModal
+      open={scheduleModalOpen}
+      onClose={() => setScheduleModalOpen(false)}
+      initialMessage={input}
+      conversationId={conversationId}
+      onScheduled={refreshPendingScheduleCount}
+      onOpenConversation={(id) => openAgentChat({ conversationId: id })}
+    />
     <AppSideDrawer
       open={open}
       onClose={onClose}
@@ -524,6 +552,21 @@ export function AgentChatPanel({
               void sendMessage(input);
             }}
           >
+            <button
+              type="button"
+              onClick={() => setScheduleModalOpen(true)}
+              disabled={loading}
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-[#2c2c2e] text-[#98989d] transition hover:bg-[#3a3a3c] hover:text-[#f5f5f7] disabled:opacity-60"
+              aria-label="Planlegg spørsmål"
+              title="Planlegg spørsmål til senere"
+            >
+              <Clock className="h-4 w-4" />
+              {pendingScheduleCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#0a84ff] px-1 text-[9px] font-semibold text-white">
+                  {pendingScheduleCount > 9 ? "9+" : pendingScheduleCount}
+                </span>
+              )}
+            </button>
             <input
               type="text"
               value={input}
@@ -708,5 +751,6 @@ export function AgentChatPanel({
         </div>
       </div>
     </AppSideDrawer>
+    </>
   );
 }

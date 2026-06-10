@@ -239,6 +239,28 @@ export async function loadConversationMessages(
   return (data ?? []) as AgentMessage[];
 }
 
+/** For server/cron uten bruker-session (service role). */
+export async function loadConversationMessagesForUser(
+  conversationId: string,
+  userId: string
+): Promise<AgentMessage[]> {
+  const supabase = createServiceClient();
+  const { data: conv } = await supabase
+    .from("agent_conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!conv) return [];
+
+  const { data } = await supabase
+    .from("agent_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+  return (data ?? []) as AgentMessage[];
+}
+
 export function deriveConversationTitle(message: string): string {
   const trimmed = message.trim().slice(0, 60);
   return trimmed.length > 0 ? trimmed : "Ny samtale";

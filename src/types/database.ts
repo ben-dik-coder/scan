@@ -276,6 +276,26 @@ export type AgentUserMemory = {
   updated_at: string;
 };
 
+export type AgentScheduledMessageStatus =
+  | "pending"
+  | "running"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export type AgentScheduledMessage = {
+  id: string;
+  user_id: string;
+  message: string;
+  scheduled_at: string;
+  conversation_id: string | null;
+  status: AgentScheduledMessageStatus;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CompanyWithLead = Company & {
   user_lead?: UserLead | null;
 };

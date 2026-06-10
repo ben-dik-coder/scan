@@ -40,6 +40,7 @@
     "lint": "next lint",
     "db:billing": "node scripts/migrate-billing.mjs",
     "db:agent": "node scripts/migrate-agent.mjs",
+    "db:agent-scheduled": "node scripts/migrate-agent-scheduled.mjs",
     "db:serper": "node scripts/migrate-serper-usage.mjs",
     "brreg:bulk-import": "node scripts/brreg-bulk-import.mjs",
     "brreg:backfill-geo": "node scripts/backfill-company-geo.mjs",
