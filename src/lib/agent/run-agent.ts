@@ -464,6 +464,7 @@ export async function runAgentChat(
         try {
           scanResult = await executeAgentTool(toolCtx, "scan_websites", {
             orgnrs: scanOrgnrs,
+            includeFacebook: true,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Ukjent feil";

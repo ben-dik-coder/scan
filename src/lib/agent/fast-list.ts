@@ -5,6 +5,7 @@ import {
 } from "@/lib/agent/constants";
 import {
   extractPlaceMention,
+  formatPlaceLabel,
   isUnknownGeoPlace,
   parseDefaultMunicipalityFromPrompt,
   parseMunicipalityFromMessage,
@@ -417,8 +418,10 @@ export async function parseContextualListRequest(
     searchArgs.requirePhone = true;
   }
 
-  const locationLabel =
-    municipality.label ?? parseRegion(normalized).label ?? "valgt område";
+  const locationLabel = formatPlaceLabel(
+    municipality.label ?? parseRegion(normalized).label ?? "valgt område",
+    municipality.code
+  );
 
   return {
     limit,
@@ -532,10 +535,12 @@ async function buildListRequest(
     searchArgs.requirePhone = true;
   }
 
-  const locationLabel =
+  const locationLabel = formatPlaceLabel(
     municipality.label ??
-    region.label ??
-    (municipality.code || region.id ? "valgt område" : "Norge");
+      region.label ??
+      (municipality.code || region.id ? "valgt område" : "Norge"),
+    municipality.code
+  );
 
   return {
     limit,

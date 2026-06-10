@@ -757,7 +757,8 @@ async function executeScanWebsites(
 
   const social: ScanSocialOptions = {
     ...DEFAULT_SCAN_SOCIAL_OPTIONS,
-    includeFacebook: true,
+    includeFacebook: args.includeFacebook === true,
+    includeInstagram: args.includeInstagram === true,
   };
 
   for (let i = 0; i < companies.length; i += MAX_WEBSITE_SCAN_BATCH) {
@@ -793,11 +794,6 @@ async function executeScanWebsites(
             scanCompanyWebsite(input, { social, userId: ctx.userId }),
             AGENT_SCAN_ONE_TIMEOUT_MS,
             `Skann ${company.name}`
-          );
-          scan = await withTimeout(
-            enrichScanContacts(input, scan),
-            AGENT_SCAN_ONE_TIMEOUT_MS,
-            `Berik ${company.name}`
           );
           await persistCachedWebsiteScans([scan], ctx.userId);
         }
@@ -847,13 +843,16 @@ async function executeScanWebsites(
       scans.push(scan);
       scanned++;
       const pendingOrgnrs = [...orgnrs.slice(scanned), ...remainingOrgnrs];
-      await updateRunProgress(ctx.runId, {
-        phase: "scan_websites",
-        orgnrs,
-        scanned,
-        total: companies.length,
-        remainingOrgnrs: pendingOrgnrs,
-      });
+      const isLast = scanned >= companies.length;
+      if (isLast || scanned === 1 || scanned % 2 === 0) {
+        await updateRunProgress(ctx.runId, {
+          phase: "scan_websites",
+          orgnrs,
+          scanned,
+          total: companies.length,
+          remainingOrgnrs: pendingOrgnrs,
+        });
+      }
       await ctx.onProgress?.({
         tool: "scan_websites",
         scanned,

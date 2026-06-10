@@ -52,7 +52,6 @@ export const PROFESSIONS: ProfessionDef[] = [
     label: "Rørlegger / VVS",
     aliases: ["rørlegger", "rorlegger", "vvs", "rør", "ror", "vann", "avløp", "avloep"],
     codes: ["43.22"],
-    prefixes: ["43"],
     nameKeywords: ["rørlegger", "rorlegger", "vvs", "rør", "ror"],
   },
   {
@@ -60,7 +59,6 @@ export const PROFESSIONS: ProfessionDef[] = [
     label: "Elektriker",
     aliases: ["elektriker", "elektro", "el-installatør", "el installatør", "el-installator"],
     codes: ["43.21"],
-    prefixes: ["43"],
     nameKeywords: ["elektriker", "elektro", "el-"],
   },
   {
@@ -68,16 +66,21 @@ export const PROFESSIONS: ProfessionDef[] = [
     label: "Snekker / tømrer",
     aliases: ["snekker", "tømrer", "tomrer", "byggmester", "tømrermester"],
     codes: ["43.32", "43.91"],
-    prefixes: ["43"],
     nameKeywords: ["snekker", "tømrer", "tomrer", "byggmester"],
   },
   {
     id: "maler",
     label: "Maler",
-    aliases: ["maler", "malermester", "malerfirma", "sparkel"],
+    aliases: ["maler", "malere", "malermester", "malerfirma", "sparkel"],
     codes: ["43.34"],
-    prefixes: ["43"],
-    nameKeywords: ["maler", "sparkel"],
+    nameKeywords: ["maler", "sparkel", "maling", "farge"],
+  },
+  {
+    id: "murer",
+    label: "Murer",
+    aliases: ["murer", "murere", "murverk", "murmester"],
+    codes: ["43.42"],
+    nameKeywords: ["murer", "mur", "murverk"],
   },
   {
     id: "bilverksted",
@@ -298,7 +301,6 @@ export const PROFESSIONS: ProfessionDef[] = [
     label: "Taktekker",
     aliases: ["taktekker", "tak", "blikkenslager"],
     codes: ["43.91"],
-    prefixes: ["43"],
     nameKeywords: ["taktekker", "tak", "blikkenslager"],
   },
   {
@@ -306,8 +308,14 @@ export const PROFESSIONS: ProfessionDef[] = [
     label: "Flislegger",
     aliases: ["flislegger", "flis", "membran"],
     codes: ["43.33"],
-    prefixes: ["43"],
     nameKeywords: ["flislegger", "flis"],
+  },
+  {
+    id: "blomster",
+    label: "Blomsterhandel",
+    aliases: ["blomster", "blomsterbutikk", "blomsterbutikker", "blomsterhandler", "blomsterhandel"],
+    codes: ["47.76"],
+    nameKeywords: ["blomster", "blomst"],
   },
   {
     id: "bilvask",
@@ -530,6 +538,9 @@ export function matchesProfessionSearch(
       match.naceCodes.length === 0;
 
     if (naceHit) {
+      if (match.naceCodes.length > 0 && matchesNaceCode(industryCode, match.naceCodes)) {
+        return true;
+      }
       if (knownProfession || broadPrefixOnly) {
         return nameHit;
       }

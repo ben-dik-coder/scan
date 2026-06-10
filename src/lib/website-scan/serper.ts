@@ -34,6 +34,10 @@ import {
   SERPER_PHONE_MAX_QUERIES,
   SERPER_WEBSITE_MAX_QUERIES,
 } from "./scan-api-budget";
+import {
+  getCachedSerperSearch,
+  setCachedSerperSearch,
+} from "./serper-query-cache";
 import { discoverFromSerperPlaces } from "./serper-places";
 import type { WebsiteScanCompanyInput } from "./types";
 
@@ -58,11 +62,16 @@ const SERPER_TIMEOUT_MS = 20_000;
 
 export async function searchSerper(
   query: string,
-  options?: { num?: number; userId?: string }
+  options?: { num?: number; userId?: string; skipCache?: boolean }
 ): Promise<SearchHit[]> {
   const apiKey = process.env.SERPER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("Serper er ikke konfigurert");
+  }
+
+  if (!options?.skipCache) {
+    const cached = getCachedSerperSearch(query);
+    if (cached) return cached;
   }
 
   if (options?.userId) {
@@ -108,7 +117,7 @@ export async function searchSerper(
     await recordSerperApiCall(options.userId);
   }
 
-  return (data.organic ?? [])
+  const hits = (data.organic ?? [])
     .map((item) => {
       const link = serperOrganicLink(item);
       const title = item.title?.trim();
@@ -117,6 +126,12 @@ export async function searchSerper(
       return snippet ? { title, link, snippet } : { title, link };
     })
     .filter((item): item is SearchHit => item !== null);
+
+  if (!options?.skipCache) {
+    setCachedSerperSearch(query, hits);
+  }
+
+  return hits;
 }
 
 const DIRECTORY_PHONE_DOMAINS = [
@@ -347,21 +362,32 @@ export async function searchSerperForWebsite(
     return { hits: [], queries: [] };
   }
 
-  const batches = await Promise.all(
-    queries.map(async (q) => {
-      try {
-        return await searchSerper(q, {
-          num: GOOGLE_SERP_NUM,
-          userId: options?.userId,
-        });
-      } catch (err) {
-        if (err instanceof SerperLimitReachedError) throw err;
-        return [] as SearchHit[];
-      }
-    })
-  );
+  const allHits: SearchHit[] = [];
+  const usedQueries: string[] = [];
 
-  return { hits: dedupeHits(batches.flat()), queries };
+  for (const q of queries) {
+    usedQueries.push(q);
+    try {
+      const batch = await searchSerper(q, {
+        num: GOOGLE_SERP_NUM,
+        userId: options?.userId,
+      });
+      allHits.push(...batch);
+    } catch (err) {
+      if (err instanceof SerperLimitReachedError) throw err;
+      continue;
+    }
+
+    const merged = dedupeHits(allHits);
+    const pick = pickBestWebsite(merged, company.name, {
+      municipalityName: company.municipality_name ?? company.city,
+    });
+    if (pick.hasWebsite && pick.confidence !== "low") {
+      return { hits: merged, queries: usedQueries };
+    }
+  }
+
+  return { hits: dedupeHits(allHits), queries: usedQueries };
 }
 
 export type SerperWebsiteDiscovery = {

@@ -857,7 +857,7 @@ export function AppPageClient(props: Props) {
       parts.push(`${result.cachedCount} allerede lagret`);
     }
     if (result.scanned > 0) {
-      parts.push(`sjekker ${result.scanned} nå`);
+      parts.push(`sjekker ${result.scanned} nå (ca. 2 Google-kall per firma)`);
     }
     if (result.skipped > 0) {
       parts.push("maks 10 per gang — kjør igjen for resten");

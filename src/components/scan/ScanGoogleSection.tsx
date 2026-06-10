@@ -8,6 +8,11 @@ import type { SerperUsage } from "@/lib/billing/serper-usage";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import type { ScanSocialOptions } from "@/lib/website-scan/scan-social-options";
 import { cn } from "@/lib/utils";
+import {
+  ESTIMATED_SERPER_CALLS_PER_SCAN,
+  MAX_FALLBACK_SOCIAL_QUERIES,
+} from "@/lib/website-scan/scan-api-budget";
+import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
 
 type ListFilter = "all" | "no_website" | "with_website" | "not_scanned";
 
@@ -94,6 +99,12 @@ export function ScanGoogleSection({
       <div className="space-y-3 px-4 pb-4 lg:px-5 lg:pb-5">
         <p className="scan-glass-muted text-xs">
           Sjekk om firma har nettside. Du kan også ringe eller sende uten dette steget.
+          {" "}
+          Ca. {ESTIMATED_SERPER_CALLS_PER_SCAN} Google-kall per firma
+          {socialOptions.includeFacebook || socialOptions.includeInstagram
+            ? ` (+ opptil ${MAX_FALLBACK_SOCIAL_QUERIES} ekstra per sosial profil)`
+            : ""}
+          . Maks {MAX_WEBSITE_SCAN_BATCH} per gang — allerede sjekkede hoppes over.
         </p>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

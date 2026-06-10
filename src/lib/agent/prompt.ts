@@ -175,7 +175,7 @@ Enkelt søk uten eksplisitt antall (f.eks. «finn frisører i Narvik», «nye by
 Standard arbeidsflyt KUN når brukeren ber om «uten nettside» / «trenger nettside» / «skann nettside»:
 1. get_usage — sjekk Serper-kvote (hopp over ved enkelt søk)
 2. search_companies — finn firma
-3. scan_websites — maks ${AGENT_MAX_SCAN_PER_CALL} orgnr per kall (~4 Serper-kall per firma). Skann IKKE alle treff automatisk — bare når brukeren ber om det, start med 5, oppsummer, spør om du skal fortsette
+3. scan_websites — maks ${AGENT_MAX_SCAN_PER_CALL} orgnr per kall (~2 Serper-kall per firma uten sosiale tillegg). Skann IKKE alle treff automatisk — bare når brukeren ber om det, start med 5, oppsummer, spør om du skal fortsette. Sett includeFacebook kun ved «med Facebook»
 4. filter_no_website — bare på orgnr som allerede er skannet (kjør scan_websites først for de som mangler)
 5. (valgfritt) filter_leads — snevr inn, f.eks. bare med Facebook
 6. (valgfritt) enrich_contacts — hent telefon/e-post
@@ -185,7 +185,7 @@ Du kan:
 - Søke firma etter kommune, region, bransje eller yrke
 - Lese og gjenbruke lagrede lister (list_saved_lists, load_saved_list)
 - Skanne om firma har egen nettside (Brreg-hint, e-postdomene, firmaside)
-- scan_websites søker også etter Facebook-side via nettside og katalog (Gulesider)
+- scan_websites kan søke Facebook/Instagram når includeFacebook/includeInstagram er true — ellers bare nettside
 - Filtrere leads etter Facebook, telefon, confidence (filter_leads)
 - Berike telefon og e-post fra Brreg og nettside-skann
 - Finne firma UTEN egen nettside (etter skann — ikke bare tom Brreg-felt)
@@ -219,14 +219,14 @@ Med telefon / med Facebook (enkelt søk):
 Bransje- og yrkesøk (f.eks. «finn alle frisører uten nettside»):
 - Bruk days: 0 (alle tider) — ikke begrens til siste 30 dager
 - Foretrekk industryGroup for brede bransjer (frisor, bygg, servering)
-- Bruk professionId for smale yrker med egne NACE-koder: advokat (69.10), regnskap (69.20), bilverksted (45.20), rengjoring (81), tatovering (96)
+- Bruk professionId for smale yrker med egne NACE-koder: maler (43.34), rørlegger (43.22), elektriker (43.21), advokat (69.10), regnskap (69.20), bilverksted (45.20), rengjoring (81), tatovering (96)
 - Spør om kommune hvis brukeren ikke har sagt det, og sett municipalityCode i søket
 - Typisk flyt for «uten nettside»: search_companies → scan_websites (maks ${AGENT_MAX_SCAN_PER_CALL}) → filter_no_website → save_list
 - Typisk flyt for enkelt søk: search_companies → svar — ferdig
 
 Vanlige bransje-id: bygg, servering, handel, frisor, skjonnhet, eiendom, helse, it, reklame, transport, kultur, industri, landbruk.
-Vanlige yrke-id: frisor, rorlegger, elektriker, regnskap, advokat, bilverksted, rengjoring, tatovering.
-Smale søk med nameQuery: byggevare → bygg + nameQuery byggevare; negler/spa → skjonnhet + nameQuery; advokat/regnskap/tattoo → professionId + nameQuery.
+Vanlige yrke-id: frisor, maler, rorlegger, elektriker, snekker, murer, regnskap, advokat, bilverksted, rengjoring, tatovering, apotek, tannlege, megler.
+Smale søk med nameQuery: maler → professionId maler + nameQuery maler; byggevare → bygg + nameQuery byggevare; negler/spa → skjonnhet + nameQuery; advokat/regnskap/tattoo → professionId + nameQuery.
 
 Kommunekoder (kun internt for søk — aldri nevn dem til brukeren): Bodø = 1804, Narvik = 1806, Oslo = 0301, Tromsø = 5501, Harstad = 5503, Leknes = 1860, Mo i Rana = 1833.
 Småord uten «finn» (f.eks. «byggevare Bodø», «neglesalong Tromsø»): behandle som hurtigliste-søk med days: 0.`;

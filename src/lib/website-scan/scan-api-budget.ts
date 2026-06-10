@@ -6,11 +6,14 @@
 /** Maks Google-søk for nettside — ett godt søk er nok når gjetning feiler */
 export const MAX_WEBSITE_SEARCH_QUERIES = 1;
 
-/** Serper /search for nettside — prioritér enkle firmavn+sted-spørringer */
-export const SERPER_WEBSITE_MAX_QUERIES = 7;
+/** Serper /search for nettside — sekvensielt med tidlig stopp */
+export const SERPER_WEBSITE_MAX_QUERIES = 2;
+
+/** Serper /places — ett Maps-oppslag per firma i de fleste tilfeller */
+export const SERPER_PLACES_MAX_QUERIES = 1;
 
 /** Serper /search for telefon når Places mangler nummer */
-export const SERPER_PHONE_MAX_QUERIES = 8;
+export const SERPER_PHONE_MAX_QUERIES = 4;
 
 /** Ekstra site:gulesider.no-søk koster 1 SerpAPI — bruk treff fra hovedsøk */
 export const ENABLE_GULESIDER_SERP_SEARCH = false;
@@ -26,7 +29,10 @@ export const ENABLE_DDG_PLACES =
   process.env.DDG_PLACES_ENABLED !== "0";
 
 /** Ekstra site:-søk kun når hovedsøk ikke fant profil — prøv flere navnevarianter */
-export const MAX_FALLBACK_SOCIAL_QUERIES = 8;
+export const MAX_FALLBACK_SOCIAL_QUERIES = 3;
+
+/** Typisk Serper-kall per firma (uten sosiale tillegg) — for UI og agent */
+export const ESTIMATED_SERPER_CALLS_PER_SCAN = 2;
 
 /** Treff per Google-søk — 10 er nok for nettside + sosiale lenker */
 export const GOOGLE_SERP_NUM = 15;

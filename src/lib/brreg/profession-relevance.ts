@@ -22,6 +22,9 @@ function normalizeProfessionText(value: string | null | undefined): string {
 const PROFESSION_NAME_FALLBACK: Record<string, RegExp> = {
   apotek: /apotek|sykehusapotek|vitus|boots/i,
   megler: /megler|eiendomsmegler|boligmegler|eiendom/i,
+  maler: /maler|malermester|maling|sparkel|farge/i,
+  rorlegger: /rorlegger|rørlegger|vvs/i,
+  murer: /murer|murverk|mur/i,
 };
 
 export function isProfessionRelevantCompany(

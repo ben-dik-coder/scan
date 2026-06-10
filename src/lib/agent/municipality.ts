@@ -1,5 +1,28 @@
 import { fetchKommuner } from "@/lib/brreg/client";
 
+/** Offisielt visningsnavn per kommunekode (norske bokstaver). */
+const MUNICIPALITY_CANONICAL_LABEL: Record<string, string> = {
+  "0301": "Oslo",
+  "1103": "Stavanger",
+  "1804": "Bodø",
+  "1806": "Narvik",
+  "1820": "Alstahaug",
+  "1824": "Vefsn",
+  "1833": "Mo i Rana",
+  "1841": "Fauske",
+  "1860": "Vestvågøy",
+  "1865": "Vågan",
+  "1866": "Hadsel",
+  "1870": "Sortland",
+  "4601": "Bergen",
+  "5001": "Trondheim",
+  "5501": "Tromsø",
+  "5503": "Harstad",
+  "5601": "Alta",
+  "5603": "Hammerfest",
+  "5605": "Sør-Varanger",
+};
+
 /** Kommunenavn → Brønnøysund-kode (vanlige steder i målmarkedet). */
 const MUNICIPALITY_ALIASES: Record<string, string> = {
   oslo: "0301",
@@ -46,6 +69,23 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function titleCasePlace(label: string): string {
+  return label
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export function formatPlaceLabel(label: string, code?: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  if (code && MUNICIPALITY_CANONICAL_LABEL[code]) {
+    return MUNICIPALITY_CANONICAL_LABEL[code];
+  }
+  return titleCasePlace(trimmed);
+}
+
 export function normalizeMunicipalityText(message: string): string {
   return message
     .trim()
@@ -84,7 +124,10 @@ export function parseMunicipalityFromMessage(
   for (const [alias, code] of Object.entries(MUNICIPALITY_ALIASES)) {
     const pattern = new RegExp(`\\b${escapeRegExp(alias)}\\b`, "i");
     if (pattern.test(normalized)) {
-      return { code, label: alias };
+      return {
+        code,
+        label: MUNICIPALITY_CANONICAL_LABEL[code] ?? formatPlaceLabel(alias),
+      };
     }
   }
 
@@ -112,7 +155,10 @@ function lookupKommuneByName(
 
   const fromAlias = MUNICIPALITY_ALIASES[normalized];
   if (fromAlias) {
-    return { code: fromAlias, label: placeName.trim() };
+    return {
+      code: fromAlias,
+      label: MUNICIPALITY_CANONICAL_LABEL[fromAlias] ?? formatPlaceLabel(placeName),
+    };
   }
 
   const exact = kommuner.find(

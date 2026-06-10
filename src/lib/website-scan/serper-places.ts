@@ -16,6 +16,11 @@ import {
   toTitleCaseName,
 } from "./parse-results";
 import { phonePlausibleForCompany } from "./phone-plausible";
+import { SERPER_PLACES_MAX_QUERIES } from "./scan-api-budget";
+import {
+  getCachedSerperPlaces,
+  setCachedSerperPlaces,
+} from "./serper-query-cache";
 import type { WebsiteScanCompanyInput } from "./types";
 
 export type SerperPlaceHit = {
@@ -154,16 +159,21 @@ export function buildPlacesSearchQueries(company: WebsiteScanCompanyInput): stri
     add(`${stripped} ${place}`);
     add(`"${stripped}" ${place}`);
   }
-  return queries.slice(0, 3);
+  return queries.slice(0, SERPER_PLACES_MAX_QUERIES);
 }
 
 export async function searchSerperPlaces(
   query: string,
-  options?: { userId?: string }
+  options?: { userId?: string; skipCache?: boolean }
 ): Promise<SerperPlaceHit[]> {
   const apiKey = process.env.SERPER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("Serper er ikke konfigurert");
+  }
+
+  if (!options?.skipCache) {
+    const cached = getCachedSerperPlaces(query);
+    if (cached) return cached;
   }
 
   if (options?.userId) {
@@ -208,7 +218,7 @@ export async function searchSerperPlaces(
     await recordSerperApiCall(options.userId);
   }
 
-  return (data.places ?? [])
+  const hits = (data.places ?? [])
     .filter((item) => item.title?.trim())
     .map((item) => ({
       title: item.title!.trim(),
@@ -219,6 +229,12 @@ export async function searchSerperPlaces(
       rating: item.rating,
       position: item.position,
     }));
+
+  if (!options?.skipCache) {
+    setCachedSerperPlaces(query, hits);
+  }
+
+  return hits;
 }
 
 export async function discoverFromSerperPlaces(

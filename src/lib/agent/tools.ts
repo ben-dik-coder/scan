@@ -113,7 +113,7 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "scan_websites",
       description:
-        `Skann nettside for en liste med orgnr (maks ${AGENT_MAX_SCAN_PER_CALL} per kall). Søker også etter Facebook-side. Kjør BARE når brukeren ber om nettside-skann — aldri automatisk etter søk. Spør brukeren før du skanner mer.`,
+        `Skann nettside for en liste med orgnr (maks ${AGENT_MAX_SCAN_PER_CALL} per kall, ~2 Serper-kall per firma uten sosiale tillegg). Kjør BARE når brukeren ber om nettside-skann — aldri automatisk etter søk. Sett includeFacebook/includeInstagram kun når brukeren ber om det.`,
       parameters: {
         type: "object",
         properties: {
@@ -121,6 +121,16 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
             type: "array",
             items: { type: "string" },
             description: "Liste med organisasjonsnummer",
+          },
+          includeFacebook: {
+            type: "boolean",
+            description:
+              "Søk også etter Facebook (ekstra Serper-kall). Standard false — bruk kun ved «med Facebook».",
+          },
+          includeInstagram: {
+            type: "boolean",
+            description:
+              "Søk også etter Instagram (ekstra Serper-kall). Standard false.",
           },
         },
         required: ["orgnrs"],

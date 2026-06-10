@@ -1,6 +1,7 @@
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { getSerperUsage } from "@/lib/billing/serper-usage";
 import { loadUserMemoryPrompt } from "@/lib/agent/user-memory";
+import { ESTIMATED_SERPER_CALLS_PER_SCAN } from "@/lib/website-scan/scan-api-budget";
 
 export type AgentStartupContext = {
   serperUsed: number;
@@ -33,7 +34,7 @@ export async function loadAgentStartupContext(
 export function buildAgentStartupContextPrompt(ctx: AgentStartupContext): string {
   const lines = [
     "BRUKERKONTEKST (oppdatert ved melding):",
-    `- Serper denne måneden: ${ctx.serperUsed} / ${ctx.serperLimit} (${ctx.serperRemaining} igjen). Estimer ~4 Serper-kall per firma ved scan_websites.`,
+    `- Serper denne måneden: ${ctx.serperUsed} / ${ctx.serperLimit} (${ctx.serperRemaining} igjen). Estimer ~${ESTIMATED_SERPER_CALLS_PER_SCAN} Serper-kall per firma ved scan_websites (mer med Facebook/Instagram).`,
     `- Kontakt-kvote denne måneden: ${ctx.contactRemaining} av ${ctx.contactLimit} igjen.`,
   ];
 

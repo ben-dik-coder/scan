@@ -14,6 +14,11 @@ import { cn } from "@/lib/utils";
 import { AgentMessageContent } from "@/components/agent/AgentMessageContent";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import { AgentScheduleModal } from "@/components/agent/AgentScheduleModal";
+import {
+  detectPlanConfirmKind,
+  planConfirmActions,
+  type PlanConfirmKind,
+} from "@/lib/agent/plan-confirm";
 import { isAgentResumeIntent } from "@/lib/agent/prompt";
 import { ArrowUp, Clock, Square } from "lucide-react";
 
@@ -24,6 +29,7 @@ type ChatMessage = {
   link?: string;
   listId?: string;
   listName?: string;
+  planConfirm?: PlanConfirmKind;
 };
 
 const SUGGESTIONS = [
@@ -87,7 +93,6 @@ export function AgentChatPanel({
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [pendingRetryText, setPendingRetryText] = useState<string | null>(null);
   const [showResumeButton, setShowResumeButton] = useState(false);
-  const [pendingSavePrompt, setPendingSavePrompt] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [toolProgress, setToolProgress] = useState<{
     scanned: number;
@@ -100,6 +105,7 @@ export function AgentChatPanel({
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const sendingRef = useRef(false);
   const router = useRouter();
   const keyboardInset = useVisualViewportBottomInset(open, inputRef);
 
@@ -159,7 +165,9 @@ export function AgentChatPanel({
 
       if (!initialConversationId) {
         setConversationId(null);
-        setMessages([]);
+        if (!sendingRef.current) {
+          setMessages([]);
+        }
         setStoredAgentConversationId(null);
         return;
       }
@@ -182,7 +190,7 @@ export function AgentChatPanel({
           }>;
         };
 
-        if (cancelled) return;
+        if (cancelled || sendingRef.current) return;
 
         const loaded = (data.messages ?? [])
           .filter((m) => m.role !== "tool")
@@ -253,14 +261,17 @@ export function AgentChatPanel({
       setInput("");
       setBlockedMessage(null);
       setPendingRetryText(null);
-      setPendingSavePrompt(null);
       if (isAgentResumeIntent(trimmed)) {
         setShowResumeButton(false);
       }
+      setMessages((prev) =>
+        prev.map((m) => ({ ...m, planConfirm: undefined }))
+      );
       if (!options?.skipUserAppend) {
         appendMessage({ role: "user", content: trimmed });
       }
       setLoading(true);
+      sendingRef.current = true;
       setActiveTool(null);
       setToolProgress(null);
 
@@ -332,7 +343,17 @@ export function AgentChatPanel({
           return id;
         };
 
+        const setAssistantContent = (content: string) => {
+          const id = ensureStreamingMessage();
+          assistantText = content;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === id ? { ...m, content } : m))
+          );
+          scrollToBottom();
+        };
+
         const appendStreamingDelta = (delta: string) => {
+          if (!delta) return;
           const id = ensureStreamingMessage();
           assistantText += delta;
           setMessages((prev) =>
@@ -343,13 +364,70 @@ export function AgentChatPanel({
           scrollToBottom();
         };
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() ?? "";
+        const processSseEvent = (event: Record<string, unknown>) => {
+          if (event.type === "conversation" && typeof event.conversationId === "string") {
+            setConversationId(event.conversationId);
+            setStoredAgentConversationId(event.conversationId);
+          } else if (event.type === "text_delta" && typeof event.content === "string") {
+            appendStreamingDelta(event.content);
+          } else if (event.type === "text" && typeof event.content === "string") {
+            setAssistantContent(event.content);
+          } else if (event.type === "tool_start" && typeof event.tool === "string") {
+            setActiveTool(event.tool);
+            setToolProgress(null);
+          } else if (
+            event.type === "tool_progress" &&
+            typeof event.scanned === "number" &&
+            typeof event.total === "number"
+          ) {
+            setToolProgress({
+              scanned: event.scanned,
+              total: event.total,
+            });
+          } else if (
+            event.type === "tool_end" &&
+            typeof event.summary === "string"
+          ) {
+            setActiveTool(null);
+            setToolProgress(null);
+            statusSummaries.push(event.summary);
+          } else if (event.type === "confirm_save") {
+            const id = ensureStreamingMessage();
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === id ? { ...m, planConfirm: "save_only" } : m
+              )
+            );
+          } else if (event.type === "error" && typeof event.message === "string") {
+            setAssistantContent(event.message);
+          } else if (event.type === "list_saved") {
+            if (typeof event.listId === "string") savedListId = event.listId;
+            if (typeof event.listName === "string") savedListName = event.listName;
+            if (typeof event.url === "string") resultLink = event.url;
+            if (typeof event.orgnrCount === "number") {
+              savedOrgnrCount = event.orgnrCount;
+            }
+            notifySavedListChanged({
+              id: String(event.listId ?? ""),
+              name: String(event.listName ?? "Ny liste"),
+              url: typeof event.url === "string" ? event.url : undefined,
+              orgnrCount:
+                typeof event.orgnrCount === "number" ? event.orgnrCount : undefined,
+            });
+          } else if (event.type === "done") {
+            if (typeof event.link === "string") resultLink = event.link;
+            if (typeof event.listId === "string") savedListId = event.listId;
+            if (typeof event.listName === "string") savedListName = event.listName;
+            if (typeof event.orgnrCount === "number") {
+              savedOrgnrCount = event.orgnrCount;
+            }
+            if (typeof event.content === "string" && event.content.trim()) {
+              setAssistantContent(event.content);
+            }
+          }
+        };
 
+        const processSseLines = (lines: string[]) => {
           for (const line of lines) {
             const raw = line.replace(/^data: /, "").trim();
             if (!raw) continue;
@@ -359,75 +437,25 @@ export function AgentChatPanel({
             } catch {
               continue;
             }
-
-            if (event.type === "conversation" && typeof event.conversationId === "string") {
-              setConversationId(event.conversationId);
-              setStoredAgentConversationId(event.conversationId);
-            } else if (event.type === "text_delta" && typeof event.content === "string") {
-              appendStreamingDelta(event.content);
-            } else if (event.type === "text" && typeof event.content === "string") {
-              assistantText = event.content;
-              if (streamingMessageId) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === streamingMessageId
-                      ? { ...m, content: event.content as string }
-                      : m
-                  )
-                );
-              }
-            } else if (event.type === "tool_start" && typeof event.tool === "string") {
-              setActiveTool(event.tool);
-              setToolProgress(null);
-            } else if (
-              event.type === "tool_progress" &&
-              typeof event.scanned === "number" &&
-              typeof event.total === "number"
-            ) {
-              setToolProgress({
-                scanned: event.scanned,
-                total: event.total,
-              });
-            } else if (
-              event.type === "tool_end" &&
-              typeof event.summary === "string"
-            ) {
-              setActiveTool(null);
-              setToolProgress(null);
-              statusSummaries.push(event.summary);
-            } else if (
-              event.type === "confirm_save" &&
-              typeof event.message === "string"
-            ) {
-              setPendingSavePrompt(event.message);
-            } else if (event.type === "error" && typeof event.message === "string") {
-              assistantText = event.message;
-            } else if (event.type === "list_saved") {
-              if (typeof event.listId === "string") savedListId = event.listId;
-              if (typeof event.listName === "string") savedListName = event.listName;
-              if (typeof event.url === "string") resultLink = event.url;
-              if (typeof event.orgnrCount === "number") {
-                savedOrgnrCount = event.orgnrCount;
-              }
-              notifySavedListChanged({
-                id: String(event.listId ?? ""),
-                name: String(event.listName ?? "Ny liste"),
-                url: typeof event.url === "string" ? event.url : undefined,
-                orgnrCount:
-                  typeof event.orgnrCount === "number" ? event.orgnrCount : undefined,
-              });
-            } else if (event.type === "done") {
-              if (typeof event.link === "string") resultLink = event.link;
-              if (typeof event.listId === "string") savedListId = event.listId;
-              if (typeof event.listName === "string") savedListName = event.listName;
-              if (typeof event.orgnrCount === "number") {
-                savedOrgnrCount = event.orgnrCount;
-              }
-              if (typeof event.content === "string" && event.content.trim()) {
-                assistantText = event.content;
-              }
-            }
+            processSseEvent(event);
           }
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() ?? "";
+            processSseLines(lines);
+          }
+          if (done) break;
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processSseLines(buffer.split("\n\n").filter(Boolean));
+          buffer = "";
         }
 
         if (!assistantText.trim()) {
@@ -439,34 +467,41 @@ export function AgentChatPanel({
             assistantText = `Ferdig! Lagret «${savedListName}»${count}. Åpne listen i Skann når du er klar.`;
           } else if (statusSummaries.length > 0) {
             assistantText = `Ferdig! ${statusSummaries.slice(-3).join(" ")}`;
+          } else {
+            assistantText =
+              "Beklager, jeg fikk ikke fram et svar. Prøv igjen om litt.";
           }
         }
 
-        if (assistantText.trim()) {
-          if (streamingMessageId) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === streamingMessageId
-                  ? {
-                      ...m,
-                      content: assistantText,
-                      link: resultLink,
-                      listId: savedListId,
-                      listName: savedListName,
-                    }
-                  : m
-              )
+        const planConfirm = detectPlanConfirmKind(assistantText) ?? undefined;
+        if (streamingMessageId) {
+          setMessages((prev) => {
+            const updated = prev.map((m) =>
+              m.id === streamingMessageId
+                ? {
+                    ...m,
+                    content: assistantText,
+                    link: resultLink,
+                    listId: savedListId,
+                    listName: savedListName,
+                    planConfirm: m.planConfirm ?? planConfirm,
+                  }
+                : m
             );
-            scrollToBottom();
-          } else {
-            appendMessage({
-              role: "assistant",
-              content: assistantText,
-              link: resultLink,
-              listId: savedListId,
-              listName: savedListName,
-            });
-          }
+            return updated.filter(
+              (m) => m.role !== "assistant" || m.content.trim().length > 0
+            );
+          });
+          scrollToBottom();
+        } else {
+          appendMessage({
+            role: "assistant",
+            content: assistantText,
+            link: resultLink,
+            listId: savedListId,
+            listName: savedListName,
+            planConfirm,
+          });
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
@@ -478,6 +513,7 @@ export function AgentChatPanel({
           content: "Kunne ikke nå agenten. Sjekk nettverket og prøv igjen.",
         });
       } finally {
+        sendingRef.current = false;
         if (abortRef.current === abortController) {
           abortRef.current = null;
           setLoading(false);
@@ -631,51 +667,79 @@ export function AgentChatPanel({
           </div>
         )}
 
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={cn(
-              "flex w-full",
-              m.role === "user" ? "justify-end" : "justify-start",
-              m.role === "status" && "justify-center"
-            )}
-          >
+        {(() => {
+          const lastPlanConfirmMessageId = !loading
+            ? [...messages]
+                .reverse()
+                .find((msg) => msg.role === "assistant" && msg.planConfirm)?.id
+            : null;
+
+          return messages.map((m) => (
             <div
+              key={m.id}
               className={cn(
-                m.role === "user" &&
-                  "max-w-[85%] rounded-[20px] rounded-br-md bg-[#303030] px-4 py-2.5 text-[15px] text-[#ececec] sm:max-w-[80%] sm:text-[14px]",
-                m.role === "assistant" &&
-                  "max-w-full text-[15px] text-[#ececec] sm:text-[14px]",
-                m.role === "status" &&
-                  "max-w-full px-2 py-0.5 text-center text-[11px] text-[#6b6b6b]"
+                "flex w-full",
+                m.role === "user" ? "justify-end" : "justify-start",
+                m.role === "status" && "justify-center"
               )}
             >
-              <AgentMessageContent
-                content={m.content}
-                variant={m.role === "user" ? "user" : "assistant"}
-              />
-              {m.link && (
-                <div className="mt-3 flex flex-col gap-1 border-t border-white/[0.06] pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      router.push(m.link!);
-                    }}
-                    className="inline-flex min-h-[44px] items-center text-left text-sm font-medium text-[#10a37f] hover:text-[#1fd8a4] sm:min-h-0 sm:text-[13px]"
-                  >
-                    Åpne listen i Skann →
-                  </button>
-                  {m.listName && (
-                    <span className="text-[11px] text-[#8e8e93]">
-                      Lagret som «{m.listName}»
-                    </span>
+              <div
+                className={cn(
+                  m.role === "user" && "agent-chat-bubble agent-chat-bubble--user",
+                  m.role === "assistant" &&
+                    "agent-chat-bubble agent-chat-bubble--assistant",
+                  m.role === "status" &&
+                    "max-w-full px-2 py-0.5 text-center text-[11px] text-[#6b6b6b]"
+                )}
+              >
+                <AgentMessageContent
+                  content={m.content}
+                  variant={m.role === "user" ? "user" : "assistant"}
+                />
+                {m.planConfirm &&
+                  m.id === lastPlanConfirmMessageId &&
+                  !loading && (
+                    <div className="agent-chat-plan-confirm">
+                      {planConfirmActions(m.planConfirm).map((action) => (
+                        <button
+                          key={action.label}
+                          type="button"
+                          onClick={() => void sendMessage(action.message)}
+                          className={cn(
+                            "agent-chat-plan-confirm__btn",
+                            action.variant === "primary"
+                              ? "agent-chat-plan-confirm__btn--primary"
+                              : "agent-chat-plan-confirm__btn--secondary"
+                          )}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
                   )}
-                </div>
-              )}
+                {m.link && (
+                  <div className="mt-3 flex flex-col gap-1 border-t border-white/[0.06] pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        router.push(m.link!);
+                      }}
+                      className="inline-flex min-h-[44px] items-center text-left text-sm font-medium text-[#10a37f] hover:text-[#1fd8a4] sm:min-h-0 sm:text-[13px]"
+                    >
+                      Åpne listen i Skann →
+                    </button>
+                    {m.listName && (
+                      <span className="text-[11px] text-[#8e8e93]">
+                        Lagret som «{m.listName}»
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ));
+        })()}
 
         {blockedMessage && pendingRetryText && !loading && (
           <div className="flex flex-col items-start gap-2 rounded-2xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/90">
@@ -687,28 +751,6 @@ export function AgentChatPanel({
             >
               Avbryt og start på nytt
             </button>
-          </div>
-        )}
-
-        {pendingSavePrompt && !loading && (
-          <div className="flex flex-col items-start gap-2 rounded-2xl border border-white/[0.08] bg-[#2a2a2a] px-4 py-3 text-sm text-[#ececec]">
-            <p>{pendingSavePrompt}</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void sendMessage("Ja, lagre listen")}
-                className="min-h-[44px] rounded-full bg-[#ececec] px-4 py-2 text-sm font-medium text-[#212121] transition hover:bg-white active:scale-[0.98] sm:min-h-0 sm:py-1.5 sm:text-xs"
-              >
-                Lagre liste
-              </button>
-              <button
-                type="button"
-                onClick={() => void sendMessage("Nei, ikke lagre ennå — skann flere")}
-                className="min-h-[44px] rounded-full border border-white/[0.12] px-4 py-2 text-sm font-medium text-[#ececec] transition hover:bg-white/[0.05] active:scale-[0.98] sm:min-h-0 sm:py-1.5 sm:text-xs"
-              >
-                Ikke lagre ennå
-              </button>
-            </div>
           </div>
         )}
 
