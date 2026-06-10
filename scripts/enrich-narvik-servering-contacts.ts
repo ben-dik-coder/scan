@@ -15,6 +15,7 @@ import {
   fetchBrregRolePersons,
   lookupFreeContact,
 } from "../src/lib/website-scan/lookup-directory-contact.ts";
+import { loadEnrichEnv } from "./lib/enrich-env.ts";
 import { phoneCoreDigits } from "../src/lib/website-scan/phone-plausible.ts";
 import type { Company } from "../src/types/database.ts";
 
@@ -29,26 +30,6 @@ function progressPath(shard: number | null): string {
   return resolve(process.cwd(), "scripts/.cache", name);
 }
 
-function loadEnvLocal() {
-  const path = resolve(process.cwd(), ".env.local");
-  if (!existsSync(path)) return;
-  const text = readFileSync(path, "utf8");
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!process.env[key]) process.env[key] = value;
-  }
-}
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -170,7 +151,7 @@ async function loadNarvikServering(): Promise<Company[]> {
 }
 
 async function main() {
-  loadEnvLocal();
+  loadEnrichEnv();
   const { limit, dryRun, delayMs, shard, shards } = parseArgs();
   const progressFile = progressPath(shard);
 

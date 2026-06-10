@@ -19,7 +19,14 @@ export function hasSerpApi(): boolean {
   return Boolean(process.env.SERPAPI_API_KEY?.trim());
 }
 
+function isSerperDisabled(): boolean {
+  return (
+    process.env.SERPER_DISABLED === "true" || process.env.SERPER_DISABLED === "1"
+  );
+}
+
 export function hasSerper(): boolean {
+  if (isSerperDisabled()) return false;
   return Boolean(process.env.SERPER_API_KEY?.trim());
 }
 

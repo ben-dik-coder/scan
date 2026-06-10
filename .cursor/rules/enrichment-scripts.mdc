@@ -21,6 +21,14 @@ const { count } = await supabase.from("companies").select("*", { count: "exact" 
 - `addedEmail`, `addedPhone`, `addedOwner` i `results` er tellbare felter
 - Ikke kjør SELECT/COUNT mot Supabase bare for å svare «hvor mange e-poster er lagt til?»
 
+## Ikke bruk Serper
+
+Enrichment-scripts skal **aldri** bruke Serper API (verken `/search` eller `/places`).
+
+- Bruk `loadEnrichEnv()` fra `scripts/lib/enrich-env.ts` — den setter `SERPER_DISABLED=true` automatisk
+- Alternativer: Brreg, 1881, Gulesider, DuckDuckGo, direkte nettside-scraping, DDG Maps
+- Serper er reservert for app/agent/scan i produksjon — ikke for batch-enrichment
+
 ## Lovlige kilder og B2B
 
 Enrichment skal følge GDPR, markedsføringsloven og B2B-praksis:

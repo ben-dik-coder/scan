@@ -13,6 +13,7 @@ import {
   WebsiteScanBuffer,
   loadWebsiteScansByOrgnr,
 } from "./lib/enrich-batch-db.ts";
+import { loadEnrichEnv } from "./lib/enrich-env.ts";
 import { isGenericEmail } from "../src/lib/brreg/map-company.ts";
 import { getIndustryCodeOrFilters, industryGroupLabel } from "../src/lib/constants/industries.ts";
 import { companyGeoPlaces, primaryGeoPlace } from "../src/lib/brreg/geo-place.ts";
@@ -50,26 +51,6 @@ type Progress = {
   results: Record<string, { name: string; note?: string; error?: string }>;
 };
 
-function loadEnvLocal() {
-  const path = resolve(process.cwd(), ".env.local");
-  if (!existsSync(path)) return;
-  const text = readFileSync(path, "utf8");
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!process.env[key]) process.env[key] = value;
-  }
-}
 
 function parseArgs(): { phase: Phase; dryRun: boolean } {
   const args = process.argv.slice(2);
@@ -446,7 +427,7 @@ async function phaseFacebook(companies: Company[], progress: Progress, dryRun: b
 }
 
 async function main() {
-  loadEnvLocal();
+  loadEnrichEnv();
   const { phase, dryRun } = parseArgs();
   const progress = loadProgress();
   const companies = await loadCompanies();

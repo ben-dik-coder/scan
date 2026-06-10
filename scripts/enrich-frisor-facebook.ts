@@ -12,6 +12,7 @@ import {
   WebsiteScanBuffer,
   loadWebsiteScansByOrgnr,
 } from "./lib/enrich-batch-db.ts";
+import { loadEnrichEnv } from "./lib/enrich-env.ts";
 import { companyGeoPlaces, primaryGeoPlace } from "../src/lib/brreg/geo-place.ts";
 import { getIndustryCodeOrFilters, industryGroupLabel } from "../src/lib/constants/industries.ts";
 import { discoverFacebookFromDirectoriesFree } from "../src/lib/website-scan/discover-social-free.ts";
@@ -28,27 +29,6 @@ import type { SearchHit } from "../src/lib/website-scan/parse-results.ts";
 const DEFAULT_KOMMUNE = "1804";
 const DEFAULT_INDUSTRY = "frisor";
 const MAX_DDG_QUERIES = 8;
-
-function loadEnvLocal() {
-  const path = resolve(process.cwd(), ".env.local");
-  if (!existsSync(path)) return;
-  const text = readFileSync(path, "utf8");
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!process.env[key]) process.env[key] = value;
-  }
-}
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -263,7 +243,7 @@ function queueFacebookScan(
 }
 
 async function main() {
-  loadEnvLocal();
+  loadEnrichEnv();
   const { kommune, industry, shard, shards, delayMs, limit, dryRun } = parseArgs();
   const slug = slugForKommune(kommune);
   const progressFile = progressPath(slug, industry, shard);
