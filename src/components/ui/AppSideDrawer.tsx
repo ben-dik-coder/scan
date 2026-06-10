@@ -15,6 +15,8 @@ type Props = {
   panelClassName?: string;
   footer?: ReactNode;
   maxWidth?: "md" | "lg";
+  /** Fullskjerm på mobil (sm og opp = side-skuff som før). */
+  fullScreenMobile?: boolean;
 };
 
 export function AppSideDrawer({
@@ -27,6 +29,7 @@ export function AppSideDrawer({
   panelClassName,
   footer,
   maxWidth = "lg",
+  fullScreenMobile = false,
 }: Props) {
   const [mounted, setMounted] = useState(false);
 
@@ -62,8 +65,17 @@ export function AppSideDrawer({
       />
       <aside
         className={cn(
-          "app-side-drawer fixed bottom-0 right-0 z-[110] flex w-full flex-col border-l border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur-md",
-          maxW,
+          "app-side-drawer fixed z-[110] flex flex-col bg-slate-950/95 shadow-2xl backdrop-blur-md",
+          fullScreenMobile
+            ? [
+                "app-side-drawer--fullscreen-mobile inset-0 h-[100dvh] max-h-[100dvh] w-full max-w-none border-0 pt-[env(safe-area-inset-top,0px)]",
+                "sm:inset-auto sm:bottom-0 sm:right-0 sm:left-auto sm:top-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:h-auto sm:max-h-none sm:w-full sm:border-l sm:border-white/10 sm:pt-0",
+                maxW,
+              ]
+            : [
+                "bottom-0 right-0 w-full border-l border-white/10 top-[calc(3.5rem+env(safe-area-inset-top,0px))]",
+                maxW,
+              ],
           panelClassName,
           className
         )}
@@ -77,7 +89,7 @@ export function AppSideDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-3 top-3 z-10 rounded p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+            className="absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white active:scale-95 sm:right-3 sm:top-3 sm:h-9 sm:w-9 sm:rounded-lg"
             aria-label="Lukk"
           >
             <X className="h-5 w-5" />

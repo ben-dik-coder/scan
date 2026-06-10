@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarClock, Check, Clock, Loader2, Trash2, X } from "lucide-react";
+import { useVisualViewportBottomInset } from "@/hooks/useVisualViewportBottomInset";
 import { cn } from "@/lib/utils";
 import type { AgentScheduledMessage } from "@/types/database";
 
@@ -80,6 +81,7 @@ export function AgentScheduleModal({
   const [scheduled, setScheduled] = useState<AgentScheduledMessage[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const keyboardInset = useVisualViewportBottomInset(open);
 
   const pendingCount = useMemo(
     () => scheduled.filter((s) => s.status === "pending" || s.status === "running").length,
@@ -177,7 +179,7 @@ export function AgentScheduleModal({
   if (!open) return null;
 
   const modal = (
-    <div className="fixed inset-0 z-[130] flex items-end justify-center p-3 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[130] flex items-end justify-center sm:items-center sm:p-4">
       <button
         type="button"
         className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm"
@@ -190,11 +192,15 @@ export function AgentScheduleModal({
         aria-label="Planlegg AI-spørsmål"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "relative z-[1] flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#1c1c1e] text-[#f5f5f7] shadow-2xl",
-          "max-h-[min(90dvh,640px)]"
+          "relative z-[1] flex w-full max-w-md flex-col overflow-hidden border border-white/[0.08] bg-[#1c1c1e] text-[#f5f5f7] shadow-2xl",
+          "max-h-[min(92dvh,640px)] rounded-t-[20px] sm:max-h-[min(90dvh,640px)] sm:rounded-2xl"
         )}
+        style={{
+          paddingBottom: `max(${keyboardInset}px, env(safe-area-inset-bottom, 0px))`,
+        }}
       >
-        <div className="flex items-center gap-2.5 border-b border-white/[0.06] px-4 py-3">
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-white/20 sm:hidden" aria-hidden />
+        <div className="flex items-center gap-2.5 border-b border-white/[0.06] px-4 py-3 pt-2 sm:pt-3">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0a84ff]/15 text-[#0a84ff]">
             <CalendarClock className="h-4 w-4" />
           </span>
@@ -207,14 +213,14 @@ export function AgentScheduleModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-[#98989d] transition hover:bg-white/10 hover:text-[#f5f5f7]"
+            className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-[#98989d] transition hover:bg-white/10 hover:text-[#f5f5f7] active:scale-95"
             aria-label="Lukk"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3 border-b border-white/[0.06] p-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3 border-b border-white/[0.06] p-4 sm:p-4">
           <div>
             <label htmlFor="schedule-message" className="mb-1.5 block text-[11px] font-medium text-[#98989d]">
               Spørsmål til agenten
@@ -225,7 +231,7 @@ export function AgentScheduleModal({
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
               placeholder="F.eks. Finn frisører uten nettside i Narvik…"
-              className="w-full resize-none rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-3 py-2.5 text-[13px] text-[#f5f5f7] placeholder:text-[#98989d] focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30"
+              className="w-full resize-none rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-3 py-3 text-[16px] text-[#f5f5f7] placeholder:text-[#98989d] focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30 sm:py-2.5 sm:text-[13px]"
             />
           </div>
 
@@ -238,7 +244,7 @@ export function AgentScheduleModal({
               type="datetime-local"
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
-              className="w-full rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-3 py-2.5 text-[13px] text-[#f5f5f7] focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30 [color-scheme:dark]"
+              className="min-h-[44px] w-full rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-3 py-3 text-[16px] text-[#f5f5f7] focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30 [color-scheme:dark] sm:py-2.5 sm:text-[13px]"
             />
             <p className="mt-1 text-[10px] text-[#98989d]/80">
               Ingen øvre grense — du kan planlegge langt frem i tid
@@ -261,7 +267,7 @@ export function AgentScheduleModal({
           <button
             type="submit"
             disabled={!message.trim() || submitting}
-            className="flex items-center justify-center gap-2 rounded-xl bg-[#0a84ff] px-4 py-2.5 text-[13px] font-medium text-white transition hover:bg-[#3395ff] disabled:bg-[#2c2c2e] disabled:text-[#5a5a5e]"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#0a84ff] px-4 py-3 text-[15px] font-medium text-white transition hover:bg-[#3395ff] active:scale-[0.98] disabled:bg-[#2c2c2e] disabled:text-[#5a5a5e] sm:min-h-0 sm:py-2.5 sm:text-[13px]"
           >
             {submitting ? (
               <>
@@ -290,7 +296,7 @@ export function AgentScheduleModal({
             {loadingList && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#98989d]" />}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
             {scheduled.length === 0 && !loadingList && (
               <p className="py-4 text-center text-[12px] text-[#98989d]">
                 Ingen planlagte spørsmål ennå
@@ -345,7 +351,7 @@ export function AgentScheduleModal({
                           type="button"
                           onClick={() => void handleCancel(item.id)}
                           disabled={cancellingId === item.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-[#98989d] transition hover:bg-white/10 hover:text-red-200"
+                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-[#98989d] transition hover:bg-white/10 hover:text-red-200 active:scale-[0.98] sm:min-h-0 sm:px-2 sm:py-1 sm:text-[10px]"
                         >
                           {cancellingId === item.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -363,7 +369,7 @@ export function AgentScheduleModal({
                             onOpenConversation(item.conversation_id!);
                             onClose();
                           }}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[#0a84ff]/30 bg-[#0a84ff]/10 px-2 py-1 text-[10px] text-[#6cb8ff] transition hover:bg-[#0a84ff]/20"
+                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#0a84ff]/30 bg-[#0a84ff]/10 px-3 py-2 text-xs text-[#6cb8ff] transition hover:bg-[#0a84ff]/20 active:scale-[0.98] sm:min-h-0 sm:px-2 sm:py-1 sm:text-[10px]"
                         >
                           Se svar i samtale
                         </button>

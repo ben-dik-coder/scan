@@ -9,6 +9,7 @@ import {
   setStoredAgentConversationId,
 } from "@/lib/agent/agent-chat-bus";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
+import { useVisualViewportBottomInset } from "@/hooks/useVisualViewportBottomInset";
 import { cn } from "@/lib/utils";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import { AgentScheduleModal } from "@/components/agent/AgentScheduleModal";
@@ -59,7 +60,7 @@ export function AgentChatFab({ onOpen }: { onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="agent-chat-fab fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-sky-400/40 bg-sky-500/90 text-white shadow-lg shadow-sky-900/30 transition hover:bg-sky-400 hover:scale-105 active:scale-95"
+      className="agent-chat-fab fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center overflow-hidden rounded-full border border-sky-400/40 bg-sky-500/90 text-white shadow-lg shadow-sky-900/30 transition hover:bg-sky-400 hover:scale-105 active:scale-95"
       aria-label="Åpne AI-assistent"
       title="AI-assistent"
     >
@@ -96,8 +97,10 @@ export function AgentChatPanel({
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [pendingScheduleCount, setPendingScheduleCount] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
+  const keyboardInset = useVisualViewportBottomInset(open, inputRef);
 
   const refreshPendingScheduleCount = useCallback(() => {
     void fetch("/api/agent/scheduled")
@@ -520,8 +523,9 @@ export function AgentChatPanel({
     <AppSideDrawer
       open={open}
       onClose={onClose}
+      fullScreenMobile
       header={
-        <div className="flex items-center gap-2.5 border-b border-white/[0.06] bg-[#232325]/85 px-4 py-3 pr-14 backdrop-blur-xl">
+        <div className="flex items-center gap-2.5 border-b border-white/[0.06] bg-[#232325]/85 px-3 py-3 pr-14 backdrop-blur-xl sm:px-4">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#0a84ff] to-[#5e5ce6] shadow-[0_2px_10px_rgba(10,132,255,0.35)]">
             <AgentRobotIcon size={26} className="drop-shadow-sm" />
           </span>
@@ -538,11 +542,16 @@ export function AgentChatPanel({
       maxWidth="md"
       panelClassName="flex flex-col overflow-hidden border-white/[0.06] bg-[#1c1c1e]"
       footer={
-        <div className="bg-[#1c1c1e] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+        <div
+          className="sticky bottom-0 z-10 bg-[#1c1c1e] px-3 pt-2 sm:px-3"
+          style={{
+            paddingBottom: `max(${keyboardInset}px, env(safe-area-inset-bottom, 0px), 0.75rem)`,
+          }}
+        >
           {serperUsage && (
             <p
               className={cn(
-                "mb-1.5 text-center text-[10px] tabular-nums tracking-wide",
+                "mb-1.5 text-center text-[11px] tabular-nums tracking-wide sm:text-[10px]",
                 serperUsage.limitReached ? "text-amber-400" : "text-[#98989d]/70"
               )}
             >
@@ -550,7 +559,7 @@ export function AgentChatPanel({
             </p>
           )}
           <form
-            className="flex items-center gap-2"
+            className="flex items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void sendMessage(input);
@@ -560,43 +569,48 @@ export function AgentChatPanel({
               type="button"
               onClick={() => setScheduleModalOpen(true)}
               disabled={loading}
-              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-[#2c2c2e] text-[#98989d] transition hover:bg-[#3a3a3c] hover:text-[#f5f5f7] disabled:opacity-60"
+              className="relative flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-[#2c2c2e] text-[#98989d] transition hover:bg-[#3a3a3c] hover:text-[#f5f5f7] active:scale-95 disabled:opacity-60"
               aria-label="Planlegg spørsmål"
               title="Planlegg spørsmål til senere"
             >
-              <Clock className="h-4 w-4" />
+              <Clock className="h-[18px] w-[18px]" />
               {pendingScheduleCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#0a84ff] px-1 text-[9px] font-semibold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#0a84ff] px-1 text-[10px] font-semibold text-white">
                   {pendingScheduleCount > 9 ? "9+" : pendingScheduleCount}
                 </span>
               )}
             </button>
             <input
+              ref={inputRef}
               type="text"
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="F.eks. Finn frisører uten nettside i Narvik…"
               disabled={loading}
-              className="min-w-0 flex-1 rounded-[14px] border border-white/[0.06] bg-[#2c2c2e] px-4 py-2.5 text-[13px] text-[#f5f5f7] placeholder:text-[#98989d] transition focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30 disabled:opacity-60"
+              className="min-h-[44px] min-w-0 flex-1 rounded-[14px] border border-white/[0.06] bg-[#2c2c2e] px-4 py-2.5 text-[16px] text-[#f5f5f7] placeholder:text-[#98989d] transition focus:border-[#0a84ff]/60 focus:outline-none focus:ring-2 focus:ring-[#0a84ff]/30 disabled:opacity-60 sm:text-[13px]"
             />
             {loading ? (
               <button
                 type="button"
                 onClick={stopRequest}
-                className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-red-400/30 bg-red-500/15 px-3.5 text-xs font-medium text-red-300 transition hover:bg-red-500/25"
+                className="flex h-11 min-h-[44px] shrink-0 items-center gap-1.5 rounded-full border border-red-400/30 bg-red-500/15 px-4 text-sm font-medium text-red-300 transition hover:bg-red-500/25 active:scale-95 sm:px-3.5 sm:text-xs"
                 aria-label="Stopp"
               >
-                <Square className="h-3 w-3 fill-current" />
+                <Square className="h-3.5 w-3.5 fill-current" />
                 Stopp
               </button>
             ) : (
               <button
                 type="submit"
                 disabled={!input.trim()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0a84ff] text-white shadow-[0_2px_10px_rgba(10,132,255,0.4)] transition hover:bg-[#3395ff] active:scale-95 disabled:bg-[#2c2c2e] disabled:text-[#5a5a5e] disabled:shadow-none"
+                className="flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full bg-[#0a84ff] text-white shadow-[0_2px_10px_rgba(10,132,255,0.4)] transition hover:bg-[#3395ff] active:scale-95 disabled:bg-[#2c2c2e] disabled:text-[#5a5a5e] disabled:shadow-none"
                 aria-label="Send"
               >
-                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.5} />
               </button>
             )}
           </form>
@@ -604,36 +618,39 @@ export function AgentChatPanel({
       }
     >
       <div className="flex min-h-full flex-col">
-        <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-4">
+        <div
+          ref={listRef}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3 pb-4 sm:gap-2.5 sm:p-4"
+        >
         {loadingHistory && (
           <p className="text-center text-sm text-[#98989d]">Laster samtale…</p>
         )}
 
         {!loadingHistory && messages.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-7 px-1 py-8">
+          <div className="flex flex-1 flex-col items-center justify-center gap-5 px-1 py-6 sm:gap-7 sm:py-8">
             <div className="flex flex-col items-center gap-3 text-center">
               <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a84ff] to-[#5e5ce6] shadow-[0_8px_28px_rgba(10,132,255,0.35)]">
                 <AgentRobotIcon size={46} className="drop-shadow-sm" />
               </span>
-              <h3 className="text-[19px] font-semibold tracking-[-0.02em] text-[#f5f5f7]">
+              <h3 className="text-[20px] font-semibold tracking-[-0.02em] text-[#f5f5f7] sm:text-[19px]">
                 Hva kan jeg hjelpe med?
               </h3>
-              <p className="max-w-[270px] text-[12.5px] leading-relaxed text-[#98989d]">
+              <p className="max-w-[300px] text-[13px] leading-relaxed text-[#98989d] sm:max-w-[270px] sm:text-[12.5px]">
                 Jeg finner firma, sjekker nettsider, beriker kontaktinfo og
                 lager lister over de som trenger nettside.
               </p>
             </div>
-            <div className="flex w-full flex-col gap-2">
+            <div className="flex w-full flex-col gap-2.5 sm:gap-2">
               {SUGGESTIONS.map(({ label, icon: Icon }) => (
                 <button
                   key={label}
                   type="button"
                   onClick={() => void sendMessage(label)}
                   disabled={loading}
-                  className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-4 py-3 text-left text-[13px] leading-snug text-[#f5f5f7] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#3a3a3c] hover:shadow-[0_6px_16px_rgba(0,0,0,0.35)] active:translate-y-0 disabled:opacity-50"
+                  className="group flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-[#2c2c2e] px-3.5 py-3 text-left text-[14px] leading-snug text-[#f5f5f7] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#3a3a3c] hover:shadow-[0_6px_16px_rgba(0,0,0,0.35)] active:translate-y-0 disabled:opacity-50 sm:px-4 sm:text-[13px]"
                 >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0a84ff]/15 text-[#0a84ff] transition group-hover:bg-[#0a84ff]/25">
-                    <Icon className="h-3.5 w-3.5" />
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0a84ff]/15 text-[#0a84ff] transition group-hover:bg-[#0a84ff]/25 sm:h-7 sm:w-7">
+                    <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                   </span>
                   {label}
                 </button>
@@ -646,7 +663,7 @@ export function AgentChatPanel({
           <div
             key={m.id}
             className={cn(
-              "max-w-[85%] rounded-[18px] px-3.5 py-2 text-[13px] leading-relaxed",
+              "max-w-[90%] rounded-[18px] px-3.5 py-2.5 text-[14px] leading-relaxed sm:max-w-[85%] sm:py-2 sm:text-[13px]",
               m.role === "user" &&
                 "ml-auto rounded-br-[6px] bg-[#0a84ff] text-white shadow-[0_2px_8px_rgba(10,132,255,0.25)]",
               m.role === "assistant" &&
@@ -664,7 +681,7 @@ export function AgentChatPanel({
                     onClose();
                     router.push(m.link!);
                   }}
-                  className="inline-flex text-left text-xs font-semibold text-[#6cb8ff] hover:text-[#9ccfff]"
+                  className="inline-flex min-h-[44px] items-center text-left text-sm font-semibold text-[#6cb8ff] hover:text-[#9ccfff] sm:min-h-0 sm:text-xs"
                 >
                   Åpne listen i Skann →
                 </button>
@@ -684,7 +701,7 @@ export function AgentChatPanel({
             <button
               type="button"
               onClick={() => void retryAfterCancel()}
-              className="rounded-lg border border-amber-300/40 bg-amber-400/20 px-3 py-1.5 text-xs font-medium text-amber-50 transition hover:bg-amber-400/30"
+              className="min-h-[44px] rounded-lg border border-amber-300/40 bg-amber-400/20 px-4 py-2.5 text-sm font-medium text-amber-50 transition hover:bg-amber-400/30 active:scale-[0.98] sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs"
             >
               Avbryt og start på nytt
             </button>
@@ -698,14 +715,14 @@ export function AgentChatPanel({
               <button
                 type="button"
                 onClick={() => void sendMessage("Ja, lagre listen")}
-                className="rounded-lg border border-emerald-300/40 bg-emerald-400/20 px-3 py-1.5 text-xs font-medium text-emerald-50 transition hover:bg-emerald-400/30"
+                className="min-h-[44px] rounded-lg border border-emerald-300/40 bg-emerald-400/20 px-4 py-2.5 text-sm font-medium text-emerald-50 transition hover:bg-emerald-400/30 active:scale-[0.98] sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs"
               >
                 Lagre liste
               </button>
               <button
                 type="button"
                 onClick={() => void sendMessage("Nei, ikke lagre ennå — skann flere")}
-                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+                className="min-h-[44px] rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10 active:scale-[0.98] sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs"
               >
                 Ikke lagre ennå
               </button>
@@ -718,7 +735,7 @@ export function AgentChatPanel({
             <button
               type="button"
               onClick={() => void sendMessage("Start søk igjen")}
-              className="rounded-lg border border-sky-400/40 bg-sky-500/20 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-500/30"
+              className="min-h-[44px] rounded-lg border border-sky-400/40 bg-sky-500/20 px-4 py-2.5 text-sm font-medium text-sky-100 transition hover:bg-sky-500/30 active:scale-[0.98] sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs"
             >
               Start søk igjen
             </button>
