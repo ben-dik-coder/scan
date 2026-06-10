@@ -10,7 +10,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
 import { isGenericEmail } from "../src/lib/brreg/map-company.ts";
-import { upsertBrregEnhet } from "../src/lib/brreg/upsert-enhet.ts";
+import {
+  BrregRefreshBuffer,
+  CompanyPatchBuffer,
+  WebsiteScanBuffer,
+} from "./lib/enrich-batch-db.ts";
 import {
   getIndustryCodeOrFilters,
   industryGroupLabel,
@@ -38,6 +42,8 @@ function progressPath(slug: string, industry: string, shard: number | null): str
 function slugForKommune(kommune: string): string {
   if (kommune === "1806") return "narvik";
   if (kommune === "1804") return "bodo";
+  if (kommune === "5503") return "harstad";
+  if (kommune === "5501") return "tromso";
   return `kommune-${kommune}`;
 }
 
@@ -150,20 +156,17 @@ async function loadFacebookByOrgnr(orgnrs: string[]): Promise<Map<string, string
   return map;
 }
 
-async function persistWebsiteScan(
+function queueWebsiteScan(
+  buffer: WebsiteScanBuffer,
   scan: Awaited<ReturnType<typeof scanCompanyWebsite>>,
   userId: string
 ) {
-  const supabase = createServiceClient();
-  await supabase.from("company_website_scans").upsert(
-    {
-      orgnr: scan.orgnr,
-      scan,
-      scanned_at: scan.scannedAt,
-      scanned_by: userId,
-    },
-    { onConflict: "orgnr" }
-  );
+  return buffer.queue({
+    orgnr: scan.orgnr,
+    scan,
+    scanned_at: scan.scannedAt,
+    scanned_by: userId,
+  });
 }
 
 function skipCompany(c: Company): string | null {
@@ -218,22 +221,17 @@ function saveProgress(path: string, progress: Progress) {
   writeFileSync(path, JSON.stringify(progress, null, 2));
 }
 
-async function refreshFromBrreg(orgnr: string): Promise<Company | null> {
+async function refreshFromBrreg(
+  existing: Company,
+  buffer: BrregRefreshBuffer
+): Promise<Company | null> {
   const res = await fetch(
-    `https://data.brreg.no/enhetsregisteret/api/enheter/${orgnr}`,
+    `https://data.brreg.no/enhetsregisteret/api/enheter/${existing.orgnr}`,
     { headers: { Accept: "application/json" } }
   );
   if (!res.ok) return null;
   const enhet = await res.json();
-  const supabase = createServiceClient();
-  await upsertBrregEnhet(enhet, supabase);
-
-  const { data } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("orgnr", orgnr)
-    .maybeSingle();
-  return (data as Company | null) ?? null;
+  return buffer.queue(enhet, existing);
 }
 
 async function loadMunicipalityIndustry(
@@ -327,6 +325,9 @@ async function main() {
   let skipped = 0;
   let errors = 0;
   const progress: Progress = loadProgress(progressFile);
+  const companyBuffer = new CompanyPatchBuffer();
+  const brregBuffer = new BrregRefreshBuffer();
+  const scanBuffer = new WebsiteScanBuffer();
 
   for (const initial of targets) {
     if (progress.done.includes(initial.orgnr)) {
@@ -344,7 +345,7 @@ async function main() {
     }
 
     try {
-      let company = (await refreshFromBrreg(initial.orgnr)) ?? initial;
+      const company = (await refreshFromBrreg(initial, brregBuffer)) ?? initial;
       const patch: Record<string, string | boolean> = {};
       const notes: string[] = [];
 
@@ -424,7 +425,7 @@ async function main() {
             },
           }
         );
-        await persistWebsiteScan(scan, "enrich-script");
+        await queueWebsiteScan(scanBuffer, scan, "enrich-script");
         if (scan.facebookUrl?.trim()) {
           notes.push(`Facebook ${scan.facebookUrl.trim()}`);
           addedFacebook++;
@@ -453,12 +454,7 @@ async function main() {
 
       if (Object.keys(patch).length > 0 && !dryRun) {
         patch.updated_at = new Date().toISOString();
-        const supabase = createServiceClient();
-        const { error } = await supabase
-          .from("companies")
-          .update(patch)
-          .eq("orgnr", company.orgnr);
-        if (error) throw new Error(error.message);
+        await companyBuffer.queue(company.orgnr, patch);
       }
 
       progress.done.push(company.orgnr);
@@ -490,20 +486,29 @@ async function main() {
     await sleep(delayMs);
   }
 
+  if (!dryRun) {
+    await Promise.all([
+      companyBuffer.flush(),
+      brregBuffer.flush(),
+      scanBuffer.flush(),
+    ]);
+  }
+
   const processed = progress.done.length;
   let stillMissingInShard = 0;
+  let stillMissing = 0;
   if (!dryRun) {
     const after = await loadMunicipalityIndustry(kommune, industry);
     const afterFacebook = withFacebook
       ? await loadFacebookByOrgnr(after.map((c) => c.orgnr))
       : new Map<string, string | null>();
-    let afterShard = after
-      .filter((c) =>
-        profile === "full"
-          ? needsFullProfile(c, afterFacebook, withFacebook)
-          : needsContact(c)
-      )
-      .sort((a, b) => a.orgnr.localeCompare(b.orgnr));
+    const afterMissing = after.filter((c) =>
+      profile === "full"
+        ? needsFullProfile(c, afterFacebook, withFacebook)
+        : needsContact(c)
+    );
+    stillMissing = afterMissing.length;
+    let afterShard = [...afterMissing].sort((a, b) => a.orgnr.localeCompare(b.orgnr));
     if (shard !== null) afterShard = sliceShard(afterShard, shard, shards);
     stillMissingInShard = afterShard.filter((c) => !skipCompany(c)).length;
   }
@@ -518,15 +523,6 @@ async function main() {
   console.log(`Hoppet over: ${skipped}`);
   console.log(`Feil: ${errors}`);
   if (!dryRun) {
-    const after = await loadMunicipalityIndustry(kommune, industry);
-    const afterFacebook = withFacebook
-      ? await loadFacebookByOrgnr(after.map((c) => c.orgnr))
-      : new Map<string, string | null>();
-    const stillMissing = after.filter((c) =>
-      profile === "full"
-        ? needsFullProfile(c, afterFacebook, withFacebook)
-        : needsContact(c)
-    ).length;
     console.log(`Gjenstår i shard: ${stillMissingInShard}`);
     console.log(`Gjenstår totalt: ${stillMissing}`);
   }

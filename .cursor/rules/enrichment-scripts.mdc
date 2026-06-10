@@ -1,0 +1,41 @@
+---
+description: Enrichment-scripts – lokale progress-filer, lovlige kilder, B2B
+globs: scripts/**/*.ts
+alwaysApply: false
+---
+
+# Enrichment-scripts
+
+## Status og telling – bruk lokale filer
+
+For status, telling og oppfølging: les `scripts/.cache/*-progress*.json`, ikke live Supabase-spørringer.
+
+```typescript
+// ❌ BAD – dyrt og unødvendig for status
+const { count } = await supabase.from("companies").select("*", { count: "exact" }).not("email", "is", null);
+
+// ✅ GOOD – tell fra progress-filer
+// Hver entry med results[orgnr].addedEmail (streng med @) = én ny e-post
+```
+
+- `addedEmail`, `addedPhone`, `addedOwner` i `results` er tellbare felter
+- Ikke kjør SELECT/COUNT mot Supabase bare for å svare «hvor mange e-poster er lagt til?»
+
+## Lovlige kilder og B2B
+
+Enrichment skal følge GDPR, markedsføringsloven og B2B-praksis:
+
+| Kilde | Bruk |
+|-------|------|
+| Brreg (offentlig) | Org.nr, roller, kontakt fra register |
+| Firmas nettside | E-post/telefon publisert for kundekontakt |
+| 1881 / Gulesider | Bedriftsopplysninger |
+| Proff / liknende | Offentlige firmadata |
+
+**Unngå:**
+- Personlige e-poster uten B2B-kontekst
+- Scraping av private profiler (Facebook personlig, LinkedIn privat)
+- Kjøpte e-postlister
+- Kontaktinfo som ikke er ment for bedriftshenvendelser
+
+Lagre kun `addedEmail` når e-posten er bedriftsrelevant og fra lovlig kilde.

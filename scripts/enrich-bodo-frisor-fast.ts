@@ -8,6 +8,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
+import {
+  CompanyPatchBuffer,
+  WebsiteScanBuffer,
+  loadWebsiteScansByOrgnr,
+} from "./lib/enrich-batch-db.ts";
 import { isGenericEmail } from "../src/lib/brreg/map-company.ts";
 import { getIndustryCodeOrFilters, industryGroupLabel } from "../src/lib/constants/industries.ts";
 import { companyGeoPlaces, primaryGeoPlace } from "../src/lib/brreg/geo-place.ts";
@@ -206,17 +211,16 @@ async function loadFacebookMap(orgnrs: string[]): Promise<Map<string, string>> {
   return map;
 }
 
-async function persistFacebook(orgnr: string, facebookUrl: string | null) {
-  const supabase = createServiceClient();
+function queueFacebookScan(
+  buffer: WebsiteScanBuffer,
+  orgnr: string,
+  facebookUrl: string | null,
+  existing: WebsiteScanResult | null,
+  scanMap: Map<string, WebsiteScanResult | null>
+) {
   const now = new Date().toISOString();
-  const { data } = await supabase
-    .from("company_website_scans")
-    .select("scan")
-    .eq("orgnr", orgnr)
-    .maybeSingle();
-
   const base =
-    (data?.scan as WebsiteScanResult | null) ??
+    existing ??
     ({
       orgnr,
       hasWebsite: false,
@@ -230,16 +234,14 @@ async function persistFacebook(orgnr: string, facebookUrl: string | null) {
       scannedAt: now,
       facebookUrl: null,
     } as WebsiteScanResult);
-
-  await supabase.from("company_website_scans").upsert(
-    {
-      orgnr,
-      scan: { ...base, facebookUrl, scannedAt: now },
-      scanned_at: now,
-      scanned_by: "fast-enrich",
-    },
-    { onConflict: "orgnr" }
-  );
+  const scan = { ...base, facebookUrl, scannedAt: now };
+  scanMap.set(orgnr, scan);
+  return buffer.queue({
+    orgnr,
+    scan,
+    scanned_at: now,
+    scanned_by: "fast-enrich",
+  });
 }
 
 async function findFacebookLight(company: Company): Promise<{ url: string | null; source: string }> {
@@ -279,6 +281,7 @@ async function phaseOwners(companies: Company[], progress: Progress, dryRun: boo
   );
   console.log(`\n=== Steg 1: Daglig leder (Brreg) — ${targets.length} firma ===\n`);
   let added = 0;
+  const patchBuffer = new CompanyPatchBuffer();
 
   await mapPool(targets, CONCURRENCY, async (company) => {
     try {
@@ -287,11 +290,10 @@ async function phaseOwners(companies: Company[], progress: Progress, dryRun: boo
       progress.owners.push(company.orgnr);
       if (owner) {
         if (!dryRun) {
-          const supabase = createServiceClient();
-          await supabase
-            .from("companies")
-            .update({ daglig_leder: owner.name, updated_at: new Date().toISOString() })
-            .eq("orgnr", company.orgnr);
+          await patchBuffer.queue(company.orgnr, {
+            daglig_leder: owner.name,
+            updated_at: new Date().toISOString(),
+          });
         }
         added++;
         progress.results[company.orgnr] = { name: company.name, note: `daglig leder: ${owner.name}` };
@@ -310,6 +312,7 @@ async function phaseOwners(companies: Company[], progress: Progress, dryRun: boo
     }
   });
 
+  if (!dryRun) await patchBuffer.flush();
   console.log(`\nDaglig leder: ${added} nye`);
 }
 
@@ -321,6 +324,7 @@ async function phasePhones(companies: Company[], progress: Progress, dryRun: boo
   console.log(`\n=== Steg 2: Telefon + e-post (1881/Gulesider) — ${targets.length} firma ===\n`);
   let addedPhone = 0;
   let addedEmail = 0;
+  const patchBuffer = new CompanyPatchBuffer();
 
   await mapPool(targets, 30, async (company) => {
     try {
@@ -358,8 +362,7 @@ async function phasePhones(companies: Company[], progress: Progress, dryRun: boo
       progress.contacts.push(company.orgnr);
 
       if (notes.length > 0 && !dryRun) {
-        const supabase = createServiceClient();
-        await supabase.from("companies").update(patch).eq("orgnr", company.orgnr);
+        await patchBuffer.queue(company.orgnr, patch);
         progress.results[company.orgnr] = { name: company.name, note: notes.join(" | ") };
         console.log(`✓ ${company.name} → ${notes.join(" | ")}`);
       } else {
@@ -379,11 +382,15 @@ async function phasePhones(companies: Company[], progress: Progress, dryRun: boo
     }
   });
 
+  if (!dryRun) await patchBuffer.flush();
   console.log(`\nTelefon: ${addedPhone} nye · E-post: ${addedEmail} nye`);
 }
 
 async function phaseFacebook(companies: Company[], progress: Progress, dryRun: boolean) {
-  const fbMap = await loadFacebookMap(companies.map((c) => c.orgnr));
+  const orgnrs = companies.map((c) => c.orgnr);
+  const fbMap = await loadFacebookMap(orgnrs);
+  const scanMap = await loadWebsiteScansByOrgnr(orgnrs);
+  const scanBuffer = new WebsiteScanBuffer();
   const targets = companies.filter(
     (c) =>
       !skipCompany(c) &&
@@ -399,12 +406,28 @@ async function phaseFacebook(companies: Company[], progress: Progress, dryRun: b
       progress.facebook.push(company.orgnr);
 
       if (url) {
-        if (!dryRun) await persistFacebook(company.orgnr, url);
+        if (!dryRun) {
+          await queueFacebookScan(
+            scanBuffer,
+            company.orgnr,
+            url,
+            scanMap.get(company.orgnr) ?? null,
+            scanMap
+          );
+        }
         found++;
         progress.results[company.orgnr] = { name: company.name, note: `Facebook ${url} (${source})` };
         console.log(`✓ ${company.name} → ${url}`);
       } else {
-        if (!dryRun) await persistFacebook(company.orgnr, null);
+        if (!dryRun) {
+          await queueFacebookScan(
+            scanBuffer,
+            company.orgnr,
+            null,
+            scanMap.get(company.orgnr) ?? null,
+            scanMap
+          );
+        }
         progress.results[company.orgnr] = { name: company.name, note: "ingen Facebook" };
         console.log(`· ${company.name} — ingen Facebook`);
       }
@@ -418,6 +441,7 @@ async function phaseFacebook(companies: Company[], progress: Progress, dryRun: b
     }
   });
 
+  if (!dryRun) await scanBuffer.flush();
   console.log(`\nFacebook: ${found} nye`);
 }
 

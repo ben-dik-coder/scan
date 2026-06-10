@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
+import { CompanyPatchBuffer } from "./lib/enrich-batch-db.ts";
 import { isGenericEmail } from "../src/lib/brreg/map-company.ts";
 import { getIndustryCodeOrFilters, industryGroupLabel } from "../src/lib/constants/industries.ts";
 import { discoverFromDuckDuckGoMaps } from "../src/lib/website-scan/duckduckgo-places.ts";
@@ -214,7 +215,8 @@ async function loadCompanies(): Promise<Company[]> {
 
 async function refreshContactFromBrreg(
   company: Company,
-  dryRun: boolean
+  dryRun: boolean,
+  buffer: CompanyPatchBuffer
 ): Promise<{ addedPhone: boolean; addedEmail: boolean; note: string }> {
   const res = await fetch(
     `https://data.brreg.no/enhetsregisteret/api/enheter/${company.orgnr}`,
@@ -260,8 +262,7 @@ async function refreshContactFromBrreg(
   }
 
   if (notes.length > 0 && !dryRun) {
-    const supabase = createServiceClient();
-    await supabase.from("companies").update(patch).eq("orgnr", company.orgnr);
+    await buffer.queue(company.orgnr, patch);
   }
 
   return {
@@ -278,6 +279,7 @@ async function phaseOwners(companies: Company[], progress: Progress, dryRun: boo
   console.log(`\n=== Fase 1: Daglig leder (Brreg) — ${targets.length} firma ===`);
   console.log(`Tid igjen: ${formatTime(timeLeftMs())}\n`);
   let added = 0;
+  const patchBuffer = new CompanyPatchBuffer();
 
   const { stopped } = await mapPool(targets, CONCURRENCY_OWNERS, async (company) => {
     try {
@@ -286,11 +288,10 @@ async function phaseOwners(companies: Company[], progress: Progress, dryRun: boo
       progress.owners.push(company.orgnr);
       if (owner) {
         if (!dryRun) {
-          const supabase = createServiceClient();
-          await supabase
-            .from("companies")
-            .update({ daglig_leder: owner.name, updated_at: new Date().toISOString() })
-            .eq("orgnr", company.orgnr);
+          await patchBuffer.queue(company.orgnr, {
+            daglig_leder: owner.name,
+            updated_at: new Date().toISOString(),
+          });
         }
         added++;
         progress.results[company.orgnr] = { name: company.name, note: `daglig leder: ${owner.name}` };
@@ -309,6 +310,7 @@ async function phaseOwners(companies: Company[], progress: Progress, dryRun: boo
     }
   });
 
+  if (!dryRun) await patchBuffer.flush();
   console.log(`\nDaglig leder: ${added} nye${stopped ? " (stoppet — tidsfrist)" : ""}`);
   return stopped;
 }
@@ -321,10 +323,15 @@ async function phaseBrreg(companies: Company[], progress: Progress, dryRun: bool
   console.log(`Tid igjen: ${formatTime(timeLeftMs())}\n`);
   let addedPhone = 0;
   let addedEmail = 0;
+  const patchBuffer = new CompanyPatchBuffer();
 
   const { stopped } = await mapPool(targets, CONCURRENCY_BRREG, async (company) => {
     try {
-      const { addedPhone: p, addedEmail: e, note } = await refreshContactFromBrreg(company, dryRun);
+      const { addedPhone: p, addedEmail: e, note } = await refreshContactFromBrreg(
+        company,
+        dryRun,
+        patchBuffer
+      );
       progress.brreg.push(company.orgnr);
       if (p) addedPhone++;
       if (e) addedEmail++;
@@ -340,6 +347,7 @@ async function phaseBrreg(companies: Company[], progress: Progress, dryRun: bool
     }
   });
 
+  if (!dryRun) await patchBuffer.flush();
   console.log(
     `\nBrreg: ${addedPhone} telefon · ${addedEmail} e-post${stopped ? " (stoppet — tidsfrist)" : ""}`
   );
@@ -355,6 +363,7 @@ async function phaseContacts(companies: Company[], progress: Progress, dryRun: b
   console.log(`Tid igjen: ${formatTime(timeLeftMs())}\n`);
   let addedPhone = 0;
   let addedEmail = 0;
+  const patchBuffer = new CompanyPatchBuffer();
 
   const { stopped } = await mapPool(targets, CONCURRENCY_CONTACTS, async (company) => {
     try {
@@ -428,8 +437,7 @@ async function phaseContacts(companies: Company[], progress: Progress, dryRun: b
       }
 
       if (notes.length > 0 && !dryRun) {
-        const supabase = createServiceClient();
-        await supabase.from("companies").update(patch).eq("orgnr", company.orgnr);
+        await patchBuffer.queue(company.orgnr, patch);
         progress.results[company.orgnr] = { name: company.name, note: notes.join(" | ") };
         console.log(`✓ ${company.name} → ${notes.join(" | ")}`);
       } else {
@@ -449,6 +457,7 @@ async function phaseContacts(companies: Company[], progress: Progress, dryRun: b
     }
   });
 
+  if (!dryRun) await patchBuffer.flush();
   console.log(
     `\n1881/Gulesider: ${addedPhone} telefon · ${addedEmail} e-post${stopped ? " (stoppet — tidsfrist)" : ""}`
   );
@@ -462,6 +471,7 @@ async function phaseMaps(companies: Company[], progress: Progress, dryRun: boole
   console.log(`\n=== Fase 4: DDG Google Maps (kun telefon) — ${targets.length} firma ===`);
   console.log(`Tid igjen: ${formatTime(timeLeftMs())}\n`);
   let addedPhone = 0;
+  const patchBuffer = new CompanyPatchBuffer();
 
   const { stopped } = await mapPool(targets, CONCURRENCY_MAPS, async (company) => {
     try {
@@ -485,8 +495,7 @@ async function phaseMaps(companies: Company[], progress: Progress, dryRun: boole
       progress.maps.push(company.orgnr);
 
       if (notes.length > 0 && !dryRun) {
-        const supabase = createServiceClient();
-        await supabase.from("companies").update(patch).eq("orgnr", company.orgnr);
+        await patchBuffer.queue(company.orgnr, patch);
         progress.results[company.orgnr] = { name: company.name, note: notes.join(" | ") };
         console.log(`✓ ${company.name} → ${notes.join(" | ")}`);
       } else {
@@ -506,6 +515,7 @@ async function phaseMaps(companies: Company[], progress: Progress, dryRun: boole
     }
   });
 
+  if (!dryRun) await patchBuffer.flush();
   console.log(`\nDDG Maps: ${addedPhone} telefon${stopped ? " (stoppet — tidsfrist)" : ""}`);
   return stopped;
 }

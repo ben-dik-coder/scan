@@ -8,6 +8,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createServiceClient } from "../src/lib/supabase/service.ts";
+import {
+  WebsiteScanBuffer,
+  loadWebsiteScansByOrgnr,
+} from "./lib/enrich-batch-db.ts";
 import { companyGeoPlaces, primaryGeoPlace } from "../src/lib/brreg/geo-place.ts";
 import { getIndustryCodeOrFilters, industryGroupLabel } from "../src/lib/constants/industries.ts";
 import { discoverFacebookFromDirectoriesFree } from "../src/lib/website-scan/discover-social-free.ts";
@@ -70,6 +74,8 @@ function parseArgs() {
 function slugForKommune(kommune: string): string {
   if (kommune === "1806") return "narvik";
   if (kommune === "1804") return "bodo";
+  if (kommune === "5503") return "harstad";
+  if (kommune === "5501") return "tromso";
   return `kommune-${kommune}`;
 }
 
@@ -211,12 +217,11 @@ async function findFacebookUrl(company: Company): Promise<{
   return { url: null, source: "ingen" };
 }
 
-async function persistFacebookScan(
+function buildFacebookScan(
   company: Company,
   facebookUrl: string | null,
-  existing?: WebsiteScanResult | null
-) {
-  const supabase = createServiceClient();
+  existing: WebsiteScanResult | null
+): WebsiteScanResult {
   const now = new Date().toISOString();
   const base: WebsiteScanResult =
     existing ??
@@ -234,33 +239,27 @@ async function persistFacebookScan(
       facebookUrl: null,
     } as WebsiteScanResult);
 
-  const scan: WebsiteScanResult = {
+  return {
     ...base,
     facebookUrl,
     scannedAt: now,
   };
-
-  await supabase.from("company_website_scans").upsert(
-    {
-      orgnr: company.orgnr,
-      scan,
-      scanned_at: now,
-      scanned_by: "facebook-enrich",
-    },
-    { onConflict: "orgnr" }
-  );
 }
 
-async function loadExistingScan(orgnr: string): Promise<WebsiteScanResult | null> {
-  const supabase = createServiceClient();
-  const { data } = await supabase
-    .from("company_website_scans")
-    .select("scan")
-    .eq("orgnr", orgnr)
-    .maybeSingle();
-  const scan = data?.scan;
-  if (!scan || typeof scan !== "object") return null;
-  return scan as WebsiteScanResult;
+function queueFacebookScan(
+  buffer: WebsiteScanBuffer,
+  company: Company,
+  facebookUrl: string | null,
+  existing: WebsiteScanResult | null
+) {
+  const now = new Date().toISOString();
+  const scan = buildFacebookScan(company, facebookUrl, existing);
+  return buffer.queue({
+    orgnr: company.orgnr,
+    scan,
+    scanned_at: now,
+    scanned_by: "facebook-enrich",
+  });
 }
 
 async function main() {
@@ -271,7 +270,9 @@ async function main() {
   const industryLabel = industryGroupLabel(industry);
 
   const all = await loadCompanies(kommune, industry);
-  const fbMap = await loadFacebookMap(all.map((c) => c.orgnr));
+  const orgnrs = all.map((c) => c.orgnr);
+  const fbMap = await loadFacebookMap(orgnrs);
+  const scanMap = await loadWebsiteScansByOrgnr(orgnrs);
   let missing = all
     .filter((c) => !fbMap.has(c.orgnr))
     .sort((a, b) => a.orgnr.localeCompare(b.orgnr));
@@ -295,6 +296,7 @@ async function main() {
   console.log(`Metode: DDG site:facebook.com → Gulesider → full skann\n`);
 
   const progress = loadProgress(progressFile);
+  const scanBuffer = new WebsiteScanBuffer();
   let found = 0;
   let notFound = 0;
   let errors = 0;
@@ -308,16 +310,19 @@ async function main() {
     try {
       const { url, source } = await findFacebookUrl(company);
       if (url && !dryRun) {
-        const existing = await loadExistingScan(company.orgnr);
-        await persistFacebookScan(company, url, existing);
+        const existing = scanMap.get(company.orgnr) ?? null;
+        await queueFacebookScan(scanBuffer, company, url, existing);
+        const scan = buildFacebookScan(company, url, existing);
+        scanMap.set(company.orgnr, scan);
         found++;
         progress.results[company.orgnr] = { name: company.name, facebookUrl: url, source };
         console.log(`✓ ${company.name}`);
         console.log(`  Facebook ${url} (${source})`);
       } else if (!url) {
         if (!dryRun) {
-          const existing = await loadExistingScan(company.orgnr);
-          await persistFacebookScan(company, null, existing);
+          const existing = scanMap.get(company.orgnr) ?? null;
+          await queueFacebookScan(scanBuffer, company, null, existing);
+          scanMap.set(company.orgnr, buildFacebookScan(company, null, existing));
         }
         notFound++;
         progress.results[company.orgnr] = { name: company.name, source: "ingen funn" };
@@ -338,6 +343,10 @@ async function main() {
     }
 
     await sleep(delayMs);
+  }
+
+  if (!dryRun) {
+    await scanBuffer.flush();
   }
 
   const afterMap = await loadFacebookMap(all.map((c) => c.orgnr));
