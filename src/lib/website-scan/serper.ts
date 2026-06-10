@@ -18,6 +18,7 @@ import {
   dedupeHits,
   normalizeDomain,
   norwegianDomainCompact,
+  isConfidentWebsitePick,
   pickBestWebsite,
   stripCompanySuffix,
   websiteUrlPlausibleForCompany,
@@ -382,7 +383,7 @@ export async function searchSerperForWebsite(
     const pick = pickBestWebsite(merged, company.name, {
       municipalityName: company.municipality_name ?? company.city,
     });
-    if (pick.hasWebsite && pick.confidence !== "low") {
+    if (isConfidentWebsitePick(pick, company.name)) {
       return { hits: merged, queries: usedQueries };
     }
   }
@@ -416,6 +417,20 @@ export async function discoverWebsiteFromSerper(
   });
 
   if (pick.hasWebsite && pick.websiteKind === "own" && pick.websiteUrl) {
+    const organicMeta = await fetchWebsitePageMetadata(pick.websiteUrl).catch(
+      () => ({
+        displayName: null,
+        facebookUrl: null,
+        instagramUrl: null,
+        linkedinUrl: null,
+      })
+    );
+    const organicPlausible = websiteUrlPlausibleForCompany(
+      pick.websiteUrl,
+      company.name,
+      organicMeta.displayName
+    );
+
     if (guessed) {
       const brandCompact = norwegianDomainCompact(company.name);
       const guessCompact = compactAlnum(
@@ -460,13 +475,15 @@ export async function discoverWebsiteFromSerper(
       }
     }
 
-    return {
-      websiteUrl: pick.websiteUrl,
-      websiteDomain: pick.websiteDomain,
-      confidence: pick.confidence,
-      queries,
-      source: "organic",
-    };
+    if (organicPlausible) {
+      return {
+        websiteUrl: pick.websiteUrl,
+        websiteDomain: pick.websiteDomain,
+        confidence: pick.confidence,
+        queries,
+        source: "organic",
+      };
+    }
   }
 
   if (guessed) {

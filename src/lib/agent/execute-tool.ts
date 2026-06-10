@@ -19,6 +19,11 @@ import {
 } from "@/lib/agent/constants";
 import { AGENT_LIST_PERIOD_DAYS } from "@/lib/agent/saved-list-filters";
 import { resolveAgentSearchIndustryFilters } from "@/lib/agent/search-filters";
+import {
+  hasStoredWebsite,
+  isCompetitorLeadCompany,
+  WEBSITE_SALES_COMPETITOR_GROUPS,
+} from "@/lib/agent/website-sales-leads";
 import { buildAgentScanUrl } from "@/lib/agent/build-scan-url";
 import {
   isBookingOnlyScan,
@@ -460,6 +465,8 @@ type CompanySearchFilters = {
   hasEmail: boolean;
   page: number;
   pageSize: number;
+  withoutWebsite?: boolean;
+  excludeIndustryGroups?: string[];
 };
 
 async function runCompanySearch(
@@ -509,6 +516,14 @@ async function executeSearchCompanies(
       ? args.days
       : defaultDays;
   const requirePhone = args.requirePhone === true;
+  const withoutWebsite = args.withoutWebsite === true;
+  const excludeIndustryGroups = Array.isArray(args.excludeIndustryGroups)
+    ? (args.excludeIndustryGroups as string[]).filter(
+        (value) => typeof value === "string" && value.trim()
+      )
+    : withoutWebsite
+      ? [...WEBSITE_SALES_COMPETITOR_GROUPS]
+      : undefined;
   const requestedLimit =
     typeof args.limit === "number" && Number.isFinite(args.limit)
       ? Math.floor(args.limit)
@@ -526,7 +541,12 @@ async function executeSearchCompanies(
     professionId,
     mappedFromProfession,
   });
-  const overfetchMultiplier = frisorSearch || professionSearch ? 16 : 8;
+  const overfetchMultiplier =
+    withoutWebsite || excludeIndustryGroups?.length
+      ? 24
+      : frisorSearch || professionSearch
+        ? 16
+        : 8;
   const pageSize =
     requestedLimit && requestedLimit > 0
       ? Math.min(
@@ -545,6 +565,8 @@ async function executeSearchCompanies(
     hasEmail: false,
     page: 1,
     pageSize,
+    withoutWebsite: withoutWebsite || undefined,
+    excludeIndustryGroups,
   };
 
   const useDb = await shouldUseBrregDb();
@@ -633,6 +655,18 @@ async function executeSearchCompanies(
     removedBadLeads += beforeProfession - companies.length;
   }
 
+  if (withoutWebsite) {
+    const beforeWebsite = companies.length;
+    companies = companies.filter((company) => !hasStoredWebsite(company.website));
+    removedBadLeads += beforeWebsite - companies.length;
+  }
+
+  if (excludeIndustryGroups?.length) {
+    const beforeCompetitors = companies.length;
+    companies = companies.filter((company) => !isCompetitorLeadCompany(company));
+    removedBadLeads += beforeCompetitors - companies.length;
+  }
+
   if (requestedLimit && requestedLimit > 0) {
     companies = rankAgentLeadCompanies(companies);
     const missingPhone = companies.filter((company) => !hasCompanyPhone(company));
@@ -682,6 +716,8 @@ async function executeSearchCompanies(
     nameQuery,
     mappedFromProfession,
     days,
+    withoutWebsite: withoutWebsite || undefined,
+    excludeIndustryGroups,
   };
 
   await updateRunProgress(ctx.runId, {

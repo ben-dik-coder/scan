@@ -3,12 +3,15 @@ import {
   AGENT_MAX_SCAN_PER_CALL,
 } from "@/lib/agent/constants";
 import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
+import { isWebsiteSalesLeadIntent } from "@/lib/agent/website-sales-leads";
 import type { AgentRun } from "@/types/database";
 
 /** Bruker ber bare om å finne/liste firma — ikke full nettside-pipeline. */
 export function isSimpleSearchIntent(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   if (!normalized) return false;
+
+  if (isWebsiteSalesLeadIntent(message)) return true;
 
   const wantsFullPipeline =
     /uten nettside|trenger nettside|mangler nettside|sjekk nettside|skann|scan\b|lagre liste|berik|kontaktinfo|kontakt-info|lag liste/i.test(
@@ -164,6 +167,15 @@ HURTIGLISTE — alle enkle «finn N [yrke/bransje] i [sted]» (f.eks. frisør, b
 3. Smale søk: legg til nameQuery (f.eks. byggevare, negler, spa) — brede bransjer trenger bare industryGroup
 4. List navn, orgnr og telefon fra databasen — svar med en gang
 5. IKKE skann — IKKE kjør scan_websites, filter_no_website, get_usage eller enrich med mindre brukeren eksplisitt ber om det
+
+SELGE NETTSIDE / GODE LEADS (f.eks. «finn 10 leads jeg kan selge nettside til», «gode leads uten nettside»):
+- Brukeren vil ha KUNDER å selge nettside til — lokale SMB (frisør, maler, restaurant, osv.), IKKE webbyrå, IT eller reklame
+- Ord som «nettside» i «selge nettside til» betyr IKKE bransje webdesign — det er salgsintensjon
+- search_companies med withoutWebsite: true og excludeIndustryGroups: ["webbyra","it","reklame"]
+- Hvis brukeren ikke sier sted: bruk default_municipality fra BRUKER-PREFERANSER, ellers spør hvilket område
+- Hvis brukeren ikke sier bransje: søk bredt i kommunen (uten industryGroup) med withoutWebsite
+- Returner nøyaktig antall brukeren ba om (f.eks. 10) — hent flere fra DB og filtrer konkurrenter bort
+- List som «gode leads uten nettside» — aldri «webdesign i Norge»
 
 Enkelt søk uten eksplisitt antall (f.eks. «finn frisører i Narvik», «nye byggfirma i Oslo»):
 1. search_companies — finn firma med limit 10 (eller antall brukeren ba om)

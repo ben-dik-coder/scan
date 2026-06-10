@@ -18,6 +18,10 @@ import {
   companyNameMatchesQuery,
   nameQueryTokens,
 } from "@/lib/brreg/name-search";
+import {
+  hasStoredWebsite,
+  isCompetitorLeadCompany,
+} from "@/lib/agent/website-sales-leads";
 import { daysAgoISO, fetchKommuner } from "./client";
 import {
   isAllTimePeriod,
@@ -176,6 +180,9 @@ export async function fetchCompaniesFromDb(
   if (filters.genericEmailOnly) {
     query = query.eq("email_is_generic", true);
   }
+  if (filters.withoutWebsite) {
+    query = query.or("website.is.null,website.eq.");
+  }
 
   query = applyIndustryFilter(query, filters.industryGroup);
   query = applyProfessionFilter(query, filters.professionId);
@@ -211,6 +218,24 @@ export async function fetchCompaniesFromDb(
   }
   if (filters.nameQuery?.trim()) {
     rows = rows.filter((c) => companyNameMatchesQuery(c.name, filters.nameQuery));
+  }
+  if (filters.withoutWebsite) {
+    rows = rows.filter((c) => !hasStoredWebsite(c.website));
+  }
+  if (filters.excludeIndustryGroups?.length) {
+    rows = rows.filter((c) => {
+      for (const groupId of filters.excludeIndustryGroups ?? []) {
+        if (
+          matchesIndustryGroup(c.industry_code, groupId, {
+            name: c.name,
+            industryDescription: c.industry_description,
+          })
+        ) {
+          return false;
+        }
+      }
+      return !isCompetitorLeadCompany(c);
+    });
   }
   const companies = rows.map(toCompanyWithLead);
   sortCompanies(companies, filters.sortSeed);

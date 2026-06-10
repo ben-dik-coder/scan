@@ -10,6 +10,7 @@ import {
   companyMatchesProfileName,
   companyMatchesResult,
   companySearchNameVariants,
+  domainMatchesProfessionSurname,
   extractBrandPortion,
   isStrongDomainMatch,
   nameTokens,
@@ -479,6 +480,94 @@ await test("Nettside godtar riktig domene selv med generisk tittel", () => {
   );
   assert.equal(pick.hasWebsite, true);
   assert.equal(pick.websiteDomain, "narvikfrisor.no");
+});
+
+const MALERMESTER_HAUGEN = "MALERMESTER JAN HAUGEN AS";
+
+await test("Malermester Jan Haugen matcher malermesterhaugen.no uten mellomnavn", () => {
+  assert.equal(
+    domainMatchesProfessionSurname("malermesterhaugen.no", MALERMESTER_HAUGEN),
+    true
+  );
+  assert.equal(
+    companyMatchesResult(
+      "Malermester Haugen",
+      "https://malermesterhaugen.no/",
+      MALERMESTER_HAUGEN
+    ),
+    true
+  );
+  const pick = pickBestWebsite(
+    [
+      {
+        title: "Malermester Haugen",
+        link: "https://malermesterhaugen.no/",
+      },
+    ],
+    MALERMESTER_HAUGEN,
+    { municipalityName: "Bodø" }
+  );
+  assert.equal(pick.hasWebsite, true);
+  assert.equal(pick.websiteDomain, "malermesterhaugen.no");
+  assert.equal(
+    websiteUrlPlausibleForCompany(
+      "https://malermesterhaugen.no/",
+      MALERMESTER_HAUGEN,
+      "Malermester Haugen"
+    ),
+    true
+  );
+});
+
+await test("Malermester Jan Haugen avviser bare haugen.no", () => {
+  assert.equal(
+    domainMatchesProfessionSurname("haugen.no", MALERMESTER_HAUGEN),
+    false
+  );
+  const pick = pickBestWebsite(
+    [{ title: "Haugen", link: "https://haugen.no/" }],
+    MALERMESTER_HAUGEN,
+    { municipalityName: "Bodø" }
+  );
+  assert.equal(pick.hasWebsite, false);
+});
+
+await test("Merkenavn for malermester er yrke + etternavn", () => {
+  assert.equal(extractBrandPortion(MALERMESTER_HAUGEN), "MALERMESTER HAUGEN");
+});
+
+await test("Nettside-spørringer inkluderer malermesterhaugen.no", () => {
+  const queries = buildWebsiteSearchQueries({
+    name: MALERMESTER_HAUGEN,
+    municipality_name: "BODØ",
+    city: "BODØ",
+  });
+  assert.ok(queries.some((q) => q.includes("malermesterhaugen.no")));
+  assert.ok(queries.some((q) => q.includes("mmhaugen.no")));
+});
+
+await test("Malermester Jan Haugen matcher forkortet mmhaugen.no", () => {
+  const pick = pickBestWebsite(
+    [{ title: "Malermester Haugen", link: "https://www.mmhaugen.no/" }],
+    MALERMESTER_HAUGEN,
+    { municipalityName: "Bodø" }
+  );
+  assert.equal(pick.hasWebsite, true);
+  assert.equal(pick.websiteDomain, "mmhaugen.no");
+});
+
+await test("Stillingsportal hyr.no velges ikke som nettside", () => {
+  const pick = pickBestWebsite(
+    [
+      {
+        title: "Prosjektleder Malermester Haugen",
+        link: "https://malermesterhaugen.hyr.no/",
+      },
+    ],
+    MALERMESTER_HAUGEN,
+    { municipalityName: "Bodø" }
+  );
+  assert.equal(pick.hasWebsite, false);
 });
 
 await test("Facebook-profil Headline avvises for Narvik Frisør", () => {

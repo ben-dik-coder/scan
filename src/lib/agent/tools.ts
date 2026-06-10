@@ -50,7 +50,7 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
     function: {
       name: "remember_preference",
       description:
-        "Lagre bruker-preferanse for fremtidige samtaler (default_municipality, default_industry, sales_focus, notes)",
+        "Lagre bruker-preferanse for fremtidige samtaler (default_municipality, default_region, default_industry, sales_focus, notes). sales_focus: «website_sales» huskes for lead-søk uten nettside.",
       parameters: {
         type: "object",
         properties: {
@@ -102,6 +102,21 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
             type: "string",
             description:
               "Søkeord i firmanavn — alle ord må finnes, f.eks. «nails» eller «beauty spa»",
+          },
+          withoutWebsite: {
+            type: "boolean",
+            description:
+              "Kun firma uten lagret nettside i Brreg. Bruk ved «selge nettside til» / «gode leads uten nettside».",
+          },
+          excludeIndustryGroups: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Ekskluder bransjer fra treff — ved nettside-salg: [\"webbyra\",\"it\",\"reklame\"]",
+          },
+          requirePhone: {
+            type: "boolean",
+            description: "Kun firma med telefonnummer",
           },
         },
         additionalProperties: false,

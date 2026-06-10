@@ -6,8 +6,8 @@
 /** Maks Google-søk for nettside — ett godt søk er nok når gjetning feiler */
 export const MAX_WEBSITE_SEARCH_QUERIES = 1;
 
-/** Serper /search for nettside — sekvensielt med tidlig stopp */
-export const SERPER_WEBSITE_MAX_QUERIES = 2;
+/** Serper /search for nettside — sekvensielt; stopp tidlig bare ved sikker match */
+export const SERPER_WEBSITE_MAX_QUERIES = 3;
 
 /** Serper /places — ett Maps-oppslag per firma i de fleste tilfeller */
 export const SERPER_PLACES_MAX_QUERIES = 1;

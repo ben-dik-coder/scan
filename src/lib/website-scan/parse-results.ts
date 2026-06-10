@@ -59,6 +59,9 @@ const DIRECTORY_DOMAINS = [
   "firmalisten.no",
   "kart.gulesider.no",
   "kommune.no",
+  "hyr.no",
+  "arbeidsplassen.no",
+  "jobbnorge.no",
 ];
 
 const HOSTED_PLATFORM_DOMAINS = [
@@ -140,7 +143,7 @@ const COMPANY_SUFFIXES = new Set([
 ]);
 
 const LISTING_PATH_RE =
-  /\/(selskap|company|bedrift|profil|profile|artikkel|nyhet|news|wiki|register|enhet|organization)/i;
+  /\/(selskap|company|bedrift|profil|profile|artikkel|nyhet|news|wiki|register|enhet|organization|job|stillinger|stilling)\b/i;
 
 
 /** Korte ord som «bø» matcher feil (Bønes Spa ≠ Bø Pæng) */
@@ -187,6 +190,46 @@ const DESCRIPTIVE_DOMAIN_TOKENS = new Set([
   "holding",
 ]);
 
+/** Yrkestittel i Brreg-navn — domene utelater ofte mellomnavn («Malermester Jan Haugen» → malermesterhaugen.no). */
+const PROFESSION_TITLE_TOKENS = new Set([
+  "malermester",
+  "byggmester",
+  "murmester",
+  "rorlegger",
+  "rørlegger",
+  "snekker",
+  "elektriker",
+  "entreprenor",
+  "entreprenør",
+  "blikkenslager",
+  "tomrer",
+  "tømrer",
+  "maler",
+  "anleggsgartner",
+  "bilverksted",
+  "bilskade",
+  "bilpleie",
+]);
+
+/** Underdomener der firmanavn i host ofte er falskt positivt (stillinger.hyr.no …). */
+const THIRD_PARTY_HOST_DOMAINS = [
+  "hyr.no",
+  "maptons.com",
+  "business.site",
+  "wixsite.com",
+];
+
+/** Vanlige forkortelser i norske håndverkerdomener — malermester → mmhaugen.no */
+const PROFESSION_DOMAIN_ABBREVIATIONS: Record<string, string[]> = {
+  malermester: ["mm"],
+  byggmester: ["bm"],
+  murmester: ["mm"],
+  rorlegger: ["rl"],
+  rørlegger: ["rl"],
+  elektriker: ["el"],
+  snekker: ["sn"],
+};
+
 export type WebsiteKind = "own" | "booking_only" | "none";
 
 export type SearchHit = { title: string; link: string; snippet?: string };
@@ -223,11 +266,18 @@ export function isBookingPlatformDomain(domain: string): boolean {
   );
 }
 
+export function isThirdPartyHostedDomain(domain: string): boolean {
+  if (!domain) return false;
+  const d = domain.toLowerCase();
+  return THIRD_PARTY_HOST_DOMAINS.some((h) => d === h || d.endsWith(`.${h}`));
+}
+
 export function isNonOwnWebsiteDomain(domain: string): boolean {
   return (
     isDirectoryDomain(domain) ||
     isBookingPlatformDomain(domain) ||
-    isHostedPlatformDomain(domain)
+    isHostedPlatformDomain(domain) ||
+    isThirdPartyHostedDomain(domain)
   );
 }
 
@@ -332,6 +382,13 @@ export function extractBrandPortion(companyName: string): string | null {
 
   const normalized = tokens.map(normalizeNameToken);
 
+  if (
+    normalized.length >= 3 &&
+    isProfessionTitleToken(tokens[0]!)
+  ) {
+    return `${tokens[0]!} ${tokens[tokens.length - 1]!}`;
+  }
+
   let industryIdx = -1;
   for (let i = 0; i < normalized.length; i++) {
     if (BRAND_OWNER_INDUSTRY_WORDS.has(normalized[i]!)) {
@@ -413,6 +470,67 @@ export function nameTokens(companyName: string): string[] {
   return mergePossessiveTokens(words)
     .map((w) => w.replace(/'/g, "").replace(/[^a-z0-9æøå]/gi, ""))
     .filter((w) => w.length >= MIN_TOKEN_LEN && !COMPANY_SUFFIXES.has(w));
+}
+
+function isProfessionTitleToken(token: string): boolean {
+  return PROFESSION_TITLE_TOKENS.has(normalizeNameToken(token));
+}
+
+/** Yrkestittel + etternavn uten mellomnavn — malermesterhaugen.no for Malermester Jan Haugen. */
+export function professionSurnameDomainCompact(tokens: string[]): string | null {
+  if (tokens.length < 2) return null;
+  const first = tokens[0]!;
+  if (!isProfessionTitleToken(first)) return null;
+  const last = tokens[tokens.length - 1]!;
+  const lastCompact = compactAlnum(last);
+  if (lastCompact.length < 4) return null;
+  const compact = compactAlnum(first) + lastCompact;
+  return compact.length >= 8 ? compact : null;
+}
+
+export function professionAbbrevSurnameDomainCompacts(
+  tokens: string[]
+): string[] {
+  if (tokens.length < 2 || !isProfessionTitleToken(tokens[0]!)) return [];
+  const lastCompact = compactAlnum(tokens[tokens.length - 1]!);
+  if (lastCompact.length < 4) return [];
+
+  const abbrevs =
+    PROFESSION_DOMAIN_ABBREVIATIONS[normalizeNameToken(tokens[0]!)] ?? [];
+  const out: string[] = [];
+  for (const abbr of abbrevs) {
+    const compact = compactAlnum(abbr) + lastCompact;
+    if (compact.length >= 6) out.push(compact);
+  }
+  return out;
+}
+
+export function domainMatchesProfessionSurname(
+  domain: string,
+  companyName: string
+): boolean {
+  const base = compactAlnum((domain.split(".")[0] ?? ""));
+  const tokens = nameTokens(companyName);
+  const expected = professionSurnameDomainCompact(tokens);
+  if (expected && base.length >= 8 && base === expected) return true;
+
+  return professionAbbrevSurnameDomainCompacts(tokens).some(
+    (compact) => base === compact
+  );
+}
+
+function titleMatchesProfessionSurname(
+  titleHay: string,
+  tokens: string[]
+): boolean {
+  if (!titleHay || tokens.length < 2 || !isProfessionTitleToken(tokens[0]!)) {
+    return false;
+  }
+  const first = compactAlnum(tokens[0]!);
+  const last = compactAlnum(tokens[tokens.length - 1]!);
+  return (
+    last.length >= 4 && titleHay.includes(first) && titleHay.includes(last)
+  );
 }
 
 /** Første meningsfulle ord — for søk når merkenavn avviker fra Brreg-navn */
@@ -548,6 +666,15 @@ export function companyMatchesResult(
   }
 
   if (tokens.length >= 2) {
+    if (titleHay && titleMatchesProfessionSurname(titleHay, tokens)) {
+      if (!link) return true;
+      if (fullDomain && isNonOwnWebsiteDomain(fullDomain)) return true;
+      return (
+        domainMatchesProfessionSurname(fullDomain, companyName) ||
+        domainSimilarToCompany(fullDomain, companyName)
+      );
+    }
+
     const titleMatch =
       titleHay && tokens.every((t) => titleHay.includes(compactAlnum(t)));
     if (titleMatch) {
@@ -587,10 +714,14 @@ export function domainSimilarToCompany(
   domain: string,
   companyName: string
 ): boolean {
+  if (isThirdPartyHostedDomain(domain)) return false;
+
   const rawBase = (domain.split(".")[0] ?? "").toLowerCase();
   const base = rawBase.replace(/[^a-z0-9æøå]/gi, "");
   const baseWithHyphen = rawBase.replace(/[^a-z0-9æøå-]/gi, "");
   if (base.length < 4 && baseWithHyphen.length < 4) return false;
+
+  if (domainMatchesProfessionSurname(domain, companyName)) return true;
 
   const stripped = stripCompanySuffix(companyName);
   const companyCompact = compactAlnum(stripped);
@@ -1136,8 +1267,20 @@ export function buildWebsiteSearchQueries(company: {
 
   const strippedTitle = toTitleCaseName(stripped);
 
+  const nameTokenList = nameTokens(name);
+  const profSurname = professionSurnameDomainCompact(nameTokenList);
+  const profAbbrevDomains = professionAbbrevSurnameDomainCompacts(nameTokenList);
+
   if (places.length > 0) {
     for (const place of places) {
+      if (profSurname) {
+        add(`${profSurname}.no`);
+        add(`${profSurname} ${place}`);
+      }
+      for (const abbrevDomain of profAbbrevDomains) {
+        add(`${abbrevDomain}.no`);
+        add(`${abbrevDomain} ${place}`);
+      }
       if (brandTitle) add(`"${brandTitle}" ${place}`);
       if (brand) add(`${brand} ${place}`);
       add(`${stripped} ${place}`);
@@ -1190,6 +1333,8 @@ export function isStrongDomainMatch(
   const base = compactAlnum((domain.split(".")[0] ?? ""));
   if (base.length < 4) return false;
 
+  if (domainMatchesProfessionSurname(domain, companyName)) return true;
+
   const companyCompact = compactAlnum(stripCompanySuffix(companyName));
   if (base === companyCompact) return true;
 
@@ -1211,16 +1356,84 @@ export function isStrongDomainMatch(
   return false;
 }
 
+/** Når vi kan stoppe Serper nettside-søk tidlig uten å risikere falsk «ingen nettside». */
+export function isConfidentWebsitePick(
+  pick: {
+    hasWebsite: boolean;
+    websiteKind: WebsiteKind;
+    websiteDomain: string | null;
+    confidence: "high" | "medium" | "low";
+  },
+  companyName: string
+): boolean {
+  if (!pick.hasWebsite || pick.websiteKind !== "own" || !pick.websiteDomain) {
+    return false;
+  }
+  if (isThirdPartyHostedDomain(pick.websiteDomain)) return false;
+  if (domainMatchesProfessionSurname(pick.websiteDomain, companyName)) {
+    return true;
+  }
+  if (isStrongDomainMatch(pick.websiteDomain, companyName)) return true;
+  return pick.confidence === "high";
+}
+
 /** Merkenavn (uten bransjeord) må finnes helt i domenet — «martinsen» ≠ «martins». */
 export function domainCoversBrandTokens(
   domain: string,
   companyName: string
 ): boolean {
   const base = compactAlnum((domain.split(".")[0] ?? ""));
-  const brandTokens = nameTokens(companyName).filter(
+  if (domainMatchesProfessionSurname(domain, companyName)) return true;
+
+  const tokens = nameTokens(companyName);
+  const brandTokens = tokens.filter(
     (t) => !BRAND_OWNER_INDUSTRY_WORDS.has(normalizeNameToken(t))
   );
   if (brandTokens.length === 0) return true;
+
+  if (
+    tokens.length >= 3 &&
+    isProfessionTitleToken(tokens[0]!) &&
+    professionSurnameDomainCompact(tokens)
+  ) {
+    const first = compactAlnum(tokens[0]!);
+    const last = compactAlnum(tokens[tokens.length - 1]!);
+    if (base.includes(first) && base.includes(last)) return true;
+  }
+
+  const brand = extractBrandPortion(companyName);
+  if (brand) {
+    const brandCompact = compactAlnum(brand);
+    if (
+      brandCompact.length >= 5 &&
+      (base === brandCompact ||
+        base.includes(brandCompact) ||
+        brandCompact.includes(base))
+    ) {
+      return true;
+    }
+  }
+
+  if (tokens.length >= 2) {
+    const first = compactAlnum(tokens[0]!);
+    const tail = tokens.slice(1);
+    const tailOnlyDescriptive = tail.every(
+      (t) =>
+        DESCRIPTIVE_DOMAIN_TOKENS.has(t) &&
+        !BRAND_OWNER_INDUSTRY_WORDS.has(normalizeNameToken(t))
+    );
+    if (tailOnlyDescriptive && first.length >= 5 && base === first) return true;
+  }
+
+  if (
+    tokens.length === 2 &&
+    BRAND_OWNER_INDUSTRY_WORDS.has(normalizeNameToken(tokens[1]!))
+  ) {
+    const first = compactAlnum(tokens[0]!);
+    const industry = compactAlnum(tokens[1]!);
+    if (base === first && !base.includes(industry)) return false;
+  }
+
   return brandTokens.every((t) => {
     const tc = compactAlnum(t);
     return tc.length < 4 || base.includes(tc);

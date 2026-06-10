@@ -31,8 +31,8 @@ export const AGENT_SEARCH_OVERFETCH_MIN = 40;
 /** Timeout for search_companies */
 export const AGENT_TOOL_SEARCH_TIMEOUT_MS = 15_000;
 
-/** Maks tid for ett scan_websites-kall */
-export const AGENT_TOOL_SCAN_TIMEOUT_MS = 30_000;
+/** Maks tid for ett scan_websites-kall (5 firma × ~15s snitt) */
+export const AGENT_TOOL_SCAN_TIMEOUT_MS = 120_000;
 
 /** Timeout per firma under agent-skann */
 export const AGENT_SCAN_ONE_TIMEOUT_MS = 45_000;

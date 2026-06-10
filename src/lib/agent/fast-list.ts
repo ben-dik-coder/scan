@@ -13,6 +13,12 @@ import {
 } from "@/lib/agent/municipality";
 import { isSimpleSearchIntent } from "@/lib/agent/prompt";
 import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
+import {
+  isWebsiteSalesLeadIntent,
+  messageForIndustryResolution,
+  parseDefaultIndustryFromPrompt,
+  WEBSITE_SALES_COMPETITOR_GROUPS,
+} from "@/lib/agent/website-sales-leads";
 import { formatCompanyName } from "@/lib/utils";
 
 export type SimpleListCompany = {
@@ -463,8 +469,150 @@ function hasListVerb(normalized: string): boolean {
   );
 }
 
+export type ParsedWebsiteSalesLeadRequest = ParsedSimpleListRequest & {
+  needsClarification?: boolean;
+  clarificationMessage?: string;
+};
+
+/** Bruker vil selge nettsider — finn SMB-leads uten nettside, ikke webbyrå. */
+export function isWebsiteSalesLeadListIntent(message: string): boolean {
+  if (isContextualFollowUp(message)) return false;
+  return isWebsiteSalesLeadIntent(message);
+}
+
+export async function parseWebsiteSalesLeadRequest(
+  message: string,
+  options?: {
+    defaultMunicipality?: { code?: string; label?: string };
+    systemPromptExtra?: string;
+  }
+): Promise<ParsedWebsiteSalesLeadRequest | null> {
+  if (!isWebsiteSalesLeadListIntent(message)) return null;
+
+  const industryMessage = messageForIndustryResolution(message);
+  const industry = resolveIndustryKeyword(industryMessage);
+  const defaultIndustry = parseDefaultIndustryFromPrompt(options?.systemPromptExtra);
+  const limit = parseLimit(message) ?? 10;
+
+  const municipality = await resolveMunicipalityFromMessage(industryMessage, {
+    defaultCode: options?.defaultMunicipality?.code,
+    defaultLabel: options?.defaultMunicipality?.label,
+  });
+  const region = parseRegion(industryMessage);
+
+  if (municipality.unknown) {
+    const placeLabel =
+      municipality.label ?? extractPlaceMention(industryMessage) ?? "valgt sted";
+    return {
+      limit,
+      industryLabel: industry?.label ?? defaultIndustry?.label ?? "lokale firma",
+      locationLabel: placeLabel,
+      searchArgs: {
+        limit,
+        days: 0,
+        withoutWebsite: true,
+        excludeIndustryGroups: [...WEBSITE_SALES_COMPETITOR_GROUPS],
+      },
+      unknownPlace: true,
+    };
+  }
+
+  const municipalityCode = municipality.code ?? options?.defaultMunicipality?.code;
+  const regionId = region.id;
+  if (!municipalityCode && !regionId) {
+    return {
+      limit,
+      industryLabel: industry?.label ?? defaultIndustry?.label ?? "lokale firma",
+      locationLabel: "",
+      searchArgs: {},
+      needsClarification: true,
+      clarificationMessage:
+        "Hvilket område vil du finne leads i? Si f.eks. «i Bodø» eller «i Narvik» — da finner jeg lokale firma uten nettside du kan kontakte (ikke webbyrå).",
+    };
+  }
+
+  const industryLabel =
+    industry?.label ?? defaultIndustry?.label ?? "lokale firma uten nettside";
+  const searchArgs: Record<string, unknown> = {
+    limit,
+    days: 0,
+    withoutWebsite: true,
+    excludeIndustryGroups: [...WEBSITE_SALES_COMPETITOR_GROUPS],
+    ...(industry?.filters ??
+      (defaultIndustry?.industryGroup
+        ? { industryGroup: defaultIndustry.industryGroup }
+        : {})),
+  };
+
+  if (municipalityCode) {
+    searchArgs.municipalityCode = municipalityCode;
+  } else if (regionId) {
+    searchArgs.regionId = regionId;
+  }
+
+  if (wantsPhoneInList(message)) {
+    searchArgs.requirePhone = true;
+  }
+
+  const locationLabel = formatPlaceLabel(
+    municipality.label ??
+      options?.defaultMunicipality?.label ??
+      region.label ??
+      "valgt område",
+    municipalityCode
+  );
+
+  return {
+    limit,
+    industryLabel,
+    locationLabel,
+    searchArgs,
+    requirePhone: searchArgs.requirePhone === true,
+  };
+}
+
+export function formatWebsiteSalesLeadReply(
+  companies: SimpleListCompany[],
+  request: ParsedWebsiteSalesLeadRequest
+): string {
+  if (request.needsClarification && request.clarificationMessage) {
+    return request.clarificationMessage;
+  }
+
+  if (request.unknownPlace) {
+    return formatUnknownPlaceReply(request);
+  }
+
+  if (companies.length === 0) {
+    const phoneHint = request.requirePhone ? " med telefon" : "";
+    return `Fant ingen ${request.industryLabel}${phoneHint} i ${request.locationLabel}. Prøv et annet sted, en annen bransje, eller si fra om du vil skanne nettside for flere.`;
+  }
+
+  const lines = companies.map((company, index) => {
+    const phone = (company.phone ?? "").trim();
+    const place = (company.municipality_name ?? "").trim();
+    const parts = [
+      `${index + 1}. **${formatCompanyName(company.name)}**`,
+      `orgnr ${company.orgnr}`,
+    ];
+    if (phone) parts.push(`tlf ${phone}`);
+    if (place) parts.push(place);
+    return parts.join(" · ");
+  });
+
+  const phoneNote = request.requirePhone ? " (alle med telefon)" : "";
+  const header = `Her er ${companies.length} gode leads uten nettside i ${request.locationLabel}${phoneNote} — lokale firma du kan kontakte, ikke webbyrå/IT:`;
+  const footer =
+    companies.length < request.limit
+      ? `\n\nFant bare ${companies.length} i databasen uten nettside. Si fra om du vil prøve en annen bransje eller skanne flere.`
+      : "\n\nVil du skanne nettside for å bekrefte, eller lagre som liste? Si fra.";
+
+  return `${header}\n\n${lines.join("\n")}${footer}`;
+}
+
 /** Bruker vil ha en kort liste med N firma — ikke skann/lagre. */
 export function isSimpleListIntent(message: string): boolean {
+  if (isWebsiteSalesLeadListIntent(message)) return false;
   if (isContextualFollowUp(message)) return false;
   if (wantsFacebookInList(message)) return false;
   if (!isSimpleSearchIntent(message)) return false;

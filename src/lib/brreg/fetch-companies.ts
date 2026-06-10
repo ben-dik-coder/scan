@@ -20,6 +20,10 @@ import {
 } from "@/lib/constants/industries";
 import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
 import { companyNameMatchesQuery } from "@/lib/brreg/name-search";
+import {
+  hasStoredWebsite,
+  isCompetitorLeadCompany,
+} from "@/lib/agent/website-sales-leads";
 import { isPersonalEmail, mapBrregEnhet, type CompanyInsert } from "./map-company";
 
 let kommuneCodesCache: string[] | null = null;
@@ -79,6 +83,10 @@ export type BrregCompanyFilters = {
   pageSize?: number;
   /** Deterministisk rekkefølge før paginering */
   sortSeed?: string;
+  /** Kun firma uten lagret nettside i Brreg/DB */
+  withoutWebsite?: boolean;
+  /** Ekskluder bransje-id (f.eks. webbyra, it, reklame) */
+  excludeIndustryGroups?: string[];
 };
 
 export function isAllTimePeriod(days?: number): boolean {
@@ -150,6 +158,24 @@ function matchesFilters(
   }
   if (!companyNameMatchesQuery(company.name, filters.nameQuery)) {
     return false;
+  }
+  if (filters.withoutWebsite && hasStoredWebsite(company.website)) {
+    return false;
+  }
+  if (filters.excludeIndustryGroups?.length) {
+    for (const groupId of filters.excludeIndustryGroups) {
+      if (
+        matchesIndustryGroup(company.industry_code, groupId, {
+          name: company.name,
+          industryDescription: company.industry_description,
+        })
+      ) {
+        return false;
+      }
+    }
+    if (isCompetitorLeadCompany(company)) {
+      return false;
+    }
   }
   return true;
 }

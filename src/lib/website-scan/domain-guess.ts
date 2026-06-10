@@ -2,12 +2,16 @@ import { fetchWebsitePageMetadata } from "./fetch-website-metadata";
 import {
   compactAlnum,
   norwegianDomainCompact,
+  domainMatchesProfessionSurname,
   domainSimilarToCompany,
+  domainCoversBrandTokens,
   isGenericDomainBase,
   isNonOwnWebsiteDomain,
   isStrongDomainMatch,
   nameTokens,
   normalizeDomain,
+  professionAbbrevSurnameDomainCompacts,
+  professionSurnameDomainCompact,
   stripCompanySuffix,
   websiteUrlPlausibleForCompany,
 } from "./parse-results";
@@ -57,6 +61,13 @@ function domainBases(companyName: string): string[] {
     .replace(/[^a-z0-9æøå-]+/gi, "-")
     .replace(/^-|-$/g, "");
   if (hyphenSlug.includes("-")) add(hyphenSlug);
+
+  const tokens = nameTokens(companyName);
+  const profSurname = professionSurnameDomainCompact(tokens);
+  if (profSurname) add(profSurname);
+  for (const abbrevDomain of professionAbbrevSurnameDomainCompacts(tokens)) {
+    add(abbrevDomain);
+  }
 
   const noDomainCompact = norwegianDomainCompact(stripped);
   if (
@@ -159,7 +170,14 @@ export function isWeakDomainGuess(
   if (place.length >= 4 && base === place) return true;
 
   if (isGenericDomainBase(domain)) return true;
-  if (domainSimilarToCompany(domain, companyName) && !isStrongDomainMatch(domain, companyName)) {
+  if (domainMatchesProfessionSurname(domain, companyName)) return false;
+  if (isStrongDomainMatch(domain, companyName)) return false;
+  if (domainCoversBrandTokens(domain, companyName)) return false;
+
+  if (
+    domainSimilarToCompany(domain, companyName) &&
+    !isStrongDomainMatch(domain, companyName)
+  ) {
     return true;
   }
 

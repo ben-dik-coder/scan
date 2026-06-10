@@ -573,7 +573,7 @@ export function AgentChatPanel({
             </p>
           )}
           <form
-            className="flex items-end gap-2"
+            className="flex items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void sendMessage(input);
@@ -583,7 +583,7 @@ export function AgentChatPanel({
               type="button"
               onClick={() => setScheduleModalOpen(true)}
               disabled={loading}
-              className="relative mb-0.5 flex h-9 w-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full text-[#8e8e93] transition hover:bg-white/[0.06] hover:text-[#ececec] active:scale-95 disabled:opacity-50"
+              className="relative flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full text-[#8e8e93] transition hover:bg-white/[0.06] hover:text-[#ececec] active:scale-95 disabled:opacity-50"
               aria-label="Planlegg spørsmål"
               title="Planlegg spørsmål til senere"
             >
@@ -612,7 +612,7 @@ export function AgentChatPanel({
                 <button
                   type="button"
                   onClick={stopRequest}
-                  className="mb-0.5 flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95"
+                  className="flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95"
                   aria-label="Stopp"
                 >
                   <Square className="h-3 w-3 fill-current" />
@@ -621,7 +621,7 @@ export function AgentChatPanel({
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="mb-0.5 flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95 disabled:bg-[#424242] disabled:text-[#6b6b6b]"
+                  className="flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95 disabled:bg-[#424242] disabled:text-[#6b6b6b]"
                   aria-label="Send"
                 >
                   <ArrowUp className="h-[16px] w-[16px]" strokeWidth={2.5} />

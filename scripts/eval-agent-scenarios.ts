@@ -13,10 +13,12 @@ import {
   isSaveListFollowUp,
   isScanWebsitesFollowUp,
   isSimpleListIntent,
+  isWebsiteSalesLeadListIntent,
   parseContextualListRequest,
   parseSaveListRequest,
   parseScanWebsitesRequest,
   parseSimpleListRequest,
+  parseWebsiteSalesLeadRequest,
 } from "../src/lib/agent/fast-list.ts";
 import {
   isAgentResumeIntent,
@@ -30,6 +32,11 @@ import {
   resolveAgentSearchIndustryFilters,
   resolveIndustryKeyword,
 } from "../src/lib/agent/search-filters.ts";
+import {
+  isWebsiteSalesLeadIntent,
+  messageForIndustryResolution,
+} from "../src/lib/agent/website-sales-leads.ts";
+import { isProfessionRelevantCompany } from "../src/lib/brreg/profession-relevance.ts";
 import type { AgentMessage } from "../src/types/database.ts";
 
 function testResumeIntent() {
@@ -90,9 +97,19 @@ function testProfessionMapping() {
   assert.equal(mapProfessionToIndustryGroup("bilverksted"), undefined);
   assert.equal(mapProfessionToIndustryGroup("rengjoring"), undefined);
   assert.equal(mapProfessionToIndustryGroup("advokat"), undefined);
+  assert.equal(mapProfessionToIndustryGroup("maler"), undefined);
+  assert.equal(mapProfessionToIndustryGroup("rorlegger"), undefined);
   assert.equal(
     resolveAgentSearchIndustryFilters({ professionId: "advokat" }).professionId,
     "advokat"
+  );
+  assert.equal(
+    resolveAgentSearchIndustryFilters({ professionId: "maler" }).professionId,
+    "maler"
+  );
+  assert.equal(
+    resolveAgentSearchIndustryFilters({ professionId: "maler" }).industryGroup,
+    undefined
   );
   assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).professionId, "frisor");
   assert.equal(resolveAgentSearchIndustryFilters({ professionId: "frisor" }).industryGroup, undefined);
@@ -227,6 +244,38 @@ async function testSimpleListIntent() {
   assert.equal(tannlege?.filters.professionId, "tannlege");
   assert.equal(tannlege?.filters.nameQuery, "tannlege");
 
+  const maler = resolveIndustryKeyword("finn 5 malere i Bodø");
+  assert.equal(maler?.filters.professionId, "maler");
+  assert.equal(maler?.filters.nameQuery, "maler");
+  assert.equal(maler?.filters.industryGroup, undefined);
+
+  const rorlegger = resolveIndustryKeyword("finn 20 rørleggere i Bodø");
+  assert.equal(rorlegger?.filters.professionId, "rorlegger");
+  assert.equal(rorlegger?.filters.nameQuery, "rorlegger");
+  assert.equal(rorlegger?.filters.industryGroup, undefined);
+
+  const elektriker = resolveIndustryKeyword("finn 5 elektrikere i Oslo");
+  assert.equal(elektriker?.filters.professionId, "elektriker");
+  assert.equal(elektriker?.filters.nameQuery, "elektro");
+
+  const murer = resolveIndustryKeyword("finn 3 murere i Trondheim");
+  assert.equal(murer?.filters.professionId, "murer");
+  assert.equal(murer?.filters.nameQuery, "murer");
+
+  const blomster = resolveIndustryKeyword("finn blomsterbutikker i Bergen");
+  assert.equal(blomster?.filters.professionId, "blomster");
+  assert.equal(blomster?.filters.nameQuery, "blomster");
+
+  const handverk = resolveIndustryKeyword("finn 5 håndverkere i Bodø");
+  assert.equal(handverk?.filters.industryGroup, "bygg");
+  assert.equal(handverk?.filters.professionId, undefined);
+
+  const malerParsed = await parseSimpleListRequest("finn 5 malere i Bodø");
+  assert.ok(malerParsed);
+  assert.equal(malerParsed.searchArgs.professionId, "maler");
+  assert.equal(malerParsed.searchArgs.nameQuery, "maler");
+  assert.equal(malerParsed.searchArgs.industryGroup, undefined);
+
   const harstadFrisor = resolveIndustryKeyword("finn 5 eiendomsmeglere i Harstad");
   assert.notEqual(harstadFrisor?.filters.professionId, "frisor");
 
@@ -271,18 +320,95 @@ function testStartupContext() {
   assert.match(prompt, /1806/);
 }
 
+function testMalerRelevanceFilter() {
+  assert.equal(
+    isProfessionRelevantCompany("maler", {
+      name: "Ferix Roe Service",
+      industry_code: "43.99",
+    }),
+    false
+  );
+  assert.equal(
+    isProfessionRelevantCompany("maler", {
+      name: "Beiermann Bygg AS",
+      industry_code: "43.39",
+    }),
+    false
+  );
+  assert.equal(
+    isProfessionRelevantCompany("maler", {
+      name: "Nordmaling AS",
+      industry_code: "43.34",
+    }),
+    true
+  );
+  assert.equal(
+    isProfessionRelevantCompany("maler", {
+      name: "Malermester Hansen",
+      industry_code: "43.99",
+    }),
+    true
+  );
+}
+
+async function testWebsiteSalesLeadIntent() {
+  const query =
+    "finn meg 10 gode leads jeg mest sannsynlig kan kontakte og selge nettside til";
+
+  assert.equal(isWebsiteSalesLeadIntent(query), true);
+  assert.equal(isWebsiteSalesLeadListIntent(query), true);
+  assert.equal(isSimpleListIntent(query), false);
+  assert.equal(isSimpleSearchIntent(query), true);
+  assert.equal(resolveIndustryKeyword(query), null);
+
+  const cleaned = messageForIndustryResolution(query);
+  assert.equal(resolveIndustryKeyword(cleaned), null);
+  assert.doesNotMatch(cleaned, /nettside/i);
+
+  const withoutPlace = await parseWebsiteSalesLeadRequest(query);
+  assert.ok(withoutPlace);
+  assert.equal(withoutPlace.limit, 10);
+  assert.equal(withoutPlace.needsClarification, true);
+  assert.match(withoutPlace.clarificationMessage ?? "", /område|Bodø|Narvik/i);
+
+  const withDefault = await parseWebsiteSalesLeadRequest(query, {
+    defaultMunicipality: { code: "1804", label: "Bodø" },
+  });
+  assert.ok(withDefault);
+  assert.equal(withDefault.needsClarification, undefined);
+  assert.equal(withDefault.searchArgs.municipalityCode, "1804");
+  assert.equal(withDefault.searchArgs.withoutWebsite, true);
+  assert.deepEqual(withDefault.searchArgs.excludeIndustryGroups, [
+    "webbyra",
+    "it",
+    "reklame",
+  ]);
+  assert.equal(withDefault.searchArgs.industryGroup, undefined);
+  assert.equal(withDefault.searchArgs.professionId, undefined);
+
+  const withIndustry = await parseWebsiteSalesLeadRequest(
+    "finn 10 gode leads frisører uten nettside i Bodø jeg kan selge nettside til"
+  );
+  assert.ok(withIndustry);
+  assert.equal(withIndustry.searchArgs.professionId, "frisor");
+  assert.equal(withIndustry.searchArgs.withoutWebsite, true);
+  assert.notEqual(withIndustry.searchArgs.industryGroup, "webbyra");
+}
+
 async function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
+  testMalerRelevanceFilter();
   testSimpleSearchIntent();
   await testContextualFollowUp();
   await testSaveAndScanFollowUp();
   await testSimpleListIntent();
+  await testWebsiteSalesLeadIntent();
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 9/9 OK");
+  console.log("eval-agent-scenarios: 11/11 OK");
 }
 
 main().catch((err) => {

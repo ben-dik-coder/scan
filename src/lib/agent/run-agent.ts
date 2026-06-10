@@ -12,11 +12,14 @@ import {
   formatFacebookListReply,
   formatFastListReply,
   formatScanWebsitesReply,
+  formatWebsiteSalesLeadReply,
   getDefaultMunicipalityFromPrompt,
   isFacebookListIntent,
   isSimpleListIntent,
+  isWebsiteSalesLeadListIntent,
   parseFacebookListRequest,
   parseSimpleListRequest,
+  parseWebsiteSalesLeadRequest,
   parseContextualListRequest,
   parseSaveListRequest,
   parseScanWebsitesRequest,
@@ -507,6 +510,46 @@ export async function runAgentChat(
         scanned,
         serperLimited,
       });
+      await onEvent({ type: "text", content: assistantText });
+      await onEvent({ type: "done", content: assistantText });
+      return { assistantText };
+    }
+  }
+
+  if (isWebsiteSalesLeadListIntent(lastUserMessage)) {
+    const parsed = await parseWebsiteSalesLeadRequest(lastUserMessage, {
+      defaultMunicipality,
+      systemPromptExtra: options?.systemPromptExtra,
+    });
+    if (parsed) {
+      if (parsed.needsClarification) {
+        assistantText = formatWebsiteSalesLeadReply([], parsed);
+        await onEvent({ type: "text", content: assistantText });
+        await onEvent({ type: "done", content: assistantText });
+        return { assistantText };
+      }
+
+      if (parsed.unknownPlace) {
+        assistantText = formatWebsiteSalesLeadReply([], parsed);
+        await onEvent({ type: "text", content: assistantText });
+        await onEvent({ type: "done", content: assistantText });
+        return { assistantText };
+      }
+
+      const companies = (
+        await searchCompaniesForFastList(
+          toolCtx,
+          async (event) => {
+            await onEvent(event);
+          },
+          parsed.searchArgs,
+          true
+        )
+      ).filter((company) => !isBadLeadCompany(company));
+
+      const listedCompanies = filterListedCompanies(companies, parsed);
+
+      assistantText = formatWebsiteSalesLeadReply(listedCompanies, parsed);
       await onEvent({ type: "text", content: assistantText });
       await onEvent({ type: "done", content: assistantText });
       return { assistantText };

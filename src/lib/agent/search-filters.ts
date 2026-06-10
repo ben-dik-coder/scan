@@ -3,6 +3,12 @@ import {
   industryGroupLabel,
 } from "@/lib/constants/industries";
 import { resolveProfessionQuery } from "@/lib/constants/professions";
+import {
+  isCompetitorIndustryKeyword,
+  isWebsiteSalesLeadIntent,
+  messageForIndustryResolution,
+  WEBSITE_SALES_COMPETITOR_GROUPS,
+} from "@/lib/agent/website-sales-leads";
 
 const INDUSTRY_GROUP_IDS = new Set(
   INDUSTRY_GROUPS.map((g) => g.id).filter(Boolean)
@@ -421,21 +427,49 @@ function resolveFromProfession(message: string): IndustryKeywordMatch | null {
   };
 }
 
+const COMPETITOR_INDUSTRY_IDS = new Set<string>(WEBSITE_SALES_COMPETITOR_GROUPS);
+
+function isBlockedIndustryMatch(
+  match: IndustryKeywordMatch,
+  salesLeadIntent: boolean
+): boolean {
+  if (!salesLeadIntent) return false;
+  const group = match.filters.industryGroup;
+  const profession = match.filters.professionId;
+  if (group && COMPETITOR_INDUSTRY_IDS.has(group)) return true;
+  if (profession && (profession === "webdesign" || profession === "it" || profession === "reklame")) {
+    return true;
+  }
+  return false;
+}
+
 export function resolveIndustryKeyword(message: string): IndustryKeywordMatch | null {
-  const normalized = message.trim().toLowerCase();
+  const salesLeadIntent = isWebsiteSalesLeadIntent(message);
+  const industryMessage = messageForIndustryResolution(message);
+  const normalized = industryMessage.trim().toLowerCase();
   if (!normalized) return null;
+
+  if (salesLeadIntent && isCompetitorIndustryKeyword(normalized)) {
+    return null;
+  }
 
   for (const rule of INDUSTRY_KEYWORD_RULES) {
     if (rule.pattern.test(normalized)) {
+      if (isBlockedIndustryMatch(rule.match, salesLeadIntent)) continue;
       return rule.match;
     }
   }
 
   const fromProfession = resolveFromProfession(normalized);
-  if (fromProfession) return fromProfession;
+  if (fromProfession && !isBlockedIndustryMatch(fromProfession, salesLeadIntent)) {
+    return fromProfession;
+  }
 
   const group = matchIndustryGroupInMessage(normalized);
   if (group) {
+    if (salesLeadIntent && COMPETITOR_INDUSTRY_IDS.has(group.id)) {
+      return null;
+    }
     return {
       label: group.label.toLowerCase(),
       filters: { industryGroup: group.id },
