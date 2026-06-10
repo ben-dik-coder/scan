@@ -76,6 +76,9 @@ const KEEP_AS_PROFESSION = new Set([
   "rengjoring",
   "tatovering",
   "frisor",
+  "apotek",
+  "tannlege",
+  "megler",
 ]);
 
 /** Vanlige brukerord → søkefilter (f.eks. byggevarehandler → bygg). */
@@ -108,11 +111,28 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "transportfirma", filters: { industryGroup: "transport" } },
   },
   {
-    pattern: /\b(eiendom|eiendomsmegler|megler)\b/,
-    match: { label: "eiendomsfirma", filters: { industryGroup: "eiendom" } },
+    pattern: /\b(eiendom(?:smegler(?:e|ne)?)?|megler(?:e|ne)?)\b/,
+    match: {
+      label: "eiendomsmeglere",
+      filters: { professionId: "megler" },
+    },
   },
   {
-    pattern: /\b(helse|lege|tannlege|fysioterapeut|barnehage)\b/,
+    pattern: /\b(apotek|apoteker)\b/,
+    match: {
+      label: "apotek",
+      filters: { professionId: "apotek", nameQuery: "apotek" },
+    },
+  },
+  {
+    pattern: /\b(tannlege(?:r)?|tannklinikk(?:er)?)\b/,
+    match: {
+      label: "tannleger",
+      filters: { professionId: "tannlege", nameQuery: "tannlege" },
+    },
+  },
+  {
+    pattern: /\b(helse|lege|fysioterapeut|barnehage)\b/,
     match: { label: "helsefirma", filters: { industryGroup: "helse" } },
   },
   {
@@ -234,6 +254,9 @@ function defaultNameQueryForProfession(professionId: string): string | undefined
   if (professionId === "advokat") return "advokat";
   if (professionId === "regnskap") return "regnskap";
   if (professionId === "tatovering") return "tattoo";
+  if (professionId === "apotek") return "apotek";
+  if (professionId === "tannlege") return "tannlege";
+  if (professionId === "megler") return undefined;
   return undefined;
 }
 

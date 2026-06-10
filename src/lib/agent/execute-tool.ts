@@ -39,6 +39,10 @@ import {
   isFrisorSearchFilter,
 } from "@/lib/brreg/frisor-search";
 import {
+  isProfessionRelevantCompany,
+  isProfessionSearchFilter,
+} from "@/lib/brreg/profession-relevance";
+import {
   filterAgentLeadCompanies,
   getPlausibleCompanyPhone,
   hasCompanyPhone,
@@ -518,7 +522,11 @@ async function executeSearchCompanies(
     industryGroup,
     mappedFromProfession,
   });
-  const overfetchMultiplier = frisorSearch ? 16 : 8;
+  const professionSearch = isProfessionSearchFilter({
+    professionId,
+    mappedFromProfession,
+  });
+  const overfetchMultiplier = frisorSearch || professionSearch ? 16 : 8;
   const pageSize =
     requestedLimit && requestedLimit > 0
       ? Math.min(
@@ -542,8 +550,17 @@ async function executeSearchCompanies(
   const useDb = await shouldUseBrregDb();
   let result;
   let retriedBroader = false;
+  let dataSource: "database" | "live_brreg" = useDb ? "database" : "live_brreg";
   try {
     result = await runCompanySearch(searchArgs, useDb);
+
+    if (result.companies.length === 0 && useDb) {
+      const live = await runCompanySearch(searchArgs, false);
+      if (live.companies.length > 0) {
+        result = live;
+        dataSource = "live_brreg";
+      }
+    }
 
     if (result.companies.length === 0) {
       if (nameQuery && industryGroup) {
@@ -605,6 +622,15 @@ async function executeSearchCompanies(
     const beforeFrisor = companies.length;
     companies = companies.filter((company) => isFrisorRelevantCompany(company));
     removedBadLeads += beforeFrisor - companies.length;
+  }
+
+  const activeProfessionId = professionId ?? mappedFromProfession;
+  if (professionSearch && activeProfessionId) {
+    const beforeProfession = companies.length;
+    companies = companies.filter((company) =>
+      isProfessionRelevantCompany(activeProfessionId, company)
+    );
+    removedBadLeads += beforeProfession - companies.length;
   }
 
   if (requestedLimit && requestedLimit > 0) {
@@ -698,7 +724,7 @@ async function executeSearchCompanies(
       truncatedHint,
       withEmail: result.withEmail,
       dbCompanyCount: "dbCompanyCount" in result ? result.dbCompanyCount : undefined,
-      dataSource: useDb ? "database" : "live_brreg",
+      dataSource: dataSource,
       orgnrs: companies.map((c) => c.orgnr),
       filters: searchFilters,
     },

@@ -140,6 +140,21 @@ async function testSimpleListIntent() {
   const advokat = resolveIndustryKeyword("3 advokater Oslo");
   assert.equal(advokat?.filters.professionId, "advokat");
 
+  const megler = resolveIndustryKeyword("finn 5 eiendomsmeglere i Harstad");
+  assert.equal(megler?.filters.professionId, "megler");
+  assert.equal(megler?.filters.nameQuery, undefined);
+
+  const apotek = resolveIndustryKeyword("finn 5 apotek i Tromsø");
+  assert.equal(apotek?.filters.professionId, "apotek");
+  assert.equal(apotek?.filters.nameQuery, "apotek");
+
+  const tannlege = resolveIndustryKeyword("finn 5 tannleger i Tromsø");
+  assert.equal(tannlege?.filters.professionId, "tannlege");
+  assert.equal(tannlege?.filters.nameQuery, "tannlege");
+
+  const harstadFrisor = resolveIndustryKeyword("finn 5 eiendomsmeglere i Harstad");
+  assert.notEqual(harstadFrisor?.filters.professionId, "frisor");
+
   const short = await parseSimpleListRequest("byggevare Bodø");
   assert.ok(short);
   assert.equal(short.searchArgs.municipalityCode, "1804");

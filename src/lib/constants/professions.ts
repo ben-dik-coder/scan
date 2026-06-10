@@ -418,13 +418,21 @@ function similarity(a: string, b: string): number {
   return 1 - levenshtein(na, nb) / maxLen;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function scoreAliasMatch(query: string, alias: string): number {
   const q = normalizeText(query);
   const a = normalizeText(alias);
   if (!q || !a) return 0;
   if (q === a) return 100;
   if (a.startsWith(q) || q.startsWith(a)) return 85;
-  if (a.includes(q) || q.includes(a)) return 70;
+  if (a.length >= 4 && (a.includes(q) || q.includes(a))) return 70;
+  if (a.length < 4) {
+    const wordPattern = new RegExp(`\\b${escapeRegExp(a)}\\b`, "i");
+    if (wordPattern.test(q)) return 70;
+  }
 
   const qTokens = q.split(/\s+/).filter((t) => t.length >= 3);
   const aTokens = a.split(/\s+/).filter(Boolean);

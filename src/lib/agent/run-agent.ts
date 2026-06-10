@@ -25,6 +25,7 @@ import {
 } from "@/lib/agent/prompt";
 import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
 import { compactToolResultForModel } from "@/lib/agent/tool-payload";
+import { isBadLeadCompany } from "@/lib/brreg/lead-quality";
 
 export type AgentStreamEvent =
   | { type: "text"; content: string }
@@ -500,20 +501,22 @@ export async function runAgentChat(
         return { assistantText };
       }
 
-      const companies = await searchCompaniesForFastList(
-        toolCtx,
-        async (event) => {
-          await onEvent(event);
-        },
-        parsed.searchArgs,
-        true
-      );
+      const companies = (
+        await searchCompaniesForFastList(
+          toolCtx,
+          async (event) => {
+            await onEvent(event);
+          },
+          parsed.searchArgs,
+          true
+        )
+      ).filter((company) => !isBadLeadCompany(company));
 
       const listedCompanies = parsed.requirePhone
         ? companies
             .filter((company) => Boolean((company.phone ?? "").trim()))
             .slice(0, parsed.limit)
-        : companies;
+        : companies.slice(0, parsed.limit);
 
       assistantText = formatFastListReply(listedCompanies, parsed);
       await onEvent({ type: "text", content: assistantText });

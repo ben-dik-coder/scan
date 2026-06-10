@@ -5,7 +5,11 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const LOG_PATH = resolve(process.cwd(), "scripts/.cache/agent-tuning-session.jsonl");
+const LOG_PATH = resolve(
+  process.cwd(),
+  process.env.AGENT_TUNING_LOG?.trim() ||
+    "scripts/.cache/agent-tuning-session-2.jsonl"
+);
 
 const SCENARIOS: Array<{
   id: string;
