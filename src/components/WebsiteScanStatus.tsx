@@ -111,7 +111,11 @@ export function WebsiteScanStatus({
           <div
             className={cn(
               "scan-glass-status-icon flex h-7 w-7 items-center justify-center",
-              scanning ? "is-scanning" : scanComplete ? "is-complete" : "is-idle"
+              scanning
+                ? "is-scanning"
+                : scanComplete
+                  ? "is-complete rounded-full border border-white/20 bg-transparent text-white/85"
+                  : "is-idle"
             )}
           >
             {scanning ? (

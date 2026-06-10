@@ -246,8 +246,10 @@ html[data-app-theme="classic"].app-glass-theme::before {
   }
 
 [data-app-theme="classic"] .scan-glass-kommand .scan-glass-scan-status .scan-glass-status-icon.is-complete {
-    background: rgba(16, 185, 129, 0.15);
-    color: #6ee7b7;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 9999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
   }
 
 [data-app-theme="classic"] .scan-glass-kommand .scan-glass-scan-status .scan-glass-status-icon.is-idle {
