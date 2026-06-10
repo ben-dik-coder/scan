@@ -182,16 +182,20 @@ export async function finishRun(
   result: Record<string, unknown> | null,
   status: "done" | "failed",
   errorMessage?: string
-) {
+): Promise<boolean> {
   const supabase = createServiceClient();
-  await supabase
+  const { data } = await supabase
     .from("agent_runs")
     .update({
       status,
       result,
       error_message: errorMessage ?? null,
     })
-    .eq("id", runId);
+    .eq("id", runId)
+    .eq("status", "running")
+    .select("id")
+    .maybeSingle();
+  return Boolean(data);
 }
 
 export async function saveMessage(

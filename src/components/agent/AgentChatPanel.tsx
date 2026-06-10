@@ -105,6 +105,21 @@ export function AgentChatPanel({
   }, [open, loading]);
 
   useEffect(() => {
+    if (open) return;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    void cancelAgentRuns();
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      void cancelAgentRuns();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
@@ -212,6 +227,7 @@ export function AgentChatPanel({
       if (!trimmed || loading) return;
 
       abortRef.current?.abort();
+      await cancelAgentRuns();
       const abortController = new AbortController();
       abortRef.current = abortController;
 
@@ -237,7 +253,7 @@ export function AgentChatPanel({
           body: JSON.stringify({
             message: trimmed,
             conversationId: conversationId ?? undefined,
-            cancelPrevious: options?.cancelPrevious ?? false,
+            cancelPrevious: options?.cancelPrevious ?? true,
           }),
           signal: abortController.signal,
         });
@@ -250,6 +266,13 @@ export function AgentChatPanel({
               : "Noe gikk galt. Prøv igjen.";
 
           if (res.status === 409 && err.canCancel) {
+            if (!options?.cancelPrevious) {
+              void sendMessage(trimmed, {
+                cancelPrevious: true,
+                skipUserAppend: true,
+              });
+              return;
+            }
             setBlockedMessage(errorText);
             setPendingRetryText(trimmed);
             appendMessage({
@@ -442,11 +465,11 @@ export function AgentChatPanel({
       } finally {
         if (abortRef.current === abortController) {
           abortRef.current = null;
+          setLoading(false);
+          setActiveTool(null);
+          setToolStep(0);
+          setToolProgress(null);
         }
-        setLoading(false);
-        setActiveTool(null);
-        setToolStep(0);
-        setToolProgress(null);
       }
     },
     [appendMessage, conversationId, loading]

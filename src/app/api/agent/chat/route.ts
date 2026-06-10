@@ -91,18 +91,8 @@ export async function POST(request: NextRequest) {
   if (persist) {
     const active = await getActiveRunForUser(user.id);
     if (active) {
-      if (body.cancelPrevious) {
-        await cancelRun(active.id, "Avbrutt for å starte ny melding");
-      } else {
-        return new Response(
-          JSON.stringify({
-            error: "En agent-jobb kjører allerede. Vent til den er ferdig.",
-            runId: active.id,
-            canCancel: true,
-          }),
-          { status: 409, headers: { "Content-Type": "application/json" } }
-        );
-      }
+      // Auto-avbryt hengende/forrige kjøring når bruker sender ny melding.
+      await cancelRun(active.id, "Avbrutt for å starte ny melding");
     }
   }
 
@@ -275,6 +265,9 @@ export async function POST(request: NextRequest) {
         await completeRun("failed", null, errMsg);
       } finally {
         request.signal.removeEventListener("abort", onAbort);
+        if (persist && !runFinished) {
+          await completeRun("failed", null, "Avsluttet uten fullføring");
+        }
         controller.close();
       }
     },
