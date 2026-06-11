@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
 import { HeroAudienceChips } from "@/components/marketing/HeroAudienceChips";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
+import { LandingAgentPromo } from "@/components/marketing/LandingAgentPromo";
+import { LandingAnimationPause } from "@/components/marketing/LandingAnimationPause";
 import { LandingSourcesSection } from "@/components/marketing/LandingSourcesSection";
 import { HeroValueStrip } from "@/components/marketing/HeroValueStrip";
 import {
@@ -25,16 +27,16 @@ import { FEATURES, FEATURES_SECTION, HERO, TRUST } from "@/content/landing";
 import { site } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Finn nye firma med telefon og e-post",
+  title: "Finn nye kunder før konkurrentene",
   description:
-    "Finn nye firma i Norge fra Brønnøysund. NyLead henter kontaktinfo, sjekker nettside med Google og lar deg ringe eller sende tilbud fra egen innboks.",
+    "NyLead finner nye firma i Norge, kontaktinfo og signaler du kan bruke. Skann markedet, filtrer, kontakt og følg opp fra egen innboks.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "NyLead — Finn nye firma med telefon og e-post",
+    title: "NyLead — Finn nye kunder før konkurrentene",
     description:
-      "Brreg, Google-sjekk, kontaktinfo, arbeidskø, pipeline og e-post i ett verktøy for B2B-salg.",
+      "Finn nye firma, se kontaktinfo og signaler, og følg opp fra ett sted.",
     url: site.url,
     images: [
       {
@@ -47,9 +49,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "NyLead — Finn nye firma med telefon og e-post",
+    title: "NyLead — Finn nye kunder før konkurrentene",
     description:
-      "Finn nye firma fra Brreg, hent kontaktinfo og send fra egen innboks.",
+      "Skann nye firma, filtrer de beste, kontakt og følg opp fra egen innboks.",
     images: [site.ogImage],
   },
 };
@@ -92,10 +94,10 @@ const structuredData = {
       },
       featureList: [
         "Finn nye firma fra Brønnøysundregistrene",
-        "Hent telefon og trygg e-post fra flere kilder",
-        "Sjekk nettside med Google",
-        "Filtrer leads etter område, bransje og kontaktinfo",
-        "Arbeidskø, pipeline og e-post fra egen innboks",
+        "Finn telefon og e-post fra åpne kilder når det finnes",
+        "Sjekk nettside, booking og andre enkle signaler",
+        "Filtrer firma etter område, bransje og kontaktinfo",
+        "Arbeidskø, pipeline og oppfølging fra egen innboks",
       ],
     },
   ],
@@ -112,10 +114,10 @@ export default function HomePage() {
       <SiteHeader />
 
       <section
-        className="relative overflow-hidden bg-brand-surface pt-[7.5rem] text-brand-navy sm:pt-[6.5rem] md:pt-[7rem]"
+        className="relative overflow-hidden bg-brand-surface pt-[7.5rem] text-app-ink sm:pt-[6.5rem] md:pt-[7rem]"
         style={{
           backgroundImage:
-            "linear-gradient(135deg, #f6f9fc 0%, #e0e7ff 45%, #f6f9fc 100%)",
+            "linear-gradient(135deg, var(--brand-surface) 0%, var(--app-accent-pale) 45%, var(--brand-surface) 100%)",
         }}
       >
         <Container wide className="relative py-12 sm:py-20 md:py-16 lg:py-20">
@@ -125,7 +127,7 @@ export default function HomePage() {
 
               <h1 className="hero-title mt-4 sm:mt-6">
                 <span className="block">{HERO.titleLine1}</span>
-                <span className="block text-brand-gold">{HERO.titleLine2}</span>
+                <span className="block text-app-accent">{HERO.titleLine2}</span>
               </h1>
 
               <HeroValueStrip className="mt-6 sm:mt-8" />
@@ -144,7 +146,7 @@ export default function HomePage() {
                 <p className="text-center sm:text-left">
                   <Link
                     href="/registrer"
-                    className="font-sans text-sm font-semibold text-slate-500 underline-offset-2 hover:text-brand-navy hover:underline"
+                    className="font-sans text-sm font-semibold text-slate-500 underline-offset-2 hover:text-app-ink hover:underline"
                   >
                     {HERO.ctaSecondary}
                   </Link>
@@ -156,7 +158,7 @@ export default function HomePage() {
               <div className="mt-10 grid grid-cols-3 gap-3 border-t border-brand-border pt-8 sm:mt-14 sm:flex sm:flex-wrap sm:gap-x-10 sm:gap-y-5">
                 {site.stats.map((s) => (
                   <div key={s.label}>
-                    <p className="type-stat !text-2xl !text-brand-gold sm:!text-4xl lg:!text-5xl">
+                    <p className="type-stat !text-2xl !text-app-accentLight sm:!text-4xl lg:!text-5xl">
                       {s.value}
                     </p>
                     <p className="type-label mt-1 text-[10px] normal-case leading-snug !text-slate-500 sm:mt-1.5 sm:max-w-[120px] sm:text-[11px]">
@@ -167,7 +169,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="order-1 w-full lg:order-2 lg:col-span-7">
+            <div className="order-1 w-full overflow-visible lg:order-2 lg:col-span-7">
               <HeroPreview />
             </div>
           </div>
@@ -176,30 +178,34 @@ export default function HomePage() {
 
       <LandingSourcesSection />
 
-      <section className="overflow-hidden border-y border-brand-border bg-white py-4">
-        <div className="flex animate-marquee whitespace-nowrap">
-          {[...TRUST, ...TRUST].map((item, i) => (
-            <span
-              key={`${item}-${i}`}
-              className="mx-8 font-display text-sm font-bold uppercase tracking-[0.12em] text-slate-400"
-            >
-              {item}
-              <span className="ml-8 text-brand-gold">◆</span>
-            </span>
-          ))}
-        </div>
+      <LandingAgentPromo />
+
+      <section className="landing-section-deferred overflow-hidden border-y border-brand-border bg-white py-4">
+        <LandingAnimationPause>
+          <div className="landing-marquee flex animate-marquee whitespace-nowrap">
+            {[...TRUST, ...TRUST].map((item, i) => (
+              <span
+                key={`${item}-${i}`}
+                className="mx-8 font-display text-sm font-bold uppercase tracking-[0.12em] text-slate-400"
+              >
+                {item}
+                <span className="ml-8 text-app-accent">◆</span>
+              </span>
+            ))}
+          </div>
+        </LandingAnimationPause>
       </section>
 
       <LandingSheet overlap>
         <PlatformSection embedded />
       </LandingSheet>
 
-      <section id="funksjoner" className="py-16 sm:py-24 md:py-32">
+      <section id="funksjoner" className="landing-section-deferred py-16 sm:py-24 md:py-32">
         <Container wide>
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="type-eyebrow">{FEATURES_SECTION.eyebrow}</p>
-              <h2 className="type-h2 mt-3 max-w-lg text-brand-navy">
+              <h2 className="type-h2 mt-3 max-w-lg text-app-ink">
                 {FEATURES_SECTION.title}
               </h2>
             </div>
@@ -215,14 +221,14 @@ export default function HomePage() {
                 className={`feature-row ${i % 2 === 1 ? "md:flex-row-reverse" : ""}`}
               >
                 <div
-                  className={`relative flex shrink-0 items-center justify-center rounded-[10px] bg-brand-goldPale ${
+                  className={`relative flex shrink-0 items-center justify-center rounded-[10px] bg-app-accent/10 ${
                     featured ? "h-[72px] w-[72px]" : "h-14 w-14"
                   }`}
                 >
-                  <Icon className={`text-brand-gold ${featured ? "h-8 w-8" : "h-6 w-6"}`} />
+                  <Icon className={`text-app-accent ${featured ? "h-8 w-8" : "h-6 w-6"}`} />
                 </div>
                 <div className="relative flex-1">
-                  <h3 className={`type-h3 text-brand-navy ${featured ? "!text-2xl" : ""}`}>
+                  <h3 className={`type-h3 text-app-ink ${featured ? "!text-2xl" : ""}`}>
                     {title}
                   </h3>
                   <p className="type-body mt-2 max-w-lg !text-sm">{text}</p>

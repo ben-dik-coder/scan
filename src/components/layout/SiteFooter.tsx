@@ -6,7 +6,7 @@ import { site } from "@/lib/site";
 
 export function SiteFooter() {
   return (
-    <footer className="bg-brand-navyDark py-16 text-white">
+    <footer className="bg-app-ink py-16 text-white">
       <Container wide>
         <div className="gold-divider mb-12" />
 
@@ -26,12 +26,12 @@ export function SiteFooter() {
               <p className="type-eyebrow !text-white/25">Produkt</p>
               <ul className="mt-5 space-y-3 font-sans text-sm text-white/50">
                 <li>
-                  <Link href="/innlogging" className="transition hover:text-brand-goldLight">
+                  <Link href="/innlogging" className="transition hover:text-app-accentLight">
                     Logg inn
                   </Link>
                 </li>
                 <li>
-                  <Link href="/registrer" className="transition hover:text-brand-goldLight">
+                  <Link href="/registrer" className="transition hover:text-app-accentLight">
                     Opprett konto
                   </Link>
                 </li>
@@ -42,12 +42,12 @@ export function SiteFooter() {
               <p className="type-eyebrow !text-white/25">Selskap</p>
               <ul className="mt-5 space-y-3 font-sans text-sm text-white/50">
                 <li>
-                  <Link href="/om-oss" className="transition hover:text-brand-goldLight">
+                  <Link href="/om-oss" className="transition hover:text-app-accentLight">
                     Om oss
                   </Link>
                 </li>
                 <li>
-                  <Link href="/hjelp" className="transition hover:text-brand-goldLight">
+                  <Link href="/hjelp" className="transition hover:text-app-accentLight">
                     Hjelp og support
                   </Link>
                 </li>
@@ -58,12 +58,12 @@ export function SiteFooter() {
               <p className="type-eyebrow !text-white/25">Juridisk</p>
               <ul className="mt-5 space-y-3 font-sans text-sm text-white/50">
                 <li>
-                  <Link href="/personvern" className="transition hover:text-brand-goldLight">
+                  <Link href="/personvern" className="transition hover:text-app-accentLight">
                     Personvern
                   </Link>
                 </li>
                 <li>
-                  <Link href="/vilkar" className="transition hover:text-brand-goldLight">
+                  <Link href="/vilkar" className="transition hover:text-app-accentLight">
                     Vilkår for bruk
                   </Link>
                 </li>

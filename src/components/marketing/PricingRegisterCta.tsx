@@ -35,7 +35,7 @@ export function PricingRegisterCta() {
 
   return (
     <Link href="/registrer?plan=nylead" className="btn-primary mt-8 w-full">
-      Kom i gang
+      Start og finn nye kunder
       <ArrowRight className="h-4 w-4 stroke-[2.5]" />
     </Link>
   );

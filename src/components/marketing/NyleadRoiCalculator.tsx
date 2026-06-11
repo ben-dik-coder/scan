@@ -99,10 +99,10 @@ function RangeSlider({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <label htmlFor={id} className="font-sans text-sm font-semibold text-brand-navy">
+        <label htmlFor={id} className="font-sans text-sm font-semibold text-app-ink">
           {config.label}
         </label>
-        <span className="font-display text-lg font-bold tabular-nums text-brand-gold">
+        <span className="font-display text-lg font-bold tabular-nums text-app-accent">
           {display}
         </span>
       </div>
@@ -161,7 +161,7 @@ export function NyleadRoiCalculator({ embedded = false }: Props) {
       <Container wide>
         <div className="mx-auto max-w-3xl text-center">
           <p className="type-eyebrow">{ROI_CALCULATOR.eyebrow}</p>
-          <h2 className="type-h2 mt-3 text-brand-navy">{ROI_CALCULATOR.title}</h2>
+          <h2 className="type-h2 mt-3 text-app-ink">{ROI_CALCULATOR.title}</h2>
           <p className="mt-4 font-sans text-base leading-relaxed text-slate-600">
             {ROI_CALCULATOR.subtitle}
           </p>
@@ -171,10 +171,10 @@ export function NyleadRoiCalculator({ embedded = false }: Props) {
           {/* Inputs */}
           <div className="space-y-8 rounded-2xl border border-brand-border bg-brand-surface p-6 sm:p-8 lg:col-span-2">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-goldPale">
-                <Calculator className="h-5 w-5 text-brand-gold" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-app-accent/10">
+                <Calculator className="h-5 w-5 text-app-accent" />
               </div>
-              <p className="font-display text-sm font-bold uppercase tracking-wide text-brand-navy">
+              <p className="font-display text-sm font-bold uppercase tracking-wide text-app-ink">
                 Dine tall
               </p>
             </div>
@@ -220,7 +220,7 @@ export function NyleadRoiCalculator({ embedded = false }: Props) {
                 <p className="mt-1 font-sans text-xs text-slate-500">
                   {ROI_CALCULATOR.comparison.manual.subtitle}
                 </p>
-                <p className="mt-5 font-display text-3xl font-black tabular-nums text-brand-navy">
+                <p className="mt-5 font-display text-3xl font-black tabular-nums text-app-ink">
                   {formatHours(result.manualTotalHours)}
                 </p>
                 <p className="mt-1 font-sans text-xs text-slate-500">arbeid per måned</p>
@@ -249,18 +249,18 @@ export function NyleadRoiCalculator({ embedded = false }: Props) {
               </div>
 
               {/* NyLead box */}
-              <div className="rounded-2xl border border-brand-gold/30 bg-brand-goldPale/40 p-6 shadow-card ring-1 ring-brand-gold/15">
-                <p className="type-label !text-brand-gold">
+              <div className="rounded-2xl border border-app-accent/30 bg-app-accent/5 p-6 shadow-card ring-1 ring-app-accent/15">
+                <p className="type-label !text-app-accent">
                   {ROI_CALCULATOR.comparison.nylead.title}
                 </p>
                 <p className="mt-1 font-sans text-xs text-slate-600">
                   {ROI_CALCULATOR.comparison.nylead.subtitle}
                 </p>
-                <p className="mt-5 font-display text-3xl font-black tabular-nums text-brand-navy">
+                <p className="mt-5 font-display text-3xl font-black tabular-nums text-app-ink">
                   {formatHours(result.nyleadTotalHours)}
                 </p>
                 <p className="mt-1 font-sans text-xs text-slate-500">arbeid per måned</p>
-                <ul className="mt-4 space-y-1.5 border-t border-brand-gold/20 pt-4 font-sans text-xs text-slate-600">
+                <ul className="mt-4 space-y-1.5 border-t border-app-accent/20 pt-4 font-sans text-xs text-slate-600">
                   <li className="flex justify-between gap-2">
                     <span>Oppsett og skann</span>
                     <span className="tabular-nums">{formatHours(result.nyleadResearchHours)}</span>
@@ -274,7 +274,7 @@ export function NyleadRoiCalculator({ embedded = false }: Props) {
                     <span className="tabular-nums">{formatNok(planPrice)}</span>
                   </li>
                 </ul>
-                <p className="mt-4 font-display text-xl font-bold tabular-nums text-brand-navy">
+                <p className="mt-4 font-display text-xl font-bold tabular-nums text-app-ink">
                   {formatNok(result.nyleadTotalCost)}
                   <span className="ml-1 font-sans text-xs font-medium text-slate-400">
                     / mnd totalt
@@ -366,10 +366,10 @@ export function NyleadRoiCalculator({ embedded = false }: Props) {
 
             {/* Formula explanation */}
             <details className="group rounded-xl border border-brand-border bg-brand-surface px-5 py-4 open:bg-white open:shadow-card">
-              <summary className="cursor-pointer list-none font-sans text-sm font-semibold text-brand-navy marker:content-none sm:text-base [&::-webkit-details-marker]:hidden">
+              <summary className="cursor-pointer list-none font-sans text-sm font-semibold text-app-ink marker:content-none sm:text-base [&::-webkit-details-marker]:hidden">
                 <span className="flex items-center justify-between gap-4">
                   {ROI_CALCULATOR.formula.title}
-                  <span className="shrink-0 text-brand-gold transition group-open:rotate-45">
+                  <span className="shrink-0 text-app-accent transition group-open:rotate-45">
                     +
                   </span>
                 </span>

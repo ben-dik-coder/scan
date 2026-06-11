@@ -22,7 +22,7 @@ export function SiteHeader({ className }: { className?: string }) {
     <>
       <header
         className={cn(
-          "fixed inset-x-0 top-0 z-50 overflow-visible border-b border-white/10 bg-brand-navyDark",
+          "fixed inset-x-0 top-0 z-50 overflow-visible border-b border-white/10 bg-app-ink",
           className
         )}
       >
@@ -43,7 +43,7 @@ export function SiteHeader({ className }: { className?: string }) {
               <a
                 key={href}
                 href={href}
-                className="font-sans text-sm font-semibold text-white/80 transition hover:text-brand-goldLight"
+                className="font-sans text-sm font-semibold text-white/80 transition hover:text-app-accentLight"
               >
                 {label}
               </a>
@@ -53,7 +53,7 @@ export function SiteHeader({ className }: { className?: string }) {
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/registrer"
-              className="hidden font-sans text-sm font-semibold text-white/80 transition hover:text-brand-goldLight md:inline"
+              className="hidden font-sans text-sm font-semibold text-white/80 transition hover:text-app-accentLight md:inline"
             >
               Registrer
             </Link>
@@ -73,7 +73,7 @@ export function SiteHeader({ className }: { className?: string }) {
             </button>
           </div>
         </Container>
-        <SubscriberCapBanner />
+        <SubscriberCapBanner variant="glass" />
       </header>
 
       {/* Mobil meny */}
@@ -83,7 +83,7 @@ export function SiteHeader({ className }: { className?: string }) {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute inset-y-0 right-0 flex w-[min(100vw,320px)] flex-col bg-brand-navyDark shadow-lift">
+          <div className="absolute inset-y-0 right-0 flex w-[min(100vw,320px)] flex-col bg-app-ink shadow-lift">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
               <span className="font-display text-sm font-black uppercase tracking-wide text-white">
                 Meny
@@ -104,7 +104,7 @@ export function SiteHeader({ className }: { className?: string }) {
                   key={href}
                   href={href}
                   onClick={() => setOpen(false)}
-                  className="block rounded-md px-4 py-3.5 font-sans text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-brand-goldLight"
+                  className="block rounded-md px-4 py-3.5 font-sans text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-app-accentLight"
                 >
                   {label}
                 </a>
@@ -115,7 +115,7 @@ export function SiteHeader({ className }: { className?: string }) {
               <Link
                 href="/registrer"
                 onClick={() => setOpen(false)}
-                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-[10px] border-2 border-white/20 bg-transparent px-8 py-4 font-sans text-sm font-semibold text-white transition hover:border-brand-goldLight/40 hover:text-brand-goldLight"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-[10px] border-2 border-white/20 bg-transparent px-8 py-4 font-sans text-sm font-semibold text-white transition hover:border-app-accent/40 hover:text-app-accentLight"
               >
                 Registrer
               </Link>

@@ -19,12 +19,12 @@ import {
 
 /** Forside — hero */
 export const HERO = {
-  eyebrow: "For deg som selger til nye firma i Norge",
-  titleLine1: "Nye firma. Kontaktinfo. Klar til å ta.",
-  titleLine2: "Alt i én tabell — ring eller send fra din e-post.",
+  eyebrow: "For deg som vil selge til nye firma i Norge",
+  titleLine1: "Finn nye kunder",
+  titleLine2: "før konkurrentene",
   tagline:
-    "NyLead henter nye firma fra Brreg, fyller inn tlf og e-post — også fra Timma, Gulesider og sosiale medier — og lar deg filtrere, prioritere og sende fra Gmail eller Outlook.",
-  ctaPrimary: "Se nye firma i mitt område",
+    "NyLead finner nye firma, kontaktinfo og tydelige kjøpssignaler på ett sted. Du ser hvem du bør kontakte, hvorfor akkurat nå, og kan ringe eller sende fra din egen innboks.",
+  ctaPrimary: "Finn kunder i mitt område",
   ctaSecondary: "Opprett gratis konto",
   trustLine: "499 kr/mnd · Ingen kredittkort for å se innsiden",
 };
@@ -41,19 +41,19 @@ export const HERO_STEPS: HeroStep[] = [
     step: 1,
     icon: Building2,
     label: "Skann",
-    detail: "Nye firma i ditt område",
+    detail: "Nye firma der du selger",
   },
   {
     step: 2,
     icon: Phone,
     label: "Filtrer",
-    detail: "Tlf og e-post — også utenfor Brreg",
+    detail: "Telefon, e-post og behov",
   },
   {
     step: 3,
     icon: Send,
-    label: "Send",
-    detail: "Fra din egen innboks",
+    label: "Følg opp",
+    detail: "Ring, send og hold kontroll",
   },
 ];
 
@@ -65,51 +65,22 @@ export const HERO_AUDIENCES = [
   "Lokalt B2B",
 ] as const;
 
-export type HeroCallout = {
-  text: string;
-  variant: "emerald" | "sky" | "violet" | "slate";
-  className: string;
-};
-
-export const HERO_CALLOUTS: HeroCallout[] = [
-  {
-    text: "Tlf funnet automatisk",
-    variant: "emerald",
-    className: "top-[38%] left-[2%] sm:left-[4%]",
-  },
-  {
-    text: "E-post fra flere kilder",
-    variant: "sky",
-    className: "top-[28%] left-[18%] sm:left-[22%]",
-  },
-  {
-    text: "Sosiale medier med",
-    variant: "violet",
-    className: "top-[42%] right-[2%] sm:right-[6%]",
-  },
-  {
-    text: "Filtrer med/uten nettside",
-    variant: "slate",
-    className: "bottom-[18%] left-[30%] sm:left-[34%]",
-  },
-];
-
 /** Infografikk rett under hero — bilde i public/images/sec/ */
 export const SOURCES_SECTION_IMAGE = "/images/sec/sec.png";
 
 export const SOURCES_SECTION = {
-  eyebrow: "Mange kilder — én oversikt",
-  title: "Vi henter. Du får alt samlet.",
+  eyebrow: "Dataen ryddes for deg",
+  title: "Vi finner bitene. Du får en ferdig lead.",
   subtitle:
-    "Google, Facebook, Instagram, Timma, Fixit, Gulesider og nettsider — vi samler kontakt, nettside og sosiale medier i samme firma-rad. Du slipper å hoppe mellom ti faner.",
-  caption: "Fra rådata til klar lead — uten ekstra verktøy.",
+    "NyLead starter med nye firma fra Brønnøysund. Så sjekker vi åpne kilder som Google, nettsider, Gulesider, Timma, Fixit og sosiale profiler for å finne telefon, e-post, nettside og tegn på hva firmaet kan trenge.",
+  caption: "Fra nytt firma til ryddig kontaktkort du faktisk kan bruke.",
 };
 
 export const PLATFORM_INTRO = {
-  eyebrow: "Hva du får",
-  title: "Fra nytt firma i Brreg til sendt mail — på ett sted",
+  eyebrow: "Dette gjør produktet",
+  title: "NyLead viser hvem du bør kontakte, hva du kan si, og hva som skjer etterpå",
   subtitle:
-    "Ikke enda et verktøy du må eksportere til Excel. Du skanner markedet, får kontaktinfo ferdig, filtrerer hvem du vil ta — og sender fra Gmail eller Outlook som vanlig.",
+    "Du slipper å lete i Brreg, Google, Gulesider og Excel selv. Skann markedet, få en liste, filtrer bort støyen, lagre de beste, kontakt dem, og følg opp uten å miste tråden.",
 };
 
 export type PlatformPillar = {
@@ -124,127 +95,127 @@ export const PLATFORM_PILLARS: PlatformPillar[] = [
   {
     id: "finn",
     icon: MapPin,
-    title: "Finn riktige firma",
-    lead: "Start med markedet ditt — ikke med et tilfeldig utdrag fra internett.",
+    title: "Finn firma som nettopp dukket opp",
+    lead: "Nye bedrifter tar valg tidlig. Regnskap, nettside, markedsføring, IT og leverandører skal ofte på plass fort.",
     bullets: [
-      "Filtrer på kommune, fylke og hvor nye registreringer er",
-      "Se bare firma med e-post eller telefon — spar tid med en gang",
-      "Bransje- og webbyrå-filter når du vil snevre inn",
-      "Over 1 million norske firma — samme kilde som myndighetene bruker",
-      "Eksporter til CSV når du vil jobbe videre et annet sted",
+      "Skann nye firma i kommunen eller fylket du selger i",
+      "Finn selskaper mens de fortsatt er i startfasen",
+      "Filtrer på sted, bransje og om vi har kontaktinfo",
+      "Bruk Brønnøysund som startpunkt, ikke tilfeldige lister",
+      "Eksporter til CSV hvis du vil jobbe videre et annet sted",
     ],
   },
   {
     id: "kvalifiser",
     icon: Globe,
-    title: "Kontakt og Google-sjekk — ferdig i listen",
-    lead: "Velg opptil 10 firma om gangen. Vi henter tlf og e-post fra Timma, Gulesider og sosiale medier — og sjekker nettside på Google.",
+    title: "Se hvorfor de kan være verdt å kontakte",
+    lead: "Kontaktinfo alene er ikke nok. NyLead hjelper deg å se om firmaet har nettside, booking, sosiale profiler og andre enkle tegn på hva de kan trenge.",
     bullets: [
-      "Tlf og e-post også når Brreg mangler — fra booking og katalog",
-      "Egen nettside, booking eller ingenting — med én gang",
-      "Filter: med eller uten nettside (sterkt for webbyrå, valgfritt for andre)",
-      "Facebook og Instagram i samme oversikt når vi finner det",
-      "Delt skann — du betaler ikke to ganger for samme firma",
+      "Telefon og e-post når vi finner det i åpne kilder",
+      "Nettside, bookingløsning eller ingen tydelig side",
+      "Facebook og Instagram i samme oversikt når det finnes",
+      "Filtrer til firma som passer det du selger",
+      "Delt skann, så samme firma ikke må sjekkes om og om igjen",
     ],
   },
   {
     id: "send",
     icon: Send,
-    title: "Send som deg selv",
-    lead: "Kunden svarer til deg — ikke til en noreply-adresse ingen stoler på.",
+    title: "Kontakt dem uten klipp og lim",
+    lead: "Når du har valgt firmaene, kan du sende fra din egen Gmail eller Outlook. Det ser ut som en vanlig e-post fra deg.",
     bullets: [
-      "Velg 20, 50 eller 100 firma og send én felles melding",
-      "Koble Gmail, Outlook eller SMTP — det er din adresse som står på",
-      "Maler du kan gjenbruke: «Gratulerer med oppstart — kan vi hjelpe?»",
-      "Automatisk oppfølging over 6 steg — dag 0, 2, 5, 10, 16 og 25",
-      "Pipeline så du ser hvem som er ny, kontaktet, svarte eller booket møte",
+      "Velg firmaene du vil ta nå",
+      "Send fra Gmail, Outlook eller SMTP med ditt navn som avsender",
+      "Bruk maler med firmanavn satt inn automatisk",
+      "Lag oppfølging over flere dager hvis de ikke svarer",
+      "Se hvem som er ny, kontaktet, svarte eller bør ringes igjen",
     ],
   },
   {
     id: "orden",
     icon: Layers,
-    title: "Hold oversikt",
-    lead: "Du skal vite hva du har sendt, og hvem du må ta igjen — ikke gjette i en mappe med notater.",
+    title: "Hold kontroll på oppfølgingen",
+    lead: "Den første meldingen er sjelden nok. NyLead viser hvem du har kontaktet, hvem som svarte, og hvem du bør ta igjen.",
     bullets: [
-      "Dashboard: sendt, sekvenser og pipeline på ett skjermbilde",
-      "Arbeidskø: hvem du skal ta i dag — rangert etter score",
-      "Historikk over kampanjer — hva gikk ut og når",
+      "Arbeidskø med firma du bør se på i dag",
+      "Pipeline for ny, kontaktet, svar og møte",
+      "Historikk over hva du sendte og når",
       "Daglig leder fra Brreg når det finnes",
-      "Én pris. Alt inkludert. Ingen «må oppgradere for å sende».",
+      "Én pris. Skann, kontakt og oppfølging er inkludert.",
     ],
   },
 ];
 
 export const FEATURES_SECTION = {
-  eyebrow: "Under panseret",
-  title: "Det du faktisk bruker i uka",
+  eyebrow: "Det viktigste",
+  title: "Verktøyene du bruker når du skal få nye kunder",
   subtitle:
-    "Kontakt, filter og utsending — det du faktisk bruker når du skal nå nye firma.",
+    "Ingen tung CRM-prat. Dette er listen, filteret, kontakten og oppfølgingen du trenger for å gjøre jobben.",
 };
 
 export const FEATURES = [
   {
     icon: Building2,
-    title: "Data fra Brønnøysund",
-    text: "Nye firma med e-post og telefon. Offisiell kilde — ikke et utenlandsk datasett du må tolke.",
+    title: "Nye firma fra Brønnøysund",
+    text: "Start med firma som faktisk er registrert i Norge. Nye selskaper, riktig sted, riktig tidspunkt.",
     featured: true,
   },
   {
     icon: MapPin,
-    title: "Ditt marked, ditt filter",
-    text: "Kommune, fylke, dager siden registrering. Kun firma med kontaktinfo hvis du vil.",
+    title: "Finn ditt marked",
+    text: "Velg kommune, fylke, bransje og alder på firma. Se bare firma med kontaktinfo hvis du vil jobbe raskt.",
     featured: true,
   },
   {
     icon: Globe,
-    title: "Google-sjekk på listen din",
-    text: "Velg opptil 10 firma om gangen. Vi henter tlf/e-post fra Timma, Gulesider og sosiale medier, sjekker nettside på Google, og viser alt i samme liste — med filter for med eller uten nettside.",
+    title: "Sjekk behov før du tar kontakt",
+    text: "NyLead kan sjekke nettside, booking og sosiale profiler. Da ser du om firmaet virker relevant før du bruker tid på det.",
     featured: true,
   },
   {
     icon: MousePointerClick,
-    title: "Velg og send",
-    text: "Huk av firmaene du vil ha. Én mail til alle — med {firmanavn} satt inn automatisk.",
+    title: "Lagre de beste",
+    text: "Huk av firmaene som passer. Legg dem i arbeidskø eller pipeline, så du vet hvem du skal ta neste.",
     featured: true,
   },
   {
     icon: Send,
-    title: "Din e-post, ditt navn",
-    text: "Send fra Gmail eller Outlook. Kunden svarer til deg — ikke til en felles robot-adresse.",
+    title: "Send fra din egen e-post",
+    text: "Koble Gmail eller Outlook. Kunden svarer til deg, ikke til en ukjent robot-adresse.",
     featured: true,
   },
   {
     icon: Mail,
-    title: "Maler du husker",
-    text: "Lagre intro og oppfølging én gang. Bruk dem hver uke uten å skrive på nytt.",
+    title: "Maler som høres menneskelige ut",
+    text: "Skriv en enkel intro og oppfølging. Bruk den igjen uten å starte på blank side hver uke.",
     featured: false,
   },
   {
     icon: Shield,
     title: "Trygg B2B-kontakt",
-    text: "post@ og info@ er greit uten samtykke. Appen sier fra hvis adressen ser personlig ut.",
+    text: "Generelle firmaadresser kan ofte brukes i B2B. Appen hjelper deg å være forsiktig med personlige adresser.",
     featured: false,
   },
 ];
 
 export const USE_CASES = {
   eyebrow: "Hvem bruker det",
-  title: "For alle som vil nå nye firma før konkurrentene",
+  title: "For folk som lever av å ta kontakt først",
   items: [
     {
       icon: Calculator,
       title: "Regnskap og rådgivning",
-      text: "Nye AS trenger regnskapsfører. Finn dem i ditt fylke med tlf og e-post ferdig — ring eller send før noen andre.",
+      text: "Nye AS må få orden på regnskap og rutiner. Finn dem i ditt område, se kontaktinfo, og ta en varm nok første prat.",
     },
     {
       icon: Megaphone,
       title: "Markedsføring og SEO",
-      text: "Nye firma trenger synlighet. Skann, prioriter med arbeidskø, og send fra din egen innboks.",
+      text: "Nye firma trenger kunder selv. Bruk NyLead til å finne hvem som nettopp startet, og foreslå konkret hjelp.",
     },
     {
       icon: Server,
       title: "IT og drift",
-      text: "Nyoppstartede mangler ofte systemer og support. Få kontaktinfo og daglig leder i samme oversikt.",
+      text: "Mange nye firma trenger e-post, systemer, support og enkel IT-hjelp. Få oversikten før de rekker å velge noen andre.",
     },
     {
       icon: BarChart3,
@@ -254,46 +225,46 @@ export const USE_CASES = {
     {
       icon: Sparkles,
       title: "Webbyrå og design",
-      text: "Google-sjekk viser hvem som mangler ordentlig side. Filtrer til «uten nettside» — eller bruk webbyrå-filter i Brreg.",
+      text: "Se hvem som mangler tydelig nettside, bare har booking, eller virker uferdig på nett. Da blir første melding mer relevant.",
     },
     {
       icon: Target,
       title: "Frilanser",
-      text: "Du trenger ikke dyrt Proff-abonnement og timer med research. Skann, velg 20 firma, send — ferdig for uka.",
+      text: "Du trenger ikke bruke kvelden på manuell research. Skann, velg noen gode firma, kontakt dem, og følg opp ryddig.",
     },
   ],
 };
 
 export const WORKFLOW_INTRO = {
-  title: "Slik en vanlig uke ser ut",
+  title: "Slik går du fra marked til oppfølging",
   subtitle:
-    "Fire steg. Ingen magi — bare mindre friksjon mellom Brreg, Google og innboksen din.",
+    "Skann markedet, få en liste, filtrer, lagre, kontakt og følg opp. Enkelt, men gjort skikkelig.",
 };
 
 export const COMPARISON = {
   eyebrow: "Hvorfor NyLead",
-  title: "Mindre styr, mer salg",
+  title: "Slutt å bruke halve salgsdagen på å lete",
   subtitle:
-    "Du kan fortsatt bruke Proff, Excel og manuell research. Mange gjør det — til de oppdager hvor mye tid som forsvinner på det som kan automatiseres.",
+    "Du kan finne firma manuelt i Brreg, Google og Excel. NyLead gjør den jobben raskere og samler alt der du faktisk følger opp.",
   points: [
     {
       title: "Norsk fra grunnen av",
-      text: "Brønnøysundregistrene — ikke et utenlandsk register du må oversette.",
+      text: "NyLead er laget for norske firma, norske steder og norske selgere. Ikke et utenlandsk datasett du må rydde selv.",
     },
     {
-      title: "Kontakt og Google innebygd",
-      text: "Ikke manuelt Proff + Google per firma. Tlf og e-post fra flere kilder, nettside-sjekk på 10 om gangen, og Facebook/Instagram i samme liste.",
+      title: "Kontakt og signaler samlet",
+      text: "Telefon, e-post, nettside, booking og sosiale profiler vises i samme liste når vi finner det i åpne kilder.",
     },
     {
-      title: "Én regning",
-      text: "Pipeline, sekvenser, skann og utsending. Du kjøper ikke fem tillegg for å komme i gang.",
+      title: "Fra liste til handling",
+      text: "Det stopper ikke ved en firmaliste. Du kan lagre, sende, ringe, følge opp og se status på samme sted.",
     },
   ],
 };
 
 export const INTEGRATIONS = {
   eyebrow: "Koblinger og regler",
-  title: "Det du allerede bruker — pluss det norske regelverket",
+  title: "Bruk kilder folk kjenner, og send fra e-posten din",
   items: [
     "Brønnøysundregistrene (offisiell kilde)",
     "Gmail og Microsoft Outlook",
@@ -305,19 +276,19 @@ export const INTEGRATIONS = {
 };
 
 export const FAQ_SECTION = {
-  title: "Spørsmål folk stiller før de betaler",
+  title: "Spørsmål folk spør før de prøver",
   subtitle:
-    "Ærlige svar — ikke salgsprat. Hvis du lurer på noe som ikke står her, send oss en mail.",
+    "Korte, ærlige svar. Ingen magi, ingen lovnad om garanterte salg.",
 };
 
 export const FAQ_ITEMS = [
   {
     q: "Hva er NyLead — og hvem passer det for?",
-    a: "For alle som selger til nye firma i Norge — regnskap, markedsføring, IT, lokale tjenester, webbyrå og mer. Du finner nye registreringer i Brreg, får kontaktinfo ferdig, og ringer eller sender fra din egen e-post.",
+    a: "NyLead er for deg som selger til bedrifter i Norge. Det finner nye firma, samler kontaktinfo og hjelper deg å se hvem som er verdt å kontakte nå. Passer for regnskap, markedsføring, IT, webbyrå, rådgivere og lokale B2B-tjenester.",
   },
   {
     q: "Hvor kommer telefonnummer fra hvis Brreg mangler?",
-    a: "Vi henter fra offentlige sider Google allerede fant — Timma, Fixit, Gulesider, 1881, egen nettside og sosiale medier (Facebook/Instagram via profil-data). Alt lagres delt, så du slipper å sjekke samme firma to ganger.",
+    a: "Vi kan hente fra åpne kilder som Google finner, for eksempel egen nettside, Gulesider, 1881, Timma, Fixit og sosiale profiler. Vi viser det vi finner, og gjør det tydelig hvor kontakten kommer fra.",
   },
   {
     q: "Hvor kommer firmadataene fra?",
@@ -325,7 +296,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: "Hvordan funker Google-sjekken?",
-    a: "Velg firma i listen og trykk Google-sjekk — maks 10 om gangen. Vi søker på Google og viser om de har egen nettside, bare booking (Timma/Fixit), eller ingenting tydelig. Facebook og Instagram kommer med i samme oversikt. Etterpå kan du filtrere til «kun uten nettside» — smart når du selger nettsider.",
+    a: "Velg firma i listen og trykk Google-sjekk. NyLead søker etter åpne spor på nett og viser om firmaet har egen nettside, bookingløsning, sosiale profiler eller ingenting tydelig. Da vet du mer før du tar kontakt.",
   },
   {
     q: "Kan jeg filtrere til firma uten nettside?",
@@ -333,33 +304,33 @@ export const FAQ_ITEMS = [
   },
   {
     q: "Er det lovlig å sende e-post til nye firma?",
-    a: "Til generelle adresser som post@ og info@ er det normalt greit i B2B uten samtykke. Personlige adresser krever samtykke — vi advarer og stopper deg fra å sende dit som standard.",
+    a: "I B2B er generelle adresser som post@ og info@ ofte lov å kontakte når innholdet er relevant. Personlige adresser er mer sensitive. NyLead hjelper deg å være forsiktig, men du har fortsatt ansvar for hva du sender.",
   },
   {
     q: "Sender jeg fra NyLead sin server?",
-    a: "Nei. Du kobler Gmail, Outlook eller SMTP. Kunden svarer til deg — som en vanlig mail du har skrevet selv.",
+    a: "Nei. Du kobler Gmail, Outlook eller SMTP. Kunden svarer til deg, som på en vanlig e-post du har sendt selv.",
   },
   {
     q: "Hva får jeg for 499 kr per måned?",
-    a: "Full tilgang: skann, nettside-sjekk, opptil 250 firma med kontakt per måned, pipeline, sekvenser, maler og utsending. Ingen moduler du må låse opp.",
+    a: "Du får skann av nye firma, kontaktinfo når vi finner det, nettside-sjekk, opptil 250 firma med kontakt per måned, maler, utsending, sekvenser og pipeline.",
   },
   {
     q: "Kan jeg filtrere på bransje og sted?",
-    a: "Ja. Kommune, fylke, hvor nye firma er, bransje, og om de har e-post. Vi har også filter som passer webbyrå-salg.",
+    a: "Ja. Du kan filtrere på kommune, fylke, bransje, alder på firma og om vi har kontaktinfo. Du kan også bruke nettside-filter når det er relevant.",
   },
   {
     q: "Hva om jeg allerede bruker Proff?",
-    a: "Mange starter der. NyLead erstatter ikke Proff for alt — men for nyregistrerte firma med nettside-sjekk og utsending sparer du mye tid. Brreg-delen er gratis for deg.",
+    a: "Da skjønner du problemet allerede: mye klikking, kopiering og manuell sjekk. NyLead erstatter ikke alt Proff gjør, men gjør jakten på nye firma, kontaktinfo og oppfølging mye raskere.",
   },
 ];
 
 export const TRUST = [
-  "Nye firma fra Brreg hver uke",
-  "Tlf fra Timma, Fixit og Gulesider",
-  "Facebook og Instagram med i listen",
+  "Finn nye kunder tidligere",
+  "Kontaktinfo fra åpne kilder",
+  "Nettside og signaler i listen",
   "Send fra din egen innboks",
-  "Pipeline og arbeidskø inkludert",
-  "Lovlig B2B-kontakt",
+  "Arbeidskø og pipeline",
+  "Bygget for norsk B2B",
 ];
 
 export const ROI_CALCULATOR = {
@@ -406,11 +377,11 @@ export const ROI_CALCULATOR = {
   comparison: {
     manual: {
       title: "Som i dag",
-      subtitle: "Proff, Google, Excel, en og en mail",
+      subtitle: "Brreg, Google, Excel, en og en mail",
     },
     nylead: {
       title: "Med NyLead",
-      subtitle: "Skann, sjekk, send — i samme verktøy",
+      subtitle: "Skann, filtrer, kontakt og følg opp",
     },
   },
   formula: {
@@ -432,26 +403,26 @@ export const ROI_CALCULATOR = {
 export const WORKFLOW_DETAILED = [
   {
     step: 1,
-    title: "Velg marked",
+    title: "Skann markedet",
     description:
-      "Kommune eller fylke, hvor nye firma skal være, og om du bare vil ha de med e-post. Bransje-filter når du vil snevre inn — webbyrå-filter for de som selger nettsider.",
+      "Velg kommune, fylke, bransje og hvor nye firmaene skal være. Start med markedet du faktisk kan selge til.",
   },
   {
     step: 2,
-    title: "Skann og sjekk",
+    title: "Få listen",
     description:
-      "Huk av firmaene i listen (maks 10 om gangen). Google-sjekken kjører — du ser med én gang: egen nettside, bare booking, eller ingenting. Facebook og Instagram vises i samme oversikt. Filtrer til «uten nettside» hvis det er det du jakter på.",
+      "NyLead viser nye firma med kontaktinfo når vi finner det. Du kan sjekke nettside, booking og sosiale profiler før du tar kontakt.",
   },
   {
     step: 3,
-    title: "Velg hvem du tar",
+    title: "Filtrer og lagre",
     description:
-      "Huk av i listen, eller bruk arbeidskøen som sorterer de beste først. Du ser status hele veien: ny, kontaktet, svar, møte.",
+      "Sorter bort det som ikke passer. Lagre firmaene du vil kontakte, eller legg dem i arbeidskøen så du vet hva du skal gjøre i dag.",
   },
   {
     step: 4,
-    title: "Send og følg opp",
+    title: "Kontakt og følg opp",
     description:
-      "Én mal med {firmanavn}, send til alle du valgte — fra din Gmail eller Outlook. Vil du, tar en 6-stegs sekvens over automatisk.",
+      "Ring, send fra Gmail eller Outlook, og følg med på status. Du ser hvem som er kontaktet, hvem som svarte, og hvem som må tas igjen.",
   },
 ];

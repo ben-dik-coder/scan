@@ -26,12 +26,12 @@ function WorkflowStepSvgFallback({ step, className }: Props) {
   return (
     <div
       className={cn(
-        "flex h-full w-full items-center justify-center bg-brand-gold/10",
+        "flex h-full w-full items-center justify-center bg-app-accent/10",
         className
       )}
       aria-hidden
     >
-      <Icon className="h-6 w-6 text-[#635bff]" strokeWidth={2} />
+      <Icon className="h-6 w-6 text-app-accent" strokeWidth={2} />
     </div>
   );
 }

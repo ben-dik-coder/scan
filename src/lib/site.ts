@@ -2,10 +2,10 @@ export const site = {
   name: "NyLead",
   url: "https://nylead.no",
   tagline:
-    "For deg som selger til nye firma i Norge. Finn kontaktinfo fra Brreg, Timma og Gulesider — ring eller send fra din egen innboks.",
-  heroTitle: "Finn nye firma i Norge med kontaktinfo",
+    "Finn nye kunder før konkurrentene. NyLead finner nye firma, kontaktinfo og signaler du kan bruke når du tar kontakt.",
+  heroTitle: "Finn nye kunder før konkurrentene",
   description:
-    "NyLead henter nye firma fra Brønnøysund, finner telefon og trygg e-post, sjekker nettside med Google og lar deg ringe eller sende tilbud fra din egen innboks.",
+    "NyLead finner nye firma fra Brønnøysund, beriker med åpne kilder, viser kontaktinfo og signaler, og hjelper deg å kontakte og følge opp fra egen innboks.",
   audience: "For deg som selger til nye firma i Norge",
   ogImage: "/images/front/front.png",
   keywords: [
@@ -35,8 +35,8 @@ export const site = {
   ],
   stats: [
     { value: "2 000+", label: "Nye firma per uke i Norge" },
-    { value: "10", label: "Google-sjekk om gangen" },
-    { value: "1 tabell", label: "Brreg + nett + kontakt" },
+    { value: "1 flyt", label: "Skann, filtrer og følg opp" },
+    { value: "1 tabell", label: "Firma, kontakt og signaler" },
   ],
 };
 

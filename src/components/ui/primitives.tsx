@@ -24,9 +24,9 @@ export function ScoreRing({
         ? "#cbd5e1"
         : "rgba(255,255,255,0.15)"
       : score >= 80
-        ? "#635bff"
+        ? "#c9a227"
         : score >= 50
-          ? "#7c75ff"
+          ? "#e5c04a"
           : score === 0
             ? light
               ? "#94a3b8"

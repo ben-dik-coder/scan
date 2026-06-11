@@ -44,7 +44,7 @@ function priceId(...envKeys: string[]): string | undefined {
 export const NYLEAD_PLAN: PlanConfig = {
   id: "nylead",
   name: "NyLead",
-  tagline: "Skann Brreg, sjekk nettside, send fra din e-post — én pris, alt med",
+  tagline: "Finn nye firma, kontakt dem, og følg opp uten rot",
   priceNok: 499,
   stripePriceId: priceId("STRIPE_PRICE", "STRIPE_PRICE_NYLEAD"),
   maxRecipientsPerSend: 75,
@@ -55,12 +55,12 @@ export const NYLEAD_PLAN: PlanConfig = {
   sequences: true,
   pipeline: true,
   features: [
-    "Opptil 250 bedrifter med tlf og e-post per måned",
-    "Brreg-skanning og Google nettside-sjekk",
+    "Opptil 250 firma med kontaktinfo per måned",
+    "Skann nye firma fra Brønnøysund",
+    "Nettside-, booking- og kilde-sjekk",
     "Send fra Gmail, Outlook eller SMTP",
-    "Sekvenser og oppfølging",
-    "Pipeline / CRM",
-    "Ubegrenset maler",
+    "Maler, sekvenser og oppfølging",
+    "Arbeidskø og pipeline",
     "7 dagers prøveperiode",
   ],
 };

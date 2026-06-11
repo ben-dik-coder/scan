@@ -99,7 +99,7 @@ export function SubscriberCapBanner({
       className={cn(
         isGlass
           ? "rounded-lg border border-white/15 bg-white/5 text-slate-200"
-          : "border-b border-brand-gold/15 bg-brand-goldPale text-brand-navy",
+          : "border-b border-app-accent/15 bg-app-accent/5 text-app-ink",
         !isGlass && urgent && "border-amber-400/40 bg-amber-50",
         isGlass && urgent && "border-amber-400/30 bg-amber-950/30",
         className
@@ -124,7 +124,7 @@ export function SubscriberCapBanner({
                   : "text-sky-400"
                 : urgent
                   ? "text-amber-600"
-                  : "text-brand-gold"
+                  : "text-app-accent"
             )}
             aria-hidden
           />
@@ -138,7 +138,7 @@ export function SubscriberCapBanner({
             <span
               className={cn(
                 "font-sans font-bold tabular-nums",
-                isGlass ? "text-base text-white sm:text-lg" : "text-base text-brand-navy sm:text-lg"
+                isGlass ? "text-base text-white sm:text-lg" : "text-base text-app-ink sm:text-lg"
               )}
             >
               {data.taken}
@@ -175,7 +175,7 @@ export function SubscriberCapBanner({
                   ? "bg-gradient-to-r from-amber-500 to-amber-400"
                   : isGlass
                     ? "bg-gradient-to-r from-sky-500 to-sky-400"
-                    : "bg-gradient-to-r from-brand-gold to-brand-goldLight"
+                    : "bg-gradient-to-r from-app-accent to-app-accentLight"
               )}
               style={{ width: `${pct}%` }}
             />

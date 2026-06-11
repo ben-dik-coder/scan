@@ -1,5 +1,5 @@
 type LandingFoldTransitionProps = {
-  /** dark-to-light: navy workflow → white sheet. light-to-light: brand-surface → white. */
+  /** dark-to-light: app-ink workflow → white sheet. light-to-light: brand-surface → white. */
   variant?: "dark-to-light" | "light-to-light";
 };
 
@@ -62,8 +62,8 @@ export function LandingFoldTransition({
 }: LandingFoldTransitionProps) {
   const topFill =
     variant === "dark-to-light"
-      ? "var(--brand-navy, #0a2540)"
-      : "var(--brand-surface, #f6f9fc)";
+      ? "var(--app-ink, #1c1c1e)"
+      : "var(--brand-surface, #f8fafc)";
 
   return (
     <div
