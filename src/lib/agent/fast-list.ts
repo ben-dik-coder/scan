@@ -758,6 +758,7 @@ async function buildListRequestFromSearchMessage(
     limit,
     days: 0,
     nameQuery,
+    fastList: true,
   };
   if (municipality.code) {
     searchArgs.municipalityCode = municipality.code;
@@ -921,6 +922,14 @@ function parseRegion(message: string): { id?: string; label?: string } {
     return { id: "", label: "Norge" };
   }
   return {};
+}
+
+function hasIndustryInPlacePattern(normalized: string): boolean {
+  if (/uten nettside|skann|lagre/i.test(normalized)) return false;
+  return (
+    /\b(finn|vis|list|hent|sok|søk)\s+.+\s+i\s+\S+/i.test(normalized) ||
+    (Boolean(resolveIndustryKeyword(normalized)) && /\bi\s+\S+/i.test(normalized))
+  );
 }
 
 function hasListVerb(normalized: string): boolean {
@@ -1096,7 +1105,7 @@ export function isSimpleListIntent(message: string): boolean {
     hasPlace &&
     normalized.split(/\s+/).length <= 4;
 
-  return hasListVerb(normalized) || shortIndustryPlace;
+  return hasListVerb(normalized) || shortIndustryPlace || hasIndustryInPlacePattern(normalized);
 }
 
 export function isFacebookListIntent(message: string): boolean {
@@ -1142,6 +1151,7 @@ async function buildListRequest(
   const searchArgs: Record<string, unknown> = {
     limit,
     days: 0,
+    fastList: true,
     ...industry.filters,
   };
 
@@ -1178,7 +1188,9 @@ export async function parseSimpleListRequest(
   options?: { defaultMunicipality?: { code?: string; label?: string } }
 ): Promise<ParsedSimpleListRequest | null> {
   if (!isSimpleListIntent(message)) return null;
-  return buildListRequest(message, options);
+  const fromIndustry = await buildListRequest(message, options);
+  if (fromIndustry) return fromIndustry;
+  return buildListRequestFromSearchMessage(message, options);
 }
 
 export async function parseFacebookListRequest(

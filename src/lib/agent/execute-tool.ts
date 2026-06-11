@@ -11,8 +11,10 @@ import {
   AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_FAST_LIST_LIMIT,
   AGENT_MAX_SCAN_PER_CALL,
+  AGENT_SCAN_CONCURRENCY,
   AGENT_SCAN_DELAY_MS,
   AGENT_SCAN_ONE_TIMEOUT_MS,
+  AGENT_SCAN_PROGRESS_BATCH,
   AGENT_SEARCH_OVERFETCH_MIN,
   AGENT_TOOL_SCAN_TIMEOUT_MS,
   AGENT_TOOL_SEARCH_TIMEOUT_MS,
@@ -566,6 +568,11 @@ async function executeSearchCompanies(
     withoutWebsite,
     excludeIndustryGroups
   );
+  const fastList =
+    args.fastList === true &&
+    !websiteSalesMode &&
+    !withoutWebsite &&
+    !(excludeIndustryGroups?.length ?? 0);
   const nationwideWebsiteSales =
     websiteSalesMode && !municipalityCode && !regionId;
   const overfetchMultiplier = nationwideWebsiteSales
@@ -577,8 +584,11 @@ async function executeSearchCompanies(
       : frisorSearch || professionSearch
         ? 16
         : 8;
-  const pageSize =
-    fetchLimit && fetchLimit > 0
+  const simpleListFetchLimit =
+    requestedLimit && requestedLimit > 0 ? requestedLimit : resultLimit;
+  const pageSize = fastList
+    ? Math.min(simpleListFetchLimit + 5, AGENT_MAX_COMPANIES_PER_JOB)
+    : fetchLimit && fetchLimit > 0
       ? Math.min(
           Math.max(fetchLimit * overfetchMultiplier, AGENT_SEARCH_OVERFETCH_MIN),
           AGENT_MAX_COMPANIES_PER_JOB
@@ -852,6 +862,58 @@ async function executeScanWebsites(
     includeInstagram: args.includeInstagram === true,
   };
 
+  async function scanOneCompany(
+    company: Company,
+    cachedByOrgnr: Map<string, WebsiteScanResult>
+  ): Promise<WebsiteScanResult> {
+    const input = toScanInput(company);
+    let scan = cachedByOrgnr.get(company.orgnr);
+    if (scan && isWebsiteScanCacheComplete(scan, social)) {
+      return scan;
+    }
+    if (scan && isSocialScanComplete(scan, social)) {
+      scan = await withTimeout(
+        enrichScanContacts(input, scan),
+        AGENT_SCAN_ONE_TIMEOUT_MS,
+        `Berik ${company.name}`
+      );
+      await persistCachedWebsiteScans([scan], ctx.userId);
+      return scan;
+    }
+
+    scan = await withTimeout(
+      scanCompanyWebsite(input, { social, userId: ctx.userId }),
+      AGENT_SCAN_ONE_TIMEOUT_MS,
+      `Skann ${company.name}`
+    );
+    await persistCachedWebsiteScans([scan], ctx.userId);
+    return scan;
+  }
+
+  async function recordScanProgress(force = false) {
+    const pendingOrgnrs = [...orgnrs.slice(scanned), ...remainingOrgnrs];
+    const isLast = scanned >= companies.length;
+    if (
+      force ||
+      isLast ||
+      scanned === 1 ||
+      scanned % AGENT_SCAN_PROGRESS_BATCH === 0
+    ) {
+      await updateRunProgress(ctx.runId, {
+        phase: "scan_websites",
+        orgnrs,
+        scanned,
+        total: companies.length,
+        remainingOrgnrs: pendingOrgnrs,
+      });
+    }
+    await ctx.onProgress?.({
+      tool: "scan_websites",
+      scanned,
+      total: companies.length,
+    });
+  }
+
   for (let i = 0; i < companies.length; i += MAX_WEBSITE_SCAN_BATCH) {
     if (Date.now() > deadline) {
       timedOut = true;
@@ -862,93 +924,78 @@ async function executeScanWebsites(
     const cached = await loadCachedWebsiteScans(batch.map((c) => c.orgnr));
     const cachedByOrgnr = new Map(cached.map((s) => [s.orgnr, s]));
 
-    for (const company of batch) {
+    for (let j = 0; j < batch.length; j += AGENT_SCAN_CONCURRENCY) {
       if (Date.now() > deadline) {
         timedOut = true;
         break;
       }
 
-      const input = toScanInput(company);
-      let scan = cachedByOrgnr.get(company.orgnr);
-      try {
-        if (scan && isWebsiteScanCacheComplete(scan, social)) {
-          // bruk cache
-        } else if (scan && isSocialScanComplete(scan, social)) {
-          scan = await withTimeout(
-            enrichScanContacts(input, scan),
-            AGENT_SCAN_ONE_TIMEOUT_MS,
-            `Berik ${company.name}`
-          );
-          await persistCachedWebsiteScans([scan], ctx.userId);
-        } else {
-          scan = await withTimeout(
-            scanCompanyWebsite(input, { social, userId: ctx.userId }),
-            AGENT_SCAN_ONE_TIMEOUT_MS,
-            `Skann ${company.name}`
-          );
-          await persistCachedWebsiteScans([scan], ctx.userId);
-        }
-      } catch (err) {
-        if (err instanceof SerperLimitReachedError) {
-          const pendingOrgnrs = [...orgnrs.slice(scans.length), ...remainingOrgnrs];
-          await updateRunProgress(ctx.runId, {
-            phase: "scan_websites",
-            orgnrs,
-            scanned: scans.length,
-            total: companies.length,
-            remainingOrgnrs: pendingOrgnrs,
-            serperLimitReached: true,
-          });
-          return {
-            summary: err.message,
-            data: {
-              scanned: scans.length,
-              serperLimitReached: true,
-              serperUsage: err.usage,
-              remainingOrgnrs: pendingOrgnrs,
-              scans: scans.map((s) => ({
-                orgnr: s.orgnr,
-                hasWebsite: s.hasWebsite,
-              })),
-            },
-          };
-        }
+      const chunk = batch.slice(j, j + AGENT_SCAN_CONCURRENCY);
+      let serperLimitError: SerperLimitReachedError | undefined;
 
-        const message = err instanceof Error ? err.message : "Skann feilet";
-        scan = {
-          orgnr: company.orgnr,
-          hasWebsite: false,
-          websiteKind: "none",
-          websiteUrl: null,
-          websiteDomain: null,
-          bookingPlatform: null,
-          source: "none",
-          confidence: "low",
-          query: company.name,
-          scannedAt: new Date().toISOString(),
-          error: message,
-          displayName: company.name,
-        };
-      }
+      const chunkResults = await Promise.all(
+        chunk.map(async (company) => {
+          if (Date.now() > deadline) return null;
+          try {
+            return await scanOneCompany(company, cachedByOrgnr);
+          } catch (err) {
+            if (err instanceof SerperLimitReachedError) {
+              serperLimitError = err;
+              return null;
+            }
 
-      scans.push(scan);
-      scanned++;
-      const pendingOrgnrs = [...orgnrs.slice(scanned), ...remainingOrgnrs];
-      const isLast = scanned >= companies.length;
-      if (isLast || scanned === 1 || scanned % 2 === 0) {
+            const message = err instanceof Error ? err.message : "Skann feilet";
+            return {
+              orgnr: company.orgnr,
+              hasWebsite: false,
+              websiteKind: "none" as const,
+              websiteUrl: null,
+              websiteDomain: null,
+              bookingPlatform: null,
+              source: "none" as const,
+              confidence: "low" as const,
+              query: company.name,
+              scannedAt: new Date().toISOString(),
+              error: message,
+              displayName: company.name,
+            } satisfies WebsiteScanResult;
+          }
+        })
+      );
+
+      if (serperLimitError) {
+        const pendingOrgnrs = [...orgnrs.slice(scans.length), ...remainingOrgnrs];
         await updateRunProgress(ctx.runId, {
           phase: "scan_websites",
           orgnrs,
-          scanned,
+          scanned: scans.length,
           total: companies.length,
           remainingOrgnrs: pendingOrgnrs,
+          serperLimitReached: true,
         });
+        return {
+          summary: serperLimitError.message,
+          data: {
+            scanned: scans.length,
+            serperLimitReached: true,
+            serperUsage: serperLimitError.usage,
+            remainingOrgnrs: pendingOrgnrs,
+            scans: scans.map((s) => ({
+              orgnr: s.orgnr,
+              hasWebsite: s.hasWebsite,
+            })),
+          },
+        };
       }
-      await ctx.onProgress?.({
-        tool: "scan_websites",
-        scanned,
-        total: companies.length,
-      });
+
+      for (const scan of chunkResults) {
+        if (!scan) continue;
+        scans.push(scan);
+        scanned++;
+        await recordScanProgress();
+      }
+
+      if (timedOut) break;
     }
 
     if (timedOut) break;

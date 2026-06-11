@@ -51,6 +51,12 @@ export const AGENT_MAX_TOOL_HISTORY_MESSAGES = 12;
 
 export const AGENT_SCAN_DELAY_MS = 200;
 
+/** Antall nettside-skann som kjører parallelt i scan_websites */
+export const AGENT_SCAN_CONCURRENCY = 4;
+
+/** Oppdater scan-fremdrift i DB hver N. firma (ikke hver enkelt) */
+export const AGENT_SCAN_PROGRESS_BATCH = 3;
+
 /** Kjøringer uten oppdatering lenger enn dette regnes som hengende og avbrytes automatisk. */
 export const AGENT_RUN_STALE_MS = 5 * 60 * 1000;
 
