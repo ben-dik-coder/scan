@@ -13,7 +13,12 @@ const NAV_LINKS = [
   { href: "#slik-funker-det", label: "Slik funker det" },
   { href: "#pris", label: "Pris" },
   { href: "#faq", label: "FAQ" },
+  { href: "/artikler", label: "Artikler" },
 ] as const;
+
+function isPageLink(href: string) {
+  return href.startsWith("/");
+}
 
 export function SiteHeader({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
@@ -39,15 +44,25 @@ export function SiteHeader({ className }: { className?: string }) {
           </Link>
 
           <nav className="hidden items-center gap-8 md:flex lg:gap-10">
-            {NAV_LINKS.map(({ href, label }) => (
-              <a
-                key={href}
-                href={href}
-                className="font-sans text-sm font-semibold text-white/80 transition hover:text-app-accentLight"
-              >
-                {label}
-              </a>
-            ))}
+            {NAV_LINKS.map(({ href, label }) =>
+              isPageLink(href) ? (
+                <Link
+                  key={href}
+                  href={href}
+                  className="font-sans text-sm font-semibold text-white/80 transition hover:text-app-accentLight"
+                >
+                  {label}
+                </Link>
+              ) : (
+                <a
+                  key={href}
+                  href={href}
+                  className="font-sans text-sm font-semibold text-white/80 transition hover:text-app-accentLight"
+                >
+                  {label}
+                </a>
+              )
+            )}
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -99,16 +114,27 @@ export function SiteHeader({ className }: { className?: string }) {
             </div>
 
             <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-              {NAV_LINKS.map(({ href, label }) => (
-                <a
-                  key={href}
-                  href={href}
-                  onClick={() => setOpen(false)}
-                  className="block rounded-md px-4 py-3.5 font-sans text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-app-accentLight"
-                >
-                  {label}
-                </a>
-              ))}
+              {NAV_LINKS.map(({ href, label }) =>
+                isPageLink(href) ? (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setOpen(false)}
+                    className="block rounded-md px-4 py-3.5 font-sans text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-app-accentLight"
+                  >
+                    {label}
+                  </Link>
+                ) : (
+                  <a
+                    key={href}
+                    href={href}
+                    onClick={() => setOpen(false)}
+                    className="block rounded-md px-4 py-3.5 font-sans text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-app-accentLight"
+                  >
+                    {label}
+                  </a>
+                )
+              )}
             </nav>
 
             <div className="space-y-2 border-t border-white/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">

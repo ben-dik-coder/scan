@@ -51,6 +51,11 @@ export function SiteFooter() {
                     Hjelp og support
                   </Link>
                 </li>
+                <li>
+                  <Link href="/artikler" className="transition hover:text-app-accentLight">
+                    Artikler
+                  </Link>
+                </li>
               </ul>
             </div>
 
