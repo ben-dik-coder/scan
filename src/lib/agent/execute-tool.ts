@@ -10,7 +10,9 @@ import {
 import {
   AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_FAST_LIST_LIMIT,
+  AGENT_MAX_FAST_LIST_PHONE_LOOKUPS,
   AGENT_MAX_SCAN_PER_CALL,
+  AGENT_MAX_SEARCH_PHONE_LOOKUPS,
   AGENT_SCAN_CONCURRENCY,
   AGENT_SCAN_DELAY_MS,
   AGENT_SCAN_ONE_TIMEOUT_MS,
@@ -568,8 +570,16 @@ async function executeSearchCompanies(
     withoutWebsite,
     excludeIndustryGroups
   );
+  const implicitFastList =
+    !websiteSalesMode &&
+    !withoutWebsite &&
+    !(excludeIndustryGroups?.length ?? 0) &&
+    requestedLimit !== undefined &&
+    requestedLimit > 0 &&
+    requestedLimit <= AGENT_MAX_FAST_LIST_LIMIT &&
+    !requirePhone;
   const fastList =
-    args.fastList === true &&
+    (args.fastList === true || implicitFastList) &&
     !websiteSalesMode &&
     !withoutWebsite &&
     !(excludeIndustryGroups?.length ?? 0);
@@ -729,11 +739,19 @@ async function executeSearchCompanies(
       ? rankWebsiteSalesLeadCompanies(companies, scanByOrgnr)
       : rankAgentLeadCompanies(companies);
     const missingPhone = companies.filter((company) => !hasCompanyPhone(company));
-    if (missingPhone.length > 0) {
-      const lookupTargets = missingPhone.slice(
-        0,
-        Math.min(missingPhone.length, pageSize)
-      );
+    if (requirePhone && missingPhone.length > 0) {
+      const maxLookups = fastList
+        ? Math.min(resultLimit + 8, AGENT_MAX_FAST_LIST_PHONE_LOOKUPS)
+        : websiteSalesMode
+          ? Math.min(
+              Math.max(resultLimit * 4, 16),
+              AGENT_MAX_SEARCH_PHONE_LOOKUPS
+            )
+          : Math.min(
+              Math.max(resultLimit * 3, 12),
+              AGENT_MAX_SEARCH_PHONE_LOOKUPS
+            );
+      const lookupTargets = missingPhone.slice(0, maxLookups);
       await Promise.all(
         lookupTargets.map(async (company) => {
           const hit = await lookupFreeContact({

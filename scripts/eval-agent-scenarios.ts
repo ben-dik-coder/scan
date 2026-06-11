@@ -382,8 +382,17 @@ async function testSimpleListIntent() {
   assert.equal(isSimpleListIntent("finn 5 grillbar i Bergen"), true);
   assert.equal(isSimpleListIntent("finn meg 5 nyeste resturanter"), true);
   assert.equal(isSimpleListIntent("finn 3 tatovering i Oslo"), true);
+  assert.equal(isSimpleListIntent("finn 5 firma i Bergen"), true);
+  assert.equal(isSimpleListIntent("finn meg 5 bedrifter i Bergen"), true);
   assert.equal(isSimpleListIntent("finn frisører uten nettside"), false);
   assert.equal(isSimpleListIntent("skann nettside for disse"), false);
+
+  const genericBergen = await parseSimpleListRequest("finn 5 firma i Bergen");
+  assert.ok(genericBergen);
+  assert.equal(genericBergen.limit, 5);
+  assert.equal(genericBergen.searchArgs.municipalityCode, "4601");
+  assert.equal(genericBergen.searchArgs.fastList, true);
+  assert.equal(genericBergen.searchArgs.industryGroup, undefined);
 
   const parsed = await parseSimpleListRequest("finn meg 5 byggevarehandlere i Bodø");
   assert.ok(parsed);

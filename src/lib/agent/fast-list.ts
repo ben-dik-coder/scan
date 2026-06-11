@@ -940,6 +940,13 @@ function hasListVerb(normalized: string): boolean {
   );
 }
 
+/** «finn 5 firma i Bergen» — bransje er valgfri, sted/default kan komme fra preferanser. */
+function isGenericCompanyListQuery(normalized: string): boolean {
+  return /\b(firma|bedrift|bedrifter|selskap|selskaper|foretak)\b/.test(
+    normalized
+  );
+}
+
 export type ParsedWebsiteSalesLeadRequest = ParsedSimpleListRequest & {
   needsClarification?: boolean;
   clarificationMessage?: string;
@@ -1097,7 +1104,8 @@ export function isSimpleListIntent(message: string): boolean {
 
   const normalized = normalizeText(message);
   const industry = resolveIndustryKeyword(normalized);
-  if (!industry) return false;
+  const genericCompany = isGenericCompanyListQuery(normalized);
+  if (!industry && !genericCompany) return false;
 
   const hasPlace = Boolean(parseMunicipalityFromMessage(normalized).code);
   const shortIndustryPlace =
@@ -1124,7 +1132,8 @@ async function buildListRequest(
 ): Promise<ParsedSimpleListRequest | null> {
   const normalized = normalizeText(message);
   const industry = resolveIndustryKeyword(normalized);
-  if (!industry) return null;
+  const genericCompany = isGenericCompanyListQuery(normalized);
+  if (!industry && !genericCompany) return null;
 
   const limit = parseLimit(normalized) ?? AGENT_DEFAULT_LIST_LIMIT;
   const municipality = await resolveMunicipalityFromMessage(normalized, {
@@ -1141,9 +1150,13 @@ async function buildListRequest(
       municipality.label ?? extractPlaceMention(normalized) ?? "valgt sted";
     return {
       limit,
-      industryLabel: industry.label,
+      industryLabel: industry?.label ?? "firma",
       locationLabel: placeLabel,
-      searchArgs: { limit, days: 0, ...industry.filters },
+      searchArgs: {
+        limit,
+        days: 0,
+        ...(industry?.filters ?? {}),
+      },
       unknownPlace: true,
     };
   }
@@ -1152,7 +1165,7 @@ async function buildListRequest(
     limit,
     days: 0,
     fastList: true,
-    ...industry.filters,
+    ...(industry?.filters ?? {}),
   };
 
   if (municipality.code) {
@@ -1176,7 +1189,7 @@ async function buildListRequest(
 
   return {
     limit,
-    industryLabel: industry.label,
+    industryLabel: industry?.label ?? "firma",
     locationLabel,
     searchArgs,
     requirePhone: wantsPhoneInList(normalized),
