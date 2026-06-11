@@ -50,22 +50,12 @@ function applyProfessionFilter(
   const match = resolveProfessionFilter(trimmed);
   if (!match) return query;
 
-  const codeFilters = getProfessionCodeOrFilters(match);
-  if (codeFilters?.length) {
-    let next = query.or(codeFilters.join(","));
-    const nameFilters = getProfessionNameOrFilters(match);
-    if (nameFilters.length) {
-      next = next.or(nameFilters.join(","));
-    }
-    return next;
-  }
-
+  const codeFilters = getProfessionCodeOrFilters(match) ?? [];
   const nameFilters = getProfessionNameOrFilters(match);
-  if (nameFilters.length) {
-    return query.or(nameFilters.join(","));
-  }
+  const combined = [...codeFilters, ...nameFilters];
+  if (combined.length === 0) return query;
 
-  return query;
+  return query.or(combined.join(","));
 }
 
 function applyIndustryFilter(
@@ -186,7 +176,9 @@ export async function fetchCompaniesFromDb(
 
   query = applyIndustryFilter(query, filters.industryGroup);
   query = applyProfessionFilter(query, filters.professionId);
-  query = applyNameQueryFilter(query, filters.nameQuery);
+  if (filters.nameQuery?.trim() && !filters.professionId?.trim()) {
+    query = applyNameQueryFilter(query, filters.nameQuery);
+  }
 
   query = query.order("registered_at", { ascending: false, nullsFirst: false });
 

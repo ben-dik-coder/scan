@@ -10,9 +10,9 @@ import {
 import {
   AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_FAST_LIST_LIMIT,
-  AGENT_MAX_FAST_LIST_PHONE_LOOKUPS,
   AGENT_MAX_SCAN_PER_CALL,
   AGENT_MAX_SEARCH_PHONE_LOOKUPS,
+  AGENT_PHONE_LOOKUP_TIMEOUT_MS,
   AGENT_SCAN_CONCURRENCY,
   AGENT_SCAN_DELAY_MS,
   AGENT_SCAN_ONE_TIMEOUT_MS,
@@ -740,29 +740,23 @@ async function executeSearchCompanies(
       : rankAgentLeadCompanies(companies);
     const missingPhone = companies.filter((company) => !hasCompanyPhone(company));
     if (requirePhone && missingPhone.length > 0) {
-      const maxLookups = fastList
-        ? Math.min(resultLimit + 8, AGENT_MAX_FAST_LIST_PHONE_LOOKUPS)
-        : websiteSalesMode
-          ? Math.min(
-              Math.max(resultLimit * 4, 16),
-              AGENT_MAX_SEARCH_PHONE_LOOKUPS
-            )
-          : Math.min(
-              Math.max(resultLimit * 3, 12),
-              AGENT_MAX_SEARCH_PHONE_LOOKUPS
-            );
+      const maxLookups = Math.min(resultLimit, AGENT_MAX_SEARCH_PHONE_LOOKUPS);
       const lookupTargets = missingPhone.slice(0, maxLookups);
       await Promise.all(
         lookupTargets.map(async (company) => {
-          const hit = await lookupFreeContact({
-            orgnr: company.orgnr,
-            name: company.name,
-            email: company.email,
-            website: company.website,
-            municipality_name: company.municipality_name,
-            city: company.city,
-            industry_code: company.industry_code,
-          }).catch(() => null);
+          const hit = await withTimeout(
+            lookupFreeContact({
+              orgnr: company.orgnr,
+              name: company.name,
+              email: company.email,
+              website: company.website,
+              municipality_name: company.municipality_name,
+              city: company.city,
+              industry_code: company.industry_code,
+            }),
+            AGENT_PHONE_LOOKUP_TIMEOUT_MS,
+            `Telefon ${company.name}`
+          ).catch(() => null);
           if (!hit?.phone) return;
           Object.assign(company, storePhone(hit.phone));
         })

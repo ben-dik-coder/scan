@@ -37,6 +37,9 @@ export const AGENT_MAX_SEARCH_PHONE_LOOKUPS = 24;
 /** Færre oppslag ved hurtigliste med «med telefon» */
 export const AGENT_MAX_FAST_LIST_PHONE_LOOKUPS = 12;
 
+/** Timeout per telefon-oppslag under search_companies */
+export const AGENT_PHONE_LOOKUP_TIMEOUT_MS = 2_000;
+
 /** Timeout for search_companies */
 export const AGENT_TOOL_SEARCH_TIMEOUT_MS = 15_000;
 

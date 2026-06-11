@@ -79,6 +79,24 @@ export function companyHasKnownWebsite(
   return hasOwnWebsite(scan);
 }
 
+/** Finans/kapital — dårlig mål for nettside-salg. */
+function isCapitalIndustry(industryCode: string | null | undefined): boolean {
+  return (industryCode ?? "").trim().startsWith("64.");
+}
+
+/** Eiendom/megling — ofte store aktører, lavere prioritet. */
+function isEiendomIndustry(industryCode: string | null | undefined): boolean {
+  return (industryCode ?? "").trim().startsWith("68.");
+}
+
+function isFrisorCompany(
+  company: Pick<Company, "name" | "industry_code">
+): boolean {
+  const code = (company.industry_code ?? "").trim();
+  if (code.startsWith("96.0") || code.startsWith("96.02")) return true;
+  return /fris|salong|hår|klipp|barber/i.test(company.name ?? "");
+}
+
 /** Dårlige leads ved salg av nettside — holding, ENK/person uten telefon. */
 export function isWeakWebsiteSalesLead(
   company: Pick<Company, "name" | "industry_code" | "phone" | "mobile" | "orgnr">
@@ -86,6 +104,8 @@ export function isWeakWebsiteSalesLead(
   if (isBadLeadCompany(company)) return true;
   if (isHoldingCompany(company)) return true;
   if (isUnclassifiedIndustryCode(company.industry_code)) return true;
+  if (isCapitalIndustry(company.industry_code)) return true;
+  if (isEiendomIndustry(company.industry_code)) return true;
   if (/\bENK\b/i.test(company.name ?? "") && !hasCompanyPhone(company)) return true;
   if (isSoleProprietorOrPerson(company) && !hasCompanyPhone(company)) return true;
   return false;
@@ -104,6 +124,7 @@ export function websiteSalesLeadRankScore(
   if (hasCompanyPhone(company)) score += 60;
   if (/\bAS\b/i.test(company.name) && hasCompanyPhone(company)) score += 25;
   if (/\bENK\b/i.test(company.name)) score -= 35;
+  if (/\bENK\b/i.test(company.name) && isFrisorCompany(company)) score -= 40;
   if (isSoleProprietorOrPerson(company)) score -= 30;
 
   return score;

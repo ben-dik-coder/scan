@@ -57,6 +57,34 @@ export function isAgentResumeIntent(message: string): boolean {
   );
 }
 
+/** Kort hilsen — svar med en gang uten OpenAI. */
+export function isQuickGreetingIntent(message: string): boolean {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/[!?.…]+$/g, "")
+    .trim();
+  if (!normalized) return false;
+
+  return (
+    /^(hei|heia|hallo|god\s*(morgen|dag|kveld))$/.test(normalized) ||
+    /^(takk|tusen\s+takk|thanks)$/.test(normalized) ||
+    /^hva\s+kan\s+du(\s+hjelpe(\s+med)?)?$/.test(normalized) ||
+    /^hva\s+(gjør|kan)\s+du$/.test(normalized)
+  );
+}
+
+export function quickGreetingReply(message: string): string {
+  const normalized = message.trim().toLowerCase();
+  if (/^takk|thanks|tusen takk/.test(normalized)) {
+    return "Bare hyggelig! Si fra om du vil finne firma, sjekke nettsider eller lagre en liste.";
+  }
+  if (/hva\s+(kan|gjør)\s+du/.test(normalized)) {
+    return "Jeg kan finne firma etter bransje og sted, sjekke nettsider og lagre lister til Skann. Prøv for eksempel «finn 5 frisører i Bodø».";
+  }
+  return "Hei! Jeg kan hjelpe deg å finne firma og sjekke nettsider. Hva leter du etter?";
+}
+
 function formatOrgnrList(orgnrs: string[], maxShown = 12): string {
   if (orgnrs.length === 0) return "[]";
   if (orgnrs.length <= maxShown) return JSON.stringify(orgnrs);

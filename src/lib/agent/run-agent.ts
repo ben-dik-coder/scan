@@ -34,7 +34,9 @@ import {
 import {
   buildAgentSystemPrompt,
   AGENT_FINAL_SUMMARY_NUDGE,
+  isQuickGreetingIntent,
   isSimpleSearchIntent,
+  quickGreetingReply,
 } from "@/lib/agent/prompt";
 import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
 import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
@@ -531,6 +533,13 @@ export async function runAgentChat(
   const defaultMunicipality = getDefaultMunicipalityFromPrompt(
     options?.systemPromptExtra
   );
+
+  if (isQuickGreetingIntent(lastUserMessage)) {
+    assistantText = quickGreetingReply(lastUserMessage);
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({ type: "done", content: assistantText });
+    return { assistantText };
+  }
 
   if (isFacebookListIntent(lastUserMessage)) {
     const parsed = await parseFacebookListRequest(lastUserMessage, {

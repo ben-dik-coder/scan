@@ -60,6 +60,24 @@ function newId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function buildEmptyAssistantFallback(options: {
+  savedListName?: string;
+  savedOrgnrCount?: number;
+  hadToolActivity: boolean;
+}): string {
+  if (options.savedListName) {
+    const count =
+      typeof options.savedOrgnrCount === "number" && options.savedOrgnrCount > 0
+        ? ` med ${options.savedOrgnrCount} firma`
+        : "";
+    return `Ferdig! Lagret «${options.savedListName}»${count}. Åpne listen i Skann når du er klar.`;
+  }
+  if (options.hadToolActivity) {
+    return "Ferdig! Si fra om du vil ha mer, eller spør «hva fant du?» hvis noe mangler.";
+  }
+  return "Beklager, jeg fikk ikke fram et svar. Prøv igjen om litt.";
+}
+
 async function cancelAgentRuns(): Promise<void> {
   try {
     await fetch("/api/agent/runs/cancel", { method: "POST" });
@@ -344,7 +362,6 @@ export function AgentChatPanel({
         let savedOrgnrCount: number | undefined;
         let receivedDone = false;
         let hadToolActivity = false;
-        const statusSummaries: string[] = [];
 
         const ensureStreamingMessage = () => {
           if (streamingMessageId) return streamingMessageId;
@@ -410,7 +427,6 @@ export function AgentChatPanel({
             setActiveTool(null);
             setActiveToolLabel(null);
             setToolProgress(null);
-            statusSummaries.push(event.summary);
           } else if (event.type === "confirm_save") {
             const id = ensureStreamingMessage();
             setMessages((prev) =>
@@ -482,18 +498,11 @@ export function AgentChatPanel({
         }
 
         if (!assistantText.trim()) {
-          if (savedListName) {
-            const count =
-              typeof savedOrgnrCount === "number" && savedOrgnrCount > 0
-                ? ` med ${savedOrgnrCount} firma`
-                : "";
-            assistantText = `Ferdig! Lagret «${savedListName}»${count}. Åpne listen i Skann når du er klar.`;
-          } else if (statusSummaries.length > 0) {
-            assistantText = `Ferdig! ${statusSummaries.slice(-3).join(" ")}`;
-          } else {
-            assistantText =
-              "Beklager, jeg fikk ikke fram et svar. Prøv igjen om litt.";
-          }
+          assistantText = buildEmptyAssistantFallback({
+            savedListName,
+            savedOrgnrCount,
+            hadToolActivity,
+          });
         }
 
         const streamIncomplete = isStreamLikelyIncomplete({
@@ -501,19 +510,11 @@ export function AgentChatPanel({
           receivedDone,
           hadActiveTool: hadToolActivity,
         });
-        if (
-          streamIncomplete &&
-          statusSummaries.length > 0 &&
-          isLikelyTruncatedAgentResponse(assistantText)
-        ) {
-          assistantText = `${statusSummaries.slice(-2).join(" ")}\n\n${assistantText.trim()}`;
-        }
         if (streamIncomplete) {
           if (!assistantText.trim()) {
-            assistantText =
-              statusSummaries.length > 0
-                ? `Jobben stoppet før svaret var ferdig. ${statusSummaries.slice(-2).join(" ")}`
-                : "Svaret ble avbrutt før det ble ferdig.";
+            assistantText = hadToolActivity
+              ? "Jobben stoppet før svaret var ferdig. Prøv igjen, eller spør «hva fant du?»."
+              : "Svaret ble avbrutt før det ble ferdig.";
           } else if (isLikelyTruncatedAgentResponse(assistantText)) {
             assistantText = `${assistantText.trim()}\n\n(Svaret ble kuttet av — trykk Prøv igjen for full oppsummering.)`;
           } else if (!receivedDone) {

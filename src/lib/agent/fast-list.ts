@@ -161,14 +161,33 @@ function isGenericMoreRequest(normalized: string): boolean {
   ).test(normalized);
 }
 
+function matchBareMoreCompaniesRequest(normalized: string): RegExpMatchArray | null {
+  return normalized.match(/^(\d{1,2})\s+(til|mer|flere)$/);
+}
+
+function isBareGenericMoreRequest(normalized: string): boolean {
+  return /^(flere|mer|noen til)$/.test(normalized);
+}
+
+function historyHasAssistantList(history: ChatTurn[]): boolean {
+  return collectLastListOrgnrs(history).length > 0;
+}
+
 /** Oppfølging som kan løses med nytt liste-søk fra historikk. */
-export function isContextualListFollowUp(message: string): boolean {
+export function isContextualListFollowUp(
+  message: string,
+  history?: ChatTurn[]
+): boolean {
   const normalized = normalizeText(message);
   if (!normalized) return false;
+
+  const hasList = history ? historyHasAssistantList(history) : false;
 
   return (
     Boolean(matchMoreCompaniesRequest(normalized)) ||
     isGenericMoreRequest(normalized) ||
+    (hasList && Boolean(matchBareMoreCompaniesRequest(normalized))) ||
+    (hasList && isBareGenericMoreRequest(normalized)) ||
     /\bsamme\s+(by|sted|kommune|omrade|område)\b/.test(normalized) ||
     /\bi stedet\b/.test(normalized)
   );
@@ -669,7 +688,11 @@ function findPendingMoreLimit(
     if (moreMatch) {
       return Math.min(Number.parseInt(moreMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT);
     }
-    if (isGenericMoreRequest(normalized)) {
+    const bareMoreMatch = matchBareMoreCompaniesRequest(normalized);
+    if (bareMoreMatch) {
+      return Math.min(Number.parseInt(bareMoreMatch[1], 10), AGENT_MAX_FAST_LIST_LIMIT);
+    }
+    if (isGenericMoreRequest(normalized) || isBareGenericMoreRequest(normalized)) {
       return AGENT_DEFAULT_LIST_LIMIT;
     }
     if (looksLikeCompanySearchMessage(msg.content)) {
@@ -793,7 +816,10 @@ export async function parseContextualListRequest(
   history: ChatTurn[],
   options?: { defaultMunicipality?: { code?: string; label?: string } }
 ): Promise<ParsedSimpleListRequest | null> {
-  if (!isContextualListFollowUp(message) && !isScopeClarificationReply(message)) {
+  if (
+    !isContextualListFollowUp(message, history) &&
+    !isScopeClarificationReply(message)
+  ) {
     return null;
   }
 
@@ -822,7 +848,14 @@ export async function parseContextualListRequest(
   }
 
   const moreMatch = matchMoreCompaniesRequest(normalized);
-  if ((moreMatch || isGenericMoreRequest(normalized)) && lastSearch) {
+  const bareMoreMatch = matchBareMoreCompaniesRequest(normalized);
+  if (
+    (moreMatch ||
+      bareMoreMatch ||
+      isGenericMoreRequest(normalized) ||
+      isBareGenericMoreRequest(normalized)) &&
+    lastSearch
+  ) {
     let base = await parseSimpleListRequest(lastSearch, options);
     if (!base || base.unknownPlace) {
       base = await buildListRequestFromSearchMessage(lastSearch, options);
@@ -830,7 +863,9 @@ export async function parseContextualListRequest(
     if (!base || base.unknownPlace) return null;
     const limit = moreMatch
       ? Math.min(Number.parseInt(moreMatch[2], 10), AGENT_MAX_FAST_LIST_LIMIT)
-      : base.limit;
+      : bareMoreMatch
+        ? Math.min(Number.parseInt(bareMoreMatch[1], 10), AGENT_MAX_FAST_LIST_LIMIT)
+        : base.limit;
     return {
       ...base,
       limit,

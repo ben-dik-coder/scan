@@ -56,8 +56,8 @@ export function LandingAgentPromo() {
             </div>
           </div>
 
-          <div className="landing-agent-promo__visual order-2 flex justify-center lg:justify-end">
-            <LandingAnimationPause className="landing-agent-promo__mockup-wrap w-full max-w-[360px] sm:max-w-[400px] lg:max-w-[440px]">
+          <div className="landing-agent-promo__visual order-2 flex w-full justify-center overflow-visible lg:justify-end">
+            <LandingAnimationPause className="landing-agent-promo__mockup-wrap w-full max-w-full sm:max-w-[400px] lg:max-w-[440px]">
               <div className="agent-promo-3d-scene w-full">
                 <div className="agent-promo-3d-orb" aria-hidden />
                 <div className="agent-promo-3d-card">

@@ -429,11 +429,6 @@ html.app-glass-theme body {
     pointer-events: none;
   }
 
-  /* Mobil: mørk topp, hvit bunn — skrå overgang */
-  .landing-agent-promo::before {
-    clip-path: polygon(0 0, 100% 0, 100% 54%, 0 46%);
-  }
-
   /* Desktop: venstre mørk, høyre hvit — skrå (~10°) */
   @media (min-width: 1024px) {
     .landing-agent-promo::before {
@@ -459,10 +454,94 @@ html.app-glass-theme body {
     isolation: isolate;
   }
 
+  /* Mobil/tablet: enkel stabling, flat mockup, ingen klipping */
   @media (max-width: 1023px) {
+    .landing-agent-promo {
+      overflow-x: visible;
+    }
+
+    .landing-agent-promo::before {
+      display: none;
+    }
+
+    .landing-agent-promo__copy {
+      position: relative;
+      z-index: 1;
+      margin-inline: -1.25rem;
+      padding-inline: 1.25rem;
+      padding-bottom: 2.5rem;
+      background: var(--app-ink, #1c1c1e);
+    }
+
     .landing-agent-promo__visual {
-      padding-top: 0.5rem;
-      padding-bottom: 0.5rem;
+      width: 100%;
+      overflow: visible;
+      padding-top: 0.75rem;
+      padding-bottom: 0.25rem;
+    }
+
+    .landing-agent-promo__mockup-wrap {
+      width: 100%;
+      max-width: min(360px, 100%);
+      margin-inline: auto;
+      padding: 0.25rem 0.75rem 1.25rem;
+    }
+
+    .landing-agent-promo .agent-promo-3d-scene {
+      perspective: none;
+      contain: none;
+      overflow: visible;
+      padding-bottom: 0.75rem;
+    }
+
+    .landing-agent-promo .agent-promo-3d-card {
+      transform: none;
+      transition: none;
+    }
+
+    .landing-agent-promo .agent-promo-3d-card:hover {
+      transform: none;
+    }
+
+    .landing-agent-promo .agent-promo-3d-orb {
+      top: 6%;
+      right: 0;
+      width: min(52%, 160px);
+      filter: blur(18px);
+      opacity: 0.45;
+    }
+
+    .landing-agent-promo .agent-promo-3d-glow {
+      inset: 2% 0 -6% 0;
+      filter: blur(14px);
+      opacity: 0.55;
+      transform: none;
+    }
+
+    .landing-agent-promo .agent-promo-3d-floor {
+      display: none;
+    }
+
+    .landing-agent-promo .agent-promo-3d-frame {
+      box-shadow:
+        0 18px 36px -22px rgba(15, 23, 42, 0.32),
+        0 8px 20px -14px rgba(10, 132, 255, 0.1);
+    }
+
+    .landing-agent-promo .agent-promo-mockup {
+      min-height: 400px;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .landing-agent-promo__copy {
+      margin-inline: -2rem;
+      padding-inline: 2rem;
+    }
+
+    .landing-agent-promo__mockup-wrap {
+      max-width: min(400px, 100%);
+      padding-inline: 1rem;
     }
   }
 
