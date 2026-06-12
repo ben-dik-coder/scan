@@ -118,6 +118,12 @@ export const AGENT_OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
             type: "boolean",
             description: "Kun firma med telefonnummer",
           },
+          excludeOrgnrs: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Ekskluder orgnr brukeren allerede har sett — ved «finn flere» / paginering",
+          },
         },
         additionalProperties: false,
       },

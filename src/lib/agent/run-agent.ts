@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {
   AGENT_DISABLED_MESSAGE,
+  AGENT_DEFAULT_LIST_LIMIT,
   AGENT_MAX_COMPANIES_PER_JOB,
   AGENT_MAX_SCAN_PER_CALL,
   AGENT_MAX_TOOL_LOOPS,
@@ -18,9 +19,12 @@ import {
   formatScanWebsitesReply,
   formatWebsiteSalesLeadReply,
   getDefaultMunicipalityFromPrompt,
+  isContextualListFollowUp,
   isFacebookListIntent,
   isSimpleListIntent,
   isWebsiteSalesLeadListIntent,
+  applyListExclusionsFromHistory,
+  collectShownOrgnrs,
   parseFacebookListRequest,
   parseSimpleListRequest,
   parseWebsiteSalesLeadRequest,
@@ -649,17 +653,23 @@ export async function runAgentChat(
         return { assistantText };
       }
 
+      const withExclusions = applyListExclusionsFromHistory(
+        lastUserMessage,
+        history,
+        parsed
+      );
+
       const companies = await searchWebsiteSalesLeadPool(
         toolCtx,
         async (event) => {
           await onEvent(event);
         },
-        parsed
+        withExclusions
       );
 
-      const listedCompanies = filterListedCompanies(companies, parsed);
+      const listedCompanies = filterListedCompanies(companies, withExclusions);
 
-      assistantText = formatWebsiteSalesLeadReply(listedCompanies, parsed);
+      assistantText = formatWebsiteSalesLeadReply(listedCompanies, withExclusions);
       await onEvent({ type: "text", content: assistantText });
       await onEvent({ type: "done", content: assistantText });
       return { assistantText };
@@ -706,8 +716,14 @@ export async function runAgentChat(
       defaultMunicipality,
     });
     if (parsed) {
-      if (parsed.unknownPlace) {
-        assistantText = formatFastListReply([], parsed);
+      const withExclusions = applyListExclusionsFromHistory(
+        lastUserMessage,
+        history,
+        parsed
+      );
+
+      if (withExclusions.unknownPlace) {
+        assistantText = formatFastListReply([], withExclusions);
         await onEvent({ type: "text", content: assistantText });
         await onEvent({ type: "done", content: assistantText });
         return { assistantText };
@@ -719,14 +735,14 @@ export async function runAgentChat(
           async (event) => {
             await onEvent(event);
           },
-          parsed.searchArgs,
+          withExclusions.searchArgs,
           true
         )
       ).filter((company) => !isBadLeadCompany(company));
 
-      const listedCompanies = filterListedCompanies(companies, parsed);
+      const listedCompanies = filterListedCompanies(companies, withExclusions);
 
-      assistantText = formatFastListReply(listedCompanies, parsed);
+      assistantText = formatFastListReply(listedCompanies, withExclusions);
       await onEvent({ type: "text", content: assistantText });
       await onEvent({ type: "done", content: assistantText });
       return { assistantText };
@@ -986,6 +1002,30 @@ export async function runAgentChat(
         }
 
         await onEvent({ type: "tool_start", tool: toolName });
+
+        if (
+          toolName === "search_companies" &&
+          isContextualListFollowUp(lastUserMessage, history)
+        ) {
+          const shownOrgnrs = collectShownOrgnrs(history, lastUserMessage);
+          if (shownOrgnrs.length > 0) {
+            const limit =
+              typeof parsedArgs.limit === "number" &&
+              Number.isFinite(parsedArgs.limit)
+                ? Math.floor(parsedArgs.limit)
+                : AGENT_DEFAULT_LIST_LIMIT;
+            parsedArgs = {
+              ...parsedArgs,
+              limit: Math.min(
+                limit + shownOrgnrs.length + 4,
+                AGENT_MAX_COMPANIES_PER_JOB
+              ),
+              displayLimit: limit,
+              days: 0,
+              excludeOrgnrs: shownOrgnrs,
+            };
+          }
+        }
 
         let result: ToolExecutionResult;
         try {

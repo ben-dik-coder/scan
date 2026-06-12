@@ -30,6 +30,7 @@ import {
   buildAgentCancelledRunContextPrompt,
 } from "@/lib/agent/prompt";
 import { buildAgentCompletionSummary, runAgentChat } from "@/lib/agent/run-agent";
+import { formatSearchToolPersistContent } from "@/lib/agent/fast-list";
 import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import {
   resolveAgentRequestAuth,
@@ -262,8 +263,15 @@ export async function POST(request: NextRequest) {
           {
             systemPromptExtra,
             onToolComplete: persist
-              ? async (tool, summary) => {
-                  await saveMessage(conversationId!, "tool", summary, {
+              ? async (tool, summary, data) => {
+                  let content = summary;
+                  if (tool === "search_companies" && Array.isArray(data.orgnrs)) {
+                    const orgnrs = (data.orgnrs as string[]).filter(
+                      (orgnr) => typeof orgnr === "string" && orgnr.trim()
+                    );
+                    content = formatSearchToolPersistContent(summary, orgnrs);
+                  }
+                  await saveMessage(conversationId!, "tool", content, {
                     tool_name: tool,
                   });
                 }

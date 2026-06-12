@@ -533,6 +533,13 @@ async function executeSearchCompanies(
       : defaultDays;
   const requirePhone = args.requirePhone === true;
   const withoutWebsite = args.withoutWebsite === true;
+  const excludeOrgnrs = Array.isArray(args.excludeOrgnrs)
+    ? uniqueOrgnrs(
+        (args.excludeOrgnrs as string[]).filter(
+          (value) => typeof value === "string" && /^\d{9}$/.test(value.trim())
+        )
+      )
+    : [];
   const excludeIndustryGroups = Array.isArray(args.excludeIndustryGroups)
     ? (args.excludeIndustryGroups as string[]).filter(
         (value) => typeof value === "string" && value.trim()
@@ -721,6 +728,13 @@ async function executeSearchCompanies(
     const beforeWeak = companies.length;
     companies = filterWebsiteSalesLeadCompanies(companies);
     removedBadLeads += beforeWeak - companies.length;
+  }
+
+  if (excludeOrgnrs.length > 0) {
+    const excludeSet = new Set(excludeOrgnrs);
+    const beforeExclude = companies.length;
+    companies = companies.filter((company) => !excludeSet.has(company.orgnr));
+    removedBadLeads += beforeExclude - companies.length;
   }
 
   let scanByOrgnr = new Map<string, WebsiteScanResult>();

@@ -194,7 +194,27 @@ export function isContextualListFollowUp(
 }
 
 export function extractOrgnrsFromText(text: string): string[] {
-  return [...text.matchAll(/orgnr[:\s]+(\d{9})/gi)].map((match) => match[1]);
+  const orgnrs: string[] = [];
+  for (const match of text.matchAll(/orgnr[:\s]+(\d{9})/gi)) {
+    orgnrs.push(match[1]);
+  }
+  const compact = text.match(/\[orgnr:\s*([^\]]+)\]/i);
+  if (compact?.[1]) {
+    for (const part of compact[1].split(/[,;\s]+/)) {
+      const digits = part.trim();
+      if (/^\d{9}$/.test(digits)) orgnrs.push(digits);
+    }
+  }
+  return [...new Set(orgnrs)];
+}
+
+/** Kompakt orgnr-liste ved lagring av search_companies-verktøymelding. */
+export function formatSearchToolPersistContent(
+  summary: string,
+  orgnrs: string[]
+): string {
+  if (orgnrs.length === 0) return summary;
+  return `${summary} [orgnr: ${orgnrs.join(", ")}]`;
 }
 
 function findLastAssistantListMessage(history: ChatTurn[]): string | undefined {
@@ -665,6 +685,7 @@ function buildPaginationSearchArgs(
     ),
     displayLimit: limit,
     days: 0,
+    excludeOrgnrs: shownOrgnrs,
   };
 }
 
@@ -721,7 +742,10 @@ function findLastSearchUserMessage(
   return undefined;
 }
 
-function collectShownOrgnrs(history: ChatTurn[], currentMessage: string): string[] {
+export function collectShownOrgnrs(
+  history: ChatTurn[],
+  currentMessage: string
+): string[] {
   const orgnrs: string[] = [];
   const skipLatest = shouldSkipLatestUserMessage(history, currentMessage);
   let skippedLatest = false;
@@ -741,6 +765,34 @@ function collectShownOrgnrs(history: ChatTurn[], currentMessage: string): string
     }
   }
   return [...new Set(orgnrs)];
+}
+
+/** Legg til excludeOrgnrs når bruker gjentar samme liste-søk. */
+export function applyListExclusionsFromHistory(
+  message: string,
+  history: ChatTurn[],
+  parsed: ParsedSimpleListRequest
+): ParsedSimpleListRequest {
+  const shownOrgnrs = collectShownOrgnrs(history, message);
+  if (shownOrgnrs.length === 0) return parsed;
+
+  const lastSearch = findLastSearchUserMessage(history, message);
+  const isRepeat =
+    lastSearch &&
+    normalizeText(lastSearch) === normalizeText(message) &&
+    looksLikeCompanySearchMessage(message);
+
+  if (!isRepeat) return parsed;
+
+  return {
+    ...parsed,
+    excludeOrgnrs: shownOrgnrs,
+    searchArgs: buildPaginationSearchArgs(
+      parsed.searchArgs,
+      parsed.limit,
+      shownOrgnrs
+    ),
+  };
 }
 
 /** «finn 2 til», «samme by», «advokater i stedet» — gjenbruk forrige søk fra historikk. */

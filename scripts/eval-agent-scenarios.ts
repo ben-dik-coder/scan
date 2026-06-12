@@ -20,7 +20,11 @@ import {
   isWebsiteSalesLeadListIntent,
   parseContextualListRequest,
   parseSaveListRequest,
+  applyListExclusionsFromHistory,
   collectAlreadyScannedOrgnrs,
+  collectShownOrgnrs,
+  extractOrgnrsFromText,
+  formatSearchToolPersistContent,
   parseScanWebsitesRequest,
   wantsFacebookInScan,
   parseSearchAndScanRequest,
@@ -237,6 +241,75 @@ async function testNationwidePaginationFollowUp() {
   assert.equal(scopeParsed.searchArgs.municipalityCode, undefined);
   assert.equal(scopeParsed.searchArgs.regionId, undefined);
   assert.equal(scopeParsed.searchArgs.displayLimit, 10);
+}
+
+function testOrgnrMemoryFromHistory() {
+  assert.deepEqual(extractOrgnrsFromText("orgnr 123456789 · tlf"), ["123456789"]);
+  assert.deepEqual(
+    extractOrgnrsFromText("Fant 10 firma [orgnr: 111111111, 222222222]"),
+    ["111111111", "222222222"]
+  );
+  assert.equal(
+    formatSearchToolPersistContent("Fant 3 firma", ["999888777"]),
+    "Fant 3 firma [orgnr: 999888777]"
+  );
+
+  const toolHistory = buildAgentChatHistory([
+    {
+      role: "user",
+      content: "finn 5 frisører i Bodø",
+      tool_name: null,
+      tool_calls: null,
+      created_at: "",
+      id: "1",
+      conversation_id: "c1",
+    },
+    {
+      role: "tool",
+      content: "Fant 5 firma [orgnr: 111111111, 222222222, 333333333, 444444444, 555555555]",
+      tool_name: "search_companies",
+      tool_calls: null,
+      created_at: "",
+      id: "2",
+      conversation_id: "c1",
+    },
+  ]);
+
+  assert.deepEqual(collectShownOrgnrs(toolHistory, "finn 3 til"), [
+    "111111111",
+    "222222222",
+    "333333333",
+    "444444444",
+    "555555555",
+  ]);
+}
+
+async function testSimpleListRepeatExcludesPriorOrgnrs() {
+  const history = [
+    { role: "user", content: "finn 3 advokater i Oslo" },
+    {
+      role: "assistant",
+      content:
+        "Her er 3 advokater i oslo:\n\n1. **Advokat AS** · orgnr 935001684 · OSLO\n2. **Lexx Advokat AS** · orgnr 935987717 · OSLO\n3. **Test Advokat AS** · orgnr 911111111 · OSLO",
+    },
+    { role: "user", content: "finn 3 advokater i Oslo" },
+  ];
+
+  const parsed = await parseSimpleListRequest("finn 3 advokater i Oslo");
+  assert.ok(parsed);
+  const withExclusions = applyListExclusionsFromHistory(
+    "finn 3 advokater i Oslo",
+    history,
+    parsed
+  );
+  assert.deepEqual(withExclusions.excludeOrgnrs, [
+    "935001684",
+    "935987717",
+    "911111111",
+  ]);
+  assert.equal(withExclusions.searchArgs.displayLimit, 3);
+  assert.ok(Number(withExclusions.searchArgs.limit) >= 7);
+  assert.deepEqual(withExclusions.searchArgs.excludeOrgnrs, withExclusions.excludeOrgnrs);
 }
 
 async function testSaveAndScanFollowUp() {
@@ -883,6 +956,8 @@ async function main() {
   testSimpleSearchIntent();
   await testContextualFollowUp();
   await testNationwidePaginationFollowUp();
+  testOrgnrMemoryFromHistory();
+  await testSimpleListRepeatExcludesPriorOrgnrs();
   await testSaveAndScanFollowUp();
   await testListEnrichFollowUp();
   await testSearchAndScanIntent();
@@ -895,7 +970,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 18/18 OK");
+  console.log("eval-agent-scenarios: 20/20 OK");
 }
 
 main().catch((err) => {

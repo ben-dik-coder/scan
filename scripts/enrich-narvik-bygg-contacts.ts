@@ -45,6 +45,18 @@ function slugForKommune(kommune: string): string {
   if (kommune === "1804") return "bodo";
   if (kommune === "5503") return "harstad";
   if (kommune === "5501") return "tromso";
+  if (kommune === "5530") return "senja";
+  if (kommune === "5601") return "alta";
+  if (kommune === "5603") return "hammerfest";
+  if (kommune === "5605") return "sor-varanger";
+  if (kommune === "1870") return "sortland";
+  if (kommune === "1813") return "bronnoy";
+  if (kommune === "1820") return "alstahaug";
+  if (kommune === "1860") return "vestvagoy";
+  if (kommune === "1865") return "vagan";
+  if (kommune === "1866") return "hadsel";
+  if (kommune === "1840") return "saltdal";
+  if (kommune === "1832") return "hemnes";
   return `kommune-${kommune}`;
 }
 

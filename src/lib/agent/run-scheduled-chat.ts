@@ -22,6 +22,7 @@ import {
   isAgentResumeIntent,
 } from "@/lib/agent/prompt";
 import { runAgentChat } from "@/lib/agent/run-agent";
+import { formatSearchToolPersistContent } from "@/lib/agent/fast-list";
 
 export type ScheduledChatResult = {
   conversationId: string;
@@ -97,8 +98,15 @@ async function executeAgentRound(
     {
       systemPromptExtra:
         systemPromptParts.length > 0 ? systemPromptParts.join("\n\n") : undefined,
-      onToolComplete: async (tool, summary) => {
-        await saveMessage(conversationId, "tool", summary, { tool_name: tool });
+      onToolComplete: async (tool, summary, data) => {
+        let content = summary;
+        if (tool === "search_companies" && Array.isArray(data.orgnrs)) {
+          const orgnrs = (data.orgnrs as string[]).filter(
+            (orgnr) => typeof orgnr === "string" && orgnr.trim()
+          );
+          content = formatSearchToolPersistContent(summary, orgnrs);
+        }
+        await saveMessage(conversationId, "tool", content, { tool_name: tool });
       },
     }
   );
