@@ -208,7 +208,7 @@ export async function fetchCompaniesFromDb(
       );
     }
   }
-  if (filters.nameQuery?.trim()) {
+  if (filters.nameQuery?.trim() && !filters.professionId?.trim()) {
     rows = rows.filter((c) => companyNameMatchesQuery(c.name, filters.nameQuery));
   }
   if (filters.withoutWebsite) {

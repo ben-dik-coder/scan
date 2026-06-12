@@ -15,7 +15,7 @@ import {
   resolveMunicipalityFromMessage,
 } from "@/lib/agent/municipality";
 import { isSimpleSearchIntent } from "@/lib/agent/prompt";
-import { resolveIndustryKeyword } from "@/lib/agent/search-filters";
+import { resolveIndustryKeyword, parseListDaysFromMessage } from "@/lib/agent/search-filters";
 import {
   isWebsiteSalesLeadIntent,
   messageForIndustryResolution,
@@ -1223,6 +1223,7 @@ async function buildListRequest(
   if (!industry && !genericCompany) return null;
 
   const limit = parseLimit(normalized) ?? AGENT_DEFAULT_LIST_LIMIT;
+  const listDays = parseListDaysFromMessage(message) ?? 0;
   const municipality = await resolveMunicipalityFromMessage(normalized, {
     defaultCode: options?.defaultMunicipality?.code,
     defaultLabel: options?.defaultMunicipality?.label,
@@ -1241,7 +1242,7 @@ async function buildListRequest(
       locationLabel: placeLabel,
       searchArgs: {
         limit,
-        days: 0,
+        days: listDays,
         ...(industry?.filters ?? {}),
       },
       unknownPlace: true,
@@ -1250,7 +1251,7 @@ async function buildListRequest(
 
   const searchArgs: Record<string, unknown> = {
     limit,
-    days: 0,
+    days: listDays,
     fastList: true,
     ...(industry?.filters ?? {}),
   };

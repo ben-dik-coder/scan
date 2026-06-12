@@ -156,7 +156,10 @@ function matchesFilters(
       return false;
     }
   }
-  if (!companyNameMatchesQuery(company.name, filters.nameQuery)) {
+  if (
+    !filters.professionId?.trim() &&
+    !companyNameMatchesQuery(company.name, filters.nameQuery)
+  ) {
     return false;
   }
   if (filters.withoutWebsite && hasStoredWebsite(company.website)) {

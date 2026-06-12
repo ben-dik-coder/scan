@@ -532,6 +532,29 @@ export function resolveAgentSearchIndustryFilters(args: {
   };
 }
 
+/** Tidsvindu fra brukerens melding — f.eks. «siste 90 dager», «ikke eldre enn 90 dager». */
+export function parseListDaysFromMessage(message: string): number | undefined {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ø/g, "o")
+    .replace(/å/g, "a")
+    .replace(/æ/g, "ae");
+
+  if (/\b(alle tider|hele perioden)\b/.test(normalized)) return 0;
+
+  const match = normalized.match(
+    /\b(?:siste|nyeste|ikke eldre enn|max|maks)\s+(\d{1,3})\s+dager\b/
+  );
+  if (!match?.[1]) return undefined;
+
+  const parsed = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return undefined;
+  return Math.min(parsed, 365);
+}
+
 /** Sikrer at LLM-søk får bransje/yrke fra brukerens melding når verktøyet glemmer filter. */
 export function mergeAgentSearchFiltersFromMessage(
   message: string,
@@ -541,15 +564,22 @@ export function mergeAgentSearchFiltersFromMessage(
     typeof args.professionId === "string" && args.professionId.trim().length > 0;
   const hasIndustry =
     typeof args.industryGroup === "string" && args.industryGroup.trim().length > 0;
-  if (hasProfession || hasIndustry) return args;
+
+  const explicitDays = parseListDaysFromMessage(message);
+  const merged: Record<string, unknown> = { ...args };
+
+  if (explicitDays !== undefined) {
+    merged.days = explicitDays;
+  }
+
+  if (hasProfession || hasIndustry) {
+    return merged;
+  }
 
   const industry = resolveIndustryKeyword(message);
-  if (!industry) return args;
+  if (!industry) return merged;
 
-  const merged: Record<string, unknown> = {
-    ...args,
-    ...industry.filters,
-  };
+  Object.assign(merged, industry.filters);
   if (merged.days === undefined) {
     merged.days = 0;
   }

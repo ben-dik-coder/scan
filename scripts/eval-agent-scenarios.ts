@@ -52,6 +52,7 @@ import {
   resolveAgentSearchIndustryFilters,
   resolveIndustryKeyword,
   mergeAgentSearchFiltersFromMessage,
+  parseListDaysFromMessage,
 } from "../src/lib/agent/search-filters.ts";
 import { resolveProfessionQuery } from "../src/lib/constants/professions.ts";
 import {
@@ -980,6 +981,15 @@ function testElektrikerRelevanceFilter() {
   );
 }
 
+function testParseListDaysFromMessage() {
+  assert.equal(
+    parseListDaysFromMessage("finn meg 10 av de nyeste elektrikerne i norge, ikke eldre enn 90 dager"),
+    90
+  );
+  assert.equal(parseListDaysFromMessage("nye byggfirma i Oslo siste 30 dager"), 30);
+  assert.equal(parseListDaysFromMessage("finn frisører i Bodø"), undefined);
+}
+
 function testMergeAgentSearchFiltersFromMessage() {
   const merged = mergeAgentSearchFiltersFromMessage("finn 18 elektrikere", {
     limit: 18,
@@ -989,6 +999,14 @@ function testMergeAgentSearchFiltersFromMessage() {
   assert.equal(merged.days, 0);
   assert.equal(merged.limit, 18);
 
+  const withDays = mergeAgentSearchFiltersFromMessage(
+    "finn meg 10 av de nyeste elektrikerne i norge, ikke eldre enn 90 dager",
+    { limit: 10 }
+  );
+  assert.equal(withDays.professionId, "elektriker");
+  assert.equal(withDays.days, 90);
+  assert.equal(withDays.limit, 10);
+
   const kept = mergeAgentSearchFiltersFromMessage("finn frisører", {
     professionId: "frisor",
     limit: 5,
@@ -997,12 +1015,25 @@ function testMergeAgentSearchFiltersFromMessage() {
   assert.equal(kept.nameQuery, undefined);
 }
 
+async function testElektrikerNationwideWithDays() {
+  const parsed = await parseSimpleListRequest(
+    "finn meg 10 av de nyeste elektrikerne i norge, ikke eldre enn 90 dager"
+  );
+  assert.ok(parsed);
+  assert.equal(parsed.limit, 10);
+  assert.equal(parsed.locationLabel, "Norge");
+  assert.equal(parsed.searchArgs.professionId, "elektriker");
+  assert.equal(parsed.searchArgs.days, 90);
+  assert.equal(parsed.searchArgs.municipalityCode, undefined);
+}
+
 async function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
   testMalerRelevanceFilter();
   testElektrikerRelevanceFilter();
+  testParseListDaysFromMessage();
   testMergeAgentSearchFiltersFromMessage();
   testSimpleSearchIntent();
   await testContextualFollowUp();
@@ -1013,6 +1044,7 @@ async function main() {
   await testListEnrichFollowUp();
   await testSearchAndScanIntent();
   await testSimpleListIntent();
+  await testElektrikerNationwideWithDays();
   testNearbySuggestions();
   await testWebsiteSalesLeadIntent();
   testWebsiteSalesLeadQuality();
@@ -1021,7 +1053,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 22/22 OK");
+  console.log("eval-agent-scenarios: 25/25 OK");
 }
 
 main().catch((err) => {
