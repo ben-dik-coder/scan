@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { PlatformFeatureVideo } from "@/components/marketing/PlatformFeatureVideo";
 import { WorkflowStepIcon } from "@/components/marketing/WorkflowStepIcons";
 import { Container } from "@/components/ui/Container";
 import {
@@ -32,10 +31,6 @@ export function PlatformSection({ embedded = false }: { embedded?: boolean }) {
           <p className="mt-4 font-sans text-base leading-relaxed text-slate-600 sm:text-lg">
             {PLATFORM_INTRO.subtitle}
           </p>
-        </div>
-
-        <div className="-mx-5 sm:-mx-8">
-          <PlatformFeatureVideo className="mt-4 sm:mt-6" />
         </div>
 
         <div className="mt-10 grid gap-6 sm:mt-12 lg:grid-cols-2">
