@@ -51,6 +51,7 @@ import {
   mapProfessionToIndustryGroup,
   resolveAgentSearchIndustryFilters,
   resolveIndustryKeyword,
+  mergeAgentSearchFiltersFromMessage,
 } from "../src/lib/agent/search-filters.ts";
 import { resolveProfessionQuery } from "../src/lib/constants/professions.ts";
 import {
@@ -948,11 +949,61 @@ function testWebsiteSalesLeadReplyFormat() {
   assert.doesNotMatch(clarification, /webbyrå|uten nettside|ikke web/i);
 }
 
+function testElektrikerRelevanceFilter() {
+  assert.equal(
+    isProfessionRelevantCompany("elektriker", {
+      name: "PSYKOLOGSPESIALIST KRISTINE KÅRVIK",
+      industry_code: "86.90",
+    }),
+    false
+  );
+  assert.equal(
+    isProfessionRelevantCompany("elektriker", {
+      name: "NEGLERDAME SLEZAK",
+      industry_code: "96.02",
+    }),
+    false
+  );
+  assert.equal(
+    isProfessionRelevantCompany("elektriker", {
+      name: "Nord Elektro AS",
+      industry_code: "43.21",
+    }),
+    true
+  );
+  assert.equal(
+    isProfessionRelevantCompany("elektriker", {
+      name: "MALERSVEEN ROY STORSVEEN",
+      industry_code: "43.34",
+    }),
+    false
+  );
+}
+
+function testMergeAgentSearchFiltersFromMessage() {
+  const merged = mergeAgentSearchFiltersFromMessage("finn 18 elektrikere", {
+    limit: 18,
+  });
+  assert.equal(merged.professionId, "elektriker");
+  assert.equal(merged.nameQuery, "elektro");
+  assert.equal(merged.days, 0);
+  assert.equal(merged.limit, 18);
+
+  const kept = mergeAgentSearchFiltersFromMessage("finn frisører", {
+    professionId: "frisor",
+    limit: 5,
+  });
+  assert.equal(kept.professionId, "frisor");
+  assert.equal(kept.nameQuery, undefined);
+}
+
 async function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
   testMalerRelevanceFilter();
+  testElektrikerRelevanceFilter();
+  testMergeAgentSearchFiltersFromMessage();
   testSimpleSearchIntent();
   await testContextualFollowUp();
   await testNationwidePaginationFollowUp();
@@ -970,7 +1021,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 20/20 OK");
+  console.log("eval-agent-scenarios: 22/22 OK");
 }
 
 main().catch((err) => {

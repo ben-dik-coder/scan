@@ -531,3 +531,27 @@ export function resolveAgentSearchIndustryFilters(args: {
     mappedFromProfession: professionId,
   };
 }
+
+/** Sikrer at LLM-søk får bransje/yrke fra brukerens melding når verktøyet glemmer filter. */
+export function mergeAgentSearchFiltersFromMessage(
+  message: string,
+  args: Record<string, unknown>
+): Record<string, unknown> {
+  const hasProfession =
+    typeof args.professionId === "string" && args.professionId.trim().length > 0;
+  const hasIndustry =
+    typeof args.industryGroup === "string" && args.industryGroup.trim().length > 0;
+  if (hasProfession || hasIndustry) return args;
+
+  const industry = resolveIndustryKeyword(message);
+  if (!industry) return args;
+
+  const merged: Record<string, unknown> = {
+    ...args,
+    ...industry.filters,
+  };
+  if (merged.days === undefined) {
+    merged.days = 0;
+  }
+  return merged;
+}

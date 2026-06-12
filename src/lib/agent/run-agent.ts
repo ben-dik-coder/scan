@@ -46,6 +46,7 @@ import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
 import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import { compactToolResultForModel } from "@/lib/agent/tool-payload";
 import { isBadLeadCompany } from "@/lib/brreg/lead-quality";
+import { mergeAgentSearchFiltersFromMessage } from "@/lib/agent/search-filters";
 
 export type AgentStreamEvent =
   | { type: "text"; content: string }
@@ -1003,27 +1004,28 @@ export async function runAgentChat(
 
         await onEvent({ type: "tool_start", tool: toolName });
 
-        if (
-          toolName === "search_companies" &&
-          isContextualListFollowUp(lastUserMessage, history)
-        ) {
-          const shownOrgnrs = collectShownOrgnrs(history, lastUserMessage);
-          if (shownOrgnrs.length > 0) {
-            const limit =
-              typeof parsedArgs.limit === "number" &&
-              Number.isFinite(parsedArgs.limit)
-                ? Math.floor(parsedArgs.limit)
-                : AGENT_DEFAULT_LIST_LIMIT;
-            parsedArgs = {
-              ...parsedArgs,
-              limit: Math.min(
-                limit + shownOrgnrs.length + 4,
-                AGENT_MAX_COMPANIES_PER_JOB
-              ),
-              displayLimit: limit,
-              days: 0,
-              excludeOrgnrs: shownOrgnrs,
-            };
+        if (toolName === "search_companies") {
+          parsedArgs = mergeAgentSearchFiltersFromMessage(lastUserMessage, parsedArgs);
+
+          if (isContextualListFollowUp(lastUserMessage, history)) {
+            const shownOrgnrs = collectShownOrgnrs(history, lastUserMessage);
+            if (shownOrgnrs.length > 0) {
+              const limit =
+                typeof parsedArgs.limit === "number" &&
+                Number.isFinite(parsedArgs.limit)
+                  ? Math.floor(parsedArgs.limit)
+                  : AGENT_DEFAULT_LIST_LIMIT;
+              parsedArgs = {
+                ...parsedArgs,
+                limit: Math.min(
+                  limit + shownOrgnrs.length + 4,
+                  AGENT_MAX_COMPANIES_PER_JOB
+                ),
+                displayLimit: limit,
+                days: 0,
+                excludeOrgnrs: shownOrgnrs,
+              };
+            }
           }
         }
 

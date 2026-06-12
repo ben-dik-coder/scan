@@ -25,6 +25,8 @@ const PROFESSION_NAME_FALLBACK: Record<string, RegExp> = {
   maler: /maler|malermester|maling|sparkel|farge/i,
   rorlegger: /rorlegger|rørlegger|vvs/i,
   murer: /murer|murverk|mur/i,
+  elektriker: /elektriker|elektro|el[\s-]?install/i,
+  snekker: /snekker|tomrer|tømrer|byggmester/i,
 };
 
 export function isProfessionRelevantCompany(
@@ -43,10 +45,14 @@ export function isProfessionRelevantCompany(
   }
 
   const fallback = PROFESSION_NAME_FALLBACK[id];
-  if (!fallback) return true;
+  if (fallback) {
+    const text = normalizeProfessionText(company.name);
+    return Boolean(text && fallback.test(text));
+  }
 
-  const text = normalizeProfessionText(company.name);
-  return Boolean(text && fallback.test(text));
+  if (getProfessionById(id)) return false;
+
+  return true;
 }
 
 export function isProfessionSearchFilter(filters: {
