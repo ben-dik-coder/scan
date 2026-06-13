@@ -870,20 +870,65 @@ export function AppPageClient(props: Props) {
   }
 
   async function updateStatus(orgnr: string, status: string) {
-    if (props.dataSource === "brreg") {
-      setLocalCompanies((prev) =>
-        prev.map((c) =>
-          c.orgnr === orgnr && c.user_lead
-            ? {
-                ...c,
-                user_lead: { ...c.user_lead, status: status as LeadStatus },
-              }
-            : c
-        )
+    const prevCompany = companies.find((c) => c.orgnr === orgnr);
+    if (!prevCompany) return;
+
+    const prevStatus = prevCompany.user_lead?.status ?? "ny";
+    if (prevStatus === status) return;
+
+    const now = new Date().toISOString();
+    const nextLead = (lead: CompanyWithLead["user_lead"]): NonNullable<CompanyWithLead["user_lead"]> => ({
+      user_id: lead?.user_id && lead.user_id !== "brreg-db" ? lead.user_id : "local",
+      orgnr,
+      status: status as LeadStatus,
+      score: lead?.score ?? 0,
+      notes: lead?.notes ?? null,
+      last_contacted_at:
+        status === "kontaktet" ? now : lead?.last_contacted_at ?? null,
+      next_follow_up_at: lead?.next_follow_up_at ?? null,
+      queued_at: lead?.queued_at ?? null,
+      created_at: lead?.created_at ?? now,
+      updated_at: now,
+    });
+
+    const applyLocal = () => {
+      if (props.dataSource === "brreg") {
+        setLocalCompanies((prev) =>
+          prev.map((c) =>
+            c.orgnr === orgnr ? { ...c, user_lead: nextLead(c.user_lead) } : c
+          )
+        );
+        return;
+      }
+      demo.updateLeadStatus(orgnr, status as LeadStatus);
+    };
+
+    applyLocal();
+
+    if (isDemoMode()) return;
+
+    try {
+      const res = await fetch("/api/leads/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgnr, status }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Statusendring feilet");
+    } catch (err) {
+      if (props.dataSource === "brreg") {
+        setLocalCompanies((prev) =>
+          prev.map((c) =>
+            c.orgnr === orgnr ? { ...c, user_lead: prevCompany.user_lead ?? null } : c
+          )
+        );
+      } else {
+        demo.updateLeadStatus(orgnr, prevStatus as LeadStatus);
+      }
+      setScanSelectionMessage(
+        err instanceof Error ? err.message : "Kunne ikke endre status"
       );
-      return;
     }
-    demo.updateLeadStatus(orgnr, status as LeadStatus);
   }
 
   async function exportSelectedCsv() {

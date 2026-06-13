@@ -582,6 +582,7 @@ function CompanyDetailBody({
           <select
             value={status}
             onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+            onClick={(e) => e.stopPropagation()}
             className="cv-status-select max-w-full"
           >
             {LEAD_STATUSES.map((s) => (
@@ -771,6 +772,7 @@ function CompanyMobileCard({
             <select
               value={status}
               onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+              onClick={(e) => e.stopPropagation()}
               className="cv-status-select max-w-full"
             >
               {LEAD_STATUSES.map((s) => (
@@ -1216,6 +1218,7 @@ export function CompanyTable({
                           <select
                             value={status}
                             onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
                             className="cv-status-select"
                           >
                             {LEAD_STATUSES.map((s) => (
