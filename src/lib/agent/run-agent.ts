@@ -47,6 +47,7 @@ import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import { compactToolResultForModel } from "@/lib/agent/tool-payload";
 import { isBadLeadCompany } from "@/lib/brreg/lead-quality";
 import { mergeAgentSearchFiltersFromMessage } from "@/lib/agent/search-filters";
+import { loadCachedWebsiteScans } from "@/lib/website-scan/saved-scans-server";
 
 export type AgentStreamEvent =
   | { type: "text"; content: string }
@@ -570,14 +571,24 @@ export async function runAgentChat(
       const serperRemaining = parseSerperRemaining(options?.systemPromptExtra);
       const canScan =
         serperRemaining === undefined ? true : serperRemaining >= 20;
-      const scanOrgnrs = companies
-        .slice(0, AGENT_MAX_SCAN_PER_CALL)
-        .map((company) => company.orgnr)
-        .filter(Boolean);
 
       let scanned = 0;
       let serperLimited = false;
       const facebookByOrgnr = new Map<string, string | null>();
+
+      const cachedScans = await loadCachedWebsiteScans(
+        companies.map((company) => company.orgnr).filter(Boolean)
+      );
+      for (const scan of cachedScans) {
+        const fb = (scan.facebookUrl ?? "").trim();
+        if (fb) facebookByOrgnr.set(scan.orgnr, fb);
+      }
+
+      const scanOrgnrs = companies
+        .filter((company) => !facebookByOrgnr.has(company.orgnr))
+        .slice(0, AGENT_MAX_SCAN_PER_CALL)
+        .map((company) => company.orgnr)
+        .filter(Boolean);
 
       if (canScan && scanOrgnrs.length > 0) {
         await onEvent({ type: "tool_start", tool: "scan_websites" });

@@ -71,7 +71,7 @@ export function wantsPhoneInList(message: string): boolean {
 }
 
 export function wantsFacebookInList(message: string): boolean {
-  return /\bmed\s+facebook\b/i.test(message);
+  return /\bmed\s+(fb|facebook)\b/i.test(message);
 }
 
 /** Bruker peker på forrige liste i samtalen — f.eks. «på disse», «den listen». */
@@ -1027,7 +1027,9 @@ function hasIndustryInPlacePattern(normalized: string): boolean {
 function hasListVerb(normalized: string): boolean {
   return (
     /^(finn|sok|søk|list|vis|hent|gi meg|gi)\b/.test(normalized) ||
-    /\b(finn|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized) ||
+    /\b(finn|finne|list|vis|hent)\s+(meg\s+)?\d{1,2}\b/.test(normalized) ||
+    /\blist\s+opp\s+\d{1,2}\b/.test(normalized) ||
+    /\b(kan du|vil du)\s+finne\b/.test(normalized) ||
     /^\d{1,2}\s+\w+/.test(normalized)
   );
 }
@@ -1215,7 +1217,7 @@ export function isFacebookListIntent(message: string): boolean {
   const industry = resolveIndustryKeyword(normalized);
   if (!industry) return false;
 
-  return hasListVerb(normalized);
+  return hasListVerb(normalized) || hasIndustryInPlacePattern(normalized);
 }
 
 async function buildListRequest(

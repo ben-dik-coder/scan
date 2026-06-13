@@ -18,6 +18,7 @@ import {
   isScanWebsitesFollowUp,
   isSearchAndScanIntent,
   isSimpleListIntent,
+  isFacebookListIntent,
   isWebsiteSalesLeadListIntent,
   parseContextualListRequest,
   parseSaveListRequest,
@@ -27,7 +28,9 @@ import {
   extractOrgnrsFromText,
   formatSearchToolPersistContent,
   parseScanWebsitesRequest,
+  wantsFacebookInList,
   wantsFacebookInScan,
+  parseFacebookListRequest,
   parseSearchAndScanRequest,
   parseSimpleListRequest,
   parseWebsiteSalesLeadRequest,
@@ -608,7 +611,30 @@ async function testSimpleListIntent() {
   );
 }
 
-function testNearbySuggestions() {
+async function testGrillbarTromsoFacebookList() {
+  const query =
+    "hei, kan du finne meg grillbarer i tromsø list opp 30 stk med fb";
+
+  assert.equal(wantsFacebookInList(query), true);
+  assert.equal(wantsFacebookInScan(query), true);
+  assert.equal(isFacebookListIntent(query), true);
+  assert.equal(isSimpleListIntent(query), false);
+
+  const parsed = await parseFacebookListRequest(query);
+  assert.ok(parsed);
+  assert.equal(parsed.limit, 30);
+  assert.equal(parsed.industryLabel, "grillbar");
+  assert.equal(parsed.locationLabel, "Tromsø");
+  assert.equal(parsed.searchArgs.municipalityCode, "5501");
+  assert.equal(parsed.searchArgs.industryGroup, "servering");
+  assert.equal(parsed.searchArgs.nameQuery, "grill");
+  assert.equal(parsed.searchArgs.days, 0);
+
+  assert.equal(wantsFacebookInList("finn 5 frisører med facebook i Bodø"), true);
+  assert.equal(isFacebookListIntent("finn 5 frisører med facebook i Bodø"), true);
+}
+
+async function testNearbySuggestions() {
   assert.deepEqual(getNearbyMunicipalitySuggestions("1806"), [
     "Tromsø",
     "Harstad",
@@ -1105,6 +1131,7 @@ async function main() {
   await testListEnrichFollowUp();
   await testSearchAndScanIntent();
   await testSimpleListIntent();
+  await testGrillbarTromsoFacebookList();
   await testElektrikerNationwideWithDays();
   testAmbiguousProfessionQueries();
   testNearbySuggestions();
@@ -1115,7 +1142,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 28/28 OK");
+  console.log("eval-agent-scenarios: 29/29 OK");
 }
 
 main().catch((err) => {
