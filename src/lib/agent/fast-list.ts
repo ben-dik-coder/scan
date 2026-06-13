@@ -132,12 +132,15 @@ export function isContextualFollowUp(message: string): boolean {
     /\b(finn|list|vis|hent|gi|sok|søk)\b/.test(normalized) &&
     /\b(skann|sjekk)\b/.test(normalized);
 
+  const timeWindow = /\bsiste\s+\d{1,3}\s+dager\b/.test(normalized);
+
   return (
     isContextualListFollowUp(message) ||
     isListEnrichFollowUp(message) ||
-    /\b(de|disse|forrige|siste)\s+(to|tre|\d+|første|siste|resultat)\b/.test(
-      normalized
-    ) ||
+    (!timeWindow &&
+      /\b(de|disse|forrige|siste)\s+(to|tre|\d+|første|siste|resultat)\b/.test(
+        normalized
+      )) ||
     /\bhvilken av disse\b/.test(normalized) ||
     /\blagre\s+(som\s+)?liste\b/.test(normalized) ||
     (!combinedSearchScan && /\bskann\s+(nettside|de)\b/.test(normalized))

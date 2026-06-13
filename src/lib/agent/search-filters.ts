@@ -87,6 +87,7 @@ const KEEP_AS_PROFESSION = new Set([
   "arkitekt",
   "lege",
   "fysioterapeut",
+  "psykolog",
   "barnehage",
   "taxi",
   "flyttebyra",
@@ -118,28 +119,29 @@ const INDUSTRY_KEYWORD_RULES: Array<{
   },
   {
     pattern:
-      /\b(maler(?:e|mester|firma)?|malermester|malerfirma|sparkel(?:arbeid)?)\b/,
+      /\b(maler(?:e|mester|firma)?|malermester|malerfirma|målare|malare|sparkel(?:arbeid)?|painter)\b/,
     match: {
       label: "malere",
       filters: { professionId: "maler", nameQuery: "maler" },
     },
   },
   {
-    pattern: /\b(rorlegger|rorleggere|rørlegger|rørleggere|vvs(?:firma|bedrift)?)\b/,
+    pattern: /\b(rorlegger|rorleggere|rørlegger|rørleggere|rørleggar|rorleggar|plumber|vvs(?:firma|bedrift)?)\b/,
     match: {
       label: "rørleggere",
       filters: { professionId: "rorlegger", nameQuery: "rorlegger" },
     },
   },
   {
-    pattern: /\b(elektriker|elektrikere|el-installatør|el installatør|el-installator)\b/,
+    pattern:
+      /\b(elektriker|elektrikere|elektrikker|elektro(?:firma|bedrift|installasjon)?|el-installatør|el installatør|el-installator|electrician)\b/,
     match: {
       label: "elektrikere",
       filters: { professionId: "elektriker", nameQuery: "elektro" },
     },
   },
   {
-    pattern: /\b(snekker|snekkere|tomrer|tømrer|tømrermester)\b/,
+    pattern: /\b(snekker|snekkere|tomrer|tømrer|tømrermester|carpenter)\b/,
     match: {
       label: "snekkere/tømrere",
       filters: { professionId: "snekker", nameQuery: "snekker" },
@@ -153,7 +155,7 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     },
   },
   {
-    pattern: /\b(taktekker|taktekking|blikkenslager)\b/,
+    pattern: /\b(taktekker|taktekkjar|taktekking|blikkenslager)\b/,
     match: {
       label: "taktekker",
       filters: { professionId: "taktekker", nameQuery: "tak" },
@@ -167,18 +169,25 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     },
   },
   {
-    pattern: /\b(arkitekt|arkitekter|arkitektkontor)\b/,
+    pattern: /\b(arkitekt|arkitekter|arkitektkontor|architect|architects)\b/,
     match: {
       label: "arkitekter",
       filters: { professionId: "arkitekt", nameQuery: "arkitekt" },
     },
   },
   {
-    pattern: /\b(byggfirma|byggfirmaer|byggmester|handverk|handverker|handverkere|håndverk|håndverker|håndverkere)\b/,
+    pattern: /\b(byggfirma|byggfirmaer|byggmester|bygg\s+og\s+anlegg|handverk|handverker|handverkere|håndverk|håndverker|håndverkere)\b/,
     match: { label: "bygg- og håndverksfirma", filters: { industryGroup: "bygg" } },
   },
   {
-    pattern: /\b(frisor|frisør|frisører|frisor\s*salong|hårstudio|harstudio)\b/,
+    pattern: /\b(psykolog(?:er|tjenester|isk)?|psykologklinikk)\b/,
+    match: {
+      label: "psykologer",
+      filters: { professionId: "psykolog", nameQuery: "psykolog" },
+    },
+  },
+  {
+    pattern: /\b(frisor|frisør|frisører|frisor\s*salong|hairdresser|hair\s*salon|hårstudio|harstudio)\b/,
     match: { label: "frisører", filters: { professionId: "frisor" } },
   },
   {
@@ -226,7 +235,11 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     },
   },
   {
-    pattern: /\b(transport|transportfirma|taxi|flyttebyra|flyttebyrå)\b/,
+    pattern: /\b(taxi|drosje)\b/,
+    match: { label: "taxi", filters: { professionId: "taxi" } },
+  },
+  {
+    pattern: /\b(transport(?:firma|bedrift)?|flyttebyra|flyttebyrå)\b/,
     match: { label: "transportfirma", filters: { industryGroup: "transport" } },
   },
   {
@@ -244,7 +257,7 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     },
   },
   {
-    pattern: /\b(tannlege(?:r)?|tannklinikk(?:er)?)\b/,
+    pattern: /\b(tannlege(?:r)?|tannklinikk(?:er)?|dentist(?:s)?)\b/,
     match: {
       label: "tannleger",
       filters: { professionId: "tannlege", nameQuery: "tannlege" },
@@ -258,7 +271,21 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     },
   },
   {
-    pattern: /\b(helse|lege|fysioterapeut|barnehage)\b/,
+    pattern: /\b(barnehage(?:r)?|barnepass|dagmamma)\b/,
+    match: {
+      label: "barnehager",
+      filters: { professionId: "barnehage", nameQuery: "barnehage" },
+    },
+  },
+  {
+    pattern: /\b(fysioterapeut(?:er)?|fysio(?:terapi)?)\b/,
+    match: {
+      label: "fysioterapeuter",
+      filters: { professionId: "fysioterapeut", nameQuery: "fysio" },
+    },
+  },
+  {
+    pattern: /\b(helse|lege)\b/,
     match: { label: "helsefirma", filters: { industryGroup: "helse" } },
   },
   {
@@ -266,11 +293,15 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "handelsbedrifter", filters: { industryGroup: "handel" } },
   },
   {
-    pattern: /\b(it[\s-]?firma|it[\s-]?selskap|webbyra|webbyrå|webdesign)\b/,
+    pattern: /\b(webbyra|webbyrå|webdesign|digitalbyra|digitalbyrå)\b/,
+    match: { label: "webdesign", filters: { industryGroup: "webbyra" } },
+  },
+  {
+    pattern: /\b(it[\s-]?firma|it[\s-]?selskap|it[\s-]?konsulent)\b/,
     match: { label: "IT-firma", filters: { industryGroup: "it" } },
   },
   {
-    pattern: /\b(reklame|reklamebyra|reklamebyrå|markedsforing|markedsføring)\b/,
+    pattern: /\b(reklame|reklamebyra|reklamebyrå|markedsforing|markedsføring|markedsforer|markedsfører)\b/,
     match: { label: "reklamefirma", filters: { industryGroup: "reklame" } },
   },
   {
@@ -278,7 +309,8 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "kulturfirma", filters: { industryGroup: "kultur" } },
   },
   {
-    pattern: /\b(advokat|advokater|advokatfirma|advokatfirmaer|jurist|juridisk)\b/,
+    pattern:
+      /\b(advokat|advokater|advokatfirma|advokatfirmaer|lawyer|jurist|juridisk)\b/,
     match: {
       label: "advokater",
       filters: { professionId: "advokat", nameQuery: "advokat" },
@@ -286,7 +318,7 @@ const INDUSTRY_KEYWORD_RULES: Array<{
   },
   {
     pattern:
-      /\b(regnskapsfører|regnskapsforer|regnskapsførere|regnskapsforere|regnskap|revisor|revisjon)\b/,
+      /\b(regnskapsfører|regnskapsforer|regnskapsførere|regnskapsforere|regnskap|accountant|revisor|revisjon)\b/,
     match: {
       label: "regnskapsførere",
       filters: { professionId: "regnskap", nameQuery: "regnskap" },
@@ -304,7 +336,7 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     },
   },
   {
-    pattern: /\b(rengjøring|rengjoring|renhold|vaktmester|vaskehjelp)\b/,
+    pattern: /\b(rengjøring|rengjoring|renhold|vaktmester|vaskehjelp|cleaning(?:\s+company)?|cleaner)\b/,
     match: { label: "rengjøringsfirma", filters: { professionId: "rengjoring" } },
   },
   {
@@ -407,6 +439,8 @@ function defaultNameQueryForProfession(professionId: string): string | undefined
     bilvask: "bilvask",
     kokk: "catering",
     restaurant: "restaurant",
+    psykolog: "psykolog",
+    barnehage: "barnehage",
   };
   return defaults[professionId];
 }

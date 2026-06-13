@@ -10,6 +10,7 @@ import {
 } from "../src/lib/agent/context.ts";
 import { capScanJobOrgnrs } from "../src/lib/agent/chunked-scan.ts";
 import {
+  isContextualFollowUp,
   isContextualListFollowUp,
   isListEnrichFollowUp,
   isScopeClarificationReply,
@@ -981,6 +982,35 @@ function testElektrikerRelevanceFilter() {
   );
 }
 
+function testPsykologProfession() {
+  assert.equal(resolveIndustryKeyword("finn psykolog i Bergen")?.filters.professionId, "psykolog");
+  assert.equal(
+    isProfessionRelevantCompany("psykolog", {
+      name: "Vida Psykologtjenester AS",
+      industry_code: "86.90",
+    }),
+    true
+  );
+  assert.equal(
+    isProfessionRelevantCompany("psykolog", {
+      name: "Nord Elektro AS",
+      industry_code: "43.21",
+    }),
+    false
+  );
+}
+
+function testTimeWindowNotContextualFollowUp() {
+  assert.equal(isContextualFollowUp("elektrikere siste 90 dager i bergen"), false);
+  assert.equal(isSimpleListIntent("finn elektrikere siste 90 dager i bergen"), true);
+}
+
+function testNynorskProfessionVariants() {
+  assert.equal(resolveIndustryKeyword("finn taktekkjar i Bergen")?.filters.professionId, "taktekker");
+  assert.equal(resolveIndustryKeyword("finn målare i Oslo")?.filters.professionId, "maler");
+  assert.equal(resolveIndustryKeyword("elektrikker i oslo")?.filters.professionId, "elektriker");
+}
+
 function testParseListDaysFromMessage() {
   assert.equal(
     parseListDaysFromMessage("finn meg 10 av de nyeste elektrikerne i norge, ikke eldre enn 90 dager"),
@@ -1027,12 +1057,28 @@ async function testElektrikerNationwideWithDays() {
   assert.equal(parsed.searchArgs.municipalityCode, undefined);
 }
 
+function testAmbiguousProfessionQueries() {
+  assert.equal(resolveIndustryKeyword("finn leder i oslo"), null);
+  assert.equal(resolveIndustryKeyword("takstmann oslo"), null);
+  assert.equal(resolveIndustryKeyword("takst oslo")?.filters.professionId, undefined);
+
+  const english = resolveIndustryKeyword("find electrician in Oslo");
+  assert.equal(english?.filters.professionId, "elektriker");
+  assert.equal(english?.filters.nameQuery, "elektro");
+
+  const markedsforer = resolveIndustryKeyword("markedsfører i Oslo");
+  assert.equal(markedsforer?.filters.industryGroup, "reklame");
+}
+
 async function main() {
   testResumeIntent();
   testHistoryWithTools();
   testProfessionMapping();
   testMalerRelevanceFilter();
   testElektrikerRelevanceFilter();
+  testPsykologProfession();
+  testTimeWindowNotContextualFollowUp();
+  testNynorskProfessionVariants();
   testParseListDaysFromMessage();
   testMergeAgentSearchFiltersFromMessage();
   testSimpleSearchIntent();
@@ -1045,6 +1091,7 @@ async function main() {
   await testSearchAndScanIntent();
   await testSimpleListIntent();
   await testElektrikerNationwideWithDays();
+  testAmbiguousProfessionQueries();
   testNearbySuggestions();
   await testWebsiteSalesLeadIntent();
   testWebsiteSalesLeadQuality();
@@ -1053,7 +1100,7 @@ async function main() {
   testConcreteSummaryGate();
   testFormatExamples();
   testStartupContext();
-  console.log("eval-agent-scenarios: 25/25 OK");
+  console.log("eval-agent-scenarios: 28/28 OK");
 }
 
 main().catch((err) => {

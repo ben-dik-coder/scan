@@ -27,6 +27,7 @@ const PROFESSION_NAME_FALLBACK: Record<string, RegExp> = {
   murer: /murer|murverk|mur/i,
   elektriker: /elektriker|elektro|el[\s-]?install/i,
   snekker: /snekker|tomrer|tømrer|byggmester/i,
+  psykolog: /psykolog|nevropsykolog/i,
 };
 
 export function isProfessionRelevantCompany(

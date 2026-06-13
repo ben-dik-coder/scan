@@ -31,7 +31,17 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "frisor",
     label: "Frisør",
-    aliases: ["frisør", "frisor", "barber", "barbershop", "hår", "harstudio", "hårstudio"],
+    aliases: [
+      "frisør",
+      "frisor",
+      "barber",
+      "barbershop",
+      "hairdresser",
+      "hair salon",
+      "hår",
+      "harstudio",
+      "hårstudio",
+    ],
     codes: ["96.210", "96.02"],
     nameKeywords: [
       "frisør",
@@ -50,28 +60,36 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "rorlegger",
     label: "Rørlegger / VVS",
-    aliases: ["rørlegger", "rorlegger", "vvs", "rør", "ror", "vann", "avløp", "avloep"],
+    aliases: ["rørlegger", "rorlegger", "plumber", "vvs", "rør", "ror", "vann", "avløp", "avloep"],
     codes: ["43.22"],
     nameKeywords: ["rørlegger", "rorlegger", "vvs", "rør", "ror"],
   },
   {
     id: "elektriker",
     label: "Elektriker",
-    aliases: ["elektriker", "elektro", "el-installatør", "el installatør", "el-installator"],
+    aliases: [
+      "elektriker",
+      "elektrikker",
+      "elektro",
+      "electrician",
+      "el-installatør",
+      "el installatør",
+      "el-installator",
+    ],
     codes: ["43.21"],
     nameKeywords: ["elektriker", "elektro", "el-"],
   },
   {
     id: "snekker",
     label: "Snekker / tømrer",
-    aliases: ["snekker", "tømrer", "tomrer", "byggmester", "tømrermester"],
+    aliases: ["snekker", "tømrer", "tomrer", "carpenter", "byggmester", "tømrermester"],
     codes: ["43.32", "43.91"],
     nameKeywords: ["snekker", "tømrer", "tomrer", "byggmester"],
   },
   {
     id: "maler",
     label: "Maler",
-    aliases: ["maler", "malere", "malermester", "malerfirma", "sparkel"],
+    aliases: ["maler", "malere", "painter", "malermester", "malerfirma", "sparkel"],
     codes: ["43.34"],
     nameKeywords: ["maler", "sparkel", "maling", "farge"],
   },
@@ -165,7 +183,7 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "tannlege",
     label: "Tannlege",
-    aliases: ["tannlege", "tannleger", "tannklinikk", "tann"],
+    aliases: ["tannlege", "tannleger", "tannklinikk", "tann", "dentist", "dentists"],
     codes: ["86.23"],
     prefixes: ["86"],
     nameKeywords: ["tannlege", "tannklinikk", "tann"],
@@ -179,9 +197,17 @@ export const PROFESSIONS: ProfessionDef[] = [
     nameKeywords: ["fysioterapeut", "fysio", "kiropraktor", "naprapat"],
   },
   {
+    id: "psykolog",
+    label: "Psykolog",
+    aliases: ["psykolog", "psykologer", "psykologtjenester", "psykologisk", "psykologklinikk"],
+    codes: ["86.90"],
+    prefixes: ["86"],
+    nameKeywords: ["psykolog", "psykologtjeneste", "nevropsykolog"],
+  },
+  {
     id: "advokat",
     label: "Advokat",
-    aliases: ["advokat", "advokatfirma", "juridisk", "jurist"],
+    aliases: ["advokat", "advokatfirma", "lawyer", "juridisk", "jurist"],
     codes: ["69.10"],
     prefixes: ["69"],
     nameKeywords: ["advokat", "juridisk", "jurist"],
@@ -189,7 +215,16 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "regnskap",
     label: "Regnskapsfører",
-    aliases: ["regnskap", "regnskapsfører", "regnskapsforer", "revisor", "økonomi", "okonomi"],
+    aliases: [
+      "regnskap",
+      "regnskapsfører",
+      "regnskapsforer",
+      "accountant",
+      "revisor",
+      "revisjon",
+      "økonomi",
+      "okonomi",
+    ],
     codes: ["69.20"],
     prefixes: ["69"],
     nameKeywords: ["regnskap", "revisor", "økonomi", "okonomi"],
@@ -205,7 +240,7 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "arkitekt",
     label: "Arkitekt",
-    aliases: ["arkitekt", "arkitekter", "arkitektkontor"],
+    aliases: ["arkitekt", "arkitekter", "arkitektkontor", "architect", "architects"],
     codes: ["71.11"],
     prefixes: ["71"],
     nameKeywords: ["arkitekt"],
@@ -213,7 +248,15 @@ export const PROFESSIONS: ProfessionDef[] = [
   {
     id: "rengjoring",
     label: "Rengjøring",
-    aliases: ["rengjøring", "rengjoring", "vaktmester", "renhold", "vaskehjelp"],
+    aliases: [
+      "rengjøring",
+      "rengjoring",
+      "cleaning",
+      "cleaner",
+      "vaktmester",
+      "renhold",
+      "vaskehjelp",
+    ],
     codes: ["81.21", "81.22"],
     prefixes: ["81"],
     nameKeywords: ["rengjøring", "rengjoring", "vaktmester", "renhold"],
@@ -456,14 +499,38 @@ const QUERY_FILLER_TOKENS = new Set([
   "gode",
   "nyeste",
   "nye",
+  "finn",
+  "find",
+  "trenger",
+  "need",
+  "firma",
+  "bedrift",
+  "selskap",
+  "company",
+  "companies",
+  "firm",
+  "firms",
+  "i",
+  "in",
+  "near",
+  "rundt",
+  "norge",
 ]);
+
+function isWordPrefix(haystack: string, prefix: string): boolean {
+  if (!haystack.startsWith(prefix)) return false;
+  if (haystack.length === prefix.length) return true;
+  if (prefix.length >= 4) return true;
+  const next = haystack[prefix.length];
+  return next === undefined || !/[a-z0-9æøå]/i.test(next);
+}
 
 function scoreAliasMatch(query: string, alias: string): number {
   const q = normalizeText(query);
   const a = normalizeText(alias);
   if (!q || !a) return 0;
   if (q === a) return 100;
-  if (a.startsWith(q) || q.startsWith(a)) return 85;
+  if (isWordPrefix(q, a) || isWordPrefix(a, q)) return 85;
   if (a.length >= 4 && (a.includes(q) || q.includes(a))) return 70;
   if (a.length < 4) {
     const wordPattern = new RegExp(`\\b${escapeRegExp(a)}\\b`, "i");
@@ -480,7 +547,7 @@ function scoreAliasMatch(query: string, alias: string): number {
     }
   }
 
-  if (q.length >= 4 && similarity(q, a) >= 0.78) return 45;
+  if (q.length >= 4 && similarity(q, a) >= 0.85) return 45;
   return 0;
 }
 
@@ -488,12 +555,19 @@ function findBestProfession(query: string): { profession: ProfessionDef; score: 
   const trimmed = query.trim();
   if (trimmed.length < 2) return null;
 
+  const normalized = normalizeText(trimmed);
+  const tokens = normalized.split(/\s+/).filter((t) => t.length >= 3 && !QUERY_FILLER_TOKENS.has(t));
+  const candidates = [trimmed, ...tokens];
+
   let best: { profession: ProfessionDef; score: number } | null = null;
 
   for (const profession of PROFESSIONS) {
-    let score = scoreAliasMatch(trimmed, profession.label);
-    for (const alias of profession.aliases) {
-      score = Math.max(score, scoreAliasMatch(trimmed, alias));
+    let score = 0;
+    for (const candidate of candidates) {
+      score = Math.max(score, scoreAliasMatch(candidate, profession.label));
+      for (const alias of profession.aliases) {
+        score = Math.max(score, scoreAliasMatch(candidate, alias));
+      }
     }
     if (!best || score > best.score) {
       best = { profession, score };
@@ -503,10 +577,35 @@ function findBestProfession(query: string): { profession: ProfessionDef; score: 
   return best && best.score >= 45 ? best : null;
 }
 
+const AMBIGUOUS_PROFESSION_QUERIES = new Set([
+  "leder",
+  "service",
+  "partner",
+  "takst",
+  "takstmann",
+  "takstman",
+]);
+
 /** Tolker fritekst-yrke til NACE-koder og søkeord */
 export function resolveProfessionQuery(raw: string): ProfessionMatch | null {
   const query = raw.trim();
   if (!query) return null;
+
+  const normalizedQuery = normalizeText(query);
+  const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  if (
+    queryTokens.some((token) => AMBIGUOUS_PROFESSION_QUERIES.has(token)) ||
+    AMBIGUOUS_PROFESSION_QUERIES.has(normalizedQuery)
+  ) {
+    return {
+      query,
+      label: null,
+      professionId: null,
+      nacePrefixes: [],
+      naceCodes: [],
+      searchKeywords: [normalizedQuery],
+    };
+  }
 
   const best = findBestProfession(query);
 

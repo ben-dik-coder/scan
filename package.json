@@ -50,6 +50,8 @@
     "eval:phone-recall": "npx tsx scripts/eval-serpapi-phone-recall.ts",
     "eval:facebook-discovery": "npx tsx scripts/eval-facebook-discovery.ts",
     "eval:agent-scenarios": "npx tsx scripts/eval-agent-scenarios.ts",
+    "eval:profession-matrix": "npx tsx scripts/eval-profession-matrix.ts",
+    "eval:profession-live": "npx tsx scripts/eval-profession-live.ts",
     "agent:chat": "npx tsx scripts/agent-chat.ts"
   },
   "dependencies": {
