@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { computeLeadScore } from "@/lib/sales/lead-score";
 import type { SalesDashboardStats } from "@/lib/sales/dashboard-stats";
 import type { Company, CompanyWithLead, UserLead } from "@/types/database";
@@ -54,6 +55,32 @@ export async function ensureUserLeads(userId: string, companies: Company[]) {
       .eq("user_id", userId)
       .eq("orgnr", update.orgnr);
   }
+}
+
+/** Slå sammen lagret lead-status fra user_leads inn i firmalister fra Brreg. */
+export async function attachUserLeadsToCompanies(
+  userId: string,
+  companies: CompanyWithLead[]
+): Promise<CompanyWithLead[]> {
+  if (companies.length === 0) return companies;
+
+  const supabase = createServiceClient();
+  const { data: leads, error } = await supabase
+    .from("user_leads")
+    .select("*")
+    .eq("user_id", userId)
+    .in(
+      "orgnr",
+      companies.map((company) => company.orgnr)
+    );
+
+  if (error) throw new Error(error.message);
+
+  const leadMap = new Map((leads ?? []).map((lead) => [lead.orgnr, lead as UserLead]));
+  return companies.map((company) => {
+    const userLead = leadMap.get(company.orgnr);
+    return userLead ? { ...company, user_lead: userLead } : company;
+  });
 }
 
 export async function fetchCompaniesWithLeads(

@@ -764,6 +764,11 @@ html[data-app-theme="apple"].app-glass-theme::before {
     color: var(--scan-glass-text);
     border-radius: 7px;
     transition: background 0.15s ease, border-color 0.15s ease;
+    -webkit-appearance: menulist;
+    appearance: menulist;
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
   }
 
 [data-app-theme="apple"] .scan-glass-kommand .nylead-theme-compact-table .cv-status-select:hover,

@@ -1213,12 +1213,13 @@ export function CompanyTable({
                       </td>
                     )}
                     {showCol("status") && (
-                      <td>
+                      <td className="relative z-[1]">
                         {onStatusChange ? (
                           <select
                             value={status}
                             onChange={(e) => onStatusChange(c.orgnr, e.target.value)}
                             onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
                             className="cv-status-select"
                           >
                             {LEAD_STATUSES.map((s) => (

@@ -16,6 +16,7 @@ import {
   loadDbContactPatches,
   mergeContactOverride,
 } from "@/lib/company-contact-overrides";
+import { attachUserLeadsToCompanies } from "@/lib/companies";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -132,6 +133,7 @@ export async function GET(request: NextRequest) {
       );
       companies = limited.companies;
       contactUsage = limited.usage;
+      companies = await attachUserLeadsToCompanies(user.id, companies);
     }
 
     const withEmail = companies.filter((c) => c.has_email).length;

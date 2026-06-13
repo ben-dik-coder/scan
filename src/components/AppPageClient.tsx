@@ -388,7 +388,7 @@ export function AppPageClient(props: Props) {
 
   useEffect(() => {
     setLocalCompanies(props.companies);
-  }, [props.companies, companyListKey]);
+  }, [companyListKey, props.fetchedAt]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -870,18 +870,22 @@ export function AppPageClient(props: Props) {
   }
 
   async function updateStatus(orgnr: string, status: string) {
-    const prevCompany = companies.find((c) => c.orgnr === orgnr);
+    const prevCompany =
+      visibleCompanies.find((c) => c.orgnr === orgnr) ??
+      companies.find((c) => c.orgnr === orgnr);
     if (!prevCompany) return;
 
     const prevStatus = prevCompany.user_lead?.status ?? "ny";
     if (prevStatus === status) return;
 
     const now = new Date().toISOString();
-    const nextLead = (lead: CompanyWithLead["user_lead"]): NonNullable<CompanyWithLead["user_lead"]> => ({
+    const nextLead = (
+      lead: CompanyWithLead["user_lead"]
+    ): NonNullable<CompanyWithLead["user_lead"]> => ({
       user_id: lead?.user_id && lead.user_id !== "brreg-db" ? lead.user_id : "local",
       orgnr,
       status: status as LeadStatus,
-      score: lead?.score ?? 0,
+      score: lead?.score ?? prevCompany.user_lead?.score ?? 0,
       notes: lead?.notes ?? null,
       last_contacted_at:
         status === "kontaktet" ? now : lead?.last_contacted_at ?? null,
@@ -891,13 +895,17 @@ export function AppPageClient(props: Props) {
       updated_at: now,
     });
 
+    const patchList = (list: CompanyWithLead[]) =>
+      list.map((c) =>
+        c.orgnr === orgnr ? { ...c, user_lead: nextLead(c.user_lead) } : c
+      );
+
     const applyLocal = () => {
       if (props.dataSource === "brreg") {
-        setLocalCompanies((prev) =>
-          prev.map((c) =>
-            c.orgnr === orgnr ? { ...c, user_lead: nextLead(c.user_lead) } : c
-          )
-        );
+        setLocalCompanies(patchList);
+        if (isAgentListActive) {
+          setAgentListCompanies(patchList);
+        }
         return;
       }
       demo.updateLeadStatus(orgnr, status as LeadStatus);
@@ -916,12 +924,17 @@ export function AppPageClient(props: Props) {
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Statusendring feilet");
     } catch (err) {
-      if (props.dataSource === "brreg") {
-        setLocalCompanies((prev) =>
-          prev.map((c) =>
-            c.orgnr === orgnr ? { ...c, user_lead: prevCompany.user_lead ?? null } : c
-          )
+      const restoreLead = prevCompany.user_lead ?? null;
+      const restoreList = (list: CompanyWithLead[]) =>
+        list.map((c) =>
+          c.orgnr === orgnr ? { ...c, user_lead: restoreLead } : c
         );
+
+      if (props.dataSource === "brreg") {
+        setLocalCompanies(restoreList);
+        if (isAgentListActive) {
+          setAgentListCompanies(restoreList);
+        }
       } else {
         demo.updateLeadStatus(orgnr, prevStatus as LeadStatus);
       }
