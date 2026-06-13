@@ -609,6 +609,8 @@ const SEARCH_STOP_WORDS = new Set([
   "gode",
   "nyeste",
   "nye",
+  "kjeder",
+  "kjede",
   "firma",
   "bedrift",
   "selskap",

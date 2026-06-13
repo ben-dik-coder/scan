@@ -51,11 +51,14 @@ function applyProfessionFilter(
   if (!match) return query;
 
   const codeFilters = getProfessionCodeOrFilters(match) ?? [];
-  const nameFilters = getProfessionNameOrFilters(match);
-  const combined = [...codeFilters, ...nameFilters];
-  if (combined.length === 0) return query;
+  if (codeFilters.length === 0) {
+    const nameFilters = getProfessionNameOrFilters(match);
+    if (nameFilters.length === 0) return query;
+    return query.or(nameFilters.join(","));
+  }
 
-  return query.or(combined.join(","));
+  // Kun NACE i DB-spørringen — navnefilter i minnet (unngår timeout landsomfattende).
+  return query.or(codeFilters.join(","));
 }
 
 function applyIndustryFilter(

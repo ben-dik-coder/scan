@@ -591,6 +591,21 @@ async function testSimpleListIntent() {
     resolveProfessionQuery("finn meg 5 nyeste resturanter")?.professionId,
     "megler"
   );
+
+  const matkjeder = await parseSimpleListRequest(
+    "hei, kan du finne meg 30 nye mat kjeder i norge"
+  );
+  assert.ok(matkjeder);
+  assert.equal(matkjeder.limit, 30);
+  assert.equal(matkjeder.searchArgs.industryGroup, "servering");
+  assert.equal(matkjeder.searchArgs.professionId, undefined);
+  assert.equal(matkjeder.searchArgs.days, 0);
+  assert.equal(matkjeder.locationLabel, "Norge");
+  assert.equal(
+    resolveIndustryKeyword("hei, kan du finne meg 30 nye mat kjeder i norge")
+      ?.filters.industryGroup,
+    "servering"
+  );
 }
 
 function testNearbySuggestions() {

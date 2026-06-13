@@ -22,7 +22,7 @@ import {
   AGENT_TOOL_SEARCH_TIMEOUT_MS,
 } from "@/lib/agent/constants";
 import { AGENT_LIST_PERIOD_DAYS } from "@/lib/agent/saved-list-filters";
-import { resolveAgentSearchIndustryFilters } from "@/lib/agent/search-filters";
+import { resolveAgentSearchIndustryFilters, mapProfessionToIndustryGroup } from "@/lib/agent/search-filters";
 import {
   hasStoredWebsite,
   isCompetitorLeadCompany,
@@ -649,6 +649,24 @@ async function executeSearchCompanies(
           result = retry;
           searchArgs.nameQuery = undefined;
           retriedBroader = true;
+        }
+      } else if (professionId && !industryGroup) {
+        const mappedGroup = mapProfessionToIndustryGroup(professionId);
+        if (mappedGroup) {
+          const broader = {
+            ...searchArgs,
+            industryGroup: mappedGroup,
+            professionId: undefined,
+            nameQuery: undefined,
+          };
+          const retry = await runCompanySearch(broader, useDb);
+          if (retry.companies.length > 0) {
+            result = retry;
+            searchArgs.industryGroup = mappedGroup;
+            searchArgs.professionId = undefined;
+            searchArgs.nameQuery = undefined;
+            retriedBroader = true;
+          }
         }
       } else if (nameQuery) {
         const alternates = NAME_QUERY_ALTERNATES[nameQuery] ?? [nameQuery];

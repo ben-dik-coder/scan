@@ -67,6 +67,9 @@ const SCENARIOS: Scenario[] = [
   // Bil / handel / servering
   { id: "no-bilverksted", query: "bilverksted Stavanger", expect: { professionId: "bilverksted" } },
   { id: "no-restaurant", query: "nyeste restauranter i Oslo", expect: { professionId: "restaurant", nameQuery: "restaurant" } },
+  { id: "no-matkjeder", query: "hei, kan du finne meg 30 nye mat kjeder i norge", expect: { industryGroup: "servering" } },
+  { id: "no-matkjede", query: "finn 10 matkjeder i Norge", expect: { industryGroup: "servering" } },
+  { id: "no-fastfood", query: "fastfood i Bergen", expect: { industryGroup: "servering" } },
   { id: "no-kafe", query: "kafe i Bergen", expect: { industryGroup: "servering" } },
   { id: "no-baker", query: "bakeri Trondheim", expect: { professionId: "baker", nameQuery: "baker" } },
   { id: "no-hotell", query: "hotell i Lofoten", expect: { professionId: "hotell" } },
@@ -269,12 +272,32 @@ async function testParseSimpleListSamples() {
     { q: "finn taktekkjar i Bergen", professionId: "taktekker", municipality: "4601", days: 0 },
     { q: "finn målare i Oslo", professionId: "maler", municipality: "0301", days: 0 },
     { q: "find plumber Bergen", professionId: "rorlegger", municipality: "4601", days: 0 },
+    {
+      q: "hei, kan du finne meg 30 nye mat kjeder i norge",
+      industryGroup: "servering",
+      limit: 30,
+      location: "Norge",
+      days: 0,
+    },
   ];
   for (const s of samples) {
-    const parsed = await parseSimpleListRequest(s.q.startsWith("finn") ? s.q : `finn ${s.q}`);
+    const parsed = await parseSimpleListRequest(s.q.startsWith("finn") || s.q.startsWith("hei") ? s.q : `finn ${s.q}`);
     assert.ok(parsed, `parseSimpleListRequest failed for ${s.q}`);
-    assert.equal(parsed!.searchArgs.professionId, s.professionId, s.q);
-    assert.equal(parsed!.searchArgs.municipalityCode, s.municipality, s.q);
+    if ("professionId" in s && s.professionId) {
+      assert.equal(parsed!.searchArgs.professionId, s.professionId, s.q);
+    }
+    if ("industryGroup" in s && s.industryGroup) {
+      assert.equal(parsed!.searchArgs.industryGroup, s.industryGroup, s.q);
+    }
+    if ("municipality" in s && s.municipality) {
+      assert.equal(parsed!.searchArgs.municipalityCode, s.municipality, s.q);
+    }
+    if ("limit" in s && s.limit) {
+      assert.equal(parsed!.limit, s.limit, s.q);
+    }
+    if ("location" in s && s.location) {
+      assert.equal(parsed!.locationLabel, s.location, s.q);
+    }
     assert.equal(parsed!.searchArgs.days, s.days, s.q);
   }
 }

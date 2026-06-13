@@ -23,7 +23,7 @@ export const AGENT_MAX_SCAN_PER_JOB = 10;
 export const AGENT_DEFAULT_LIST_LIMIT = 5;
 
 /** Maks limit i search_companies for hurtigliste */
-export const AGENT_MAX_FAST_LIST_LIMIT = 20;
+export const AGENT_MAX_FAST_LIST_LIMIT = 30;
 
 /** Maks antall firma/orgnr i kompakt tool-svar til modellen */
 export const AGENT_MAX_TOOL_RESULT_SAMPLE = 18;

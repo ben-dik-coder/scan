@@ -192,6 +192,14 @@ const INDUSTRY_KEYWORD_RULES: Array<{
   },
   {
     pattern:
+      /\b(mat[\s-]?kjeder?|matkjeder?|restaurant[\s-]?kjeder?|serverings[\s-]?kjeder?|servering[\s-]?kjeder?|fast[\s-]?food|hurtigmat|burger[\s-]?kjede|pizza[\s-]?kjede)\b/,
+    match: {
+      label: "matkjeder / servering",
+      filters: { industryGroup: "servering" },
+    },
+  },
+  {
+    pattern:
       /\b(restau?r(?:ant(?:er)?|anter|an)|resturant(?:er)?|restuarant(?:er)?|spisested(?:er)?)\b/,
     match: {
       label: "restauranter",
