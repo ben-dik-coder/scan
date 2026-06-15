@@ -1,5 +1,6 @@
 import type { FilterState } from "@/components/CompanyFilters";
 import { hasOwnWebsite, isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
+import { shuffleSavedListOrgnrs } from "@/lib/shuffle/saved-list-shuffle";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
 export type AgentListTab = "all" | "no_website" | "with_website" | "not_scanned";
@@ -44,6 +45,13 @@ export function agentOrgnrsFromFilters(
   return filters.agentOrgnrs.filter(
     (o): o is string => typeof o === "string" && o.trim().length > 0
   );
+}
+
+/** Hent orgnr fra lagret liste og bland rekkefølgen for visning. */
+export function shuffledAgentOrgnrsFromFilters(
+  filters: AgentSavedListFilters | Record<string, unknown> | null | undefined
+): string[] {
+  return shuffleSavedListOrgnrs(agentOrgnrsFromFilters(filters));
 }
 
 /** AI-lister: vis også firma som ikke er Google-sjekket ennå. */

@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FilterState } from "@/components/CompanyFilters";
 import {
-  agentOrgnrsFromFilters,
   filtersForAgentListApplication,
   isAgentSavedListFilters,
+  shuffledAgentOrgnrsFromFilters,
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
 import {
@@ -210,7 +210,7 @@ export function ScanSavedAudiences({
         )}
         {!loading &&
           saved.map((l) => {
-            const agentOrgnrs = agentOrgnrsFromFilters(l.filters);
+            const agentOrgnrs = shuffledAgentOrgnrsFromFilters(l.filters);
             const isAgent = l.filters.createdBy === "agent";
             return (
               <button

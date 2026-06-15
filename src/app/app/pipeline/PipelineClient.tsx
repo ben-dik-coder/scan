@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { agentOrgnrsFromFilters } from "@/lib/agent/saved-list-filters";
+import { shuffledAgentOrgnrsFromFilters } from "@/lib/agent/saved-list-filters";
 import { NextStepBanner } from "@/components/journey/NextStepBanner";
 import { KoSendDrawer } from "@/components/ko/KoSendDrawer";
 import { pipelineItemToQueueItem } from "@/components/ko/queue-utils";
@@ -100,7 +100,7 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
         setListOrgnrs(null);
         return;
       }
-      const orgnrs = agentOrgnrsFromFilters(row.filters);
+      const orgnrs = shuffledAgentOrgnrsFromFilters(row.filters);
       loadedListIdRef.current = listId;
       setSelectedListId(listId);
       setListOrgnrs(orgnrs.length > 0 ? new Set(orgnrs) : null);
@@ -116,7 +116,7 @@ export function PipelineClient({ initialItems, isDemo }: Props) {
           setListOrgnrs(null);
           return;
         }
-        const orgnrs = agentOrgnrsFromFilters(row.filters);
+        const orgnrs = shuffledAgentOrgnrsFromFilters(row.filters);
         loadedListIdRef.current = listId;
         setSelectedListId(listId);
         setListOrgnrs(orgnrs.length > 0 ? new Set(orgnrs) : null);

@@ -47,11 +47,11 @@ import {
 } from "@/lib/scan/geolocation";
 import { resolveLocalKommuneFallback } from "@/lib/scan/local-kommune-pref";
 import {
-  agentOrgnrsFromFilters,
   AGENT_LIST_PERIOD_DAYS,
   filtersForAgentListApplication,
   matchesAgentListNoWebsiteTab,
   matchesAgentListWithWebsiteTab,
+  shuffledAgentOrgnrsFromFilters,
   type AgentListTab,
   listFilterToWebsitePresence,
   websitePresenceToListFilter,
@@ -200,7 +200,7 @@ export function AppPageClient(props: Props) {
       .then((r) => (r.ok ? r.json() : null))
       .then((row: { name?: string; filters?: Record<string, unknown> } | null) => {
         if (!row) return;
-        const orgnrs = agentOrgnrsFromFilters(row.filters);
+        const orgnrs = shuffledAgentOrgnrsFromFilters(row.filters);
         setPinnedOrgnrs(orgnrs.length ? new Set(orgnrs) : null);
         setActiveListName(row.name ?? null);
         setActiveListSource(
@@ -491,10 +491,13 @@ export function AppPageClient(props: Props) {
   }, [visibleCompanies, websiteScans]);
 
   const rankedDisplayCompanies = useMemo(() => {
+    if (isAgentListActive) {
+      return displayCompanies;
+    }
     return [...displayCompanies].sort(
       (a, b) => (queueScores.get(b.orgnr) ?? 0) - (queueScores.get(a.orgnr) ?? 0)
     );
-  }, [displayCompanies, queueScores]);
+  }, [displayCompanies, queueScores, isAgentListActive]);
 
   function applyFilters(
     next: FilterState,
@@ -569,9 +572,10 @@ export function AppPageClient(props: Props) {
     persistScanAudienceFilters(next);
     setSelected(new Set());
     if (options?.agentOrgnrs !== undefined) {
-      setPinnedOrgnrs(
-        options.agentOrgnrs?.length ? new Set(options.agentOrgnrs) : null
-      );
+      const shuffledOrgnrs = options.agentOrgnrs?.length
+        ? shuffledAgentOrgnrsFromFilters({ agentOrgnrs: options.agentOrgnrs })
+        : null;
+      setPinnedOrgnrs(shuffledOrgnrs?.length ? new Set(shuffledOrgnrs) : null);
     } else if (!options?.preserveListFilter) {
       setPinnedOrgnrs(null);
       setActiveListName(null);
@@ -1235,7 +1239,7 @@ export function AppPageClient(props: Props) {
   const listSummary = isAgentListActive
     ? `AI-liste: ${rankedDisplayCompanies.length} av ${visibleCompanies.length}${
         listFilter !== "all" ? ` · ${rankedDisplayCompanies.length} i valgt fane` : ""
-      }${agentListLoading ? " · henter firma…" : ""} · sortert etter score`
+      }${agentListLoading ? " · henter firma…" : ""} · blandet rekkefølge`
     : pagination
     ? `Viser ${pageStart > 0 ? `${pageStart}–${pageEnd}` : "0"} ${
         showExactTotal

@@ -7,6 +7,7 @@ import {
   isAgentSavedListFilters,
   isCompanyListFilters,
   listGroupFromFilters,
+  shuffledAgentOrgnrsFromFilters,
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
 import {
@@ -243,7 +244,7 @@ export function ScanCompanyLists({
   }
 
   function openList(list: SavedListRow) {
-    const orgnrs = agentOrgnrsFromFilters(list.filters);
+    const orgnrs = shuffledAgentOrgnrsFromFilters(list.filters);
     onApply({
       filters: filtersForAgentListApplication(list.filters, {
         regionId: "",

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   agentOrgnrsFromFilters,
+  shuffledAgentOrgnrsFromFilters,
   isCompanyListFilters,
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
@@ -142,7 +143,7 @@ export function SavedListPicker(props: Props) {
     if (loading) return;
     const list = companyLists.find((l) => l.id === listId);
     if (!list) return;
-    const orgnrs = agentOrgnrsFromFilters(list.filters);
+    const orgnrs = shuffledAgentOrgnrsFromFilters(list.filters);
     if (orgnrs.length === 0) return;
     setOpen(false);
 
