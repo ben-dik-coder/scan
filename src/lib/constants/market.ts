@@ -10,6 +10,8 @@ export const DEFAULT_MARKET_FILTERS = {
   genericEmailOnly: false,
   industryGroup: "",
   professionId: "",
+  /** Spesifikk Brreg NACE-kode (i tillegg til bransje/yrke) */
+  naceCode: "",
   nameQuery: "",
   websitePresence: "all" as const,
   facebookPresence: "all" as const,

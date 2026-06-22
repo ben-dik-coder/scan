@@ -23,13 +23,18 @@ export type SyncResult = {
 async function upsertCompanies(companies: CompanyInsert[]) {
   if (companies.length === 0) return 0;
 
+  const rows = companies.map(({ industry_description, ...row }) => {
+    void industry_description;
+    return row;
+  });
+
   const supabase = createServiceClient();
-  const { error } = await supabase.from("companies").upsert(companies, {
+  const { error } = await supabase.from("companies").upsert(rows, {
     onConflict: "orgnr",
   });
 
   if (error) throw new Error(error.message);
-  return companies.length;
+  return rows.length;
 }
 
 async function getSyncState(key: string) {
@@ -45,18 +50,23 @@ async function getSyncState(key: string) {
 async function updateSyncState(
   key: string,
   metadata: Record<string, unknown>,
-  options?: { cursor?: string }
+  options?: { cursor?: string | null }
 ) {
   const supabase = createServiceClient();
-  await supabase.from("sync_state").upsert(
-    {
-      key,
-      last_sync: new Date().toISOString(),
-      cursor: options?.cursor ?? null,
-      metadata,
-    },
-    { onConflict: "key" }
-  );
+  const row: {
+    key: string;
+    last_sync: string;
+    cursor?: string | null;
+    metadata: Record<string, unknown>;
+  } = {
+    key,
+    last_sync: new Date().toISOString(),
+    metadata,
+  };
+  if (options && "cursor" in options) {
+    row.cursor = options.cursor;
+  }
+  await supabase.from("sync_state").upsert(row, { onConflict: "key" });
 }
 
 async function processEnheter(enheter: BrregEnhet[]) {

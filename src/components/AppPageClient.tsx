@@ -525,6 +525,9 @@ export function AppPageClient(props: Props) {
     ) {
       next = { ...next, days: 0 };
     }
+    if (next.naceCode && next.naceCode !== filters.naceCode && next.days !== 0) {
+      next = { ...next, days: 0 };
+    }
     if (
       (next.nameQuery ?? "").trim() &&
       next.nameQuery !== filters.nameQuery &&
@@ -555,6 +558,8 @@ export function AppPageClient(props: Props) {
     else params.delete("bransje");
     if (next.professionId) params.set("yrke", next.professionId);
     else params.delete("yrke");
+    if (next.naceCode) params.set("nace", next.naceCode);
+    else params.delete("nace");
     const trimmedNameQuery = (next.nameQuery ?? "").trim();
     if (trimmedNameQuery) params.set("navn", trimmedNameQuery);
     else params.delete("navn");
@@ -990,6 +995,7 @@ export function AppPageClient(props: Props) {
       genericEmailOnly: filters.genericEmailOnly,
       industryGroup: filters.industryGroup,
       professionId: filters.professionId,
+      naceCode: filters.naceCode,
       nameQuery: filters.nameQuery,
       websitePresence: filters.websitePresence,
       facebookPresence: filters.facebookPresence,

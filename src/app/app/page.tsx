@@ -10,6 +10,7 @@ import type { FilterState } from "@/components/CompanyFilters";
 import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
+import { parseNaceCodeFromParam } from "@/lib/constants/nace-codes";
 import { regionLabel } from "@/lib/constants/regions";
 import { getDemoShuffleSessionId } from "@/lib/shuffle/demo-session";
 import {
@@ -40,10 +41,19 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
     params.has("generisk") ||
     params.has("bransje") ||
     params.has("yrke") ||
+    params.has("nace") ||
     params.has("navn");
 
   if (brreg && !hasAnyFilter) {
     return { ...DEFAULT_MARKET_FILTERS, industryGroup: "" };
+  }
+
+  const naceCode = parseNaceCodeFromParam(params.get("nace") ?? "");
+  const professionId = parseProfessionIdFromParam(params.get("yrke") ?? "");
+  const industryGroup = params.get("bransje") ?? "";
+  let days = parseDaysParam(params);
+  if (naceCode || professionId || industryGroup) {
+    days = 0;
   }
 
   return {
@@ -68,8 +78,9 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
       : brreg
         ? DEFAULT_MARKET_FILTERS.genericEmailOnly
         : false,
-    industryGroup: params.get("bransje") ?? "",
-    professionId: parseProfessionIdFromParam(params.get("yrke") ?? ""),
+    industryGroup,
+    professionId,
+    naceCode,
     nameQuery: params.get("navn") ?? "",
     websitePresence:
       (params.get("web") as FilterState["websitePresence"]) || "all",
@@ -104,6 +115,8 @@ function buildCompaniesQuery(
   else params.delete("bransje");
   if (filters.professionId) params.set("yrke", filters.professionId);
   else params.delete("yrke");
+  if (filters.naceCode) params.set("nace", filters.naceCode);
+  else params.delete("nace");
   if (filters.nameQuery.trim()) params.set("navn", filters.nameQuery.trim());
   else params.delete("navn");
   if (filters.websitePresence !== "all") params.set("web", filters.websitePresence);
@@ -131,6 +144,7 @@ function FirmaPageDemo() {
     genericEmailOnly: filters.genericEmailOnly,
     industryGroup: filters.industryGroup || undefined,
     professionId: filters.professionId || undefined,
+    naceCode: filters.naceCode || undefined,
     nameQuery: filters.nameQuery || undefined,
   });
 
@@ -144,6 +158,7 @@ function FirmaPageDemo() {
         genericEmailOnly: filters.genericEmailOnly,
         industryGroup: filters.industryGroup || undefined,
         professionId: filters.professionId || undefined,
+        naceCode: filters.naceCode || undefined,
         nameQuery: filters.nameQuery || undefined,
       },
       getDemoShuffleSessionId()
@@ -341,6 +356,7 @@ function FirmaPageBrreg() {
     filters.genericEmailOnly,
     filters.industryGroup,
     filters.professionId,
+    filters.naceCode,
     filters.nameQuery,
     currentPage,
   ]);

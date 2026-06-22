@@ -19,6 +19,7 @@ import {
   matchesIndustryGroup,
 } from "@/lib/constants/industries";
 import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
+import { matchesSpecificNaceCode, getBrregNaeringskodeForNace } from "@/lib/constants/nace-codes";
 import { companyNameMatchesQuery } from "@/lib/brreg/name-search";
 import {
   hasStoredWebsite,
@@ -74,6 +75,8 @@ export type BrregCompanyFilters = {
   industryGroup?: string;
   /** Konkret yrke-id fra dropdown, f.eks. «rorlegger» */
   professionId?: string;
+  /** Spesifikk Brreg NACE-kode (i tillegg til bransje/yrke) */
+  naceCode?: string;
   /** Søkeord i firmanavn (alle ord må finnes) */
   nameQuery?: string;
   /** Maks antall sider à 100 firma (sikkerhetsgrense) */
@@ -155,6 +158,12 @@ function matchesFilters(
     ) {
       return false;
     }
+  }
+  if (
+    filters.naceCode?.trim() &&
+    !matchesSpecificNaceCode(company.industry_code, filters.naceCode)
+  ) {
+    return false;
   }
   if (
     !filters.professionId?.trim() &&
@@ -270,9 +279,13 @@ export async function fetchCompaniesFromBrreg(
   const professionBrregCodes = professionMatch
     ? getBrregNaeringskodeForProfession(professionMatch)
     : undefined;
-  const brregNaeringskode = [industryBrregCodes, professionBrregCodes]
-    .filter(Boolean)
-    .join(",") || undefined;
+  const naceBrregCode = filters.naceCode?.trim()
+    ? getBrregNaeringskodeForNace(filters.naceCode)
+    : undefined;
+  const brregNaeringskode =
+    [naceBrregCode, industryBrregCodes, professionBrregCodes]
+      .filter(Boolean)
+      .join(",") || undefined;
   const industryAtBrreg = Boolean(brregNaeringskode);
   const nameQueryActive = (filters.nameQuery?.trim().length ?? 0) >= 2;
 

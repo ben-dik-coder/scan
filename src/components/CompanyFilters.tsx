@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { INDUSTRY_GROUPS } from "@/lib/constants/industries";
+import { NACE_CODE_GROUPS } from "@/lib/constants/nace-codes";
 import { PROFESSION_OPTIONS } from "@/lib/constants/professions";
 import { kommuneBelongsToRegion, REGIONS } from "@/lib/constants/regions";
 import { WEBBYRA_MARKET_PRESET } from "@/lib/constants/market";
@@ -9,6 +10,7 @@ import {
   Briefcase,
   Calendar,
   ChevronDown,
+  Hash,
   Layout,
   Mail,
   MapPin,
@@ -29,6 +31,8 @@ export type FilterState = {
   industryGroup: string;
   /** Konkret yrke-id fra dropdown (tom = alle yrker) */
   professionId: string;
+  /** Spesifikk Brreg NACE-kode i tillegg til bransje/yrke */
+  naceCode: string;
   /** Søkeord i firmanavn */
   nameQuery: string;
   websitePresence: WebsitePresenceFilter;
@@ -178,6 +182,31 @@ export function CompanyFilters({
     </label>
   );
 
+  const naceCodeField = (
+    <label className={`flex flex-col gap-0.5 ${isMobileBar ? "sm:col-span-2" : ""}`}>
+      <span className="scan-label">
+        <Hash className="h-3.5 w-3.5 text-brand-gold" />
+        NACE-kode
+      </span>
+      <select
+        value={filters.naceCode}
+        onChange={(e) => onChange({ ...filters, naceCode: e.target.value })}
+        className="scan-input"
+      >
+        <option value="">Alle koder</option>
+        {NACE_CODE_GROUPS.map((group) => (
+          <optgroup key={group.id} label={group.label}>
+            {group.codes.map((entry) => (
+              <option key={entry.code} value={entry.code}>
+                {entry.code} — {entry.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+
   const nameQueryField = (
     <label className={`flex flex-col gap-0.5 ${isMobileBar ? "sm:col-span-2" : ""}`}>
       <span className="scan-label">
@@ -198,6 +227,7 @@ export function CompanyFilters({
         {regionField}
         {municipalityField}
         {professionField}
+        {naceCodeField}
       </div>
     );
   }
@@ -260,6 +290,7 @@ export function CompanyFilters({
               </select>
             </label>
             {professionField}
+            {naceCodeField}
           </div>
         </div>
 
@@ -438,6 +469,7 @@ export function CompanyFilters({
 
       <div className={isSidebar ? "pt-1" : "scan-glass-divider border-t pt-2"}>
         {professionField}
+        {naceCodeField}
       </div>
 
       <div

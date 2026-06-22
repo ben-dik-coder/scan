@@ -337,6 +337,13 @@ const INDUSTRY_KEYWORD_RULES: Array<{
     match: { label: "bilverksteder", filters: { professionId: "bilverksted" } },
   },
   {
+    pattern: /\b(bruktbil(?:forhandler)?|bruktbilsalg|bilforhandler|bilforhandlere|bilhus)\b/,
+    match: {
+      label: "bilforhandlere",
+      filters: { professionId: "bilforhandler", nameQuery: "bil" },
+    },
+  },
+  {
     pattern: /\b(bilpleie|bilvask(?:eri)?|polering)\b/,
     match: {
       label: "bilpleie",

@@ -6,6 +6,7 @@ import {
 } from "@/components/CompanyFilters";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
 import { parseProfessionIdFromParam, professionLabel } from "@/lib/constants/professions";
+import { naceCodeLabel } from "@/lib/constants/nace-codes";
 import { regionLabel } from "@/lib/constants/regions";
 
 function toFilterState(
@@ -25,6 +26,7 @@ function toFilterState(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId,
+    naceCode: partial.naceCode ?? "",
     nameQuery: partial.nameQuery ?? "",
     websitePresence: partial.websitePresence ?? "all",
     facebookPresence: partial.facebookPresence ?? "all",
@@ -43,6 +45,10 @@ export function formatWeeklyAlertSummary(filters: Partial<FilterState>): string 
       : "");
   if (professionId) {
     parts.push(professionLabel(professionId) ?? professionId);
+  }
+  if (filters.naceCode) {
+    const label = naceCodeLabel(filters.naceCode);
+    parts.push(label ? `NACE ${filters.naceCode}` : filters.naceCode);
   }
   if (filters.days != null) {
     parts.push(filters.days === 0 ? "alle firma" : `siste ${filters.days} dager`);

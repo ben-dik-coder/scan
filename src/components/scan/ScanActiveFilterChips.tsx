@@ -4,6 +4,7 @@ import type { FilterState } from "@/components/CompanyFilters";
 import { DEFAULT_MARKET_FILTERS } from "@/lib/constants/market";
 import { industryGroupLabel } from "@/lib/constants/industries";
 import { professionLabel } from "@/lib/constants/professions";
+import { naceCodeLabel } from "@/lib/constants/nace-codes";
 import { regionLabel } from "@/lib/constants/regions";
 
 type Props = {
@@ -35,6 +36,11 @@ function buildSummaryParts(
 
   if (filters.professionId) {
     parts.push(professionLabel(filters.professionId) ?? filters.professionId);
+  }
+
+  if (filters.naceCode) {
+    const label = naceCodeLabel(filters.naceCode);
+    parts.push(label ? `${filters.naceCode} ${label}` : filters.naceCode);
   }
 
   const nameQuery = (filters.nameQuery ?? "").trim();

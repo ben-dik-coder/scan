@@ -10,6 +10,7 @@ import {
 } from "@/lib/brreg/fetch-companies";
 import { isBrregLive, isDemoMode } from "@/lib/demo/config";
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
+import { parseNaceCodeFromParam } from "@/lib/constants/nace-codes";
 import { buildMarketShuffleSeed } from "@/lib/shuffle/seeded-shuffle";
 import {
   loadContactOverrides,
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
   const genericEmailOnly = searchParams.get("generisk") === "1";
   const industryGroup = searchParams.get("bransje") ?? "";
   const professionId = parseProfessionIdFromParam(searchParams.get("yrke") ?? "");
+  const naceCode = parseNaceCodeFromParam(searchParams.get("nace") ?? "");
   const nameQuery = searchParams.get("navn")?.trim() || undefined;
   const { page, pageSize } = parsePaginationParams(
     parsePageParam(searchParams.get("page")),
@@ -68,6 +70,7 @@ export async function GET(request: NextRequest) {
     genericEmailOnly,
     industryGroup: industryGroup || undefined,
     professionId: professionId || undefined,
+    naceCode: naceCode || undefined,
     nameQuery,
   };
 

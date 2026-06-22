@@ -37,6 +37,7 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
       days: 30,
       industryGroup: "",
       professionId: "",
+      naceCode: "",
     },
   },
   {
@@ -49,6 +50,7 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
       days: 30,
       industryGroup: "",
       professionId: "",
+      naceCode: "",
     },
   },
   {
@@ -61,6 +63,7 @@ const PRESET_AUDIENCES: { id: string; name: string; filters: FilterState }[] = [
       days: 30,
       professionId: "rorlegger",
       industryGroup: "",
+      naceCode: "",
     },
   },
 ];
@@ -105,6 +108,7 @@ function mergeFilters(
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId: resolveProfessionId(partial),
+    naceCode: partial.naceCode ?? "",
     nameQuery: partial.nameQuery ?? "",
     websitePresence: partial.websitePresence ?? "all",
     facebookPresence: partial.facebookPresence ?? "all",

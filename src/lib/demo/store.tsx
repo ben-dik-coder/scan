@@ -23,6 +23,7 @@ import {
   DEMO_TEMPLATES,
 } from "./data";
 import { matchesIndustryGroup } from "@/lib/constants/industries";
+import { matchesSpecificNaceCode } from "@/lib/constants/nace-codes";
 import {
   matchesProfessionSearch,
   resolveProfessionFilter,
@@ -306,6 +307,7 @@ export function filterDemoCompanies(
     genericEmailOnly?: boolean;
     industryGroup?: string;
     professionId?: string;
+    naceCode?: string;
     nameQuery?: string;
     minScore?: number;
   }
@@ -349,6 +351,12 @@ export function filterDemoCompanies(
       ) {
         return false;
       }
+    }
+    if (
+      filters.naceCode?.trim() &&
+      !matchesSpecificNaceCode(c.industry_code, filters.naceCode)
+    ) {
+      return false;
     }
     if (!companyNameMatchesQuery(c.name, filters.nameQuery)) return false;
     if (filters.minScore && (c.user_lead?.score ?? 0) < filters.minScore) return false;

@@ -8,6 +8,7 @@ export type MarketShuffleFilters = {
   genericEmailOnly?: boolean;
   industryGroup?: string;
   professionId?: string;
+  naceCode?: string;
   nameQuery?: string;
 };
 
@@ -25,6 +26,7 @@ export function buildMarketFilterKey(filters: MarketShuffleFilters): string {
     filters.genericEmailOnly ? "1" : "0",
     filters.industryGroup ?? "",
     filters.professionId ?? "",
+    filters.naceCode ?? "",
     filters.nameQuery ?? "",
   ].join("|");
 }

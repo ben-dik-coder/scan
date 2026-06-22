@@ -9,6 +9,7 @@ import {
   matchesProfessionSearch,
   resolveProfessionFilter,
 } from "@/lib/constants/professions";
+import { matchesSpecificNaceCode, getNaceCodeDbOrFilters } from "@/lib/constants/nace-codes";
 import { expandRegionToKommuneCodes } from "@/lib/constants/regions";
 import { computeLeadScore } from "@/lib/sales/lead-score";
 import { seededRank } from "@/lib/shuffle/seeded-shuffle";
@@ -58,6 +59,23 @@ function applyProfessionFilter(
   }
 
   // Kun NACE i DB-spørringen — navnefilter i minnet (unngår timeout landsomfattende).
+  return query.or(codeFilters.join(","));
+}
+
+function applyNaceCodeFilter(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
+  naceCode?: string
+) {
+  const trimmed = naceCode?.trim();
+  if (!trimmed) return query;
+
+  const codeFilters = getNaceCodeDbOrFilters(trimmed);
+  if (codeFilters.length === 0) return query;
+  if (codeFilters.length === 1) {
+    const pattern = codeFilters[0]!.replace("industry_code.ilike.", "");
+    return query.ilike("industry_code", pattern);
+  }
   return query.or(codeFilters.join(","));
 }
 
@@ -179,6 +197,7 @@ export async function fetchCompaniesFromDb(
 
   query = applyIndustryFilter(query, filters.industryGroup);
   query = applyProfessionFilter(query, filters.professionId);
+  query = applyNaceCodeFilter(query, filters.naceCode);
   if (filters.nameQuery?.trim() && !filters.professionId?.trim()) {
     query = applyNameQueryFilter(query, filters.nameQuery);
   }
@@ -210,6 +229,11 @@ export async function fetchCompaniesFromDb(
         matchesProfessionSearch(c.industry_code, { name: c.name }, professionMatch)
       );
     }
+  }
+  if (filters.naceCode?.trim()) {
+    rows = rows.filter((c) =>
+      matchesSpecificNaceCode(c.industry_code, filters.naceCode!)
+    );
   }
   if (filters.nameQuery?.trim() && !filters.professionId?.trim()) {
     rows = rows.filter((c) => companyNameMatchesQuery(c.name, filters.nameQuery));

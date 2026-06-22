@@ -254,6 +254,7 @@ export function ScanCompanyLists({
         genericEmailOnly: false,
         industryGroup: "",
         professionId: "",
+        naceCode: "",
         nameQuery: "",
         websitePresence: "all",
         facebookPresence: "all",
