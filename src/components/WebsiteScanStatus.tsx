@@ -6,7 +6,7 @@ import type { SerperUsage } from "@/lib/billing/serper-usage";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 import { cn } from "@/lib/utils";
 
-type ListFilter = "all" | "no_website" | "with_website" | "not_scanned";
+type ListFilter = "all" | "no_website" | "with_website" | "not_scanned" | "with_phone";
 
 type Props = {
   scanning: boolean;

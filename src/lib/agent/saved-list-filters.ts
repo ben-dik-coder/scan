@@ -1,9 +1,16 @@
 import type { FilterState } from "@/components/CompanyFilters";
 import { hasOwnWebsite, isLeadWithoutOwnSite } from "@/lib/agent/website-presence";
 import { shuffleSavedListOrgnrs } from "@/lib/shuffle/saved-list-shuffle";
+import { resolveCompanyPhone } from "@/lib/website-scan/resolve-company-contact";
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
+import type { Company } from "@/types/database";
 
-export type AgentListTab = "all" | "no_website" | "with_website" | "not_scanned";
+export type AgentListTab =
+  | "all"
+  | "no_website"
+  | "with_website"
+  | "not_scanned"
+  | "with_phone";
 
 /** Kartlegger listefane ↔ web-filter i URL (web=without|with|not_scanned). */
 export function listFilterToWebsitePresence(
@@ -69,6 +76,14 @@ export function matchesAgentListWithWebsiteTab(
 ): boolean {
   if (!scan) return false;
   return hasOwnWebsite(scan);
+}
+
+/** Firma med gyldig telefon (Brreg, manuell eller funn fra skann). */
+export function matchesAgentListWithPhoneTab(
+  company: Pick<Company, "orgnr" | "phone" | "mobile" | "contact_override">,
+  scan?: WebsiteScanResult | null
+): boolean {
+  return resolveCompanyPhone(company, scan) !== null;
 }
 
 /** AI-lister skal alltid vise orgnr uavhengig av registreringsdato. */

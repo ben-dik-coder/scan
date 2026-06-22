@@ -1,11 +1,12 @@
 "use client";
 
+import type { AgentListTab } from "@/lib/agent/saved-list-filters";
 import { cn } from "@/lib/utils";
 import { Download, LayoutGrid, ListTodo, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type Tab = {
-  id: "all" | "no_website" | "with_website" | "not_scanned";
+  id: AgentListTab;
   label: string;
   shortLabel: string;
   count: number;

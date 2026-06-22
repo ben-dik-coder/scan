@@ -4,6 +4,7 @@
  */
 import {
   listFilterToWebsitePresence,
+  matchesAgentListWithPhoneTab,
   matchesAgentListWithWebsiteTab,
   websitePresenceToListFilter,
 } from "../src/lib/agent/saved-list-filters.ts";
@@ -27,6 +28,10 @@ assert(
   listFilterToWebsitePresence("not_scanned") === "not_scanned"
 );
 assert("all → web=all", listFilterToWebsitePresence("all") === "all");
+assert(
+  "with_phone → web=all",
+  listFilterToWebsitePresence("with_phone") === "all"
+);
 
 assert(
   "web=with → with_website",
@@ -85,6 +90,28 @@ assert(
     websiteKind: "none",
     websiteUrl: "https://example.no",
   })
+);
+
+assert(
+  "gyldig mobil = med telefon-fane",
+  matchesAgentListWithPhoneTab(
+    { orgnr: "123456789", phone: null, mobile: "91234567", contact_override: null },
+    undefined
+  )
+);
+assert(
+  "mangler telefon = ikke med telefon-fane",
+  !matchesAgentListWithPhoneTab(
+    { orgnr: "123456789", phone: null, mobile: null, contact_override: null },
+    undefined
+  )
+);
+assert(
+  "skannet telefon = med telefon-fane",
+  matchesAgentListWithPhoneTab(
+    { orgnr: "123456789", phone: null, mobile: null, contact_override: null },
+    { ...base, enrichedPhone: "91234567" }
+  )
 );
 
 console.log("\nAlle tester bestått.");

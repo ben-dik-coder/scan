@@ -14,7 +14,7 @@ import {
 } from "@/lib/website-scan/scan-api-budget";
 import { MAX_WEBSITE_SCAN_BATCH } from "@/lib/constants/market";
 
-type ListFilter = "all" | "no_website" | "with_website" | "not_scanned";
+type ListFilter = "all" | "no_website" | "with_website" | "not_scanned" | "with_phone";
 
 type Props = {
   selectedCount: number;

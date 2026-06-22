@@ -50,6 +50,7 @@ import {
   AGENT_LIST_PERIOD_DAYS,
   filtersForAgentListApplication,
   matchesAgentListNoWebsiteTab,
+  matchesAgentListWithPhoneTab,
   matchesAgentListWithWebsiteTab,
   shuffledAgentOrgnrsFromFilters,
   type AgentListTab,
@@ -454,6 +455,10 @@ export function AppPageClient(props: Props) {
         list = list.filter((c) => matchesWithWebsiteTab(c.orgnr));
       } else if (tabId === "not_scanned") {
         list = list.filter((c) => c.has_email && !websiteScans.has(c.orgnr));
+      } else if (tabId === "with_phone") {
+        list = list.filter((c) =>
+          matchesAgentListWithPhoneTab(c, websiteScans.get(c.orgnr))
+        );
       }
       return list.filter(matchesSocialPresenceFilters);
     };
@@ -463,6 +468,7 @@ export function AppPageClient(props: Props) {
       no_website: applyTab("no_website"),
       with_website: applyTab("with_website"),
       not_scanned: applyTab("not_scanned"),
+      with_phone: applyTab("with_phone"),
     };
   }, [
     visibleCompanies,
@@ -1157,8 +1163,12 @@ export function AppPageClient(props: Props) {
   }, [queueAfterScan, scanning, scanComplete, visibleCompanies, selected, websiteScans]);
 
   function handleListTabChange(tabId: AgentListTab) {
+    const websitePresence =
+      tabId === "with_phone"
+        ? filters.websitePresence
+        : listFilterToWebsitePresence(tabId);
     applyFilters(
-      { ...filters, websitePresence: listFilterToWebsitePresence(tabId) },
+      { ...filters, websitePresence },
       { preserveListFilter: true, listFilter: tabId }
     );
   }
@@ -1193,6 +1203,13 @@ export function AppPageClient(props: Props) {
       shortLabel: "Ujekket",
       count: companiesByListTab.not_scanned.length,
       icon: Radar,
+    },
+    {
+      id: "with_phone" as const,
+      label: "Med telefon",
+      shortLabel: "Tlf",
+      count: companiesByListTab.with_phone.length,
+      icon: PhoneCall,
     },
   ];
 
@@ -1496,6 +1513,13 @@ export function AppPageClient(props: Props) {
             {listFilter === "with_website" && withWebsiteCount > 0 && (
               <div className="scan-banner scan-banner-accent" role="status">
                 <strong>{withWebsiteCount} firma med nettside</strong> — har allerede egen side på nett.
+              </div>
+            )}
+
+            {listFilter === "with_phone" && companiesByListTab.with_phone.length > 0 && (
+              <div className="scan-banner scan-banner-accent" role="status">
+                <strong>{companiesByListTab.with_phone.length} firma med telefon</strong> — klare
+                for oppfølging på telefon.
               </div>
             )}
 
