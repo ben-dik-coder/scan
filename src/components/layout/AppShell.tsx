@@ -4,8 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AgentChatFab, AgentChatPanel } from "@/components/agent/AgentChatPanel";
 import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
-import { ManusMenuButton } from "@/components/manus/ManusMenuButton";
-import { ManusSheet } from "@/components/manus/ManusSheet";
 import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { ThemeSelector } from "@/components/theme/ThemeSelector";
@@ -32,6 +30,7 @@ import {
   Send,
   Shield,
   Sparkles,
+  ScrollText,
   Workflow,
   X,
   type LucideIcon,
@@ -64,7 +63,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "Innhold",
-    items: [{ href: "/app/maler", label: "Maler", icon: FileText }],
+    items: [
+      { href: "/app/maler", label: "Maler", icon: FileText },
+      { href: "/app/manus", label: "Manus", icon: ScrollText },
+    ],
   },
   {
     title: "Innstillinger",
@@ -86,13 +88,13 @@ export function AppShell({
   const router = useRouter();
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [manusOpen, setManusOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentConversationId, setAgentConversationId] = useState<string | null>(
     null
   );
   const isGlassShell = isAppRoute(pathname);
   const isScanPage = pathname === "/app";
+  const isManusPage = pathname === "/app/manus" || pathname.startsWith("/app/manus/");
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -184,14 +186,6 @@ export function AppShell({
             {group.items.map((item) => (
               <NavLink key={item.href} {...item} />
             ))}
-            {group.title === "Innhold" ? (
-              <ManusMenuButton
-                onOpen={() => {
-                  setDrawerOpen(false);
-                  setManusOpen(true);
-                }}
-              />
-            ) : null}
           </div>
         ))}
         {isAgentEnabled() && (
@@ -326,12 +320,17 @@ export function AppShell({
           </button>
         </header>
 
-        <main className="app-scroll relative min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-transparent pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <main
+          className={cn(
+            "app-scroll relative min-w-0 w-full flex-1 bg-transparent",
+            isManusPage ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+          )}
+        >
           <div
             className={cn(
               "relative z-10 w-full min-w-0 max-w-none",
               isGlassShell && "scan-glass-kommand",
-              isGlassShell && isScanPage
+              isGlassShell && (isScanPage || isManusPage)
                 ? "px-0 py-0"
                 : "px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6"
             )}
@@ -351,7 +350,6 @@ export function AppShell({
           </>
         )}
 
-        <ManusSheet open={manusOpen} onClose={() => setManusOpen(false)} />
       </div>
     </div>
     </OnboardingProvider>
