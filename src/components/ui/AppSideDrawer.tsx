@@ -14,7 +14,7 @@ type Props = {
   className?: string;
   panelClassName?: string;
   footer?: ReactNode;
-  maxWidth?: "md" | "lg";
+  maxWidth?: "md" | "lg" | "xl";
   /** Fullskjerm på mobil (sm og opp = side-skuff som før). */
   fullScreenMobile?: boolean;
 };
@@ -53,7 +53,12 @@ export function AppSideDrawer({
 
   if (!open || !mounted) return null;
 
-  const maxW = maxWidth === "md" ? "max-w-md" : "max-w-lg";
+  const maxW =
+    maxWidth === "md"
+      ? "max-w-md"
+      : maxWidth === "xl"
+        ? "max-w-2xl"
+        : "max-w-lg";
 
   return createPortal(
     <>

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AgentChatFab, AgentChatPanel } from "@/components/agent/AgentChatPanel";
 import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
+import { ManusMenuButton } from "@/components/manus/ManusMenuButton";
+import { ManusSheet } from "@/components/manus/ManusSheet";
 import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { ThemeSelector } from "@/components/theme/ThemeSelector";
@@ -84,6 +86,7 @@ export function AppShell({
   const router = useRouter();
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [manusOpen, setManusOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentConversationId, setAgentConversationId] = useState<string | null>(
     null
@@ -181,6 +184,14 @@ export function AppShell({
             {group.items.map((item) => (
               <NavLink key={item.href} {...item} />
             ))}
+            {group.title === "Innhold" ? (
+              <ManusMenuButton
+                onOpen={() => {
+                  setDrawerOpen(false);
+                  setManusOpen(true);
+                }}
+              />
+            ) : null}
           </div>
         ))}
         {isAgentEnabled() && (
@@ -339,6 +350,8 @@ export function AppShell({
             />
           </>
         )}
+
+        <ManusSheet open={manusOpen} onClose={() => setManusOpen(false)} />
       </div>
     </div>
     </OnboardingProvider>
