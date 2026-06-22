@@ -67,7 +67,7 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
       : brreg && !hasAnyFilter
         ? DEFAULT_MARKET_FILTERS.municipalityCode
         : "",
-    days: parseDaysParam(params),
+    days,
     hasEmail: params.has("epost")
       ? params.get("epost") === "1"
       : brreg

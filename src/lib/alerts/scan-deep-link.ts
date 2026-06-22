@@ -1,6 +1,5 @@
 import type { FilterState } from "@/components/CompanyFilters";
 import { parseProfessionIdFromParam } from "@/lib/constants/professions";
-import { parseNaceCodeFromParam } from "@/lib/constants/nace-codes";
 
 type AlertFilters = Partial<FilterState> & { professionSearch?: string };
 
