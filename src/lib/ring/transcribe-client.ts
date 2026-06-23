@@ -9,20 +9,30 @@ export function isMediaRecordingSupported(): boolean {
   );
 }
 
+/** Safari støtter ofte mp4 bedre enn webm for Whisper. */
 export function pickRecorderMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
   const candidates = [
+    "audio/mp4",
     "audio/webm;codecs=opus",
     "audio/webm",
-    "audio/mp4",
     "audio/ogg;codecs=opus",
   ];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type));
 }
 
+export function audioUploadName(blob: Blob): string {
+  const type = (blob.type || "").toLowerCase();
+  if (type.includes("mp4") || type.includes("m4a")) return "chunk.m4a";
+  if (type.includes("ogg")) return "chunk.ogg";
+  if (type.includes("wav")) return "chunk.wav";
+  if (type.includes("mpeg") || type.includes("mp3")) return "chunk.mp3";
+  return "chunk.webm";
+}
+
 export async function transcribeAudioBlob(blob: Blob): Promise<string> {
   const formData = new FormData();
-  formData.append("audio", blob, "chunk.webm");
+  formData.append("audio", blob, audioUploadName(blob));
   const res = await fetch("/api/ring/transcribe", {
     method: "POST",
     body: formData,

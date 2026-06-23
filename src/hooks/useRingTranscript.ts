@@ -19,7 +19,7 @@ import {
   isSpeechRecognitionSupported,
 } from "@/lib/ring/speech-recognition";
 
-const CHUNK_MS = 8_000;
+const SEGMENT_MS = 8_000;
 
 export function useRingTranscript(orgnr: string | null) {
   const [supported] = useState(() => isMediaRecordingSupported());
@@ -34,6 +34,7 @@ export function useRingTranscript(orgnr: string | null) {
   const orgnrRef = useRef(orgnr);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const segmentTimerRef = useRef<number | null>(null);
   const recognitionRef = useRef<ReturnType<typeof createSpeechRecognition>>(null);
   const keepListeningRef = useRef(false);
   const engineRef = useRef<TranscriptEngine>("whisper");
@@ -73,7 +74,7 @@ export function useRingTranscript(orgnr: string | null) {
     try {
       while (queueRef.current.length > 0) {
         const blob = queueRef.current.shift();
-        if (!blob || blob.size < 1000) continue;
+        if (!blob || blob.size < 500) continue;
         try {
           const text = await transcribeAudioBlob(blob);
           if (text) appendText(text);
@@ -89,6 +90,13 @@ export function useRingTranscript(orgnr: string | null) {
       setIsProcessing(false);
     }
   }, [appendText]);
+
+  const clearSegmentTimer = useCallback(() => {
+    if (segmentTimerRef.current) {
+      window.clearTimeout(segmentTimerRef.current);
+      segmentTimerRef.current = null;
+    }
+  }, []);
 
   const stopBrowserRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -147,15 +155,65 @@ export function useRingTranscript(orgnr: string | null) {
     }
   }, [appendText]);
 
+  const startWhisperSegment = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream || !keepListeningRef.current || engineRef.current !== "whisper") {
+      return;
+    }
+
+    clearSegmentTimer();
+
+    const mimeType = pickRecorderMimeType();
+    const recorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+    recorderRef.current = recorder;
+
+    recorder.ondataavailable = (event) => {
+      if (!event.data || event.data.size < 500) return;
+      queueRef.current.push(event.data);
+      void drainQueue();
+    };
+
+    recorder.onerror = () => {
+      setError("Lydopptak feilet.");
+      keepListeningRef.current = false;
+      setIsListening(false);
+      clearSegmentTimer();
+    };
+
+    recorder.onstop = () => {
+      clearSegmentTimer();
+      if (keepListeningRef.current && engineRef.current === "whisper") {
+        startWhisperSegment();
+      }
+    };
+
+    try {
+      recorder.start();
+      segmentTimerRef.current = window.setTimeout(() => {
+        if (recorderRef.current === recorder && recorder.state === "recording") {
+          recorder.stop();
+        }
+      }, SEGMENT_MS);
+    } catch {
+      setError("Kunne ikke starte lydopptak.");
+      keepListeningRef.current = false;
+      setIsListening(false);
+    }
+  }, [clearSegmentTimer, drainQueue]);
+
   const stop = useCallback(() => {
     keepListeningRef.current = false;
     setIsListening(false);
     setInterim("");
 
+    clearSegmentTimer();
     stopBrowserRecognition();
 
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
       try {
         recorder.stop();
       } catch {
@@ -169,7 +227,7 @@ export function useRingTranscript(orgnr: string | null) {
       for (const track of stream.getTracks()) track.stop();
     }
     streamRef.current = null;
-  }, [stopBrowserRecognition]);
+  }, [clearSegmentTimer, stopBrowserRecognition]);
 
   const start = useCallback(async () => {
     if (!supported) {
@@ -224,26 +282,9 @@ export function useRingTranscript(orgnr: string | null) {
       return true;
     }
 
-    const mimeType = pickRecorderMimeType();
-    const recorder = mimeType
-      ? new MediaRecorder(stream, { mimeType })
-      : new MediaRecorder(stream);
-    recorderRef.current = recorder;
-
-    recorder.ondataavailable = (event) => {
-      if (!event.data || event.data.size < 1000) return;
-      queueRef.current.push(event.data);
-      void drainQueue();
-    };
-
-    recorder.onerror = () => {
-      setError("Lydopptak feilet.");
-      stop();
-    };
-
-    recorder.start(CHUNK_MS);
+    startWhisperSegment();
     return true;
-  }, [drainQueue, startBrowserRecognition, stop, supported, whisperAvailable]);
+  }, [startBrowserRecognition, startWhisperSegment, stop, supported, whisperAvailable]);
 
   const toggle = useCallback((): boolean => {
     if (isListening) {

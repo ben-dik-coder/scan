@@ -8,6 +8,29 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({ apiKey: key });
 }
 
+function whisperFileFromBlob(audio: Blob): File {
+  const rawType = (audio.type || "").toLowerCase().split(";")[0]?.trim() ?? "";
+
+  if (rawType.includes("mp4") || rawType.includes("m4a")) {
+    return new File([audio], "chunk.m4a", { type: "audio/mp4" });
+  }
+  if (rawType.includes("ogg") || rawType === "application/ogg") {
+    return new File([audio], "chunk.ogg", { type: "audio/ogg" });
+  }
+  if (rawType.includes("wav")) {
+    return new File([audio], "chunk.wav", { type: "audio/wav" });
+  }
+  if (rawType.includes("mpeg") || rawType.includes("mp3")) {
+    return new File([audio], "chunk.mp3", { type: "audio/mpeg" });
+  }
+  if (rawType.includes("webm")) {
+    return new File([audio], "chunk.webm", { type: "audio/webm" });
+  }
+
+  // Ukjent/ tom type fra noen nettlesere — anta webm fra MediaRecorder.
+  return new File([audio], "chunk.webm", { type: "audio/webm" });
+}
+
 export async function GET() {
   const user = await getSessionUser();
   if (!user) {
@@ -36,7 +59,7 @@ export async function POST(request: Request) {
 
   const formData = await request.formData();
   const audio = formData.get("audio");
-  if (!(audio instanceof Blob) || audio.size < 1000) {
+  if (!(audio instanceof Blob) || audio.size < 500) {
     return NextResponse.json(
       { error: "Lydfilen er for kort eller mangler." },
       { status: 400 }
@@ -50,9 +73,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const mime = audio.type || "audio/webm";
-  const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
-  const file = new File([audio], `ring-chunk.${ext}`, { type: mime });
+  const file = whisperFileFromBlob(audio);
 
   try {
     const result = await openai.audio.transcriptions.create({
