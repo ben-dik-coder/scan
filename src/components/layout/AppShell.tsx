@@ -27,6 +27,7 @@ import {
   Mail,
   Menu,
   MessageSquare,
+  PhoneCall,
   Send,
   Shield,
   Sparkles,
@@ -51,6 +52,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/app", label: "Skann", icon: Building2 },
       { href: "/app/ko", label: "Arbeidskø", icon: ListTodo },
+      { href: "/app/ring", label: "Ringemodus", icon: PhoneCall },
     ],
   },
   {
@@ -95,6 +97,8 @@ export function AppShell({
   const isGlassShell = isAppRoute(pathname);
   const isScanPage = pathname === "/app";
   const isManusPage = pathname === "/app/manus" || pathname.startsWith("/app/manus/");
+  const isRingPage = pathname === "/app/ring" || pathname.startsWith("/app/ring/");
+  const isFullBleedPage = isScanPage || isManusPage || isRingPage;
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -323,14 +327,14 @@ export function AppShell({
         <main
           className={cn(
             "app-scroll relative min-w-0 w-full flex-1 bg-transparent",
-            isManusPage ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+            isFullBleedPage ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]"
           )}
         >
           <div
             className={cn(
               "relative z-10 w-full min-w-0 max-w-none",
               isGlassShell && "scan-glass-kommand",
-              isGlassShell && (isScanPage || isManusPage)
+              isGlassShell && isFullBleedPage
                 ? "px-0 py-0"
                 : "px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6"
             )}
