@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { RingTranscriptPanel } from "@/components/ring/RingTranscriptPanel";
+import { useRingTranscript } from "@/hooks/useRingTranscript";
 import {
   applyManusPlaceholders,
   phoneTelHref,
@@ -21,6 +23,7 @@ import {
 import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
 import {
   CalendarCheck,
+  Captions,
   Loader2,
   Phone,
   PhoneCall,
@@ -30,6 +33,8 @@ import {
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
+
+type RightPanelTab = "manus" | "transcript";
 
 const FETCH_TIMEOUT_MS = 30_000;
 
@@ -52,6 +57,7 @@ export function RingClient() {
   const [manusHtml, setManusHtml] = useState("");
   const [manusTitle, setManusTitle] = useState("Manus");
   const [showManus, setShowManus] = useState(true);
+  const [rightTab, setRightTab] = useState<RightPanelTab>("manus");
   const [sessionStats, setSessionStats] = useState(getRingSessionStats);
 
   const load = useCallback(async () => {
@@ -138,6 +144,7 @@ export function RingClient() {
   );
 
   const current = dialQueue[0] ?? null;
+  const transcriptState = useRingTranscript(current?.orgnr ?? null);
   const totalWithPhone = useMemo(
     () => items.filter((i) => i.status === "ny" && i.phone?.trim()).length,
     [items]
@@ -173,6 +180,7 @@ export function RingClient() {
     type: "no_answer" | "answered" | "meeting" | "not_interested"
   ) {
     if (!current) return;
+    transcriptState.stop();
     setBusy(true);
     setError(null);
     const orgnr = current.orgnr;
@@ -324,13 +332,49 @@ export function RingClient() {
               ) : null}
             </div>
 
-            <a
-              href={phoneTelHref(current.phone!)}
-              className="mb-6 inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 py-5 text-lg font-bold text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-500 sm:text-xl"
-            >
-              <Phone className="h-6 w-6" />
-              Ring {current.phone}
-            </a>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+              <a
+                href={phoneTelHref(current.phone!)}
+                className="inline-flex flex-1 items-center justify-center gap-3 rounded-2xl bg-emerald-600 py-5 text-lg font-bold text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-500 sm:text-xl"
+              >
+                <Phone className="h-6 w-6" />
+                Ring {current.phone}
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  const started = transcriptState.toggle();
+                  if (started) {
+                    setRightTab("transcript");
+                    setShowManus(true);
+                  }
+                }}
+                disabled={!transcriptState.supported}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 rounded-2xl border px-5 py-4 text-sm font-semibold transition sm:min-w-[8.5rem] sm:flex-col sm:py-5",
+                  transcriptState.isListening
+                    ? "border-red-400/40 bg-red-500/15 text-red-100"
+                    : "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10",
+                  !transcriptState.supported && "opacity-50"
+                )}
+                title={
+                  transcriptState.supported
+                    ? transcriptState.isListening
+                      ? "Stopp transkripsjon"
+                      : "Start transkripsjon"
+                    : "Transkripsjon krever Chrome/Edge"
+                }
+              >
+                <Captions className="h-6 w-6" />
+                <span className="sm:text-xs">
+                  {transcriptState.isListening ? "Stopp" : "Transkript"}
+                </span>
+              </button>
+            </div>
+
+            {transcriptState.error ? (
+              <p className="mb-4 text-xs text-amber-300">{transcriptState.error}</p>
+            ) : null}
 
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Hva skjedde?
@@ -373,29 +417,70 @@ export function RingClient() {
               showManus ? "flex-1 lg:max-w-xl" : "hidden lg:flex lg:flex-1 lg:max-w-xl"
             )}
           >
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <div className="flex items-center gap-1 border-b border-white/10 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setRightTab("manus")}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                  rightTab === "manus"
+                    ? "bg-white/10 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <ScrollText className="h-3.5 w-3.5" />
                   Manus
-                </p>
-                <p className="text-sm font-semibold text-white">{manusTitle}</p>
-              </div>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightTab("transcript")}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                  rightTab === "transcript"
+                    ? "bg-white/10 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Captions className="h-3.5 w-3.5" />
+                  Transkript
+                  {transcriptState.isListening ? (
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
+                  ) : null}
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={() => setShowManus((v) => !v)}
-                className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-slate-400 lg:hidden"
+                className="ml-auto rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-slate-400 lg:hidden"
               >
                 {showManus ? "Skjul" : "Vis"}
               </button>
             </div>
-            <div
-              className={cn(
-                "manus-editor min-h-0 flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-slate-200",
-                "[&_a]:text-sky-400 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_li]:ml-4 [&_ol]:list-decimal [&_ul]:list-disc",
-                !showManus && "hidden lg:block"
-              )}
-              dangerouslySetInnerHTML={{ __html: personalizedManus }}
-            />
+
+            {rightTab === "manus" ? (
+              <div className={cn("flex min-h-0 flex-1 flex-col", !showManus && "hidden lg:flex")}>
+                <p className="border-b border-white/5 px-4 py-2 text-xs text-slate-500">{manusTitle}</p>
+                <div
+                  className="manus-editor min-h-0 flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-slate-200 [&_a]:text-sky-400 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_li]:ml-4 [&_ol]:list-decimal [&_ul]:list-disc"
+                  dangerouslySetInnerHTML={{ __html: personalizedManus }}
+                />
+              </div>
+            ) : (
+              <RingTranscriptPanel
+                isListening={transcriptState.isListening}
+                displayText={transcriptState.displayText}
+                transcript={transcriptState.transcript}
+                interim={transcriptState.interim}
+                supported={transcriptState.supported}
+                error={transcriptState.error}
+                onToggle={transcriptState.toggle}
+                onClear={transcriptState.clear}
+                companyName={formatCompanyName(current.name)}
+              />
+            )}
           </section>
         </div>
       )}
