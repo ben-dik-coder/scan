@@ -471,6 +471,9 @@ export function RingClient() {
             ) : (
               <RingTranscriptPanel
                 isListening={transcriptState.isListening}
+                isProcessing={transcriptState.isProcessing}
+                engine={transcriptState.engine}
+                whisperAvailable={transcriptState.whisperAvailable}
                 displayText={transcriptState.displayText}
                 transcript={transcriptState.transcript}
                 interim={transcriptState.interim}
@@ -478,6 +481,7 @@ export function RingClient() {
                 error={transcriptState.error}
                 onToggle={transcriptState.toggle}
                 onClear={transcriptState.clear}
+                onEdit={transcriptState.updateTranscript}
                 companyName={formatCompanyName(current.name)}
               />
             )}

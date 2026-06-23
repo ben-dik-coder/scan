@@ -2,10 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Copy, Eraser, Mic, MicOff } from "lucide-react";
+import type { TranscriptEngine } from "@/lib/ring/transcribe-client";
+import { Copy, Eraser, Loader2, Mic, MicOff, Sparkles } from "lucide-react";
 
 type Props = {
   isListening: boolean;
+  isProcessing: boolean;
+  engine: TranscriptEngine;
+  whisperAvailable: boolean | null;
   displayText: string;
   transcript: string;
   interim: string;
@@ -13,11 +17,15 @@ type Props = {
   error: string | null;
   onToggle: () => void;
   onClear: () => void;
+  onEdit: (value: string) => void;
   companyName?: string;
 };
 
 export function RingTranscriptPanel({
   isListening,
+  isProcessing,
+  engine,
+  whisperAvailable,
   displayText,
   transcript,
   interim,
@@ -25,6 +33,7 @@ export function RingTranscriptPanel({
   error,
   onToggle,
   onClear,
+  onEdit,
   companyName,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -33,12 +42,18 @@ export function RingTranscriptPanel({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [displayText]);
+  }, [displayText, isProcessing]);
 
   async function copyText() {
-    if (!displayText.trim()) return;
-    await navigator.clipboard.writeText(displayText.trim());
+    const text = (transcript || displayText).trim();
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
   }
+
+  const engineLabel =
+    engine === "whisper"
+      ? "AI (Whisper)"
+      : "Nettleser";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -50,12 +65,19 @@ export function RingTranscriptPanel({
           <p className="truncate text-sm font-semibold text-white">
             {companyName ?? "Samtale"}
           </p>
+          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500">
+            {engine === "whisper" ? (
+              <Sparkles className="h-3 w-3 text-sky-400" />
+            ) : null}
+            {engineLabel}
+            {whisperAvailable === false ? " · AI utilgjengelig" : null}
+          </p>
         </div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => void copyText()}
-            disabled={!displayText.trim()}
+            disabled={!displayText.trim() && !transcript.trim()}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:bg-white/10 disabled:opacity-40"
             title="Kopiér transkript"
             aria-label="Kopiér transkript"
@@ -65,7 +87,7 @@ export function RingTranscriptPanel({
           <button
             type="button"
             onClick={onClear}
-            disabled={!displayText.trim()}
+            disabled={!displayText.trim() && !transcript.trim()}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:bg-white/10 disabled:opacity-40"
             title="Tøm transkript"
             aria-label="Tøm transkript"
@@ -104,27 +126,35 @@ export function RingTranscriptPanel({
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-slate-200"
-      >
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {!supported ? (
-          <p className="text-slate-500">
-            Transkripsjon krever Chrome eller Edge på Mac/PC. Tillat mikrofon når du blir spurt.
-          </p>
-        ) : !displayText.trim() ? (
-          <p className="text-slate-500">
-            {isListening
-              ? "Lytter… Snakk eller spill av samtalen på høyttaler nær mikrofonen."
-              : "Trykk på transkript-ikonet eller «Lytt» for å starte automatisk transkripsjon."}
+          <p className="text-sm text-slate-500">
+            Opptak krever en moderne nettleser med mikrofonstøtte.
           </p>
         ) : (
-          <p className="whitespace-pre-wrap">
-            {transcript}
+          <>
+            <textarea
+              value={transcript}
+              onChange={(e) => onEdit(e.target.value)}
+              placeholder={
+                isListening
+                  ? engine === "whisper"
+                    ? "AI transkriberer norsk hvert ~8. sekund… Du kan også skrive eller rette her."
+                    : "Lytter… Tekst dukker opp underveis. Rett gjerne feil her."
+                  : "Trykk Lytt for å starte. Teksten kan redigeres manuelt etterpå."
+              }
+              className="min-h-[12rem] w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400/40"
+            />
             {interim ? (
-              <span className="text-slate-400 italic"> {interim}</span>
+              <p className="mt-2 text-xs italic text-slate-400">Hører: {interim}</p>
             ) : null}
-          </p>
+            {isProcessing ? (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-sky-300">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                AI transkriberer siste lydbit…
+              </p>
+            ) : null}
+          </>
         )}
       </div>
 
@@ -132,8 +162,9 @@ export function RingTranscriptPanel({
         <p className="border-t border-white/10 px-4 py-2 text-xs text-amber-300">{error}</p>
       ) : null}
       {isListening ? (
-        <p className="border-t border-white/10 px-4 py-2 text-[10px] text-slate-500">
-          Opptak aktiv — teksten oppdateres mens du snakker. Fungerer best med høyttaler eller headset.
+        <p className="border-t border-white/10 px-4 py-2 text-[10px] leading-relaxed text-slate-500">
+          Tips for bedre treff: bruk headset, rolig rom, og høyttaler på telefonen hvis du ringer
+          fra mobil. AI-modus oppdateres ca. hvert 8. sekund.
         </p>
       ) : null}
     </div>

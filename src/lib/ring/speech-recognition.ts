@@ -51,6 +51,6 @@ export function createSpeechRecognition(): BrowserSpeechRecognition | null {
   const recognition = new Ctor();
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = "nb-NO";
+  recognition.lang = "no-NO";
   return recognition;
 }
