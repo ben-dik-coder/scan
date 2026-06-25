@@ -370,12 +370,12 @@ export function SmsClient() {
               {charCount} tegn · {segments} SMS-del{segments === 1 ? "" : "er"}
             </p>
 
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+            <div className="mb-4 grid gap-2 sm:grid-cols-3">
               <button
                 type="button"
                 disabled={busy || !message.trim() || smsConfigured === false}
                 onClick={() => void handleSend()}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-violet-600 py-4 text-base font-bold text-white shadow-lg shadow-violet-900/30 transition hover:bg-violet-500 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 py-4 text-base font-bold text-white shadow-lg shadow-violet-900/30 transition hover:bg-violet-500 disabled:opacity-50 sm:col-span-1"
               >
                 {busy ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -383,6 +383,15 @@ export function SmsClient() {
                   <Send className="h-5 w-5" />
                 )}
                 Send SMS
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleKontaktet()}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-sky-400/40 bg-sky-500/20 py-4 text-base font-bold text-sky-100 shadow-lg shadow-sky-900/20 transition hover:bg-sky-500/30 disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-5 w-5" />
+                Kontaktet
               </button>
               <a
                 href={smsHref(current.phone!, message)}
@@ -394,16 +403,9 @@ export function SmsClient() {
             </div>
 
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Eller hopp over / marker utfall
+              Eller marker utfall
             </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <ActionButton
-                icon={CheckCircle2}
-                label="Kontaktet"
-                tone="sky"
-                disabled={busy}
-                onClick={() => void handleKontaktet()}
-              />
+            <div className="grid grid-cols-3 gap-2">
               <ActionButton
                 icon={SkipForward}
                 label="Hopp over"
