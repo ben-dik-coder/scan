@@ -21,6 +21,7 @@ import { displayPhone } from "@/lib/sms/normalize-phone";
 import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
 import {
   CalendarCheck,
+  CheckCircle2,
   Loader2,
   MessageSquare,
   RefreshCw,
@@ -191,6 +192,34 @@ export function SmsClient() {
     if (!current) return;
     setSkippedOrgnrs((prev) => new Set(prev).add(current.orgnr));
     setSessionStats(recordSmsOutcome("skipped"));
+  }
+
+  async function handleKontaktet() {
+    if (!current) return;
+    setBusy(true);
+    setError(null);
+    const orgnr = current.orgnr;
+
+    try {
+      if (isDemoMode()) {
+        setLeadStatus(orgnr, "kontaktet");
+        setSessionStats(recordSmsOutcome("contacted"));
+        setItems((list) =>
+          list.map((i) => (i.orgnr === orgnr ? { ...i, status: "kontaktet" } : i))
+        );
+        return;
+      }
+
+      await postStatus(orgnr, "kontaktet");
+      setSessionStats(recordSmsOutcome("contacted"));
+      setItems((list) =>
+        list.map((i) => (i.orgnr === orgnr ? { ...i, status: "kontaktet" } : i))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke lagre kontakt");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleOutcome(type: "meeting" | "not_interested") {
@@ -367,7 +396,14 @@ export function SmsClient() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Eller hopp over / marker utfall
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <ActionButton
+                icon={CheckCircle2}
+                label="Kontaktet"
+                tone="sky"
+                disabled={busy}
+                onClick={() => void handleKontaktet()}
+              />
               <ActionButton
                 icon={SkipForward}
                 label="Hopp over"
@@ -423,6 +459,7 @@ export function SmsClient() {
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#1c1c1e]/90 px-4 py-2 text-[11px] text-slate-400">
         <div className="flex flex-wrap gap-3">
           <span>{sessionStats.sent} sendt i dag</span>
+          <span>{sessionStats.contacted} kontaktet</span>
           <span>{sessionStats.skipped} hoppet over</span>
           <span>{sessionStats.meetings} møter</span>
         </div>
@@ -444,7 +481,7 @@ function ActionButton({
 }: {
   icon: typeof SkipForward;
   label: string;
-  tone: "muted" | "emerald" | "red";
+  tone: "muted" | "sky" | "emerald" | "red";
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -456,6 +493,7 @@ function ActionButton({
       className={cn(
         "flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 text-xs font-semibold transition disabled:opacity-50",
         tone === "muted" && "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+        tone === "sky" && "border-sky-400/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20",
         tone === "emerald" &&
           "border-emerald-400/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
         tone === "red" && "border-red-400/30 bg-red-500/10 text-red-100 hover:bg-red-500/20"
