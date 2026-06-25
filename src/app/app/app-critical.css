@@ -212,3 +212,289 @@ html.app-glass-theme body {
 .scan-glass-shell .app-overview-page .scan-glass-muted {
   color: #cbd5e1;
 }
+
+/* Smartliste — kritisk layout (fungerer uten Tailwind) */
+.smartliste-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 3.5rem);
+  background: #0f172a;
+  color: #f1f5f9;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.smartliste-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+}
+
+.smartliste-topbar h1 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.smartliste-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.smartliste-sidebar {
+  display: flex;
+  width: 16rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(2, 6, 23, 0.85);
+}
+
+.smartliste-main {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.smartliste-detail {
+  display: none;
+  width: 20rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(2, 6, 23, 0.85);
+}
+
+@media (min-width: 768px) {
+  .smartliste-detail {
+    display: flex;
+  }
+}
+
+.smartliste-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.375rem 0.625rem;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+}
+
+.smartliste-input::placeholder {
+  color: #64748b;
+}
+
+.smartliste-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.375rem 0.75rem;
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.smartliste-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.smartliste-btn-primary {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.15);
+  color: #fef3c7;
+}
+
+.smartliste-btn-icon {
+  padding: 0.5rem;
+}
+
+.smartliste-link {
+  color: #38bdf8;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.smartliste-link:hover {
+  text-decoration: underline;
+}
+
+.smartliste-dot-grid {
+  min-height: 100%;
+  overflow: auto;
+  background-color: #020617;
+  background-image: radial-gradient(circle, rgba(148, 163, 184, 0.22) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.smartliste-lanes {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  min-height: calc(100vh - 12rem);
+  overflow-x: auto;
+}
+
+.smartliste-lane {
+  display: flex;
+  width: 280px;
+  flex-shrink: 0;
+  flex-direction: column;
+}
+
+.smartliste-lane-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.smartliste-lane-header h3 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.smartliste-lane-body {
+  min-height: 160px;
+  flex: 1;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.55);
+  padding: 0.5rem;
+}
+
+.smartliste-card {
+  margin-bottom: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.85);
+  padding: 0.75rem;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+}
+
+.smartliste-card.selected {
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.25);
+}
+
+.smartliste-empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.smartliste-empty p {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.smartliste-batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(2, 6, 23, 0.92);
+  padding: 0.75rem 1rem;
+}
+
+.smartliste-list-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.25rem;
+  border-radius: 0.5rem;
+}
+
+.smartliste-list-item.active {
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.smartliste-list-item button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.smartliste-section-label {
+  margin: 0 0 0.5rem;
+  padding: 0 0.75rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.smartliste-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.smartliste-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.smartliste-table th,
+.smartliste-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+
+.smartliste-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.smartliste-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.smartliste-table tr.selected {
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.smartliste-lane-body.is-over {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.smartliste-dot-board {
+  min-height: 100%;
+  overflow: auto;
+}

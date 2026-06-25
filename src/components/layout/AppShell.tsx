@@ -22,6 +22,7 @@ import {
   GitBranch,
   Headphones,
   LayoutDashboard,
+  LayoutGrid,
   ListTodo,
   LogOut,
   Mail,
@@ -51,8 +52,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "Prospektering",
     items: [
       { href: "/app", label: "Skann", icon: Building2 },
+      { href: "/app/smartliste", label: "Smartliste", icon: LayoutGrid },
       { href: "/app/ko", label: "Arbeidskø", icon: ListTodo },
       { href: "/app/ring", label: "Ringemodus", icon: PhoneCall },
+      { href: "/app/sms", label: "SMS", icon: MessageSquare },
     ],
   },
   {
@@ -98,7 +101,11 @@ export function AppShell({
   const isScanPage = pathname === "/app";
   const isManusPage = pathname === "/app/manus" || pathname.startsWith("/app/manus/");
   const isRingPage = pathname === "/app/ring" || pathname.startsWith("/app/ring/");
-  const isFullBleedPage = isScanPage || isManusPage || isRingPage;
+  const isSmsPage = pathname === "/app/sms" || pathname.startsWith("/app/sms/");
+  const isSmartlistePage =
+    pathname === "/app/smartliste" || pathname.startsWith("/app/smartliste/");
+  const isFullBleedPage =
+    isScanPage || isManusPage || isRingPage || isSmsPage || isSmartlistePage;
 
   useEffect(() => {
     if (!drawerOpen) return;

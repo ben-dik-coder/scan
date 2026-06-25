@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   agentOrgnrsFromFilters,
   filtersForAgentListApplication,
@@ -20,7 +21,7 @@ import { useDemo } from "@/lib/demo/store";
 import { AgentRobotIcon } from "@/components/agent/AgentRobotIcon";
 import type { SavedAudienceApply } from "@/components/scan/ScanSavedAudiences";
 import { cn } from "@/lib/utils";
-import { FolderOpen, Loader2, Plus, Trash2, X } from "lucide-react";
+import { FolderOpen, LayoutGrid, Loader2, Plus, Trash2, X } from "lucide-react";
 
 type SavedListRow = {
   id: string;
@@ -414,6 +415,14 @@ export function ScanCompanyLists({
                               </span>
                             )}
                           </button>
+                          <Link
+                            href={`/app/smartliste?list=${list.id}`}
+                            className="relative z-10 shrink-0 rounded-lg p-2 text-white/50 hover:bg-brand-gold/15 hover:text-amber-200"
+                            aria-label={`Åpne ${list.name} i Smartliste`}
+                            title="Åpne i Smartliste"
+                          >
+                            <LayoutGrid className="h-3.5 w-3.5" />
+                          </Link>
                           <button
                             type="button"
                             onClick={(e) => {
