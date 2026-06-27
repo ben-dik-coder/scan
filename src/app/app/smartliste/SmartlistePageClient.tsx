@@ -153,7 +153,7 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
 
   async function exportToRing() {
     await exportToQueue();
-    router.push("/app/ring");
+    router.push(listId ? `/app/ring?liste=${listId}` : "/app/ring");
   }
 
   async function handleRemoveSelected() {

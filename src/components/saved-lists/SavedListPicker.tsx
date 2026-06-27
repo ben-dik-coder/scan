@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
-  agentOrgnrsFromFilters,
   shuffledAgentOrgnrsFromFilters,
   isCompanyListFilters,
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
+import {
+  resolveListOrgnrs,
+  savedListCountHint,
+} from "@/lib/saved-lists/resolve-list-orgnrs";
 import { SAVED_LIST_CHANGED_EVENT } from "@/lib/agent/saved-list-bus";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
@@ -53,13 +57,30 @@ type FilterModeProps = {
   }) => void;
 };
 
-type Props = QueueModeProps | FilterModeProps;
+type DialModeProps = {
+  mode: "ring" | "sms";
+  selectedListId: string | null;
+  onSelect: (selection: {
+    listId: string | null;
+    orgnrs: string[] | null;
+    listName: string | null;
+  }) => void;
+  resolving?: boolean;
+};
+
+type Props = QueueModeProps | FilterModeProps | DialModeProps;
 
 export function SavedListPicker(props: Props) {
   const demo = useDemo();
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const [saved, setSaved] = useState<SavedListRow[]>([]);
   const [fetching, setFetching] = useState(!isDemoMode());
   const [open, setOpen] = useState(false);
+  const [resolvingList, setResolvingList] = useState(false);
+  const [listCounts, setListCounts] = useState<Map<string, number>>(new Map());
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(
+    null
+  );
 
   const companyLists = useMemo(
     () => saved.filter((l) => isCompanyListFilters(l.filters)),
@@ -104,6 +125,37 @@ export function SavedListPicker(props: Props) {
     void reloadSaved();
   }, [reloadSaved]);
 
+  const isDialMode = props.mode === "ring" || props.mode === "sms";
+
+  useEffect(() => {
+    if (!isDialMode || saved.length === 0) {
+      setListCounts(new Map());
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const counts = new Map<string, number>();
+      await Promise.all(
+        saved.map(async (list) => {
+          const hint = savedListCountHint(list.filters);
+          if (hint !== null) {
+            counts.set(list.id, hint);
+            return;
+          }
+          const resolved = await resolveListOrgnrs(list.id, { demoLists: demo.savedLists });
+          if (resolved) counts.set(list.id, resolved.orgnrs.length);
+        })
+      );
+      if (!cancelled) setListCounts(counts);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDialMode, saved, demo.savedLists]);
+
   useEffect(() => {
     function onListChanged() {
       void reloadSaved();
@@ -111,6 +163,32 @@ export function SavedListPicker(props: Props) {
     window.addEventListener(SAVED_LIST_CHANGED_EVENT, onListChanged);
     return () => window.removeEventListener(SAVED_LIST_CHANGED_EVENT, onListChanged);
   }, [reloadSaved]);
+
+  const updateMenuPos = useCallback(() => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 8,
+      left: rect.left,
+      width: Math.min(Math.max(rect.width, 220), 280),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open || !isDialMode) {
+      if (!open) setMenuPos(null);
+      return;
+    }
+    updateMenuPos();
+    const onReposition = () => updateMenuPos();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open, isDialMode, updateMenuPos]);
 
   useEffect(() => {
     if (!open) return;
@@ -122,36 +200,71 @@ export function SavedListPicker(props: Props) {
   }, [open]);
 
   const isQueue = props.mode === "queue";
-  const loading = isQueue ? (props.loading ?? false) : false;
-  const selectedListId = !isQueue ? props.selectedListId : null;
+  const loading = isQueue
+    ? (props.loading ?? false)
+    : isDialMode
+      ? (props.resolving ?? false) || resolvingList
+      : false;
+  const selectedListId = isQueue ? null : props.selectedListId;
+
+  const pickerLists = isDialMode ? saved : companyLists;
 
   const selectedList = useMemo(
-    () => (selectedListId ? companyLists.find((l) => l.id === selectedListId) : null),
-    [companyLists, selectedListId]
+    () => (selectedListId ? pickerLists.find((l) => l.id === selectedListId) : null),
+    [pickerLists, selectedListId]
+  );
+
+  const countForListCb = useCallback(
+    (list: SavedListRow): number => {
+      const hint = savedListCountHint(list.filters);
+      if (hint !== null) return hint;
+      return listCounts.get(list.id) ?? 0;
+    },
+    [listCounts]
   );
 
   const buttonLabel = useMemo(() => {
     if (isQueue) {
       return loading ? "Legger i kø…" : "Velg liste";
     }
-    if (!selectedList) return "Alle";
-    const count = agentOrgnrsFromFilters(selectedList.filters).length;
+    if (loading) return "Laster liste…";
+    if (!selectedList) return isDialMode ? "Alle i køen" : "Alle";
+    const count = countForListCb(selectedList);
     return formatSavedListLabel(selectedList.name, count).display;
-  }, [isQueue, loading, selectedList]);
+  }, [isQueue, isDialMode, loading, selectedList, countForListCb]);
 
   async function handleSelectList(listId: string) {
     if (loading) return;
-    const list = companyLists.find((l) => l.id === listId);
+    const list = pickerLists.find((l) => l.id === listId);
     if (!list) return;
-    const orgnrs = shuffledAgentOrgnrsFromFilters(list.filters);
-    if (orgnrs.length === 0) return;
     setOpen(false);
 
     if (isQueue) {
+      const orgnrs = shuffledAgentOrgnrsFromFilters(list.filters);
+      if (orgnrs.length === 0) return;
       await props.onLoad(orgnrs, list.name);
-    } else {
-      props.onSelect({ listId, orgnrs, listName: list.name });
+      return;
     }
+
+    if (isDialMode) {
+      setResolvingList(true);
+      try {
+        const resolved = await resolveListOrgnrs(listId, { demoLists: demo.savedLists });
+        if (!resolved) return;
+        props.onSelect({
+          listId,
+          orgnrs: resolved.orgnrs,
+          listName: resolved.name,
+        });
+      } finally {
+        setResolvingList(false);
+      }
+      return;
+    }
+
+    const orgnrs = shuffledAgentOrgnrsFromFilters(list.filters);
+    if (orgnrs.length === 0) return;
+    props.onSelect({ listId, orgnrs, listName: list.name });
   }
 
   function handleSelectAll() {
@@ -173,11 +286,99 @@ export function SavedListPicker(props: Props) {
     return null;
   }
 
+  const menuItems = (
+    <>
+      {!isQueue && (
+        <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={selectedListId === null}
+          onClick={handleSelectAll}
+          className={cn(
+            "flex w-full min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition",
+            selectedListId === null
+              ? "bg-white/10 text-white"
+              : "text-slate-200 hover:bg-white/10 hover:text-white"
+          )}
+        >
+          <span>{isDialMode ? "Alle i køen" : "Alle"}</span>
+          {selectedListId === null && (
+            <Check className="h-4 w-4 shrink-0 text-white/70" aria-hidden />
+          )}
+        </button>
+      )}
+      {!isQueue && pickerLists.length > 0 && (
+        <div className="my-1 border-t border-white/10" role="separator" />
+      )}
+      {pickerLists.map((l) => {
+        const count = countForListCb(l);
+        const { display, title } = formatSavedListLabel(l.name, count);
+        const isSelected = !isQueue && selectedListId === l.id;
+        return (
+          <button
+            key={l.id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={isSelected}
+            title={title}
+            onClick={() => void handleSelectList(l.id)}
+            className={cn(
+              "flex w-full min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition",
+              isSelected
+                ? "bg-white/10 text-white"
+                : "text-slate-200 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            <span className="min-w-0 truncate">{display}</span>
+            {isSelected && <Check className="h-4 w-4 shrink-0 text-white/70" aria-hidden />}
+          </button>
+        );
+      })}
+      {isDialMode && pickerLists.length === 0 && (
+        <p className="px-3 py-2 text-xs text-slate-400">
+          Ingen lagrede lister ennå. Lag en fra Skann eller Smartliste.
+        </p>
+      )}
+    </>
+  );
+
+  const dialDropdown =
+    isDialMode &&
+    menuPos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <>
+        <button
+          type="button"
+          className="fixed inset-0 z-[100] cursor-default"
+          aria-label="Lukk"
+          onClick={() => setOpen(false)}
+        />
+        <div
+          role="menu"
+          className="fixed z-[110] max-h-[min(60dvh,420px)] overflow-y-auto rounded-xl border border-white/10 bg-[#2c2c2e] p-1.5 shadow-2xl"
+          style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+        >
+          {menuItems}
+        </div>
+      </>,
+      document.body
+    );
+
   return (
     <div className="relative shrink-0">
       <button
+        ref={buttonRef}
         type="button"
-        aria-label={isQueue ? "Velg lagret firmaliste" : "Filtrer pipeline på lagret liste"}
+        aria-label={
+          isQueue
+            ? "Velg lagret firmaliste"
+            : props.mode === "ring"
+              ? "Velg liste å ringe fra"
+              : props.mode === "sms"
+                ? "Velg liste å sende SMS fra"
+                : "Filtrer pipeline på lagret liste"
+        }
         aria-expanded={open}
         aria-haspopup="menu"
         disabled={loading}
@@ -194,7 +395,7 @@ export function SavedListPicker(props: Props) {
           aria-hidden
         />
       </button>
-      {open && !loading && (
+      {open && !loading && !isDialMode && (
         <>
           <button
             type="button"
@@ -206,57 +407,11 @@ export function SavedListPicker(props: Props) {
             role="menu"
             className="ko-filter-dropdown absolute left-0 top-full z-40 mt-2 w-[min(100vw-2rem,280px)] rounded-xl border border-white/10 p-1.5 shadow-xl backdrop-blur-md"
           >
-            {!isQueue && (
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={selectedListId === null}
-                onClick={handleSelectAll}
-                className={cn(
-                  "flex w-full min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition",
-                  selectedListId === null
-                    ? "bg-white/10 text-white"
-                    : "text-slate-200 hover:bg-white/10 hover:text-white"
-                )}
-              >
-                <span>Alle</span>
-                {selectedListId === null && (
-                  <Check className="h-4 w-4 shrink-0 text-white/70" aria-hidden />
-                )}
-              </button>
-            )}
-            {!isQueue && companyLists.length > 0 && (
-              <div className="my-1 border-t border-white/10" role="separator" />
-            )}
-            {companyLists.map((l) => {
-              const count = agentOrgnrsFromFilters(l.filters).length;
-              const { display, title } = formatSavedListLabel(l.name, count);
-              const isSelected = !isQueue && selectedListId === l.id;
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={isSelected}
-                  title={title}
-                  onClick={() => void handleSelectList(l.id)}
-                  className={cn(
-                    "flex w-full min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition",
-                    isSelected
-                      ? "bg-white/10 text-white"
-                      : "text-slate-200 hover:bg-white/10 hover:text-white"
-                  )}
-                >
-                  <span className="min-w-0 truncate">{display}</span>
-                  {isSelected && (
-                    <Check className="h-4 w-4 shrink-0 text-white/70" aria-hidden />
-                  )}
-                </button>
-              );
-            })}
+            {menuItems}
           </div>
         </>
       )}
+      {open && !loading && dialDropdown}
     </div>
   );
 }

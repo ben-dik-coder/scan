@@ -30,6 +30,10 @@ type Progress = {
 
 const SCAN_ONE_TIMEOUT_MS = 90_000;
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
 /** Lar React tegne fremdriftslinjen mellom hvert firma */
 function yieldToUi() {
   return new Promise<void>((resolve) => {
@@ -214,7 +218,7 @@ export function useAutoWebsiteScan(
               await yieldToUi();
             }
           } catch (err) {
-            if (!isActive()) break;
+            if (!isActive() || isAbortError(err)) break;
             failedCount += 1;
             console.error(`[website-scan] Feil for ${company.name}:`, err);
             if (isActive()) {
@@ -238,7 +242,7 @@ export function useAutoWebsiteScan(
         }
         return allResults;
       } catch (err) {
-        if (isActive()) {
+        if (isActive() && !isAbortError(err)) {
           setError(err instanceof Error ? err.message : "Ukjent feil");
         }
         return allResults;
@@ -287,7 +291,7 @@ export function useAutoWebsiteScan(
 
   /** Hent lagrede skann når synlige firma endres (filter, side, liste). */
   useEffect(() => {
-    const orgnrs = companies.map((c) => c.orgnr);
+    const orgnrs = companyListKey ? companyListKey.split(",") : [];
     const orgnrSet = new Set(orgnrs);
 
     setScanComplete(false);
@@ -301,26 +305,35 @@ export function useAutoWebsiteScan(
     const controller = new AbortController();
 
     void (async () => {
-      const savedScans = await loadSavedWebsiteScans(orgnrs, controller.signal);
-      if (controller.signal.aborted) return;
+      try {
+        const savedScans = await loadSavedWebsiteScans(orgnrs, controller.signal);
+        if (controller.signal.aborted) return;
 
-      setWebsiteScans((prev) => {
-        const next = new Map<string, WebsiteScanResult>();
-        for (const scan of savedScans) {
-          if (orgnrSet.has(scan.orgnr)) {
-            next.set(scan.orgnr, sanitizeScanPhone(scan));
+        setWebsiteScans((prev) => {
+          const next = new Map<string, WebsiteScanResult>();
+          for (const scan of savedScans) {
+            if (orgnrSet.has(scan.orgnr)) {
+              next.set(scan.orgnr, sanitizeScanPhone(scan));
+            }
           }
-        }
-        // Behold skann fra samme økt (f.eks. nettopp ferdig) mens vi venter på DB
-        prev.forEach((scan, orgnr) => {
-          if (orgnrSet.has(orgnr)) next.set(orgnr, sanitizeScanPhone(scan));
+          // Behold skann fra samme økt (f.eks. nettopp ferdig) mens vi venter på DB
+          prev.forEach((scan, orgnr) => {
+            if (orgnrSet.has(orgnr)) next.set(orgnr, sanitizeScanPhone(scan));
+          });
+          return next;
         });
-        return next;
-      });
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error("[website-scan] Kunne ikke hente lagrede skann:", err);
+      }
     })();
 
-    return () => controller.abort();
-  }, [companyListKey, companies]);
+    return () => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    };
+  }, [companyListKey]);
 
   const rescan = useCallback(() => {
     const pool = companies.filter((c) => c.has_email);

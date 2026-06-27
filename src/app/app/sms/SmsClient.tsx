@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { SavedListPicker } from "@/components/saved-lists/SavedListPicker";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
+import { resolveListOrgnrs } from "@/lib/saved-lists/resolve-list-orgnrs";
 import {
   buildQueueCandidates,
   mapQueueCandidatesToItems,
@@ -43,12 +46,20 @@ function recentCompaniesLast30Days<T extends { registered_at: string | null }>(
 }
 
 export function SmsClient() {
-  const { companies, setLeadStatus } = useDemo();
+  const demo = useDemo();
+  const { companies, setLeadStatus } = demo;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const loadedListIdRef = useRef<string | null>(null);
   const [items, setItems] = useState<QueueItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [skippedOrgnrs, setSkippedOrgnrs] = useState<Set<string>>(new Set());
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [listOrgnrs, setListOrgnrs] = useState<Set<string> | null>(null);
+  const [selectedListName, setSelectedListName] = useState<string | null>(null);
+  const [resolvingList, setResolvingList] = useState(false);
   const [template, setTemplate] = useState("");
   const [message, setMessage] = useState("");
   const [smsConfigured, setSmsConfigured] = useState<boolean | null>(null);
@@ -98,6 +109,65 @@ export function SmsClient() {
   }, [load]);
 
   useEffect(() => {
+    const listId = searchParams.get("liste");
+    if (!listId) {
+      loadedListIdRef.current = null;
+      setSelectedListId(null);
+      setListOrgnrs(null);
+      setSelectedListName(null);
+      return;
+    }
+
+    if (loadedListIdRef.current === listId) return;
+
+    setResolvingList(true);
+    void resolveListOrgnrs(listId, { demoLists: demo.savedLists, shuffle: true })
+      .then((resolved) => {
+        if (!resolved) {
+          loadedListIdRef.current = null;
+          setSelectedListId(null);
+          setListOrgnrs(null);
+          setSelectedListName(null);
+          return;
+        }
+        loadedListIdRef.current = listId;
+        setSelectedListId(listId);
+        setSelectedListName(resolved.name);
+        setListOrgnrs(resolved.orgnrs.length > 0 ? new Set(resolved.orgnrs) : new Set());
+      })
+      .finally(() => setResolvingList(false));
+  }, [searchParams, demo.savedLists]);
+
+  const handleListSelect = useCallback(
+    (selection: {
+      listId: string | null;
+      orgnrs: string[] | null;
+      listName: string | null;
+    }) => {
+      setSelectedListId(selection.listId);
+      setSelectedListName(selection.listName);
+      setListOrgnrs(
+        selection.orgnrs && selection.orgnrs.length > 0
+          ? new Set(selection.orgnrs)
+          : selection.listId
+            ? new Set<string>()
+            : null
+      );
+      loadedListIdRef.current = selection.listId;
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (selection.listId) {
+        params.set("liste", selection.listId);
+      } else {
+        params.delete("liste");
+      }
+      const qs = params.toString();
+      router.replace(qs ? `/app/sms?${qs}` : "/app/sms");
+    },
+    [router, searchParams]
+  );
+
+  useEffect(() => {
     setTemplate(loadSmsTemplate());
   }, []);
 
@@ -112,21 +182,27 @@ export function SmsClient() {
       .catch(() => setSmsConfigured(false));
   }, []);
 
+  const listScopedItems = useMemo(() => {
+    if (!listOrgnrs) return items;
+    return items.filter((item) => listOrgnrs.has(item.orgnr));
+  }, [items, listOrgnrs]);
+
   const smsQueue = useMemo(
     () =>
-      items.filter(
+      listScopedItems.filter(
         (item) =>
           item.status === "ny" &&
           Boolean(item.phone?.trim()) &&
           !skippedOrgnrs.has(item.orgnr)
       ),
-    [items, skippedOrgnrs]
+    [listScopedItems, skippedOrgnrs]
   );
 
   const current = smsQueue[0] ?? null;
   const totalWithPhone = useMemo(
-    () => items.filter((i) => i.status === "ny" && i.phone?.trim()).length,
-    [items]
+    () =>
+      listScopedItems.filter((i) => i.status === "ny" && i.phone?.trim()).length,
+    [listScopedItems]
   );
   const doneCount = totalWithPhone - smsQueue.length;
   const progressPct =
@@ -272,7 +348,7 @@ export function SmsClient() {
 
   return (
     <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#141416] text-slate-100">
-      <header className="border-b border-white/10 bg-[#1c1c1e]/95 px-4 py-3 backdrop-blur-md">
+      <header className="relative z-40 overflow-visible border-b border-white/10 bg-[#1c1c1e]/95 px-4 py-3 backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-400">
@@ -284,15 +360,28 @@ export function SmsClient() {
                 ? `${smsQueue.length} igjen med telefon`
                 : "Ingen flere å sende SMS til nå"}
             </h1>
+            {selectedListName ? (
+              <p className="mt-0.5 text-xs text-slate-400">
+                Fra listen {selectedListName}
+              </p>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-3 text-xs text-slate-300 hover:bg-white/10"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Oppdater
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <SavedListPicker
+              mode="sms"
+              selectedListId={selectedListId}
+              onSelect={handleListSelect}
+              resolving={resolvingList}
+            />
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-3 text-xs text-slate-300 hover:bg-white/10"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Oppdater
+            </button>
+          </div>
         </div>
 
         {totalWithPhone > 0 ? (
@@ -327,6 +416,14 @@ export function SmsClient() {
           hasQueue={items.length > 0}
           hasPhoneInQueue={totalWithPhone > 0}
           allSkipped={totalWithPhone > 0 && smsQueue.length === 0}
+          listFilterActive={listOrgnrs !== null}
+          selectedListName={selectedListName}
+          listIsEmpty={listOrgnrs !== null && listOrgnrs.size === 0}
+          listHasNoQueueOverlap={
+            listOrgnrs !== null &&
+            listOrgnrs.size > 0 &&
+            listScopedItems.length === 0
+          }
           onResetSkipped={() => setSkippedOrgnrs(new Set())}
         />
       ) : (
@@ -511,30 +608,57 @@ function EmptySmsState({
   hasQueue,
   hasPhoneInQueue,
   allSkipped,
+  listFilterActive,
+  selectedListName,
+  listIsEmpty,
+  listHasNoQueueOverlap,
   onResetSkipped,
 }: {
   hasQueue: boolean;
   hasPhoneInQueue: boolean;
   allSkipped: boolean;
+  listFilterActive: boolean;
+  selectedListName: string | null;
+  listIsEmpty: boolean;
+  listHasNoQueueOverlap: boolean;
   onResetSkipped: () => void;
 }) {
+  const listLabel = selectedListName ? `«${selectedListName}»` : "listen";
+
+  let title: string;
+  let description: string;
+
+  if (listIsEmpty) {
+    title = "Listen er tom";
+    description = `${listLabel} har ingen firma ennå. Legg til firma fra Skann eller Smartliste.`;
+  } else if (listHasNoQueueOverlap) {
+    title = "Ingen fra listen er i køen";
+    description = `Firma i ${listLabel} er ikke lagt i arbeidskøen ennå. Legg dem i kø fra Skann, Smartliste eller arbeidskøen.`;
+  } else if (allSkipped) {
+    title = "Du har hoppet over alle i listen";
+    description =
+      "Start på nytt med de du hoppet over, eller velg en annen liste.";
+  } else if (hasQueue && !hasPhoneInQueue) {
+    title = listFilterActive
+      ? "Ingen i listen har telefon i køen"
+      : "Ingen i køen har telefon";
+    description = listFilterActive
+      ? `Firma fra ${listLabel} i arbeidskøen mangler telefonnummer.`
+      : "Legg firma med telefonnummer i arbeidskøen fra Skann — bruk fanen «Med telefon».";
+  } else if (listFilterActive && !hasQueue) {
+    title = "Ingen fra listen er i køen";
+    description = `Legg firma fra ${listLabel} i arbeidskøen, så dukker de opp her.`;
+  } else {
+    title = "Køen er tom";
+    description =
+      "Legg leads i arbeidskøen fra Skann — de dukker opp her én og én, som i ringemodus.";
+  }
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
       <MessageSquare className="mb-4 h-12 w-12 text-slate-600" />
-      <h2 className="text-xl font-bold text-white">
-        {allSkipped
-          ? "Du har hoppet over alle i listen"
-          : hasQueue && !hasPhoneInQueue
-            ? "Ingen i køen har telefon"
-            : "Køen er tom"}
-      </h2>
-      <p className="mt-2 max-w-md text-sm text-slate-400">
-        {allSkipped
-          ? "Start på nytt med de du hoppet over, eller gå tilbake til arbeidskøen."
-          : hasQueue && !hasPhoneInQueue
-            ? "Legg firma med telefonnummer i arbeidskøen fra Skann."
-            : "Legg leads i arbeidskøen fra Skann — de dukker opp her én og én, som i ringemodus."}
-      </p>
+      <h2 className="text-xl font-bold text-white">{title}</h2>
+      <p className="mt-2 max-w-md text-sm text-slate-400">{description}</p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {allSkipped ? (
           <button

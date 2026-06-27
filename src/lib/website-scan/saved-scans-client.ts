@@ -1,20 +1,29 @@
 import type { WebsiteScanResult } from "@/lib/website-scan/types";
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
 export async function loadSavedWebsiteScans(
   orgnrs?: string[],
   signal?: AbortSignal
 ): Promise<WebsiteScanResult[]> {
-  const query =
-    orgnrs && orgnrs.length > 0
-      ? `?orgnrs=${encodeURIComponent(orgnrs.join(","))}`
-      : "";
-  const res = await fetch(`/api/website-scans${query}`, { signal });
-  if (!res.ok) {
-    console.error("[website-scans] Henting feilet:", res.status, res.statusText);
-    return [];
+  try {
+    const query =
+      orgnrs && orgnrs.length > 0
+        ? `?orgnrs=${encodeURIComponent(orgnrs.join(","))}`
+        : "";
+    const res = await fetch(`/api/website-scans${query}`, { signal });
+    if (!res.ok) {
+      console.error("[website-scans] Henting feilet:", res.status, res.statusText);
+      return [];
+    }
+    const data = (await res.json()) as { scans?: WebsiteScanResult[] };
+    return data.scans ?? [];
+  } catch (err) {
+    if (isAbortError(err)) return [];
+    throw err;
   }
-  const data = (await res.json()) as { scans?: WebsiteScanResult[] };
-  return data.scans ?? [];
 }
 
 export async function persistWebsiteScans(scans: WebsiteScanResult[]) {

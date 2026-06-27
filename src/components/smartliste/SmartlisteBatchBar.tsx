@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { SmartListCard } from "@/lib/smartliste/types";
 import { GitBranch, ListTodo, PhoneCall, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -89,17 +88,15 @@ export function SmartlisteBatchBar({
         <GitBranch className="h-3.5 w-3.5" />
         Pipeline
       </button>
-      <Link
-        href="/app/ring"
-        onClick={(e) => {
-          if (syncing || busy) e.preventDefault();
-          else void run("ring", onExportRing);
-        }}
+      <button
+        type="button"
+        disabled={syncing || busy !== null}
+        onClick={() => void run("ring", onExportRing)}
         className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/5"
       >
         <PhoneCall className="h-3.5 w-3.5" />
         Ringemodus
-      </Link>
+      </button>
 
       <div className="flex-1" />
 

@@ -499,6 +499,15 @@ export async function summarizeSmartListItems(
       userId,
       scanMap.get(item.orgnr)
     );
+
+    if (research.phonePatch) {
+      const { error: phoneError } = await supabase
+        .from("companies")
+        .update(research.phonePatch)
+        .eq("orgnr", company.orgnr);
+      if (phoneError) throw new Error(phoneError.message);
+    }
+
     const summary = await generateSmartListAiSummary(research, icpPrompt);
 
     const custom_fields = {

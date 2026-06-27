@@ -165,7 +165,7 @@ export function SmartlisteDetailPanel({
 
           {summarizing && (
             <p style={{ margin: "0.75rem 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>
-              Henter Brreg, skanner nett og søker Google — tar gjerne 15–30 sek per firma.
+              Henter Brreg, telefon (1881/Gulesider), skanner nett og søker Google — tar gjerne 15–30 sek per firma.
             </p>
           )}
 

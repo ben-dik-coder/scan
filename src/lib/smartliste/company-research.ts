@@ -12,12 +12,13 @@ import { scanCompanyWebsite } from "@/lib/website-scan/scan-company";
 import { DEFAULT_SCAN_SOCIAL_OPTIONS } from "@/lib/website-scan/scan-social-options";
 import { searchSerper, searchSerperForWebsite } from "@/lib/website-scan/serper";
 import type { WebsiteScanCompanyInput, WebsiteScanResult } from "@/lib/website-scan/types";
-import type { Company } from "@/types/database";
 import {
   buildCompanyFacts,
   factsToPromptBlock,
   type SmartListCompanyFacts,
 } from "@/lib/smartliste/company-facts";
+import { resolveAnalysisPhone } from "@/lib/smartliste/resolve-analysis-phone";
+import type { Company } from "@/types/database";
 
 export type CompanyResearchBundle = {
   facts: SmartListCompanyFacts;
@@ -30,6 +31,8 @@ export type CompanyResearchBundle = {
   researchLines: string[];
   sources: string[];
   liveScanRan?: boolean;
+  /** Telefon funnet under analyse — skal lagres på companies. */
+  phonePatch?: Partial<Pick<Company, "phone" | "mobile">> | null;
 };
 
 function toScanInput(company: Company): WebsiteScanCompanyInput {
@@ -174,8 +177,14 @@ export async function researchCompanyForSummary(
     researchLines.push(...scanResearchLines(scan));
   }
 
+  const phoneResult = await resolveAnalysisPhone(company, { enhet, scan });
+  if (phoneResult.researchLine) {
+    researchLines.push(phoneResult.researchLine);
+    sources.push("Telefon-oppslag (1881/Gulesider/nett)");
+  }
+
   const enrichedCompany: Company = {
-    ...company,
+    ...phoneResult.company,
     industry_description:
       enhet?.naeringskode1?.beskrivelse ??
       company.industry_description ??
@@ -249,6 +258,7 @@ export async function researchCompanyForSummary(
     researchLines,
     sources: [...new Set(sources)],
     liveScanRan,
+    phonePatch: phoneResult.patch,
   };
 }
 

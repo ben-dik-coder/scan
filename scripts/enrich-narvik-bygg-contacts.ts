@@ -4,6 +4,7 @@
  *
  * Kjør: npx tsx scripts/enrich-narvik-bygg-contacts.ts --industry bygg [--shard 0 --shards 4]
  * Bodø frisør: npx tsx scripts/enrich-narvik-bygg-contacts.ts --kommune 1804 --industry frisor --profile full --with-facebook --shard 0 --shards 25
+ * Siste 90 dager: npx tsx scripts/enrich-narvik-bygg-contacts.ts --kommune 0301 --industry bygg --days 90 --profile full
  * Servering: npx tsx scripts/enrich-narvik-bygg-contacts.ts --industry servering --shard 1 --shards 6
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,36 +29,24 @@ import { phoneCoreDigits } from "../src/lib/website-scan/phone-plausible.ts";
 import { scanCompanyWebsite } from "../src/lib/website-scan/scan-company.ts";
 import { DEFAULT_SCAN_SOCIAL_OPTIONS } from "../src/lib/website-scan/scan-social-options.ts";
 import type { Company } from "../src/types/database.ts";
+import { daysAgoISO } from "../src/lib/brreg/client.ts";
+import { slugForKommune } from "./lib/kommune-slug.ts";
 
 const DEFAULT_KOMMUNE = "1806";
 const DEFAULT_INDUSTRY = "bygg";
 
-function progressPath(slug: string, industry: string, shard: number | null): string {
+function progressPath(
+  slug: string,
+  industry: string,
+  shard: number | null,
+  days: number | null
+): string {
+  const dayTag = days ? `-${days}d` : "";
   const name =
     shard === null
-      ? `${slug}-${industry}-enrich-progress.json`
-      : `${slug}-${industry}-enrich-progress-shard-${shard}.json`;
+      ? `${slug}-${industry}${dayTag}-enrich-progress.json`
+      : `${slug}-${industry}${dayTag}-enrich-progress-shard-${shard}.json`;
   return resolve(process.cwd(), "scripts/.cache", name);
-}
-
-function slugForKommune(kommune: string): string {
-  if (kommune === "1806") return "narvik";
-  if (kommune === "1804") return "bodo";
-  if (kommune === "5503") return "harstad";
-  if (kommune === "5501") return "tromso";
-  if (kommune === "5530") return "senja";
-  if (kommune === "5601") return "alta";
-  if (kommune === "5603") return "hammerfest";
-  if (kommune === "5605") return "sor-varanger";
-  if (kommune === "1870") return "sortland";
-  if (kommune === "1813") return "bronnoy";
-  if (kommune === "1820") return "alstahaug";
-  if (kommune === "1860") return "vestvagoy";
-  if (kommune === "1865") return "vagan";
-  if (kommune === "1866") return "hadsel";
-  if (kommune === "1840") return "saltdal";
-  if (kommune === "1832") return "hemnes";
-  return `kommune-${kommune}`;
 }
 
 function parseArgs() {
@@ -71,6 +60,7 @@ function parseArgs() {
   let kommune = DEFAULT_KOMMUNE;
   let profile: "contact" | "full" = "contact";
   let withFacebook = false;
+  let days: number | null = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit" && args[i + 1]) limit = Number(args[++i]);
     else if (args[i] === "--dry-run") dryRun = true;
@@ -79,11 +69,12 @@ function parseArgs() {
     else if (args[i] === "--shards" && args[i + 1]) shards = Number(args[++i]);
     else if (args[i] === "--industry" && args[i + 1]) industry = args[++i];
     else if (args[i] === "--kommune" && args[i + 1]) kommune = args[++i];
+    else if (args[i] === "--days" && args[i + 1]) days = Number(args[++i]);
     else if (args[i] === "--profile" && args[i + 1]) {
       profile = args[++i] === "full" ? "full" : "contact";
     } else if (args[i] === "--with-facebook") withFacebook = true;
   }
-  return { limit, dryRun, delayMs, shard, shards, industry, kommune, profile, withFacebook };
+  return { limit, dryRun, delayMs, shard, shards, industry, kommune, profile, withFacebook, days };
 }
 
 function sliceShard<T>(items: T[], shard: number, shards: number): T[] {
@@ -228,23 +219,29 @@ async function refreshFromBrreg(
 
 async function loadMunicipalityIndustry(
   kommune: string,
-  industry: string
+  industry: string,
+  days: number | null
 ): Promise<Company[]> {
   const supabase = createServiceClient();
   const codeFilters = getIndustryCodeOrFilters(industry) ?? [];
   if (!codeFilters.length) {
     throw new Error(`Ukjent bransje "${industry}" — bruk f.eks. bygg eller frisor`);
   }
+  const since =
+    days != null && days > 0 ? daysAgoISO(days).slice(0, 10) : null;
   const pageSize = 1000;
   const rows: Company[] = [];
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("companies")
       .select("*")
       .eq("municipality_code", kommune)
       .or(codeFilters.join(","))
-      .order("orgnr")
-      .range(from, from + pageSize - 1);
+      .order("registered_at", { ascending: false, nullsFirst: false });
+    if (since) {
+      query = query.gte("registered_at", since);
+    }
+    const { data, error } = await query.range(from, from + pageSize - 1);
     if (error) throw new Error(error.message);
     if (!data?.length) break;
     rows.push(...(data as Company[]));
@@ -265,12 +262,13 @@ async function main() {
     kommune,
     profile,
     withFacebook,
+    days,
   } = parseArgs();
   const slug = slugForKommune(kommune);
-  const progressFile = progressPath(slug, industry, shard);
+  const progressFile = progressPath(slug, industry, shard, days);
   const industryLabel = industryGroupLabel(industry);
 
-  const all = await loadMunicipalityIndustry(kommune, industry);
+  const all = await loadMunicipalityIndustry(kommune, industry, days);
   const facebookByOrgnr = withFacebook
     ? await loadFacebookByOrgnr(all.map((c) => c.orgnr))
     : new Map<string, string | null>();
@@ -295,6 +293,9 @@ async function main() {
   if (limit > 0) targets = targets.slice(0, limit);
 
   console.log(`${slug} (${kommune}) ${industryLabel} (${industry}) i DB: ${all.length}`);
+  if (days) {
+    console.log(`Filter: registrert siste ${days} dager (fra ${daysAgoISO(days).slice(0, 10)})`);
+  }
   console.log(
     profile === "full"
       ? `Mangler telefon, e-post, daglig leder eller Facebook: ${totalMissing}`
