@@ -200,11 +200,9 @@ export function SavedListPicker(props: Props) {
   }, [open]);
 
   const isQueue = props.mode === "queue";
-  const loading = isQueue
-    ? (props.loading ?? false)
-    : isDialMode
-      ? (props.resolving ?? false) || resolvingList
-      : false;
+  const isResolvingSelection = isDialMode ? resolvingList : false;
+  const isResolvingFromUrl = isDialMode ? (props.resolving ?? false) : false;
+  const loading = isQueue ? (props.loading ?? false) : isResolvingSelection;
   const selectedListId = isQueue ? null : props.selectedListId;
 
   const pickerLists = isDialMode ? saved : companyLists;
@@ -228,10 +226,11 @@ export function SavedListPicker(props: Props) {
       return loading ? "Legger i kø…" : "Velg liste";
     }
     if (loading) return "Laster liste…";
+    if (isResolvingFromUrl) return "Laster liste…";
     if (!selectedList) return isDialMode ? "Alle i køen" : "Alle";
     const count = countForListCb(selectedList);
     return formatSavedListLabel(selectedList.name, count).display;
-  }, [isQueue, isDialMode, loading, selectedList, countForListCb]);
+  }, [isQueue, isDialMode, loading, isResolvingFromUrl, selectedList, countForListCb]);
 
   async function handleSelectList(listId: string) {
     if (loading) return;
@@ -358,6 +357,7 @@ export function SavedListPicker(props: Props) {
           role="menu"
           className="fixed z-[110] max-h-[min(60dvh,420px)] overflow-y-auto rounded-xl border border-white/10 bg-[#2c2c2e] p-1.5 shadow-2xl"
           style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           {menuItems}
         </div>
@@ -382,10 +382,15 @@ export function SavedListPicker(props: Props) {
         aria-expanded={open}
         aria-haspopup="menu"
         disabled={loading}
-        onClick={() => !loading && setOpen((v) => !v)}
+        onClick={() => {
+          if (loading) return;
+          if (!open && isDialMode) updateMenuPos();
+          setOpen((v) => !v);
+        }}
         className={cn(
           "scan-btn-ghost inline-flex min-h-[36px] min-w-[180px] max-w-[220px] items-center gap-1.5 px-3 py-2 text-xs font-semibold sm:min-w-[220px]",
-          loading && "opacity-50"
+          loading && "opacity-50",
+          isResolvingFromUrl && !loading && "opacity-80"
         )}
       >
         <FolderOpen className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
@@ -411,7 +416,7 @@ export function SavedListPicker(props: Props) {
           </div>
         </>
       )}
-      {open && !loading && dialDropdown}
+      {open && dialDropdown}
     </div>
   );
 }

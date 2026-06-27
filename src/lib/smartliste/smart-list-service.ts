@@ -21,6 +21,7 @@ import { researchCompanyForSummary } from "@/lib/smartliste/company-research";
 import { fetchCompaniesByOrgnrs } from "@/lib/brreg/fetch-companies-by-orgnr";
 import { loadCachedWebsiteScans } from "@/lib/website-scan/saved-scans-server";
 import { hasCompanyPhone } from "@/lib/brreg/lead-quality";
+import { persistCompanyPhonePatch } from "@/lib/company-contact-overrides";
 import { createClient } from "@/lib/supabase/server";
 import type { Company } from "@/types/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -501,11 +502,7 @@ export async function summarizeSmartListItems(
     );
 
     if (research.phonePatch) {
-      const { error: phoneError } = await supabase
-        .from("companies")
-        .update(research.phonePatch)
-        .eq("orgnr", company.orgnr);
-      if (phoneError) throw new Error(phoneError.message);
+      await persistCompanyPhonePatch(company.orgnr, research.phonePatch);
     }
 
     const summary = await generateSmartListAiSummary(research, icpPrompt);

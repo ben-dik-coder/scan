@@ -116,7 +116,28 @@ export function mergeContactOverride<
   if (!override) return { ...company, contact_override: null };
   return {
     ...company,
+    mobile: (company.mobile ?? "").trim() ? company.mobile : override.mobile ?? company.mobile,
+    phone: (company.phone ?? "").trim() ? company.phone : override.phone ?? company.phone,
     daglig_leder: company.daglig_leder ?? override.owner_name ?? null,
     contact_override: override,
   };
+}
+
+/** Lagrer telefon funnet under analyse — krever service role (RLS tillater ikke bruker-update). */
+export async function persistCompanyPhonePatch(
+  orgnr: string,
+  patch: Partial<Pick<CompanyContactOverride, "phone" | "mobile">>
+): Promise<void> {
+  if (!(patch.phone ?? "").trim() && !(patch.mobile ?? "").trim()) return;
+
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("companies")
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("orgnr", orgnr);
+
+  if (error) throw new Error(error.message);
 }

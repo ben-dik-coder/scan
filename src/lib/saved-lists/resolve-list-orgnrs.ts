@@ -12,6 +12,11 @@ export type ResolvedListOrgnrs = {
   orgnrs: string[];
 };
 
+/** Trim og dedupliser orgnr slik at filtrering matcher køen. */
+export function normalizeOrgnrList(orgnrs: string[]): string[] {
+  return [...new Set(orgnrs.map((o) => o.trim()).filter(Boolean))];
+}
+
 /** Synkront: orgnr fra filters.agentOrgnrs (Skann-lister). */
 export function orgnrsFromSavedListFilters(
   filters: AgentSavedListFilters | Record<string, unknown> | null | undefined
@@ -31,9 +36,11 @@ async function fetchSmartListOrgnrs(listId: string): Promise<string[]> {
   const res = await fetch(`/api/smartliste/${encodeURIComponent(listId)}`);
   if (!res.ok) return [];
   const board = (await res.json()) as { items?: { orgnr: string }[] };
-  return (board.items ?? [])
-    .map((i) => i.orgnr)
-    .filter((o) => typeof o === "string" && o.trim().length > 0);
+  return normalizeOrgnrList(
+    (board.items ?? [])
+      .map((i) => i.orgnr)
+      .filter((o) => typeof o === "string")
+  );
 }
 
 /**
@@ -47,9 +54,11 @@ export async function resolveListOrgnrs(
   if (isDemoMode() && options?.demoLists) {
     const row = options.demoLists.find((l) => l.id === listId);
     if (!row) return null;
-    const orgnrs = options.shuffle
-      ? shuffledAgentOrgnrsFromFilters(row.filters)
-      : agentOrgnrsFromFilters(row.filters);
+    const orgnrs = normalizeOrgnrList(
+      options.shuffle
+        ? shuffledAgentOrgnrsFromFilters(row.filters)
+        : agentOrgnrsFromFilters(row.filters)
+    );
     return { listId, name: row.name, orgnrs };
   }
 
@@ -61,14 +70,16 @@ export async function resolveListOrgnrs(
     filters?: Record<string, unknown>;
   };
 
-  const fromFilters = options?.shuffle
-    ? shuffledAgentOrgnrsFromFilters(list.filters)
-    : agentOrgnrsFromFilters(list.filters);
+  const fromFilters = normalizeOrgnrList(
+    options?.shuffle
+      ? shuffledAgentOrgnrsFromFilters(list.filters)
+      : agentOrgnrsFromFilters(list.filters)
+  );
 
   if (fromFilters.length > 0) {
     return { listId: list.id, name: list.name, orgnrs: fromFilters };
   }
 
   const orgnrs = await fetchSmartListOrgnrs(listId);
-  return { listId: list.id, name: list.name, orgnrs };
+  return { listId: list.id, name: list.name, orgnrs: normalizeOrgnrList(orgnrs) };
 }

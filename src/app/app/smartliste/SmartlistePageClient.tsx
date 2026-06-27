@@ -411,6 +411,9 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
               onPatch={(patch) => void patchItems([patch])}
               onCreateLabel={createLabel}
               onSummarize={(itemId) => handleSummarizeItems([itemId])}
+              onPhoneSaved={() => {
+                if (listId) void loadBoard(listId);
+              }}
             />
           </aside>
         )}

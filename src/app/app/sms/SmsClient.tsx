@@ -51,6 +51,7 @@ export function SmsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const loadedListIdRef = useRef<string | null>(null);
+  const pendingListeRef = useRef<string | null | undefined>(undefined);
   const [items, setItems] = useState<QueueItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,11 +112,25 @@ export function SmsClient() {
   useEffect(() => {
     const listId = searchParams.get("liste");
     if (!listId) {
-      loadedListIdRef.current = null;
-      setSelectedListId(null);
-      setListOrgnrs(null);
-      setSelectedListName(null);
+      if (pendingListeRef.current === null) {
+        pendingListeRef.current = undefined;
+        return;
+      }
+      if (pendingListeRef.current !== undefined) {
+        return;
+      }
+      if (loadedListIdRef.current !== null) {
+        loadedListIdRef.current = null;
+        setSelectedListId(null);
+        setListOrgnrs(null);
+        setSelectedListName(null);
+      }
       return;
+    }
+
+    if (pendingListeRef.current === listId) {
+      pendingListeRef.current = undefined;
+      if (loadedListIdRef.current === listId) return;
     }
 
     if (loadedListIdRef.current === listId) return;
@@ -144,6 +159,7 @@ export function SmsClient() {
       orgnrs: string[] | null;
       listName: string | null;
     }) => {
+      pendingListeRef.current = selection.listId;
       setSelectedListId(selection.listId);
       setSelectedListName(selection.listName);
       setListOrgnrs(

@@ -23,6 +23,7 @@ type Props = {
   }) => void;
   onCreateLabel: (name: string, color: string) => Promise<string | null>;
   onSummarize: (itemId: string) => Promise<void>;
+  onPhoneSaved?: () => void;
 };
 
 export function SmartlisteDetailPanel({
@@ -34,8 +35,12 @@ export function SmartlisteDetailPanel({
   onPatch,
   onCreateLabel,
   onSummarize,
+  onPhoneSaved,
 }: Props) {
   const [note, setNote] = useState("");
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("sky");
 
@@ -47,6 +52,11 @@ export function SmartlisteDetailPanel({
     () => (card?.company ? buildCompanyFacts(card.company) : null),
     [card?.company]
   );
+
+  useEffect(() => {
+    setPhoneDraft(facts?.phone ?? "");
+    setPhoneError(null);
+  }, [card?.id, facts?.phone]);
 
   const aiSummary = useMemo(
     () => (card ? readAiSummaryFromCustomFields(card.custom_fields) : null),
@@ -79,6 +89,39 @@ export function SmartlisteDetailPanel({
       const ids = [...card.labels.map((l) => l.id), id];
       onPatch({ id: card.id, label_ids: ids });
       setNewLabelName("");
+    }
+  }
+
+  async function savePhone() {
+    if (!card?.company || phoneSaving) return;
+    const trimmed = phoneDraft.trim();
+    const current = facts?.phone?.trim() ?? "";
+    if (trimmed === current) return;
+
+    if (!trimmed) {
+      setPhoneError("Skriv inn et telefonnummer");
+      return;
+    }
+
+    setPhoneSaving(true);
+    setPhoneError(null);
+    try {
+      const res = await fetch(
+        `/api/companies/${encodeURIComponent(card.orgnr)}/phone`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: trimmed }),
+        }
+      );
+      const data = (await res.json()) as { error?: string; phone?: string };
+      if (!res.ok) throw new Error(data.error ?? "Kunne ikke lagre telefon");
+      setPhoneDraft(data.phone ?? trimmed);
+      onPhoneSaved?.();
+    } catch (err) {
+      setPhoneError(err instanceof Error ? err.message : "Kunne ikke lagre telefon");
+    } finally {
+      setPhoneSaving(false);
     }
   }
 
@@ -128,7 +171,45 @@ export function SmartlisteDetailPanel({
               <FactRow label="Bransje" value={facts.industry} />
               <FactRow label="Daglig leder" value={facts.dagligLeder ?? "Ikke funnet"} />
               <FactRow label="Sted" value={facts.municipality ?? "—"} />
-              <FactRow label="Telefon" value={facts.phone ?? "—"} />
+              <div style={{ display: "grid", gridTemplateColumns: "7rem 1fr", gap: "0.5rem", marginBottom: "0.35rem" }}>
+                <dt style={{ margin: 0, fontSize: "0.75rem", color: "#64748b", paddingTop: "0.35rem" }}>
+                  Telefon
+                </dt>
+                <dd style={{ margin: 0 }}>
+                  <div style={{ display: "flex", gap: "0.35rem" }}>
+                    <input
+                      value={phoneDraft}
+                      onChange={(e) => {
+                        setPhoneDraft(e.target.value);
+                        if (phoneError) setPhoneError(null);
+                      }}
+                      onBlur={() => void savePhone()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void savePhone();
+                        }
+                      }}
+                      placeholder="Legg inn telefon…"
+                      className="smartliste-input"
+                      style={{ flex: 1, fontSize: "0.875rem" }}
+                      disabled={phoneSaving}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void savePhone()}
+                      disabled={phoneSaving || phoneDraft.trim() === (facts.phone ?? "")}
+                      className="smartliste-btn"
+                      style={{ flexShrink: 0 }}
+                    >
+                      {phoneSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Lagre"}
+                    </button>
+                  </div>
+                  {phoneError ? (
+                    <p style={{ margin: "0.25rem 0 0", fontSize: "0.65rem", color: "#fca5a5" }}>{phoneError}</p>
+                  ) : null}
+                </dd>
+              </div>
               <FactRow label="E-post" value={facts.email ?? "—"} />
               <FactRow label="Nettside" value={facts.websiteStatus} />
             </dl>
