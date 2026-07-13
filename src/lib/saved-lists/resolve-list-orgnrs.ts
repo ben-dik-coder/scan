@@ -4,6 +4,7 @@ import {
   type AgentSavedListFilters,
 } from "@/lib/agent/saved-list-filters";
 import { isDemoMode } from "@/lib/demo/config";
+import { isNyleadV2Enabled } from "@/lib/features/v2";
 import type { SavedList } from "@/types/database";
 
 export type ResolvedListOrgnrs = {
@@ -60,6 +61,22 @@ export async function resolveListOrgnrs(
         : agentOrgnrsFromFilters(row.filters)
     );
     return { listId, name: row.name, orgnrs };
+  }
+
+  if (isNyleadV2Enabled()) {
+    const qs = options?.shuffle ? "?shuffle=1" : "";
+    const res = await fetch(`/api/lists/${encodeURIComponent(listId)}/members${qs}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      listId: string;
+      name: string;
+      orgnrs: string[];
+    };
+    return {
+      listId: data.listId,
+      name: data.name,
+      orgnrs: normalizeOrgnrList(data.orgnrs),
+    };
   }
 
   const listRes = await fetch(`/api/saved-lists?id=${encodeURIComponent(listId)}`);

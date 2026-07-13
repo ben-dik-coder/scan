@@ -12,6 +12,7 @@ import {
   savedListCountHint,
 } from "@/lib/saved-lists/resolve-list-orgnrs";
 import { SAVED_LIST_CHANGED_EVENT } from "@/lib/agent/saved-list-bus";
+import { isNyleadV2Enabled } from "@/lib/features/v2";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { Check, ChevronDown, FolderOpen, Loader2 } from "lucide-react";
@@ -82,10 +83,10 @@ export function SavedListPicker(props: Props) {
     null
   );
 
-  const companyLists = useMemo(
-    () => saved.filter((l) => isCompanyListFilters(l.filters)),
-    [saved]
-  );
+  const companyLists = useMemo(() => {
+    if (isNyleadV2Enabled()) return saved;
+    return saved.filter((l) => isCompanyListFilters(l.filters));
+  }, [saved]);
 
   const reloadSaved = useCallback(async () => {
     if (isDemoMode()) {
@@ -101,6 +102,23 @@ export function SavedListPicker(props: Props) {
     }
     setFetching(true);
     try {
+      if (isNyleadV2Enabled()) {
+        const res = await fetch("/api/smartliste");
+        if (!res.ok) {
+          setSaved([]);
+          return;
+        }
+        const data = (await res.json()) as { lists?: SavedListRow[] };
+        setSaved(
+          (data.lists ?? []).map((l) => ({
+            id: l.id,
+            name: l.name,
+            filters: (l.filters ?? {}) as AgentSavedListFilters,
+          }))
+        );
+        return;
+      }
+
       const res = await fetch("/api/saved-lists");
       if (!res.ok) {
         setSaved([]);
@@ -239,9 +257,12 @@ export function SavedListPicker(props: Props) {
     setOpen(false);
 
     if (isQueue) {
-      const orgnrs = shuffledAgentOrgnrsFromFilters(list.filters);
-      if (orgnrs.length === 0) return;
-      await props.onLoad(orgnrs, list.name);
+      const resolved = await resolveListOrgnrs(listId, {
+        demoLists: demo.savedLists,
+        shuffle: true,
+      });
+      if (!resolved || resolved.orgnrs.length === 0) return;
+      await props.onLoad(resolved.orgnrs, resolved.name);
       return;
     }
 

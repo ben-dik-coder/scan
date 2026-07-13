@@ -9,6 +9,9 @@ import { KoListView } from "@/components/ko/KoListView";
 import { KoSendDrawer } from "@/components/ko/KoSendDrawer";
 import { KoToolbar } from "@/components/ko/KoToolbar";
 import { filterQueueItems } from "@/components/ko/queue-utils";
+import { WorkQueuePanel } from "@/components/queues/WorkQueuePanel";
+import { useWorkQueue } from "@/hooks/useWorkQueue";
+import { isNyleadV2Enabled } from "@/lib/features/v2";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import type { EmailTemplate } from "@/types/database";
@@ -35,6 +38,8 @@ function recentCompaniesLast30Days<T extends { registered_at: string | null }>(
 
 export function KoClient() {
   const { companies, templates, sequences, setLeadStatus, deleteLead } = useDemo();
+  const workQueue = useWorkQueue();
+  const v2 = isNyleadV2Enabled();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +59,8 @@ export function KoClient() {
   const [loadingList, setLoadingList] = useState(false);
 
   const load = useCallback(async () => {
+    if (isNyleadV2Enabled()) return;
+
     setLoading(true);
     setError(null);
 
@@ -108,6 +115,13 @@ export function KoClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!v2) return;
+    setItems(workQueue.items);
+    setLoading(workQueue.loading);
+    if (workQueue.error) setError(workQueue.error);
+  }, [v2, workQueue.items, workQueue.loading, workQueue.error]);
 
   useEffect(() => {
     try {
@@ -303,7 +317,7 @@ export function KoClient() {
   const allNyDone = hasAnyItems && nyReadyCount === 0 && contactedItems.length > 0;
 
   return (
-    <div className="scan-glass-kommand space-y-6 pb-8">
+    <div className="scan-glass-kommand apple-ui space-y-6 pb-8">
       <header>
         <div className="flex items-center gap-2 text-brand-gold">
           <ListTodo className="h-5 w-5" />
@@ -315,9 +329,13 @@ export function KoClient() {
             : "Ta kontakt med neste firma"}
         </h1>
         <p className="scan-glass-muted mt-2 max-w-xl text-sm">
-          Håndplukket fra Skann — ofte uten egen nettside. Ring eller send e-post, én og én.
+          {v2
+            ? "Lag egne køer, velg rekkefølge, og jobb firma én og én."
+            : "Håndplukket fra Skann — ofte uten egen nettside. Ring eller send e-post, én og én."}
         </p>
       </header>
+
+      {v2 ? <WorkQueuePanel /> : null}
 
       <NextStepBanner pagePhase="work_queue" />
 
@@ -347,7 +365,7 @@ export function KoClient() {
         onHasPhoneChange={setHasPhone}
         loading={loading}
         loadingList={loadingList}
-        onRefresh={() => void load()}
+        onRefresh={() => (v2 ? void workQueue.reload() : void load())}
         onLoadSavedList={loadSavedListToQueue}
       />
 

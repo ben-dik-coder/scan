@@ -71,6 +71,9 @@ export function laneIdForKey(
   lanes: SmartListLane[],
   laneKey: string
 ): string | null {
+  const byKey = lanes.find((l) => l.lane_key === laneKey);
+  if (byKey) return byKey.id;
+
   const seed = DEFAULT_LANE_SEEDS.find((s) => s.key === laneKey);
   if (!seed) return null;
   const lane = lanes.find((l) => l.name === seed.name);

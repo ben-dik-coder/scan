@@ -42,6 +42,7 @@ async function ensureDefaultLanes(
 
   const rows = DEFAULT_LANE_SEEDS.map((seed) => ({
     list_id: listId,
+    lane_key: seed.key,
     name: seed.name,
     color: seed.color,
     sort_order: seed.sort_order,
@@ -462,9 +463,18 @@ export async function createSmartListLane(
 
   const sortOrder = ((lanes?.[0]?.sort_order as number) ?? -1) + 1;
 
+  const laneKey = `custom_${Date.now()}`;
+
   const { data, error } = await supabase
     .from("smart_list_lanes")
-    .insert({ list_id: listId, name: name.trim(), color, sort_order: sortOrder })
+    .insert({
+      list_id: listId,
+      lane_key: laneKey,
+      name: name.trim(),
+      color,
+      sort_order: sortOrder,
+      is_system: false,
+    })
     .select("*")
     .single();
 

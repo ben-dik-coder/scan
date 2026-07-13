@@ -17,6 +17,7 @@ export type SmartListBoardConfig = {
 export type SmartListLane = {
   id: string;
   list_id: string;
+  lane_key: string | null;
   name: string;
   color: string;
   sort_order: number;

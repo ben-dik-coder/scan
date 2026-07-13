@@ -1,17 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SavedListPicker } from "@/components/saved-lists/SavedListPicker";
+import { DialSourcePicker } from "@/components/dial/DialSourcePicker";
+import { useDialSession } from "@/hooks/useDialSession";
 import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
-import { resolveListOrgnrs } from "@/lib/saved-lists/resolve-list-orgnrs";
-import {
-  buildQueueCandidates,
-  mapQueueCandidatesToItems,
-  type QueueItemResponse,
-} from "@/lib/sales/queue-score";
 import {
   applySmsPlaceholders,
   loadSmsTemplate,
@@ -34,124 +30,38 @@ import {
   ThumbsDown,
 } from "lucide-react";
 
-const FETCH_TIMEOUT_MS = 30_000;
-
-function recentCompaniesLast30Days<T extends { registered_at: string | null }>(
-  companies: T[]
-): T[] {
-  const since = new Date();
-  since.setDate(since.getDate() - 30);
-  const sinceStr = since.toISOString().slice(0, 10);
-  return companies.filter((c) => c.registered_at && c.registered_at >= sinceStr);
-}
 
 export function SmsClient() {
   const demo = useDemo();
-  const { companies, setLeadStatus } = demo;
+  const { setLeadStatus } = demo;
   const router = useRouter();
   const searchParams = useSearchParams();
-  const loadedListIdRef = useRef<string | null>(null);
-  const pendingListeRef = useRef<string | null | undefined>(undefined);
-  const [items, setItems] = useState<QueueItemResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const session = useDialSession({ channel: "sms" });
+  const {
+    v2,
+    items,
+    dialQueue: smsQueue,
+    current,
+    loading,
+    error,
+    reload,
+    skipCurrent,
+    sourceMode,
+    setSourceMode,
+    selectedListId,
+    selectedListName,
+    resolvingList,
+    pendingListeRef,
+    loadedListIdRef,
+    resetSkipped,
+  } = session;
+
   const [busy, setBusy] = useState(false);
-  const [skippedOrgnrs, setSkippedOrgnrs] = useState<Set<string>>(new Set());
-  const [selectedListId, setSelectedListId] = useState<string | null>(null);
-  const [listOrgnrs, setListOrgnrs] = useState<Set<string> | null>(null);
-  const [selectedListName, setSelectedListName] = useState<string | null>(null);
-  const [resolvingList, setResolvingList] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [template, setTemplate] = useState("");
   const [message, setMessage] = useState("");
   const [smsConfigured, setSmsConfigured] = useState<boolean | null>(null);
   const [sessionStats, setSessionStats] = useState(getSmsSessionStats);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (isDemoMode()) {
-        const recent = recentCompaniesLast30Days(companies);
-        const leadsByOrgnr = new Map(
-          recent
-            .filter((c) => c.user_lead?.queued_at)
-            .map((c) => [c.orgnr, c.user_lead!])
-        );
-        const queuedCompanies = recent.filter((c) => leadsByOrgnr.has(c.orgnr));
-        const candidates = buildQueueCandidates(queuedCompanies, leadsByOrgnr, new Map());
-        setItems(mapQueueCandidatesToItems(candidates));
-        return;
-      }
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      let res: Response;
-      try {
-        res = await fetch("/api/ko", { signal: controller.signal });
-      } finally {
-        clearTimeout(timeout);
-      }
-      const data = (await res.json()) as { items?: QueueItemResponse[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Kunne ikke laste kø");
-      setItems(data.items ?? []);
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        setError("Forespørselen tok for lang tid.");
-      } else {
-        setError(err instanceof Error ? err.message : "Ukjent feil");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [companies]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    const listId = searchParams.get("liste");
-    if (!listId) {
-      if (pendingListeRef.current === null) {
-        pendingListeRef.current = undefined;
-        return;
-      }
-      if (pendingListeRef.current !== undefined) {
-        return;
-      }
-      if (loadedListIdRef.current !== null) {
-        loadedListIdRef.current = null;
-        setSelectedListId(null);
-        setListOrgnrs(null);
-        setSelectedListName(null);
-      }
-      return;
-    }
-
-    if (pendingListeRef.current === listId) {
-      pendingListeRef.current = undefined;
-      if (loadedListIdRef.current === listId) return;
-    }
-
-    if (loadedListIdRef.current === listId) return;
-
-    setResolvingList(true);
-    void resolveListOrgnrs(listId, { demoLists: demo.savedLists, shuffle: true })
-      .then((resolved) => {
-        if (!resolved) {
-          loadedListIdRef.current = null;
-          setSelectedListId(null);
-          setListOrgnrs(null);
-          setSelectedListName(null);
-          return;
-        }
-        loadedListIdRef.current = listId;
-        setSelectedListId(listId);
-        setSelectedListName(resolved.name);
-        setListOrgnrs(resolved.orgnrs.length > 0 ? new Set(resolved.orgnrs) : new Set());
-      })
-      .finally(() => setResolvingList(false));
-  }, [searchParams, demo.savedLists]);
 
   const handleListSelect = useCallback(
     (selection: {
@@ -160,27 +70,20 @@ export function SmsClient() {
       listName: string | null;
     }) => {
       pendingListeRef.current = selection.listId;
-      setSelectedListId(selection.listId);
-      setSelectedListName(selection.listName);
-      setListOrgnrs(
-        selection.orgnrs && selection.orgnrs.length > 0
-          ? new Set(selection.orgnrs)
-          : selection.listId
-            ? new Set<string>()
-            : null
-      );
       loadedListIdRef.current = selection.listId;
 
       const params = new URLSearchParams(searchParams.toString());
       if (selection.listId) {
         params.set("liste", selection.listId);
+        if (v2) setSourceMode("list");
       } else {
         params.delete("liste");
+        if (v2) setSourceMode("queue");
       }
       const qs = params.toString();
       router.replace(qs ? `/app/sms?${qs}` : "/app/sms");
     },
-    [router, searchParams]
+    [router, searchParams, v2, setSourceMode, pendingListeRef, loadedListIdRef]
   );
 
   useEffect(() => {
@@ -198,23 +101,7 @@ export function SmsClient() {
       .catch(() => setSmsConfigured(false));
   }, []);
 
-  const listScopedItems = useMemo(() => {
-    if (!listOrgnrs) return items;
-    return items.filter((item) => listOrgnrs.has(item.orgnr));
-  }, [items, listOrgnrs]);
-
-  const smsQueue = useMemo(
-    () =>
-      listScopedItems.filter(
-        (item) =>
-          item.status === "ny" &&
-          Boolean(item.phone?.trim()) &&
-          !skippedOrgnrs.has(item.orgnr)
-      ),
-    [listScopedItems, skippedOrgnrs]
-  );
-
-  const current = smsQueue[0] ?? null;
+  const listScopedItems = items;
   const totalWithPhone = useMemo(
     () =>
       listScopedItems.filter((i) => i.status === "ny" && i.phone?.trim()).length,
@@ -251,7 +138,7 @@ export function SmsClient() {
   async function handleSend() {
     if (!current?.phone?.trim() || !message.trim()) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     const orgnr = current.orgnr;
     const phone = current.phone;
 
@@ -259,7 +146,7 @@ export function SmsClient() {
       if (isDemoMode()) {
         setLeadStatus(orgnr, "kontaktet");
         setSessionStats(recordSmsOutcome("sent"));
-        setItems((list) => list.filter((i) => i.orgnr !== orgnr));
+        await reload();
         return;
       }
 
@@ -272,9 +159,9 @@ export function SmsClient() {
       if (!res.ok) throw new Error(data.error ?? "Kunne ikke sende SMS");
 
       setSessionStats(recordSmsOutcome("sent"));
-      setItems((list) => list.filter((i) => i.orgnr !== orgnr));
+      await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke sende SMS");
+      setActionError(err instanceof Error ? err.message : "Kunne ikke sende SMS");
     } finally {
       setBusy(false);
     }
@@ -282,33 +169,29 @@ export function SmsClient() {
 
   async function handleSkip() {
     if (!current) return;
-    setSkippedOrgnrs((prev) => new Set(prev).add(current.orgnr));
+    skipCurrent();
     setSessionStats(recordSmsOutcome("skipped"));
   }
 
   async function handleKontaktet() {
     if (!current) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     const orgnr = current.orgnr;
 
     try {
       if (isDemoMode()) {
         setLeadStatus(orgnr, "kontaktet");
         setSessionStats(recordSmsOutcome("contacted"));
-        setItems((list) =>
-          list.map((i) => (i.orgnr === orgnr ? { ...i, status: "kontaktet" } : i))
-        );
+        await reload();
         return;
       }
 
       await postStatus(orgnr, "kontaktet");
       setSessionStats(recordSmsOutcome("contacted"));
-      setItems((list) =>
-        list.map((i) => (i.orgnr === orgnr ? { ...i, status: "kontaktet" } : i))
-      );
+      await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke lagre kontakt");
+      setActionError(err instanceof Error ? err.message : "Kunne ikke lagre kontakt");
     } finally {
       setBusy(false);
     }
@@ -317,7 +200,7 @@ export function SmsClient() {
   async function handleOutcome(type: "meeting" | "not_interested") {
     if (!current) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     const orgnr = current.orgnr;
 
     try {
@@ -328,7 +211,7 @@ export function SmsClient() {
         } else {
           setLeadStatus(orgnr, "ikke_interessert", { unqueue: true });
         }
-        setItems((list) => list.filter((i) => i.orgnr !== orgnr));
+        await reload();
         return;
       }
 
@@ -338,9 +221,9 @@ export function SmsClient() {
       } else {
         await postStatus(orgnr, "ikke_interessert", { unqueue: true });
       }
-      setItems((list) => list.filter((i) => i.orgnr !== orgnr));
+      await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke lagre utfall");
+      setActionError(err instanceof Error ? err.message : "Kunne ikke lagre utfall");
     } finally {
       setBusy(false);
     }
@@ -363,7 +246,7 @@ export function SmsClient() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#141416] text-slate-100">
+    <div className="apple-ui flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#141416] text-slate-100">
       <header className="relative z-40 overflow-visible border-b border-white/10 bg-[#1c1c1e]/95 px-4 py-3 backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -381,6 +264,15 @@ export function SmsClient() {
                 Fra listen {selectedListName}
               </p>
             ) : null}
+            {v2 ? (
+              <div className="mt-2">
+                <DialSourcePicker
+                  mode={sourceMode}
+                  onChange={setSourceMode}
+                  listName={selectedListName}
+                />
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <SavedListPicker
@@ -391,7 +283,7 @@ export function SmsClient() {
             />
             <button
               type="button"
-              onClick={() => void load()}
+              onClick={() => void reload()}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-3 text-xs text-slate-300 hover:bg-white/10"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -432,15 +324,11 @@ export function SmsClient() {
           hasQueue={items.length > 0}
           hasPhoneInQueue={totalWithPhone > 0}
           allSkipped={totalWithPhone > 0 && smsQueue.length === 0}
-          listFilterActive={listOrgnrs !== null}
+          listFilterActive={Boolean(selectedListId)}
           selectedListName={selectedListName}
-          listIsEmpty={listOrgnrs !== null && listOrgnrs.size === 0}
-          listHasNoQueueOverlap={
-            listOrgnrs !== null &&
-            listOrgnrs.size > 0 &&
-            listScopedItems.length === 0
-          }
-          onResetSkipped={() => setSkippedOrgnrs(new Set())}
+          listIsEmpty={Boolean(selectedListId) && items.length === 0}
+          listHasNoQueueOverlap={false}
+          onResetSkipped={resetSkipped}
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -578,7 +466,9 @@ export function SmsClient() {
           <span>{sessionStats.skipped} hoppet over</span>
           <span>{sessionStats.meetings} møter</span>
         </div>
-        {error ? <span className="text-amber-300">{error}</span> : null}
+        {actionError || error ? (
+          <span className="text-amber-300">{actionError ?? error}</span>
+        ) : null}
         <Link href="/app/ko" className="text-sky-400 hover:underline">
           Administrer arbeidskø →
         </Link>

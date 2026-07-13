@@ -49,9 +49,12 @@ const NAV_OVERVIEW: NavItem = {
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
-    title: "Prospektering",
+    title: "Finn",
+    items: [{ href: "/app", label: "Skann", icon: Building2 }],
+  },
+  {
+    title: "Jobb",
     items: [
-      { href: "/app", label: "Skann", icon: Building2 },
       { href: "/app/smartliste", label: "Smartliste", icon: LayoutGrid },
       { href: "/app/ko", label: "Arbeidskø", icon: ListTodo },
       { href: "/app/ring", label: "Ringemodus", icon: PhoneCall },
@@ -59,7 +62,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Oppfølging",
+    title: "Følg opp",
     items: [
       { href: "/app/pipeline", label: "Pipeline", icon: GitBranch },
       { href: "/app/kampanjer", label: "Kampanjer", icon: Send },

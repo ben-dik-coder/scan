@@ -15,6 +15,7 @@ import {
 import { useSmartList } from "@/lib/smartliste/use-smart-list";
 import type { SmartListCard, SmartListViewMode } from "@/lib/smartliste/types";
 import { cn } from "@/lib/utils";
+import { isNyleadV2Enabled } from "@/lib/features/v2";
 import {
   ArrowLeft,
   Check,
@@ -53,6 +54,7 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
     summarizeItems,
     updateBoardConfig,
     createLabel,
+    createLane,
     setViewMode,
   } = useSmartList(initialListId);
 
@@ -128,12 +130,28 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
   }
 
   async function exportToQueue() {
-    for (const card of selectedCards) {
-      await fetch("/api/leads/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgnr: card.orgnr, status: "ny", queue: true }),
-      });
+    if (isNyleadV2Enabled()) {
+      const queuesRes = await fetch("/api/queues");
+      const queuesData = (await queuesRes.json()) as {
+        queues?: { id: string; isDefault: boolean }[];
+      };
+      const queue =
+        queuesData.queues?.find((q) => q.isDefault) ?? queuesData.queues?.[0];
+      if (queue) {
+        await fetch(`/api/queues/${encodeURIComponent(queue.id)}/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgnrs: selectedCards.map((c) => c.orgnr) }),
+        });
+      }
+    } else {
+      for (const card of selectedCards) {
+        await fetch("/api/leads/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgnr: card.orgnr, status: "ny", queue: true }),
+        });
+      }
     }
     flash(`${selectedCards.length} lagt i arbeidskø`);
     setSelectedIds(new Set());
@@ -172,6 +190,13 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
     }
   }
 
+  async function handleAddLane() {
+    const name = window.prompt("Navn på ny sone:");
+    if (!name?.trim()) return;
+    const lane = await createLane(name.trim());
+    if (lane) flash(`Sone «${name.trim()}» opprettet`);
+  }
+
   return (
     <div className="smartliste-page">
       <header className="smartliste-topbar">
@@ -200,6 +225,16 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
         </div>
 
         <div style={{ display: "flex", gap: "0.25rem" }}>
+          {listId ? (
+            <button
+              type="button"
+              onClick={() => void handleAddLane()}
+              className="smartliste-btn smartliste-btn-icon"
+              title="Ny sone"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          ) : null}
           {(["board", "ranked", "grid"] as SmartListViewMode[]).map((mode) => (
             <button
               key={mode}

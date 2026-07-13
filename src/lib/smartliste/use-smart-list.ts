@@ -245,6 +245,31 @@ export function useSmartList(initialListId?: string | null) {
     [updateBoardConfig]
   );
 
+  const createLane = useCallback(
+    async (name: string, color = "sky") => {
+      if (!listId) return null;
+      setSyncing(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/smartliste/${listId}/lanes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, color }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Kunne ikke opprette sone");
+        await loadBoard(listId);
+        return data.lane;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Kunne ikke opprette sone");
+        return null;
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [listId, loadBoard]
+  );
+
   return {
     lists,
     board,
@@ -265,6 +290,7 @@ export function useSmartList(initialListId?: string | null) {
     summarizeItems,
     updateBoardConfig,
     createLabel,
+    createLane,
     setViewMode,
   };
 }

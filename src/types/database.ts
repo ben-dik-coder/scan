@@ -222,11 +222,36 @@ export type LeadActivity = {
   created_at: string;
 };
 
+export type SavedListKind = "static" | "dynamic";
+
 export type SavedList = {
   id: string;
   user_id: string;
   name: string;
   filters: Record<string, unknown>;
+  list_kind?: SavedListKind;
+  board_config?: Record<string, unknown>;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type WorkQueueRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  source_list_id: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkQueueItemRow = {
+  id: string;
+  queue_id: string;
+  orgnr: string;
+  sort_order: number;
+  pinned: boolean;
+  snooze_until: string | null;
   created_at: string;
 };
 
