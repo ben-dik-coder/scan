@@ -852,12 +852,17 @@ function parseTranscriptBubbles(transcript: string): { role: "assistant" | "user
   const lines = transcript.split(/\n+/).map((l) => l.trim()).filter(Boolean);
   const out: { role: "assistant" | "user"; text: string }[] = [];
   for (const line of lines) {
-    const m = line.match(/^(AI|Assistant|Bot|User|Kunde|Customer)\s*:\s*(.*)$/i);
+    // ElevenLabs bruker agent/user; Vapi/eldre: AI/Kunde m.m.
+    const m = line.match(
+      /^(AI|Assistant|Agent|Bot|User|Kunde|Customer)\s*:\s*(.*)$/i
+    );
     if (m) {
-      const role = /^(user|kunde|customer)$/i.test(m[1]) ? "user" : "assistant";
-      out.push({ role, text: m[2] });
+      const role = /^(user|kunde|customer)$/i.test(m[1]!)
+        ? "user"
+        : "assistant";
+      out.push({ role, text: m[2] ?? "" });
     } else if (out.length) {
-      out[out.length - 1].text += ` ${line}`;
+      out[out.length - 1]!.text += ` ${line}`;
     } else {
       out.push({ role: "assistant", text: line });
     }

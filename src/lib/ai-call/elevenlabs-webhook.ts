@@ -75,10 +75,16 @@ export function extractElevenLabsTranscript(
   for (const turn of turns) {
     const row = asRecord(turn);
     if (!row) continue;
-    const role = typeof row.role === "string" ? row.role : "?";
+    const rawRole = typeof row.role === "string" ? row.role.toLowerCase() : "";
+    const label =
+      rawRole === "user" || rawRole === "customer"
+        ? "Kunde"
+        : rawRole === "agent" || rawRole === "assistant" || rawRole === "ai"
+          ? "AI"
+          : rawRole || "?";
     const message = typeof row.message === "string" ? row.message.trim() : "";
     if (!message) continue;
-    lines.push(`${role}: ${message}`);
+    lines.push(`${label}: ${message}`);
   }
   return lines.length > 0 ? lines.join("\n") : null;
 }
