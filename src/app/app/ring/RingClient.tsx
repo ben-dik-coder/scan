@@ -249,12 +249,15 @@ export function RingClient() {
     return items.filter((item) => listOrgnrs.has(item.orgnr));
   }, [items, listOrgnrs]);
 
+  const dialableStatus = (status: string) =>
+    status === "ny" || status === "kontaktet" || status === "svarte";
+
   const dialQueue = useMemo(
     () =>
       listScopedItems.filter(
         (item) =>
-          // «kontaktet» må bli med — AI-start markerer lead som kontaktet med en gang
-          (item.status === "ny" || item.status === "kontaktet") &&
+          // AI-start → kontaktet, ferdig samtale → svarte — begge må kunne ringes igjen
+          dialableStatus(item.status) &&
           Boolean(item.phone?.trim()) &&
           !skippedOrgnrs.has(item.orgnr)
       ),
@@ -278,8 +281,7 @@ export function RingClient() {
   const totalWithPhone = useMemo(
     () =>
       listScopedItems.filter(
-        (i) =>
-          (i.status === "ny" || i.status === "kontaktet") && i.phone?.trim()
+        (i) => dialableStatus(i.status) && i.phone?.trim()
       ).length,
     [listScopedItems]
   );

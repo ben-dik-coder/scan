@@ -132,7 +132,10 @@ export function buildQueueCandidates(
     .filter((c) => {
       if (!c.lead?.queued_at) return false;
       const status = c.lead.status;
-      return status === "ny" || status === "kontaktet";
+      // «svarte» blir satt etter AI-samtale — må fortsatt kunne ringes fra køen
+      return (
+        status === "ny" || status === "kontaktet" || status === "svarte"
+      );
     })
     .sort((a, b) => b.queueScore - a.queueScore);
 }
