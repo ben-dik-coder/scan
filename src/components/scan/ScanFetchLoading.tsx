@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
+import { ScanLogoLoader } from "@/components/scan/ScanLogoLoader";
 
 type Props = {
   title?: string;
@@ -9,7 +10,7 @@ type Props = {
   onRetry?: () => void;
 };
 
-/** Premium loading while Skann henter firma fra Brønnøysund */
+/** Premium loading while Skann henter firma — NyLead-logo bygger seg opp */
 export function ScanFetchLoading({
   title = "Henter firma fra registeret…",
   subtitle,
@@ -23,21 +24,9 @@ export function ScanFetchLoading({
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="app-scan-loading-stage relative mb-8 flex h-36 w-36 items-center justify-center sm:h-44 sm:w-44">
-        <span className="app-scan-loading-glow" aria-hidden />
-        <span className="app-scan-loading-ring app-scan-loading-ring--a" aria-hidden />
-        <span className="app-scan-loading-ring app-scan-loading-ring--b" aria-hidden />
-        <span className="app-scan-loading-ring app-scan-loading-ring--c" aria-hidden />
-        <span className="app-scan-loading-sweep" aria-hidden />
-        <span className="app-scan-loading-core" aria-hidden>
-          <span className="app-scan-loading-core-dot" />
-        </span>
-        <span className="app-scan-loading-orbit" aria-hidden>
-          <span className="app-scan-loading-satellite" />
-        </span>
-      </div>
+      <ScanLogoLoader />
 
-      <div className="app-scan-loading-copy mx-auto max-w-sm text-center">
+      <div className="app-scan-loading-copy mx-auto mt-2 max-w-sm text-center">
         <p className="app-scan-loading-title text-[15px] font-semibold tracking-tight text-white sm:text-base">
           {title}
         </p>

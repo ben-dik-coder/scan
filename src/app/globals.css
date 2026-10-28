@@ -3190,116 +3190,74 @@ html.app-glass-theme body {
     }
   }
 
-  /* Laster Skann — premium scan-stage */
+  /* Laster Skann — NyLead logo: søyler → strek → pil (loop) */
   html.app-glass-theme .app-scan-loading-wrap {
     position: relative;
   }
 
-  html.app-glass-theme .app-scan-loading-stage {
-    isolation: isolate;
-  }
-
-  html.app-glass-theme .app-scan-loading-glow {
-    position: absolute;
-    inset: 18%;
-    border-radius: 9999px;
-    background: radial-gradient(
-      circle,
-      rgba(16, 185, 129, 0.28) 0%,
-      rgba(16, 185, 129, 0.08) 42%,
-      transparent 70%
-    );
-    filter: blur(6px);
-    animation: app-scan-glow 2.8s ease-in-out infinite;
-  }
-
-  html.app-glass-theme .app-scan-loading-ring {
-    position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  html.app-glass-theme .app-scan-loading-ring--a {
-    inset: 8%;
-    border-color: rgba(52, 211, 153, 0.18);
-    animation: app-scan-pulse 2.4s ease-out infinite;
-  }
-
-  html.app-glass-theme .app-scan-loading-ring--b {
-    inset: 22%;
-    border-color: rgba(52, 211, 153, 0.28);
-    animation: app-scan-pulse 2.4s ease-out 0.35s infinite;
-  }
-
-  html.app-glass-theme .app-scan-loading-ring--c {
-    inset: 36%;
-    border-color: rgba(52, 211, 153, 0.4);
-    animation: app-scan-pulse 2.4s ease-out 0.7s infinite;
-  }
-
-  html.app-glass-theme .app-scan-loading-sweep {
-    position: absolute;
-    inset: 8%;
-    border-radius: 9999px;
-    background: conic-gradient(
-      from 0deg,
-      transparent 0deg,
-      rgba(52, 211, 153, 0.05) 40deg,
-      rgba(52, 211, 153, 0.55) 78deg,
-      transparent 110deg
-    );
-    mask-image: radial-gradient(farthest-side, transparent 62%, #000 63%);
-    -webkit-mask-image: radial-gradient(farthest-side, transparent 62%, #000 63%);
-    animation: app-scan-spin 2.2s linear infinite;
-  }
-
-  html.app-glass-theme .app-scan-loading-core {
-    position: relative;
-    z-index: 2;
+  html.app-glass-theme .app-scan-logo-loader {
     display: flex;
-    height: 2.75rem;
-    width: 2.75rem;
+    height: 10rem;
+    width: 10rem;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
-    border: 1px solid rgba(52, 211, 153, 0.35);
-    background: linear-gradient(
-      160deg,
-      rgba(16, 185, 129, 0.22),
-      rgba(6, 78, 59, 0.55)
-    );
-    box-shadow:
-      0 0 0 6px rgba(16, 185, 129, 0.06),
-      0 12px 40px rgba(0, 0, 0, 0.35);
+    margin-bottom: 0.35rem;
   }
 
-  html.app-glass-theme .app-scan-loading-core-dot {
-    height: 0.55rem;
-    width: 0.55rem;
-    border-radius: 9999px;
-    background: #34d399;
-    box-shadow: 0 0 12px rgba(52, 211, 153, 0.85);
-    animation: app-scan-core 1.6s ease-in-out infinite;
+  html.app-glass-theme .app-scan-logo-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
   }
 
-  html.app-glass-theme .app-scan-loading-orbit {
-    position: absolute;
-    inset: 14%;
-    border-radius: 9999px;
-    animation: app-scan-spin 3.6s linear infinite reverse;
+  html.app-glass-theme .app-scan-logo-swoosh {
+    fill: none;
+    stroke-dasharray: 120;
+    stroke-dashoffset: 120;
+    animation: app-scan-swoosh-loop 3.6s ease-in-out infinite;
   }
 
-  html.app-glass-theme .app-scan-loading-satellite {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    height: 0.4rem;
-    width: 0.4rem;
-    margin-left: -0.2rem;
-    border-radius: 9999px;
-    background: #a7f3d0;
-    box-shadow: 0 0 10px rgba(167, 243, 208, 0.9);
+  html.app-glass-theme .app-scan-logo-swoosh--blue {
+    animation-delay: 0s;
+  }
+
+  html.app-glass-theme .app-scan-logo-swoosh--white {
+    animation-delay: 0.1s;
+  }
+
+  html.app-glass-theme .app-scan-logo-bar {
+    transform-box: fill-box;
+    transform-origin: bottom center;
+    transform: scaleY(0);
+    animation: app-scan-bar-loop 3.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+
+  html.app-glass-theme .app-scan-logo-bar--1 {
+    animation-delay: 0.22s;
+  }
+  html.app-glass-theme .app-scan-logo-bar--2 {
+    animation-delay: 0.34s;
+  }
+  html.app-glass-theme .app-scan-logo-bar--3 {
+    animation-delay: 0.46s;
+  }
+  html.app-glass-theme .app-scan-logo-bar--4 {
+    animation-delay: 0.58s;
+  }
+
+  html.app-glass-theme .app-scan-logo-thread {
+    fill: none;
+    stroke-dasharray: 160;
+    stroke-dashoffset: 160;
+    animation: app-scan-thread-loop 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  html.app-glass-theme .app-scan-logo-head {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: 25% 75%;
+    transform: scale(0.35) translate(-3px, 5px);
+    animation: app-scan-head-loop 3.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   }
 
   html.app-glass-theme .app-scan-loading-title {
@@ -3311,55 +3269,76 @@ html.app-glass-theme body {
   }
 
   html.app-glass-theme .app-scan-loading-bar-fill {
-    animation: app-scan-bar 1.4s ease-in-out infinite;
+    animation: app-scan-bar-slide 1.4s ease-in-out infinite;
   }
 
-  @keyframes app-scan-spin {
-    to {
-      transform: rotate(360deg);
+  @keyframes app-scan-swoosh-loop {
+    0%,
+    3% {
+      stroke-dashoffset: 120;
     }
-  }
-
-  @keyframes app-scan-pulse {
-    0% {
-      transform: scale(0.92);
-      opacity: 0.85;
+    16%,
+    84% {
+      stroke-dashoffset: 0;
     }
-    70% {
-      transform: scale(1.04);
-      opacity: 0.2;
-    }
+    93%,
     100% {
-      transform: scale(1.08);
+      stroke-dashoffset: 120;
+    }
+  }
+
+  @keyframes app-scan-bar-loop {
+    0%,
+    6% {
+      transform: scaleY(0);
+      opacity: 0.3;
+    }
+    20%,
+    84% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+    93%,
+    100% {
+      transform: scaleY(0);
+      opacity: 0.3;
+    }
+  }
+
+  @keyframes app-scan-thread-loop {
+    0%,
+    22% {
+      stroke-dashoffset: 160;
+    }
+    46%,
+    84% {
+      stroke-dashoffset: 0;
+    }
+    93%,
+    100% {
+      stroke-dashoffset: 160;
+    }
+  }
+
+  @keyframes app-scan-head-loop {
+    0%,
+    44% {
       opacity: 0;
+      transform: scale(0.35) translate(-3px, 5px);
     }
-  }
-
-  @keyframes app-scan-glow {
-    0%,
-    100% {
-      opacity: 0.55;
-      transform: scale(0.96);
-    }
-    50% {
+    54%,
+    84% {
       opacity: 1;
-      transform: scale(1.05);
+      transform: scale(1) translate(0, 0);
     }
-  }
-
-  @keyframes app-scan-core {
-    0%,
+    93%,
     100% {
-      transform: scale(0.9);
-      opacity: 0.75;
-    }
-    50% {
-      transform: scale(1.15);
-      opacity: 1;
+      opacity: 0;
+      transform: scale(0.35) translate(-3px, 5px);
     }
   }
 
-  @keyframes app-scan-bar {
+  @keyframes app-scan-bar-slide {
     0% {
       transform: translateX(-120%);
     }
@@ -3369,13 +3348,25 @@ html.app-glass-theme body {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    html.app-glass-theme .app-scan-loading-glow,
-    html.app-glass-theme .app-scan-loading-ring,
-    html.app-glass-theme .app-scan-loading-sweep,
-    html.app-glass-theme .app-scan-loading-core-dot,
-    html.app-glass-theme .app-scan-loading-orbit,
+    html.app-glass-theme .app-scan-logo-swoosh,
+    html.app-glass-theme .app-scan-logo-bar,
+    html.app-glass-theme .app-scan-logo-thread,
+    html.app-glass-theme .app-scan-logo-head,
     html.app-glass-theme .app-scan-loading-bar-fill {
       animation: none !important;
+    }
+
+    html.app-glass-theme .app-scan-logo-swoosh,
+    html.app-glass-theme .app-scan-logo-thread {
+      stroke-dashoffset: 0;
+    }
+    html.app-glass-theme .app-scan-logo-bar {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+    html.app-glass-theme .app-scan-logo-head {
+      opacity: 1;
+      transform: none;
     }
   }
 
