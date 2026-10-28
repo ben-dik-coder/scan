@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         ? buildMarketShuffleSeed(user.id, filterKey)
         : undefined;
 
-    const useDb = await shouldUseBrregDb();
+    const useDb = await shouldUseBrregDb({ days });
     const result = useDb
       ? await fetchCompaniesFromDb({
           ...filterKey,
