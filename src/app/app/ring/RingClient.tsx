@@ -253,7 +253,8 @@ export function RingClient() {
     () =>
       listScopedItems.filter(
         (item) =>
-          item.status === "ny" &&
+          // «kontaktet» må bli med — AI-start markerer lead som kontaktet med en gang
+          (item.status === "ny" || item.status === "kontaktet") &&
           Boolean(item.phone?.trim()) &&
           !skippedOrgnrs.has(item.orgnr)
       ),
@@ -276,7 +277,10 @@ export function RingClient() {
   const transcriptState = useRingTranscript(current?.orgnr ?? null);
   const totalWithPhone = useMemo(
     () =>
-      listScopedItems.filter((i) => i.status === "ny" && i.phone?.trim()).length,
+      listScopedItems.filter(
+        (i) =>
+          (i.status === "ny" || i.status === "kontaktet") && i.phone?.trim()
+      ).length,
     [listScopedItems]
   );
   const personalizedManus = useMemo(() => {
