@@ -37,11 +37,23 @@ function parseArgs() {
   return {
     days: daysIdx >= 0 ? Number(process.argv[daysIdx + 1]) : 365,
     limit: limitIdx >= 0 ? Number(process.argv[limitIdx + 1]) : 10_000,
+    /** Uten --email-only: alle firma (bedre for Skann). Med flag: kun has_email. */
+    emailOnly: process.argv.includes("--email-only"),
   };
 }
 
+const LEADER_CODES = new Set(["DAGL", "LEDE", "INNH"]);
+
 function formatPersonName(person) {
-  if (person?.navn?.trim()) return person.navn.trim();
+  const navn = person?.navn;
+  if (typeof navn === "string" && navn.trim()) return navn.trim();
+  if (navn && typeof navn === "object") {
+    const nested = [navn.fornavn, navn.mellomnavn, navn.etternavn]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (nested) return nested;
+  }
   const parts = [person?.fornavn, person?.mellomnavn, person?.etternavn]
     .filter(Boolean)
     .join(" ")
@@ -56,28 +68,25 @@ async function fetchDagligLeder(orgnr) {
   if (!res.ok) return null;
 
   const data = await res.json();
-  const groups = data._embedded?.roller ?? [];
+  const groups = data.rollegrupper ?? data._embedded?.roller ?? [];
 
   for (const group of groups) {
     const groupCode = group.type?.kode ?? "";
-    if (groupCode !== "DAGL" && groupCode !== "LEDE") continue;
-
     for (const role of group.roller ?? []) {
+      if (role.avregistrert) continue;
       const roleCode = role.type?.kode ?? "";
-      if (roleCode !== "DAGL" && roleCode !== "LEDE") continue;
-      if (role.person) {
-        const name = formatPersonName(role.person);
-        if (name) return name;
-      }
+      if (!LEADER_CODES.has(groupCode) && !LEADER_CODES.has(roleCode)) continue;
+      if (!role.person) continue;
+      const name = formatPersonName(role.person);
+      if (name) return name;
     }
   }
 
   for (const group of groups) {
     for (const role of group.roller ?? []) {
-      if (role.person) {
-        const name = formatPersonName(role.person);
-        if (name) return name;
-      }
+      if (role.avregistrert || !role.person) continue;
+      const name = formatPersonName(role.person);
+      if (name) return name;
     }
   }
 
@@ -90,7 +99,7 @@ function sleep(ms) {
 
 loadEnvLocal();
 
-const { days, limit } = parseArgs();
+const { days, limit, emailOnly } = parseArgs();
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
@@ -106,24 +115,38 @@ const supabase = createClient(url, key, {
 const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
 
 console.log(
-  `🔎 Henter firma med e-post uten daglig leder fra ${since} (maks ${limit})…`
+  `🔎 Henter firma uten daglig leder fra ${since} (maks ${limit}${
+    emailOnly ? ", kun med e-post" : ", alle"
+  })…`
 );
 
-const { data: rows, error } = await supabase
-  .from("companies")
-  .select("orgnr, name, daglig_leder")
-  .eq("has_email", true)
-  .is("daglig_leder", null)
-  .gte("registered_at", since)
-  .order("registered_at", { ascending: false })
-  .limit(limit);
+/** Supabase default max rows = 1000 — paginer til vi treffer limit. */
+const PAGE = 1000;
+const targets = [];
+for (let from = 0; from < limit; from += PAGE) {
+  const to = Math.min(from + PAGE, limit) - 1;
+  let query = supabase
+    .from("companies")
+    .select("orgnr, name, daglig_leder")
+    .or("daglig_leder.is.null,daglig_leder.eq.")
+    .gte("registered_at", since)
+    .order("registered_at", { ascending: false })
+    .range(from, to);
 
-if (error) {
-  console.error("❌", error.message);
-  process.exit(1);
+  if (emailOnly) {
+    query = query.eq("has_email", true);
+  }
+
+  const { data: rows, error } = await query;
+  if (error) {
+    console.error("❌", error.message);
+    process.exit(1);
+  }
+  const batch = rows ?? [];
+  targets.push(...batch);
+  if (batch.length < PAGE) break;
 }
 
-const targets = rows ?? [];
 console.log(`📋 ${targets.length.toLocaleString("nb-NO")} firma trenger daglig leder`);
 
 let updated = 0;
