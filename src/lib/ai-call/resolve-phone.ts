@@ -1,7 +1,6 @@
 import {
   getPlausibleCompanyPhone,
   hasCompanyPhone,
-  isSoleProprietorOrPerson,
   isWeakWebsiteSalesLead,
 } from "@/lib/brreg/lead-quality";
 import { fetchDagligLeder } from "@/lib/brreg/roles";
@@ -18,8 +17,7 @@ export type ResolvedAiCallTarget = {
 };
 
 export async function resolveAiCallTarget(
-  company: Company,
-  options?: { allowEnk?: boolean }
+  company: Company
 ): Promise<ResolvedAiCallTarget> {
   let working: Company = { ...company };
 
@@ -30,16 +28,6 @@ export async function resolveAiCallTarget(
       phoneE164: "",
       contactName: working.daglig_leder,
       skippedReason: "Lead er filtrert bort (svak / uten telefon)",
-    };
-  }
-
-  if (!options?.allowEnk && isSoleProprietorOrPerson(working)) {
-    return {
-      company: working,
-      phoneRaw: "",
-      phoneE164: "",
-      contactName: working.daglig_leder,
-      skippedReason: "MVP ringer bare AS/selskap (ikke ENK/person)",
     };
   }
 
