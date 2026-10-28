@@ -23,7 +23,7 @@ import {
   mapQueueCandidatesToItems,
   type QueueItemResponse,
 } from "@/lib/sales/queue-score";
-import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
+import { cn, formatCompanyName } from "@/lib/utils";
 import type { AiCall } from "@/types/database";
 import {
   Bot,
