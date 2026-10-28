@@ -23,6 +23,7 @@ function toFilterState(
     municipalityCode: partial.municipalityCode ?? "",
     days: partial.days ?? DEFAULT_MARKET_FILTERS.days,
     hasEmail: partial.hasEmail ?? false,
+    hasPhone: partial.hasPhone ?? false,
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId,

@@ -19,7 +19,13 @@ export default async function PipelinePage() {
   }
 
   return (
-    <Suspense fallback={<p className="scan-glass-muted text-sm">Laster pipeline…</p>}>
+    <Suspense
+      fallback={
+        <p className="flex min-h-[40vh] items-center justify-center bg-[#0a0a0a] text-sm text-zinc-500">
+          Laster pipeline…
+        </p>
+      }
+    >
       <PipelineClient initialItems={initialItems} isDemo={isDemo} />
     </Suspense>
   );

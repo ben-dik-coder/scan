@@ -71,6 +71,8 @@ export type BrregCompanyFilters = {
   /** 0 = alle registrerte (ingen datogrense) */
   days?: number;
   hasEmail?: boolean;
+  /** Kun firma med lagret mobil eller telefon */
+  hasPhone?: boolean;
   genericEmailOnly?: boolean;
   industryGroup?: string;
   /** Konkret yrke-id fra dropdown, f.eks. «rorlegger» */
@@ -135,6 +137,12 @@ function matchesFilters(
     if (reg && reg < since) return false;
   }
   if (filters.hasEmail && !company.has_email) return false;
+  if (filters.hasPhone) {
+    const hasStoredPhone =
+      Boolean((company.mobile ?? "").trim()) ||
+      Boolean((company.phone ?? "").trim());
+    if (!hasStoredPhone) return false;
+  }
   if (filters.genericEmailOnly) {
     if (!company.email_is_generic) return false;
     if (company.email && isPersonalEmail(company.email)) return false;
@@ -269,7 +277,9 @@ export async function fetchCompaniesFromBrreg(
 
   const allTime = isAllTimePeriod(filters.days);
   const days = filters.days ?? 30;
-  const wantsFiltered = Boolean(filters.hasEmail || filters.genericEmailOnly);
+  const wantsFiltered = Boolean(
+    filters.hasEmail || filters.genericEmailOnly || filters.hasPhone
+  );
   const industryBrregCodes = filters.industryGroup
     ? getBrregNaeringskodeParam(filters.industryGroup)
     : undefined;

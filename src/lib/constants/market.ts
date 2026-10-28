@@ -7,6 +7,7 @@ export const DEFAULT_MARKET_FILTERS = {
   days: 30,
   /** Av som standard — ellers vises bare firma med e-post i listen */
   hasEmail: false,
+  hasPhone: false,
   genericEmailOnly: false,
   industryGroup: "",
   professionId: "",

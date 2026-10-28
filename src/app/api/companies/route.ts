@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
         ? Number(daysParam)
         : 30;
   const hasEmail = searchParams.get("epost") !== "0";
+  const hasPhone = searchParams.get("tlf") === "1";
   const genericEmailOnly = searchParams.get("generisk") === "1";
   const industryGroup = searchParams.get("bransje") ?? "";
   const professionId = parseProfessionIdFromParam(searchParams.get("yrke") ?? "");
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
     municipalityCode,
     days,
     hasEmail,
+    hasPhone: hasPhone || undefined,
     genericEmailOnly,
     industryGroup: industryGroup || undefined,
     professionId: professionId || undefined,

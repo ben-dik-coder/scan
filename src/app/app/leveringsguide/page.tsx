@@ -68,7 +68,7 @@ export default function LeveringsguidePage() {
       </section>
 
       <p className="text-sm text-slate-500">
-        <Link href="/app/innstillinger" className="font-semibold text-sky-700 underline">
+        <Link href="/app/innstillinger" className="font-semibold text-emerald-400 underline">
           Tilbake til innstillinger
         </Link>
       </p>

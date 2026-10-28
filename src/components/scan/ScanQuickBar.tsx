@@ -44,7 +44,7 @@ function MobileNameSearch({
 
   return (
     <label className="relative block lg:hidden">
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-gold" />
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-400" />
       <input
         type="search"
         value={local}
@@ -76,7 +76,7 @@ export function ScanQuickBar({
   const activeStep = selectedCount > 0 ? 2 : 1;
 
   return (
-    <div className="scan-quick-bar border-b border-white/[0.06] px-3 py-3 lg:px-4">
+    <div className="scan-quick-bar border-b border-white/[0.06] bg-[#0f0f0f]/40 px-3 py-3 lg:px-4">
       {onNameQueryChange && (
         <MobileNameSearch value={nameQuery} onDebouncedChange={onNameQueryChange} />
       )}

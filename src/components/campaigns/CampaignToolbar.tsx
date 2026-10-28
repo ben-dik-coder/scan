@@ -47,7 +47,7 @@ export function CampaignToolbar({
               type="button"
               onClick={onRefresh}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-300 hover:text-sky-200 hover:underline disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 hover:underline disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               Oppdater

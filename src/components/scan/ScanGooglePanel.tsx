@@ -82,7 +82,7 @@ export function ScanGooglePanel({ searchQuery, requestOpen = 0 }: Props) {
           href={externalUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="scan-glass-muted inline-flex items-center gap-1 text-[11px] font-semibold text-sky-300 hover:text-sky-200"
+          className="scan-glass-muted inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200"
         >
           <ExternalLink className="h-3 w-3" aria-hidden />
           Åpne i ny fane

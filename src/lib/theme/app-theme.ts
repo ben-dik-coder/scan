@@ -1,12 +1,12 @@
 export const APP_THEME_STORAGE_KEY = "nylead-app-theme";
 
-export type AppThemeId = "classic" | "apple";
+/** Only Skann/Ring look is supported in-app. */
+export type AppThemeId = "apple";
 
 export const DEFAULT_APP_THEME: AppThemeId = "apple";
 
 export const APP_THEME_BACKGROUNDS: Record<AppThemeId, string> = {
-  classic: "#234a73",
-  apple: "#1c1c1e",
+  apple: "#0a0a0a",
 };
 
 export const APP_THEME_OPTIONS: {
@@ -15,35 +15,25 @@ export const APP_THEME_OPTIONS: {
   description: string;
 }[] = [
   {
-    id: "classic",
-    label: "Klassisk",
-    description: "Blå glass-stil med lys blå aksent",
-  },
-  {
     id: "apple",
-    label: "Apple",
-    description: "Mørk iOS-stil over hele appen",
+    label: "Mørk",
+    description: "Samme look som Skann og Ring",
   },
 ];
 
 export function isAppThemeId(value: unknown): value is AppThemeId {
-  return value === "classic" || value === "apple";
+  return value === "apple";
 }
 
 export function readStoredAppTheme(): AppThemeId {
-  if (typeof window === "undefined") return DEFAULT_APP_THEME;
-  try {
-    const stored = localStorage.getItem(APP_THEME_STORAGE_KEY);
-    if (isAppThemeId(stored)) return stored;
-  } catch {
-    /* ignore */
-  }
+  // Always Skann/Ring look — ignore legacy "classic" storage
   return DEFAULT_APP_THEME;
 }
 
 export function storeAppTheme(theme: AppThemeId) {
+  void theme;
   try {
-    localStorage.setItem(APP_THEME_STORAGE_KEY, theme);
+    localStorage.setItem(APP_THEME_STORAGE_KEY, DEFAULT_APP_THEME);
   } catch {
     /* ignore */
   }
@@ -53,9 +43,24 @@ export function isAppRoute(pathname: string) {
   return pathname === "/app" || pathname.startsWith("/app/");
 }
 
-export function applyAppThemeToDocument(theme: AppThemeId, onAppRoute: boolean) {
+/** Auth + onboarding routes that should share the app dark look. */
+export function isAppLookRoute(pathname: string) {
+  return (
+    isAppRoute(pathname) ||
+    pathname === "/innlogging" ||
+    pathname.startsWith("/innlogging/") ||
+    pathname === "/registrer" ||
+    pathname.startsWith("/registrer/")
+  );
+}
+
+export function applyAppThemeToDocument(
+  theme: AppThemeId,
+  onAppRoute: boolean
+) {
   const root = document.documentElement;
   const body = document.body;
+  const locked = DEFAULT_APP_THEME;
 
   if (!onAppRoute) {
     root.classList.remove("app-glass-theme");
@@ -68,6 +73,7 @@ export function applyAppThemeToDocument(theme: AppThemeId, onAppRoute: boolean) 
 
   root.classList.add("app-glass-theme");
   body.classList.add("app-glass-theme");
-  root.setAttribute("data-app-theme", theme);
-  root.style.backgroundColor = APP_THEME_BACKGROUNDS[theme];
+  root.setAttribute("data-app-theme", locked);
+  root.style.backgroundColor = APP_THEME_BACKGROUNDS[locked];
+  void theme;
 }

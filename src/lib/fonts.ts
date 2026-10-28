@@ -1,13 +1,8 @@
-import { Barlow_Condensed, Inter } from "next/font/google";
+/** Font tokens used on <html>. CSS vars are defined in globals. */
+export const barlow = {
+  variable: "font-barlow",
+};
 
-export const barlow = Barlow_Condensed({
-  subsets: ["latin"],
-  variable: "--font-barlow",
-  weight: ["600", "700", "800", "900"],
-});
-
-export const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  weight: ["400", "500", "600", "700"],
-});
+export const inter = {
+  variable: "font-inter",
+};

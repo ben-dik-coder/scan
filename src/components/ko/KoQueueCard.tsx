@@ -111,7 +111,7 @@ export function KoQueueCard({
             </p>
           )}
           {item.email && (
-            <p className={cn("text-sky-300/90", isFocus ? "mt-2 text-sm" : "mt-1 text-xs")}>
+            <p className={cn("text-emerald-300/90", isFocus ? "mt-2 text-sm" : "mt-1 text-xs")}>
               {item.email}
             </p>
           )}
@@ -159,7 +159,7 @@ export function KoQueueCard({
               onClick={onMarkContacted}
               disabled={busy}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg bg-sky-600 font-semibold text-white hover:bg-sky-700 disabled:opacity-50",
+                "inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50",
                 isFocus ? "px-5 py-3 text-sm" : "px-3 py-1.5 text-xs"
               )}
             >

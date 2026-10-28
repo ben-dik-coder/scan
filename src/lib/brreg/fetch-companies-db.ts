@@ -188,6 +188,12 @@ export async function fetchCompaniesFromDb(
   if (filters.hasEmail) {
     query = query.eq("has_email", true);
   }
+  if (filters.hasPhone) {
+    // Ikke-tom mobil eller telefon — slik at paginering kun går over firma med nr
+    query = query.or(
+      "and(mobile.not.is.null,mobile.neq.),and(phone.not.is.null,phone.neq.)"
+    );
+  }
   if (filters.genericEmailOnly) {
     query = query.eq("email_is_generic", true);
   }
@@ -237,6 +243,11 @@ export async function fetchCompaniesFromDb(
   }
   if (filters.nameQuery?.trim() && !filters.professionId?.trim()) {
     rows = rows.filter((c) => companyNameMatchesQuery(c.name, filters.nameQuery));
+  }
+  if (filters.hasPhone) {
+    rows = rows.filter(
+      (c) => Boolean((c.mobile ?? "").trim()) || Boolean((c.phone ?? "").trim())
+    );
   }
   if (filters.withoutWebsite) {
     rows = rows.filter((c) => !hasStoredWebsite(c.website));

@@ -221,7 +221,7 @@ export const ManusEditor = forwardRef<ManusEditorHandle, Props>(function ManusEd
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-black/25",
-        focused && "ring-1 ring-sky-400/35"
+        focused && "ring-1 ring-emerald-400/35"
       )}
     >
       {!compactToolbar ? (
@@ -248,7 +248,7 @@ export const ManusEditor = forwardRef<ManusEditorHandle, Props>(function ManusEd
                     onClick={() => run(action)}
                     className={cn(
                       "flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-40",
-                      isActive && "bg-sky-500/20 text-sky-200"
+                      isActive && "bg-emerald-500/20 text-emerald-200"
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -332,8 +332,8 @@ export const ManusEditor = forwardRef<ManusEditorHandle, Props>(function ManusEd
           className={cn(
             "manus-editor h-full min-h-[calc(100dvh-14rem)] overflow-y-auto px-6 py-5 leading-relaxed text-slate-100 outline-none sm:min-h-[calc(100dvh-12rem)]",
             fontScaleClass,
-            "[&_a]:text-sky-400 [&_a]:underline",
-            "[&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:border-sky-400/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-300",
+            "[&_a]:text-emerald-400 [&_a]:underline",
+            "[&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:border-emerald-400/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-300",
             "[&_h1]:mb-4 [&_h1]:mt-2 [&_h1]:text-2xl [&_h1]:font-bold",
             "[&_h2]:mb-3 [&_h2]:mt-2 [&_h2]:text-xl [&_h2]:font-semibold",
             "[&_h3]:mb-2 [&_h3]:mt-2 [&_h3]:text-lg [&_h3]:font-semibold",

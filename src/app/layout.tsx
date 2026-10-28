@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import { CookieBanner } from "@/components/layout/CookieBanner";
+import { AppThemeProvider } from "@/components/theme/AppThemeProvider";
 import { barlow, inter } from "@/lib/fonts";
 import "./globals.css";
 import { site } from "@/lib/site";
 
 /** Aktiver app-tema på /app før første paint (unngår hvit flash og rå layout) */
-const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;var onApp=p==='/app'||p.indexOf('/app/')===0;var el=document.documentElement;var body=document.body;var theme='apple';var bg='#1c1c1e';try{var s=localStorage.getItem('nylead-app-theme');if(s==='classic'||s==='apple')theme=s;}catch(e){}if(theme==='classic')bg='#234a73';if(onApp){el.classList.add('app-glass-theme');body.classList.add('app-glass-theme');el.setAttribute('data-app-theme',theme);el.style.backgroundColor=bg;}else{el.classList.remove('app-glass-theme');body.classList.remove('app-glass-theme');el.removeAttribute('data-app-theme');el.style.backgroundColor='';body.style.color='';}})();`;
+const APP_GLASS_THEME_BOOT = `(function(){var p=location.pathname;var on=p==='/app'||p.indexOf('/app/')===0||p==='/innlogging'||p.indexOf('/innlogging/')===0||p==='/registrer'||p.indexOf('/registrer/')===0;var el=document.documentElement;var body=document.body;var theme='apple';var bg='#0a0a0a';if(on){el.classList.add('app-glass-theme');body.classList.add('app-glass-theme');el.setAttribute('data-app-theme',theme);el.style.backgroundColor=bg;}else{el.classList.remove('app-glass-theme');body.classList.remove('app-glass-theme');el.removeAttribute('data-app-theme');el.style.backgroundColor='';body.style.color='';}})();`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -85,7 +86,7 @@ export default function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: APP_GLASS_THEME_BOOT }}
         />
-        {children}
+        <AppThemeProvider>{children}</AppThemeProvider>
         <CookieBanner />
         <Analytics />
       </body>

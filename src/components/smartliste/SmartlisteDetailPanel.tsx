@@ -149,7 +149,7 @@ export function SmartlisteDetailPanel({
             <p style={{ margin: 0, fontWeight: 600 }}>
               {company ? formatCompanyName(company.name) : card.orgnr}
             </p>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>{card.orgnr}</p>
+            <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "#a1a1aa" }}>{card.orgnr}</p>
           </div>
         </div>
 
@@ -172,7 +172,7 @@ export function SmartlisteDetailPanel({
               <FactRow label="Daglig leder" value={facts.dagligLeder ?? "Ikke funnet"} />
               <FactRow label="Sted" value={facts.municipality ?? "—"} />
               <div style={{ display: "grid", gridTemplateColumns: "7rem 1fr", gap: "0.5rem", marginBottom: "0.35rem" }}>
-                <dt style={{ margin: 0, fontSize: "0.75rem", color: "#64748b", paddingTop: "0.35rem" }}>
+                <dt style={{ margin: 0, fontSize: "0.75rem", color: "#71717a", paddingTop: "0.35rem" }}>
                   Telefon
                 </dt>
                 <dd style={{ margin: 0 }}>
@@ -226,7 +226,7 @@ export function SmartlisteDetailPanel({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
-            <p className="smartliste-section-label" style={{ padding: 0, margin: 0, color: "#fcd34d" }}>
+            <p className="smartliste-section-label" style={{ padding: 0, margin: 0, color: "#34d399" }}>
               AI-oppsummering
             </p>
             <button
@@ -245,13 +245,13 @@ export function SmartlisteDetailPanel({
           </div>
 
           {summarizing && (
-            <p style={{ margin: "0.75rem 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>
+            <p style={{ margin: "0.75rem 0 0", fontSize: "0.75rem", color: "#a1a1aa" }}>
               Henter Brreg, telefon (1881/Gulesider), skanner nett og søker Google — tar gjerne 15–30 sek per firma.
             </p>
           )}
 
           {aiSummary ? (
-            <div style={{ marginTop: "0.75rem", fontSize: "0.875rem", color: "#e2e8f0" }}>
+            <div style={{ marginTop: "0.75rem", fontSize: "0.875rem", color: "#e4e4e7" }}>
               <div
                 style={{
                   display: "flex",
@@ -268,7 +268,7 @@ export function SmartlisteDetailPanel({
                     borderRadius: "9999px",
                     padding: "0.15rem 0.5rem",
                     background: aiSummary.usedAi ? "rgba(34,197,94,0.15)" : "rgba(148,163,184,0.15)",
-                    color: aiSummary.usedAi ? "#86efac" : "#cbd5e1",
+                    color: aiSummary.usedAi ? "#86efac" : "#d4d4d8",
                   }}
                 >
                   {aiSummary.usedAi ? "AI + research" : "Research (regler)"}
@@ -280,7 +280,7 @@ export function SmartlisteDetailPanel({
                       borderRadius: "9999px",
                       padding: "0.15rem 0.5rem",
                       background: "rgba(56,189,248,0.12)",
-                      color: "#7dd3fc",
+                      color: "#6ee7b7",
                     }}
                   >
                     Live skann
@@ -295,7 +295,7 @@ export function SmartlisteDetailPanel({
                         borderRadius: "9999px",
                         padding: "0.15rem 0.5rem",
                         background: "rgba(255,255,255,0.06)",
-                        color: "#94a3b8",
+                        color: "#a1a1aa",
                       }}
                     >
                       {source}
@@ -304,16 +304,16 @@ export function SmartlisteDetailPanel({
               </div>
               <p style={{ margin: "0 0 0.75rem", lineHeight: 1.5 }}>{aiSummary.summary}</p>
               {aiSummary.whatTheyDo && (
-                <p style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", color: "#94a3b8" }}>
-                  <strong style={{ color: "#cbd5e1" }}>Driver med:</strong> {aiSummary.whatTheyDo}
+                <p style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", color: "#a1a1aa" }}>
+                  <strong style={{ color: "#d4d4d8" }}>Driver med:</strong> {aiSummary.whatTheyDo}
                 </p>
               )}
               {aiSummary.opportunities.length > 0 && (
                 <div style={{ marginBottom: "0.75rem" }}>
-                  <p style={{ margin: "0 0 0.35rem", fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1" }}>
+                  <p style={{ margin: "0 0 0.35rem", fontSize: "0.75rem", fontWeight: 600, color: "#d4d4d8" }}>
                     Hva vi kan løse for dem
                   </p>
-                  <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "#cbd5e1" }}>
+                  <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "#d4d4d8" }}>
                     {aiSummary.opportunities.map((item) => (
                       <li key={item} style={{ marginBottom: "0.25rem" }}>
                         {item}
@@ -323,18 +323,18 @@ export function SmartlisteDetailPanel({
                 </div>
               )}
               {aiSummary.approach && (
-                <p style={{ margin: 0, fontSize: "0.75rem", color: "#94a3b8", fontStyle: "italic" }}>
+                <p style={{ margin: 0, fontSize: "0.75rem", color: "#a1a1aa", fontStyle: "italic" }}>
                   {aiSummary.approach}
                 </p>
               )}
               {aiSummary.generated_at && (
-                <p style={{ margin: "0.5rem 0 0", fontSize: "0.65rem", color: "#64748b" }}>
+                <p style={{ margin: "0.5rem 0 0", fontSize: "0.65rem", color: "#71717a" }}>
                   Oppdatert {new Date(aiSummary.generated_at).toLocaleString("nb-NO")}
                 </p>
               )}
             </div>
           ) : (
-            <p style={{ margin: "0.75rem 0 0", fontSize: "0.8125rem", color: "#94a3b8", lineHeight: 1.5 }}>
+            <p style={{ margin: "0.75rem 0 0", fontSize: "0.8125rem", color: "#a1a1aa", lineHeight: 1.5 }}>
               Trykk «Analyser» — da søker vi Brreg, nett og Google, og lager en unik vurdering for dette firmaet.
             </p>
           )}
@@ -352,7 +352,7 @@ export function SmartlisteDetailPanel({
             <p className="smartliste-section-label" style={{ padding: 0, marginBottom: "0.35rem" }}>
               Prioritets-score
             </p>
-            <p style={{ margin: 0, fontSize: "0.875rem", color: "#cbd5e1" }}>{card.ai_score_reason}</p>
+            <p style={{ margin: 0, fontSize: "0.875rem", color: "#d4d4d8" }}>{card.ai_score_reason}</p>
           </div>
         )}
 
@@ -361,7 +361,7 @@ export function SmartlisteDetailPanel({
             <p className="smartliste-section-label" style={{ padding: 0, margin: 0 }}>
               Merkelapper
             </p>
-            {syncing && <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#94a3b8" }} />}
+            {syncing && <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#a1a1aa" }} />}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
             {board.labels.map((label) => {
@@ -373,7 +373,7 @@ export function SmartlisteDetailPanel({
                   onClick={() => toggleLabel(label)}
                   className={cn(
                     "rounded-full border px-2 py-0.5 text-xs font-medium",
-                    active ? labelChipClass(label.color) : "border-white/10 text-slate-500"
+                    active ? labelChipClass(label.color) : "border-white/10 text-zinc-500"
                   )}
                 >
                   {label.name}
@@ -439,8 +439,8 @@ export function SmartlisteDetailPanel({
 function FactRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "7rem 1fr", gap: "0.5rem", marginBottom: "0.35rem" }}>
-      <dt style={{ margin: 0, fontSize: "0.75rem", color: "#64748b" }}>{label}</dt>
-      <dd style={{ margin: 0, color: "#e2e8f0" }}>{value}</dd>
+      <dt style={{ margin: 0, fontSize: "0.75rem", color: "#71717a" }}>{label}</dt>
+      <dd style={{ margin: 0, color: "#e4e4e7" }}>{value}</dd>
     </div>
   );
 }

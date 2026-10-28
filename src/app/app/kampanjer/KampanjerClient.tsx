@@ -138,7 +138,7 @@ export function KampanjerClient({ initialCampaigns, isDemo }: Props) {
               setHasFailures(false);
               setLast30Days(false);
             }}
-            className="font-semibold text-sky-300 underline"
+            className="font-semibold text-emerald-300 underline"
           >
             Nullstill filter
           </button>

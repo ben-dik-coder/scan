@@ -153,7 +153,7 @@ function PresenceBadge({
     ok: "bg-emerald-100 text-emerald-800",
     warn: "bg-amber-100 text-amber-900",
     muted: "bg-slate-100 text-slate-600",
-    info: "bg-sky-100 text-sky-800",
+    info: "bg-emerald-100 text-emerald-800",
   };
   return (
     <span
@@ -230,7 +230,7 @@ function WebsiteCell({
         </a>
         {showDisplayName && (
           <p
-            className="cv-meta max-w-[10rem] truncate text-sky-700"
+            className="cv-meta max-w-[10rem] truncate text-emerald-700"
             title={`Vises som: ${scan.displayName}`}
           >
             vises som: {scan.displayName}
@@ -249,7 +249,7 @@ function WebsiteCell({
   }
   if (hasUncertainWebsiteHits(scan.topHits, companyName)) {
     return (
-      <span className="inline-flex max-w-[10rem] items-center gap-0.5 truncate font-semibold text-sky-700">
+      <span className="inline-flex max-w-[10rem] items-center gap-0.5 truncate font-semibold text-emerald-700">
         <HelpCircle className="h-3 w-3 shrink-0" />
         Usikker
       </span>
@@ -370,7 +370,7 @@ function CompanyNameButton({
         onGoogleSearch(company);
       }}
       className={cn(
-        "cv-firma max-w-full truncate text-left font-semibold hover:text-sky-200 hover:underline",
+        "cv-firma max-w-full truncate text-left font-semibold hover:text-emerald-200 hover:underline",
         className
       )}
       title={`${displayName} – søk på Google`}
@@ -414,7 +414,7 @@ function SocialCell({
       rel="noopener noreferrer"
       className={cn(
         "inline-flex max-w-[6rem] items-center gap-0.5 truncate",
-        uncertain ? "font-semibold text-sky-700" : "cv-link"
+        uncertain ? "font-semibold text-emerald-700" : "cv-link"
       )}
       title={uncertain ? `${label} (usikker treff)` : label}
     >
@@ -563,7 +563,7 @@ function CompanyDetailBody({
             url={scan?.linkedinUrl}
             confidence={scan?.linkedinConfidence}
             scanned={Boolean(scan?.socialScan?.includeLinkedIn)}
-            icon={<LinkedinIcon className="h-3.5 w-3.5 shrink-0 text-sky-800" />}
+            icon={<LinkedinIcon className="h-3.5 w-3.5 shrink-0 text-emerald-800" />}
             label="LI"
             viaFb={scan?.linkedinFromFacebook}
             viaWebsite={scan?.linkedinFromWebsite}
@@ -695,7 +695,7 @@ function CompanyMobileCard({
     <article
       className={cn(
         "flex gap-2 rounded-xl border border-[var(--cv-border)] bg-white/[0.03] px-3 py-2.5 shadow-sm transition-all duration-150 hover:border-white/20 hover:bg-white/[0.05] hover:shadow-md",
-        isSelected && "bg-[var(--cv-surface)] ring-1 ring-inset ring-sky-400/40"
+        isSelected && "bg-[var(--cv-surface)] ring-1 ring-inset ring-emerald-400/40"
       )}
     >
       <input
@@ -703,7 +703,7 @@ function CompanyMobileCard({
         checked={isSelected}
         onChange={() => onToggle(c.orgnr)}
         aria-label={`Velg ${c.name}`}
-        className="cv-checkbox mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-sky-600"
+        className="cv-checkbox mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-emerald-600"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-1.5">
@@ -717,7 +717,7 @@ function CompanyMobileCard({
             <button
               type="button"
               onClick={() => onOpenDetail(c.orgnr)}
-              className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 hover:bg-white/[0.06] hover:text-sky-200"
+              className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 hover:bg-white/[0.06] hover:text-emerald-200"
             >
               Info
             </button>
@@ -920,7 +920,7 @@ export function CompanyTable({
           checked={allSelected}
           onChange={onToggleAll}
           aria-label="Velg alle"
-          className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
+          className="cv-checkbox h-3.5 w-3.5 rounded accent-emerald-600"
         />
         <span className="text-[11px] font-semibold text-[var(--cv-muted)]">Velg alle</span>
       </div>
@@ -970,7 +970,7 @@ export function CompanyTable({
                     type="checkbox"
                     checked={showCol(id)}
                     onChange={() => toggleColumn(id)}
-                    className="rounded accent-sky-600"
+                    className="rounded accent-emerald-600"
                   />
                   {COLUMN_LABELS[id]}
                 </label>
@@ -1019,7 +1019,7 @@ export function CompanyTable({
                     checked={allSelected}
                     onChange={onToggleAll}
                     aria-label="Velg alle"
-                    className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
+                    className="cv-checkbox h-3.5 w-3.5 rounded accent-emerald-600"
                   />
                 </th>
                 <th>Firma</th>
@@ -1050,7 +1050,7 @@ export function CompanyTable({
                         checked={isSelected}
                         onChange={() => onToggle(c.orgnr)}
                         aria-label={`Velg ${c.name}`}
-                        className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
+                        className="cv-checkbox h-3.5 w-3.5 rounded accent-emerald-600"
                       />
                     </td>
                     <td>
@@ -1189,7 +1189,7 @@ export function CompanyTable({
                             confidence={scan?.linkedinConfidence}
                             scanned={Boolean(scan?.socialScan?.includeLinkedIn)}
                             icon={
-                              <LinkedinIcon className="h-3 w-3 shrink-0 text-sky-800" />
+                              <LinkedinIcon className="h-3 w-3 shrink-0 text-emerald-800" />
                             }
                             label="LI"
                             viaFb={scan?.linkedinFromFacebook}

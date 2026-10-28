@@ -28,6 +28,10 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     await patchSmartListItems(user.id, id, patches);
+    // Lett svar for drag-flytt — klienten er allerede optimistic
+    if (body.light === true) {
+      return NextResponse.json({ ok: true });
+    }
     const board = await loadSmartListBoard(user.id, id);
     return NextResponse.json(board);
   } catch (err) {

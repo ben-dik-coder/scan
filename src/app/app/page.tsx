@@ -73,6 +73,7 @@ function parseFilters(params: URLSearchParams, brreg = false): FilterState {
       : brreg
         ? DEFAULT_MARKET_FILTERS.hasEmail
         : false,
+    hasPhone: params.get("tlf") === "1",
     genericEmailOnly: params.has("generisk")
       ? params.get("generisk") === "1"
       : brreg
@@ -110,6 +111,8 @@ function buildCompaniesQuery(
   else params.delete("kommune");
   params.set("dager", String(filters.days));
   params.set("epost", filters.hasEmail ? "1" : "0");
+  if (filters.hasPhone) params.set("tlf", "1");
+  else params.delete("tlf");
   params.set("generisk", filters.genericEmailOnly ? "1" : "0");
   if (filters.industryGroup) params.set("bransje", filters.industryGroup);
   else params.delete("bransje");
@@ -141,6 +144,7 @@ function FirmaPageDemo() {
     municipalityCode: filters.municipalityCode || undefined,
     days: filters.days,
     hasEmail: filters.hasEmail,
+    hasPhone: filters.hasPhone,
     genericEmailOnly: filters.genericEmailOnly,
     industryGroup: filters.industryGroup || undefined,
     professionId: filters.professionId || undefined,
@@ -155,6 +159,7 @@ function FirmaPageDemo() {
         municipalityCode: filters.municipalityCode || undefined,
         days: filters.days,
         hasEmail: filters.hasEmail,
+        hasPhone: filters.hasPhone,
         genericEmailOnly: filters.genericEmailOnly,
         industryGroup: filters.industryGroup || undefined,
         professionId: filters.professionId || undefined,
@@ -353,6 +358,7 @@ function FirmaPageBrreg() {
     filters.municipalityCode,
     filters.days,
     filters.hasEmail,
+    filters.hasPhone,
     filters.genericEmailOnly,
     filters.industryGroup,
     filters.professionId,

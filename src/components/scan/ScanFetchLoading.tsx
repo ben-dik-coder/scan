@@ -16,7 +16,7 @@ export function ScanFetchLoading({
 }: Props) {
   return (
     <div className="app-scan-loading-wrap scan-glass-kommand px-2 sm:px-3">
-      <div className="app-scan-loading-card scan-surface-full overflow-hidden ring-2 ring-sky-400/25">
+      <div className="app-scan-loading-card scan-surface-full overflow-hidden ring-2 ring-emerald-400/25">
         <div className="scan-glass-scan-status is-scanning flex items-start gap-2.5 px-2.5 py-2.5">
           <div className="scan-glass-status-icon is-scanning flex h-7 w-7 shrink-0 items-center justify-center">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

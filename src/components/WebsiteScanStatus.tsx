@@ -102,7 +102,7 @@ export function WebsiteScanStatus({
         embedded
           ? "scan-glass-scan-status scan-glass-divider border-t"
           : "scan-surface scan-glass-scan-status overflow-hidden",
-        scanning && (embedded ? "is-scanning ring-1 ring-inset ring-sky-400/30" : "ring-2 ring-sky-400/30"),
+        scanning && (embedded ? "is-scanning ring-1 ring-inset ring-emerald-400/30" : "ring-2 ring-emerald-400/30"),
         scanComplete && !scanning && "is-complete"
       )}
     >
@@ -215,7 +215,7 @@ export function WebsiteScanStatus({
                     ? "is-pending w-1/5 animate-pulse"
                     : scanning
                       ? "scan-bar-active"
-                      : "bg-sky-400"
+                      : "bg-emerald-400"
               )}
               style={
                 scanPending || (scanning && barWidth === undefined)
@@ -241,7 +241,7 @@ export function WebsiteScanStatus({
             </p>
           )}
           {scanComplete && listFilter === "with_website" && withWebsiteCount > 0 && (
-            <p className="text-sky-200">
+            <p className="text-emerald-200">
               Du ser bare firma med egen nettside. Bytt til «Uten nettside» eller «Alle» for hele listen.
             </p>
           )}

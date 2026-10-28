@@ -1,3 +1,8 @@
+
+/* Font fallbacks (replaces next/font Google during Vercel build) */
+.font-barlow { --font-barlow: "Arial Narrow", Arial, sans-serif; }
+.font-inter { --font-inter: system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -43,12 +48,9 @@ body {
 }
 
 /* App-tema bakgrunn i root layout — unngår hvit skjerm før /app-chunk laster */
-html.app-glass-theme[data-app-theme="classic"] {
-  background-color: #234a73;
-}
-
+html.app-glass-theme[data-app-theme="classic"],
 html.app-glass-theme[data-app-theme="apple"] {
-  background-color: #1c1c1e;
+  background-color: #0a0a0a;
 }
 
 html.app-glass-theme[data-app-theme="apple"] body {
@@ -3263,25 +3265,20 @@ html.app-glass-theme body {
 
   /* Mobil hamburger-meny: lys blå glass, matcher resten av appen */
   .scan-glass-shell .scan-glass-drawer-backdrop {
-    background: rgba(23, 52, 90, 0.45) !important;
+    background: rgba(0, 0, 0, 0.55) !important;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer {
-    border-color: rgba(255, 255, 255, 0.22);
-    background: linear-gradient(
-      160deg,
-      rgba(42, 82, 122, 0.98) 0%,
-      rgba(35, 74, 115, 0.98) 55%,
-      rgba(28, 64, 102, 0.98) 100%
-    ) !important;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: #0c0c0c !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.12) inset,
-      0 24px 48px -12px rgba(15, 58, 95, 0.45);
-    color: #f8fafc;
+      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+      0 24px 48px -12px rgba(0, 0, 0, 0.65);
+    color: #fafafa;
     isolation: isolate;
   }
 
@@ -3293,8 +3290,8 @@ html.app-glass-theme body {
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer .glass-nav-link-active {
-    background: rgba(56, 189, 248, 0.2);
-    border-color: rgba(56, 189, 248, 0.4);
+    background: rgba(52, 211, 153, 0.12);
+    border-color: rgba(52, 211, 153, 0.35);
   }
 
   .scan-glass-shell .scan-glass-mobile-drawer .app-nav-group-label {
@@ -3338,10 +3335,10 @@ html.app-glass-theme body {
   }
 
   .scan-glass-shell .glass-nav-link-active {
-    border-color: rgba(56, 189, 248, 0.45);
-    background: rgba(56, 189, 248, 0.14);
+    border-color: rgba(52, 211, 153, 0.35);
+    background: rgba(52, 211, 153, 0.12);
     color: var(--scan-glass-text);
-    box-shadow: 0 0 20px rgba(56, 189, 248, 0.12);
+    box-shadow: none;
     @apply ring-0;
   }
 
@@ -3424,8 +3421,8 @@ html.app-glass-theme body {
   }
 
   .scan-glass-shell .input-app:focus {
-    border-color: rgba(56, 189, 248, 0.45);
-    --tw-ring-color: rgba(56, 189, 248, 0.15);
+    border-color: rgba(52, 211, 153, 0.45);
+    --tw-ring-color: rgba(52, 211, 153, 0.15);
   }
 
   .scan-glass-shell .btn-secondary:hover,
@@ -3436,9 +3433,50 @@ html.app-glass-theme body {
   }
 
   .scan-glass-shell .btn-primary {
-    background: var(--scan-glass-accent);
-    color: var(--scan-glass-accent-text, #0f172a);
-    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+    background: #10b981;
+    color: #022c22;
+    box-shadow: none;
+  }
+
+  html.app-glass-theme .scan-btn-primary,
+  .scan-glass-shell .scan-btn-primary {
+    background: #10b981 !important;
+    color: #022c22 !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.app-glass-theme .input-dark {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: #111 !important;
+    color: #fafafa !important;
+  }
+
+  html.app-glass-theme .input-dark:focus {
+    border-color: rgba(52, 211, 153, 0.45) !important;
+    outline: none;
+  }
+
+  .scan-glass-shell .scan-btn-ghost {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: #e4e4e7 !important;
+    box-shadow: none !important;
+  }
+
+  .scan-glass-shell .scan-input {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: #111 !important;
+    color: #fafafa !important;
+    box-shadow: none !important;
+  }
+
+  .scan-glass-shell .scan-input::placeholder {
+    color: #71717a !important;
+  }
+
+  .scan-glass-shell .scan-input:focus {
+    border-color: rgba(52, 211, 153, 0.45) !important;
   }
 
   .scan-glass-shell [class~="text-brand-navy"],
@@ -3466,7 +3504,7 @@ html.app-glass-theme body {
   }
 
   .scan-glass-shell [class~="bg-brand-goldPale"] {
-    background: rgba(56, 189, 248, 0.12);
+    background: rgba(52, 211, 153, 0.12);
   }
 
   .scan-glass-shell [class~="text-brand-gold"] {
@@ -3653,19 +3691,19 @@ html.app-glass-theme body {
   }
 
   .journey-banner--hero {
-    border-color: rgba(56, 189, 248, 0.35);
-    background: linear-gradient(
-      135deg,
-      rgba(56, 189, 248, 0.12) 0%,
-      rgba(255, 255, 255, 0.04) 55%
-    );
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(52, 211, 153, 0.22);
+    background:
+      radial-gradient(ellipse 70% 90% at 88% 40%, rgba(16, 185, 129, 0.14), transparent 55%),
+      linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(255, 255, 255, 0.03) 55%);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   }
 
   .journey-banner-step--active {
-    background: rgba(56, 189, 248, 0.2);
-    color: #e0f2fe;
-    border: 1px solid rgba(56, 189, 248, 0.35);
+    background: rgba(16, 185, 129, 0.18);
+    color: #d1fae5;
+    border: 1px solid rgba(52, 211, 153, 0.35);
   }
 
   .journey-banner-step--done {
@@ -3673,11 +3711,173 @@ html.app-glass-theme body {
   }
 
   .journey-banner-cta {
-    box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+    box-shadow: 0 4px 18px rgba(16, 185, 129, 0.28);
   }
 
   .app-overview-page .journey-banner {
     border-radius: 1rem;
+  }
+
+  /* Oversikt — WebGL flyt (R3F) */
+  .app-overview-page .journey-banner--hero {
+    overflow: visible;
+  }
+
+  .app-overview-hero-surface {
+    overflow: visible !important;
+  }
+
+  .app-overview-engine-wrap {
+    background:
+      radial-gradient(ellipse 80% 70% at 50% 0%, rgba(16, 185, 129, 0.08), transparent 55%),
+      rgba(0, 0, 0, 0.2);
+  }
+
+  .overview-engine {
+    width: 100%;
+    max-width: 1100px;
+    margin-inline: auto;
+  }
+
+  .overview-engine-frame--webgl {
+    overflow: hidden;
+    border-radius: 1.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #050505;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 28px 70px rgba(0, 0, 0, 0.45);
+  }
+
+  .overview-engine-canvas-wrap {
+    position: relative;
+    height: min(62vh, 520px);
+    min-height: 360px;
+    width: 100%;
+  }
+
+  .overview-engine-canvas-wrap::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+      radial-gradient(ellipse 70% 65% at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.55) 100%),
+      linear-gradient(180deg, rgba(0, 0, 0, 0.25), transparent 18%, transparent 78%, rgba(0, 0, 0, 0.45));
+  }
+
+  .overview-engine-canvas-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .overview-engine-loading,
+  .overview-engine-fallback {
+    display: grid;
+    place-content: center;
+    place-items: center;
+    height: 100%;
+    gap: 0.75rem;
+    color: #a1a1aa;
+    font-size: 0.8rem;
+  }
+
+  .overview-engine-loading-orb {
+    width: 42px;
+    height: 42px;
+    border-radius: 9999px;
+    border: 2px solid rgba(52, 211, 153, 0.25);
+    border-top-color: #34d399;
+    animation: eng-spin 0.9s linear infinite;
+  }
+
+  @keyframes eng-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .overview-engine-rail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    padding: 0.85rem 1rem 1rem;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .eng-rail-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: rgba(161, 161, 170, 0.9);
+    transition: color 0.25s ease;
+  }
+
+  .eng-rail-step b {
+    display: inline-grid;
+    place-items: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 0.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: inherit;
+    transition: border-color 0.25s ease, background 0.25s ease, color 0.25s ease;
+  }
+
+  .eng-rail-step--live {
+    color: #6ee7b7;
+  }
+
+  .eng-rail-step--live b {
+    border-color: rgba(52, 211, 153, 0.5);
+    background: rgba(16, 185, 129, 0.22);
+    color: #ecfdf5;
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.25);
+  }
+
+  .eng-rail-sep {
+    width: 28px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  }
+
+  .app-overview-pipeline-bar {
+    display: flex;
+    height: 10px;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .app-overview-pipeline-seg {
+    min-width: 4px;
+    height: 100%;
+    transition: filter 0.15s ease;
+  }
+  .app-overview-pipeline-seg:hover { filter: brightness(1.2); }
+  .app-overview-pipeline-seg.is-ny { background: #64748b; }
+  .app-overview-pipeline-seg.is-kontaktet { background: #3b82f6; }
+  .app-overview-pipeline-seg.is-svarte { background: #10b981; }
+  .app-overview-pipeline-seg.is-moete_booket { background: #8b5cf6; }
+  .app-overview-pipeline-seg.is-vunnet { background: #16a34a; }
+  .app-overview-pipeline-seg.is-tapt { background: #ef4444; }
+  .app-overview-pipeline-seg.is-ikke_interessert { background: #f97316; }
+
+  @media (max-width: 640px) {
+    .overview-engine-canvas-wrap {
+    position: relative;
+      min-height: 260px;
+      height: 46vh;
+    }
   }
 
   /* App-veiledning (tutorial) */
@@ -4271,17 +4471,13 @@ body[data-scan-selection-bar="open"] .agent-chat-fab {
   }
 }
 
-/* Smartliste dot-grid arbeidsflate */
+/* Smartliste — Skann/Ring-tokens (overrides) */
 .smartliste-dot-grid {
-  background-color: rgb(2 6 23);
-  background-image: radial-gradient(circle, rgba(148, 163, 184, 0.22) 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-
-.smartliste-page .smartliste-lane-body {
-  background: rgba(15, 23, 42, 0.55);
+  background-color: #0a0a0a;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 18px 18px;
 }
 
 .smartliste-card {
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }

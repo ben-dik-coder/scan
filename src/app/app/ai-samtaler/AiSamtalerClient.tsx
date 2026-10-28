@@ -89,7 +89,7 @@ export function AiSamtalerClient() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="scan-glass-title flex items-center gap-2 text-xl">
-              <MessageSquare className="h-5 w-5 text-sky-300" />
+              <MessageSquare className="h-5 w-5 text-emerald-300" />
               AI samtaler
             </h1>
             <p className="scan-glass-subtitle mt-1 text-sm">
@@ -100,7 +100,7 @@ export function AiSamtalerClient() {
           <button
             type="button"
             onClick={startNewChat}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-500/30"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-400/40 bg-emerald-500/20 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/30"
           >
             <Plus className="h-4 w-4" />
             Ny samtale
@@ -127,7 +127,7 @@ export function AiSamtalerClient() {
           <button
             type="button"
             onClick={startNewChat}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-400"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-400"
           >
             <AgentRobotIcon size={18} />
             Start AI-assistent
@@ -147,8 +147,8 @@ export function AiSamtalerClient() {
                   className={cn(
                     "scan-glass-header w-full rounded-2xl p-4 text-left transition",
                     isActive
-                      ? "ring-2 ring-sky-400/50 ring-offset-2 ring-offset-transparent"
-                      : "hover:border-sky-400/30"
+                      ? "ring-2 ring-emerald-400/50 ring-offset-2 ring-offset-transparent"
+                      : "hover:border-emerald-400/30"
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -164,7 +164,7 @@ export function AiSamtalerClient() {
                     </div>
                     <div className="shrink-0 text-right">
                       {isActive && (
-                        <span className="mb-1 inline-block rounded-full bg-sky-500/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+                        <span className="mb-1 inline-block rounded-full bg-emerald-500/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
                           Aktiv
                         </span>
                       )}

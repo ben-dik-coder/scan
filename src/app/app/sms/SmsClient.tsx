@@ -355,7 +355,7 @@ export function SmsClient() {
 
   if (loading && items.length === 0) {
     return (
-      <div className="flex min-h-[calc(100dvh-3.5rem)] items-center justify-center bg-[#141416] text-slate-400">
+      <div className="flex min-h-[calc(100dvh-3.5rem)] items-center justify-center bg-[#0a0a0a] text-slate-400">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         Laster SMS-kø…
       </div>
@@ -363,11 +363,11 @@ export function SmsClient() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#141416] text-slate-100">
-      <header className="relative z-40 overflow-visible border-b border-white/10 bg-[#1c1c1e]/95 px-4 py-3 backdrop-blur-md">
+    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#0a0a0a] text-slate-100">
+      <header className="relative z-40 overflow-visible border-b border-white/10 bg-[#0f0f0f]/95 px-4 py-3 backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-400">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
               <MessageSquare className="h-4 w-4" />
               SMS-modus
             </p>
@@ -410,7 +410,7 @@ export function SmsClient() {
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-violet-500 transition-all"
+                className="h-full rounded-full bg-emerald-500 transition-all"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -460,7 +460,7 @@ export function SmsClient() {
                   <p className="mt-2 text-sm text-slate-300">{current.dagligLeder}</p>
                 ) : null}
               </div>
-              <span className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-sm font-bold text-violet-200 ring-1 ring-violet-400/30">
+              <span className="shrink-0 rounded-full bg-emerald-500/15 px-3 py-1 text-sm font-bold text-violet-200 ring-1 ring-emerald-400/30">
                 {current.queueScore} poeng
               </span>
             </div>
@@ -476,7 +476,7 @@ export function SmsClient() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={6}
-              className="mb-2 w-full resize-y rounded-2xl border border-white/10 bg-[#1c1c1e] px-4 py-3 text-sm leading-relaxed text-slate-100 placeholder:text-slate-600 focus:border-violet-400/40 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+              className="mb-2 w-full resize-y rounded-2xl border border-white/10 bg-[#0f0f0f] px-4 py-3 text-sm leading-relaxed text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               placeholder="Skriv SMS her…"
             />
             <p className="mb-4 text-[11px] text-slate-500">
@@ -488,7 +488,7 @@ export function SmsClient() {
                 type="button"
                 disabled={busy || !message.trim() || smsConfigured === false}
                 onClick={() => void handleSend()}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 py-4 text-base font-bold text-white shadow-lg shadow-violet-900/30 transition hover:bg-violet-500 disabled:opacity-50 sm:col-span-1"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 py-4 text-base font-bold text-white shadow-lg shadow-violet-900/30 transition hover:bg-emerald-500 disabled:opacity-50 sm:col-span-1"
               >
                 {busy ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -501,7 +501,7 @@ export function SmsClient() {
                 type="button"
                 disabled={busy}
                 onClick={() => void handleKontaktet()}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-sky-400/40 bg-sky-500/20 py-4 text-base font-bold text-sky-100 shadow-lg shadow-sky-900/20 transition hover:bg-sky-500/30 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/20 py-4 text-base font-bold text-emerald-100 shadow-lg shadow-emerald-950/20 transition hover:bg-emerald-500/30 disabled:opacity-50"
               >
                 <CheckCircle2 className="h-5 w-5" />
                 Kontaktet
@@ -571,7 +571,7 @@ export function SmsClient() {
         </div>
       )}
 
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#1c1c1e]/90 px-4 py-2 text-[11px] text-slate-400">
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#0f0f0f]/90 px-4 py-2 text-[11px] text-slate-400">
         <div className="flex flex-wrap gap-3">
           <span>{sessionStats.sent} sendt i dag</span>
           <span>{sessionStats.contacted} kontaktet</span>
@@ -579,7 +579,7 @@ export function SmsClient() {
           <span>{sessionStats.meetings} møter</span>
         </div>
         {error ? <span className="text-amber-300">{error}</span> : null}
-        <Link href="/app/ko" className="text-sky-400 hover:underline">
+        <Link href="/app/ko" className="text-emerald-400 hover:underline">
           Administrer arbeidskø →
         </Link>
       </footer>
@@ -596,7 +596,7 @@ function ActionButton({
 }: {
   icon: typeof SkipForward;
   label: string;
-  tone: "muted" | "sky" | "emerald" | "red";
+  tone: "muted" | "emerald" | "red";
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -608,7 +608,6 @@ function ActionButton({
       className={cn(
         "flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 text-xs font-semibold transition disabled:opacity-50",
         tone === "muted" && "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
-        tone === "sky" && "border-sky-400/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20",
         tone === "emerald" &&
           "border-emerald-400/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
         tone === "red" && "border-red-400/30 bg-red-500/10 text-red-100 hover:bg-red-500/20"

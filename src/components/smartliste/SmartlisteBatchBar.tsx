@@ -43,13 +43,13 @@ export function SmartlisteBatchBar({
 
   return (
     <div className="smartliste-batch-bar">
-      <span className="text-sm font-semibold text-slate-200">
+      <span className="text-sm font-semibold text-zinc-200">
         {count} valgt
       </span>
       <button
         type="button"
         onClick={onClearSelection}
-        className="text-xs text-slate-400 hover:text-slate-200"
+        className="text-xs text-zinc-400 hover:text-zinc-200"
       >
         Nullstill
       </button>
@@ -68,13 +68,13 @@ export function SmartlisteBatchBar({
 
       <div style={{ margin: "0 0.5rem", width: "1px", height: "1rem", background: "rgba(255,255,255,0.1)" }} />
 
-      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Send utvalg til:</span>
+      <span style={{ fontSize: "0.75rem", color: "#71717a" }}>Send utvalg til:</span>
 
       <button
         type="button"
         disabled={syncing || busy !== null}
         onClick={() => void run("queue", onExportQueue)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/5"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/5"
       >
         <ListTodo className="h-3.5 w-3.5" />
         Arbeidskø
@@ -83,7 +83,7 @@ export function SmartlisteBatchBar({
         type="button"
         disabled={syncing || busy !== null}
         onClick={() => void run("pipeline", onExportPipeline)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/5"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/5"
       >
         <GitBranch className="h-3.5 w-3.5" />
         Pipeline
@@ -92,7 +92,7 @@ export function SmartlisteBatchBar({
         type="button"
         disabled={syncing || busy !== null}
         onClick={() => void run("ring", onExportRing)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/5"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/5"
       >
         <PhoneCall className="h-3.5 w-3.5" />
         Ringemodus

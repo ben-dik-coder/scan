@@ -24,11 +24,11 @@ export function PipelineColumn({
   const { setNodeRef, isOver } = useDroppable({ id: statusId });
 
   return (
-    <div className="pipeline-column flex w-[280px] shrink-0 flex-col snap-center sm:w-[300px]">
+    <div className="pipeline-column flex w-[260px] shrink-0 flex-col snap-center sm:w-[280px]">
       <div className="pipeline-column-header mb-2 flex items-center gap-2 px-1">
         <span className={cn("h-2 w-2 shrink-0 rounded-full", colorClass)} />
-        <h3 className="truncate text-sm font-semibold text-slate-100">{label}</h3>
-        <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-slate-300">
+        <h3 className="truncate text-sm font-medium text-zinc-200">{label}</h3>
+        <span className="ml-auto tabular-nums text-xs text-zinc-500">
           {items.length}
         </span>
       </div>
@@ -36,8 +36,8 @@ export function PipelineColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          "pipeline-column-body min-h-[120px] flex-1 space-y-2 rounded-lg border p-2 transition-colors",
-          isOver && "border-brand-gold/40 bg-brand-gold/5"
+          "pipeline-column-body min-h-[140px] flex-1 space-y-2 overflow-y-auto rounded-xl border border-white/[0.06] bg-[#0f0f0f]/80 p-2 transition-colors",
+          isOver && "border-emerald-400/35 bg-emerald-500/[0.04]"
         )}
       >
         {items.map((item) => (
@@ -45,14 +45,14 @@ export function PipelineColumn({
         ))}
 
         {items.length === 0 && (
-          <div className="flex flex-col items-center justify-center px-2 py-8 text-center">
-            <p className="text-xs text-slate-500">Slipp leads her</p>
+          <div className="flex flex-col items-center justify-center px-2 py-10 text-center">
+            <p className="text-xs text-zinc-600">Slipp her</p>
             {statusId === "ny" && (
               <Link
                 href="/app"
-                className="mt-2 text-xs font-semibold text-brand-gold underline hover:text-amber-300"
+                className="mt-2 text-xs font-medium text-emerald-400/90 hover:text-emerald-300"
               >
-                Legg til fra Skann
+                Fra Skann
               </Link>
             )}
           </div>

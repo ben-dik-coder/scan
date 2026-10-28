@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { JOURNEY_STEP_LABELS, type NextStepPhase } from "@/lib/sales/next-step";
@@ -10,6 +11,8 @@ type Props = {
   /** Hvilken del av flyten brukeren er på nå (for å utheve i progress-linja). */
   pagePhase?: NextStepPhase;
   variant?: "default" | "hero";
+  /** Valgfri visual til høyre i hero (f.eks. signal-kube). */
+  aside?: ReactNode;
 };
 
 const PAGE_PHASE_PROGRESS: Partial<Record<NextStepPhase, number>> = {
@@ -19,7 +22,11 @@ const PAGE_PHASE_PROGRESS: Partial<Record<NextStepPhase, number>> = {
   overview: 5,
 };
 
-export function NextStepBanner({ pagePhase, variant = "default" }: Props) {
+export function NextStepBanner({
+  pagePhase,
+  variant = "default",
+  aside,
+}: Props) {
   const { step, loading } = useNextStep();
   const isHero = variant === "hero";
 
@@ -81,36 +88,66 @@ export function NextStepBanner({ pagePhase, variant = "default" }: Props) {
 
       <div
         className={cn(
-          "flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4",
+          "flex flex-col gap-3 p-3 sm:p-4",
+          isHero && aside
+            ? "lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-center lg:gap-8 lg:p-6"
+            : "sm:flex-row sm:items-center sm:justify-between",
           isHero && "sm:gap-4"
         )}
       >
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300/90">
-            Ditt neste steg
-          </p>
-          <h2
-            className={cn(
-              "font-semibold text-white",
-              isHero ? "mt-1 text-xl sm:text-2xl" : "mt-0.5 text-base sm:text-lg"
-            )}
-          >
-            {step.title}
-          </h2>
-          <p className={cn("text-slate-300", isHero ? "mt-1.5 text-sm" : "mt-1 text-xs sm:text-sm")}>
-            {step.body}
-          </p>
-        </div>
-        <Link
-          href={step.cta.href}
+        <div
           className={cn(
-            "journey-banner-cta inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-sky-600 font-semibold text-white hover:bg-sky-500",
-            isHero ? "px-5 py-3 text-sm" : "px-4 py-2.5 text-xs sm:text-sm"
+            "flex min-w-0 flex-1 flex-col gap-3",
+            !aside && "sm:flex-row sm:items-center sm:justify-between"
           )}
         >
-          {step.cta.label}
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/90">
+              Ditt neste steg
+            </p>
+            <h2
+              className={cn(
+                "font-semibold text-white",
+                isHero ? "mt-1 text-xl sm:text-2xl" : "mt-0.5 text-base sm:text-lg"
+              )}
+            >
+              {step.title}
+            </h2>
+            <p
+              className={cn(
+                "text-slate-300",
+                isHero ? "mt-1.5 max-w-xl text-sm" : "mt-1 text-xs sm:text-sm"
+              )}
+            >
+              {step.body}
+            </p>
+            {isHero && aside ? (
+              <Link
+                href={step.cta.href}
+                className="journey-banner-cta mt-4 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500"
+              >
+                {step.cta.label}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            ) : null}
+          </div>
+          {!(isHero && aside) ? (
+            <Link
+              href={step.cta.href}
+              className={cn(
+                "journey-banner-cta inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 font-semibold text-white hover:bg-emerald-500",
+                isHero ? "px-5 py-3 text-sm" : "px-4 py-2.5 text-xs sm:text-sm"
+              )}
+            >
+              {step.cta.label}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          ) : null}
+        </div>
+
+        {isHero && aside ? (
+          <div className="journey-banner-aside">{aside}</div>
+        ) : null}
       </div>
     </section>
   );

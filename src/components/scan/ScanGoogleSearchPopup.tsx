@@ -63,7 +63,7 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
         )}
       >
         <div className="flex items-start gap-2 border-b border-white/10 px-3 py-2.5">
-          <Search className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" aria-hidden />
+          <Search className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" aria-hidden />
           <div className="min-w-0 flex-1">
             <p
               className="scan-glass-strong truncate text-sm font-semibold"
@@ -95,7 +95,7 @@ export function ScanGoogleSearchPopup({ company, onClose }: Props) {
             href={externalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="scan-glass-muted inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-sky-300 hover:text-sky-200"
+            className="scan-glass-muted inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200"
           >
             <ExternalLink className="h-3 w-3" aria-hidden />
             Ny fane

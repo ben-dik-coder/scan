@@ -4,9 +4,13 @@ import { useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
+  closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -14,6 +18,12 @@ import { sortLanes } from "@/lib/smartliste/board-config";
 import type { SmartListBoard, SmartListCard } from "@/lib/smartliste/types";
 import { SmartlisteCard } from "./SmartlisteCard";
 import { SmartlisteLane } from "./SmartlisteLane";
+
+const collisionDetection: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  return hits.length > 0 ? hits : closestCenter(args);
+};
+
 
 type Props = {
   board: SmartListBoard;
@@ -89,8 +99,8 @@ export function SmartlisteDotBoard({
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    setActiveCard(null);
     const { active, over } = event;
+    setActiveCard(null);
     if (!over) return;
 
     const card = active.data.current?.card as SmartListCard | undefined;
@@ -104,43 +114,58 @@ export function SmartlisteDotBoard({
     onMoveItems([card.id], targetLaneId, targetItems.length);
   }
 
+  function handleDragCancel() {
+    setActiveCard(null);
+  }
+
+  const boardStyle =
+    zoom !== 100
+      ? {
+          transform: `scale(${zoom / 100})`,
+          transformOrigin: "top left" as const,
+          width: `${10000 / zoom}%`,
+        }
+      : undefined;
+
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
       <div className="smartliste-dot-grid">
-        <div
-          className="smartliste-dot-board"
-          style={{
-            transform: `scale(${zoom / 100})`,
-            transformOrigin: "top left",
-            width: zoom !== 100 ? `${10000 / zoom}%` : undefined,
-          }}
-        >
+        <div className="smartliste-dot-board" style={boardStyle}>
           <div className="smartliste-lanes">
-          {lanes.map((lane) => (
-            <SmartlisteLane
-              key={lane.id}
-              lane={lane}
-              items={itemsByLane.get(lane.id) ?? []}
-              selectedIds={selectedIds}
-              compact={compact}
-              onSelect={onSelect}
-              onOpen={onOpen}
-            />
-          ))}
+            {lanes.map((lane) => (
+              <SmartlisteLane
+                key={lane.id}
+                lane={lane}
+                items={itemsByLane.get(lane.id) ?? []}
+                selectedIds={selectedIds}
+                compact={compact}
+                onSelect={onSelect}
+                onOpen={onOpen}
+              />
+            ))}
           </div>
         </div>
       </div>
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={null}>
         {activeCard ? (
-          <SmartlisteCard
-            card={activeCard}
-            selected={selectedIds.has(activeCard.id)}
-            compact={compact}
-            onSelect={() => {}}
-            onOpen={() => {}}
-            isDragOverlay
-          />
+          <div className="smartliste-drag-overlay">
+            <SmartlisteCard
+              card={activeCard}
+              selected={selectedIds.has(activeCard.id)}
+              compact={compact}
+              onSelect={() => {}}
+              onOpen={() => {}}
+              isDragOverlay
+            />
+          </div>
         ) : null}
       </DragOverlay>
     </DndContext>

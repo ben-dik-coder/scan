@@ -84,15 +84,15 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-brand-navy via-[#1a3a5c] to-brand-navy text-white">
-      <div className="relative hidden w-1/2 overflow-hidden bg-brand-navy lg:flex lg:flex-col lg:justify-end">
+    <div className="flex min-h-screen bg-[#0a0a0a] text-zinc-100">
+      <div className="relative hidden w-1/2 overflow-hidden border-r border-white/[0.06] bg-[#0c0c0c] lg:flex lg:flex-col lg:justify-end">
         <div className="relative px-10 pb-16 pt-10">
-          <h2 className="type-h2 text-white">
+          <h2 className="type-h2 text-zinc-100">
             Selg til nye
             <br />
-            <span className="text-brand-goldLight">bedrifter først</span>
+            <span className="text-emerald-400">bedrifter først</span>
           </h2>
-          <p className="mt-5 max-w-md font-sans text-sm font-medium leading-relaxed text-white/55">
+          <p className="mt-5 max-w-md font-sans text-sm font-medium leading-relaxed text-zinc-500">
             Finn firma fra Brønnøysund, filtrer på område, og send tilbud til mange
             på én gang.
           </p>
@@ -102,10 +102,10 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col justify-center px-5 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:px-12 sm:py-12">
+      <div className="flex flex-1 flex-col justify-center bg-[#0a0a0a] px-5 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:px-12 sm:py-12">
         <Link
           href="/"
-          className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-brand-gold hover:underline lg:hidden"
+          className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-emerald-400 hover:underline lg:hidden"
         >
           ← Tilbake til {site.name}
         </Link>
@@ -187,11 +187,11 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
               />
               <span>
                 Jeg bekrefter at jeg har lest og godtar{" "}
-                <Link href="/vilkar" target="_blank" className="text-brand-gold hover:underline">
+                <Link href="/vilkar" target="_blank" className="text-emerald-400 hover:underline">
                   vilkårene
                 </Link>{" "}
                 og{" "}
-                <Link href="/personvern" target="_blank" className="text-brand-gold hover:underline">
+                <Link href="/personvern" target="_blank" className="text-emerald-400 hover:underline">
                   personvernerklæringen
                 </Link>
                 . Jeg forstår at jeg selv er ansvarlig for lovlig e-post jeg sender.
@@ -204,25 +204,25 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
           <button
             type="submit"
             disabled={loading || (mode === "register" && !acceptedTerms)}
-            className="btn-primary w-full py-3.5 disabled:opacity-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 py-3.5 text-sm font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
           >
             {loading ? "Vent…" : mode === "login" ? "Logg inn" : "Registrer"}
             <ArrowRight className="h-4 w-4" />
           </button>
         </form>
 
-        <p className="mt-6 text-sm text-white/50">
+        <p className="mt-6 text-sm text-zinc-500">
           {mode === "login" ? (
             <>
               Ny bruker?{" "}
-              <Link href="/registrer" className="font-semibold text-brand-gold hover:underline">
+              <Link href="/registrer" className="font-semibold text-emerald-400 hover:underline">
                 Registrer deg
               </Link>
             </>
           ) : (
             <>
               Har konto?{" "}
-              <Link href="/innlogging" className="font-semibold text-brand-gold hover:underline">
+              <Link href="/innlogging" className="font-semibold text-emerald-400 hover:underline">
                 Logg inn
               </Link>
             </>
@@ -235,7 +235,7 @@ function AuthFormInner({ mode }: { mode: "login" | "register" }) {
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-brand-navy text-white/60">Laster…</div>}>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] text-zinc-500">Laster…</div>}>
       <AuthFormInner mode={mode} />
     </Suspense>
   );

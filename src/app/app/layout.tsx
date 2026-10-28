@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/layout/AppShell";
-import { AppThemeProvider } from "@/components/theme/AppThemeProvider";
 import { getProfile } from "@/lib/auth";
 import { DemoProvider } from "@/lib/demo/store";
 import "./app-critical.css";
@@ -17,9 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <DemoProvider>
-      <AppThemeProvider>
-        <AppShell isAdmin={profile?.role === "admin"}>{children}</AppShell>
-      </AppThemeProvider>
+      <AppShell isAdmin={profile?.role === "admin"}>{children}</AppShell>
     </DemoProvider>
   );
 }

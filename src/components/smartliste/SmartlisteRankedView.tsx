@@ -32,7 +32,7 @@ export function SmartlisteRankedView({
     <div style={{ overflow: "auto", padding: "1rem" }}>
       <table className="smartliste-table">
         <thead>
-          <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wide text-slate-400">
+          <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wide text-zinc-400">
             <th className="px-3 py-2">#</th>
             <th className="px-3 py-2">Firma</th>
             <th className="px-3 py-2">Score</th>
@@ -51,21 +51,21 @@ export function SmartlisteRankedView({
                 onClick={(e) => onSelect(item, e.metaKey || e.ctrlKey)}
                 onDoubleClick={() => onOpen(item)}
               >
-                <td className="px-3 py-3 text-slate-500">{index + 1}</td>
+                <td className="px-3 py-3 text-zinc-500">{index + 1}</td>
                 <td className="px-3 py-3">
-                  <p className="font-medium text-slate-100">
+                  <p className="font-medium text-zinc-100">
                     {item.company ? formatCompanyName(item.company.name) : item.orgnr}
                   </p>
-                  <p className="text-xs text-slate-500">{item.orgnr}</p>
+                  <p className="text-xs text-zinc-500">{item.orgnr}</p>
                 </td>
                 <td className="px-3 py-3">
                   <ScoreRing score={item.ai_score ?? 0} size="sm" />
                 </td>
-                <td className="px-3 py-3 text-slate-300">{lane?.name ?? "—"}</td>
-                <td className="max-w-xs px-3 py-3 text-xs text-slate-400">
+                <td className="px-3 py-3 text-zinc-300">{lane?.name ?? "—"}</td>
+                <td className="max-w-xs px-3 py-3 text-xs text-zinc-400">
                   {item.ai_score_reason ?? "—"}
                 </td>
-                <td className="px-3 py-3 text-xs text-slate-400">
+                <td className="px-3 py-3 text-xs text-zinc-400">
                   {item.labels.map((l) => l.name).join(", ") || "—"}
                 </td>
               </tr>
@@ -75,7 +75,7 @@ export function SmartlisteRankedView({
       </table>
 
       {items.length === 0 && (
-        <p className="py-12 text-center text-sm text-slate-500">Ingen kort i listen</p>
+        <p className="py-12 text-center text-sm text-zinc-500">Ingen kort i listen</p>
       )}
     </div>
   );
@@ -96,17 +96,17 @@ export function SmartlisteInsights({ board }: { board: SmartListBoard }) {
       <h3 className="smartliste-section-label">Liste-innsikt</h3>
       {rows.map((row) => (
         <div key={row.label} className="smartliste-stat-row">
-          <span className="text-sm text-slate-300">{row.label}</span>
-          <span className="text-sm font-semibold text-slate-100">{row.value}</span>
+          <span className="text-sm text-zinc-300">{row.label}</span>
+          <span className="text-sm font-semibold text-zinc-100">{row.value}</span>
         </div>
       ))}
 
       <div className="pt-2">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
           Per sone
         </p>
         {board.lanes.map((lane) => (
-          <div key={lane.id} className="mb-1 flex justify-between text-xs text-slate-400">
+          <div key={lane.id} className="mb-1 flex justify-between text-xs text-zinc-400">
             <span>{lane.name}</span>
             <span>{stats.byLane[lane.id] ?? 0}</span>
           </div>

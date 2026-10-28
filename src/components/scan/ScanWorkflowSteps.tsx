@@ -46,7 +46,7 @@ export function ScanWorkflowSteps({ activeStep, selectedCount, onStepClick }: Pr
             <span
               className={cn(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold",
-                isActive && "border-sky-400/50 bg-sky-400/20 text-white",
+                isActive && "border-emerald-400/50 bg-emerald-400/20 text-white",
                 isDone && !isActive && "border-emerald-400/40 bg-emerald-400/15 text-emerald-100"
               )}
             >

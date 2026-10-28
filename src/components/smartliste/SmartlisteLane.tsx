@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { laneHeaderClass } from "@/lib/smartliste/board-config";
 import type { SmartListCard, SmartListLane } from "@/lib/smartliste/types";
@@ -15,7 +16,7 @@ type Props = {
   onOpen: (card: SmartListCard) => void;
 };
 
-export function SmartlisteLane({
+function SmartlisteLaneInner({
   lane,
   items,
   selectedIds,
@@ -30,10 +31,10 @@ export function SmartlisteLane({
       <div className="smartliste-lane-header">
         <span
           className={cn("h-2.5 w-2.5 shrink-0 rounded-full", laneHeaderClass(lane.color))}
-          style={{ display: "inline-block", width: "0.625rem", height: "0.625rem", borderRadius: "9999px" }}
+          aria-hidden
         />
         <h3>{lane.name}</h3>
-        <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "#94a3b8" }}>{items.length}</span>
+        <span className="smartliste-lane-count">{items.length}</span>
       </div>
 
       <div
@@ -52,11 +53,13 @@ export function SmartlisteLane({
         ))}
 
         {items.length === 0 && (
-          <div className="flex flex-col items-center justify-center px-2 py-10 text-center">
-            <p className="text-xs text-slate-500">Slipp kort her</p>
+          <div className="smartliste-lane-drop">
+            <p>Slipp kort her</p>
           </div>
         )}
       </div>
     </div>
   );
 }
+
+export const SmartlisteLane = memo(SmartlisteLaneInner);

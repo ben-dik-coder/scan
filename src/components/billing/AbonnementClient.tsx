@@ -175,7 +175,7 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
           className={`rounded-xl px-4 py-3 text-sm ${
             message.includes("mangler") || message.includes("SETUP_BILLING")
               ? "border border-red-400/30 bg-red-950/40 text-red-100"
-              : "border border-sky-400/30 bg-sky-950/30 text-sky-100"
+              : "border border-emerald-400/30 bg-emerald-950/30 text-emerald-100"
           }`}
         >
           {message}
@@ -195,8 +195,8 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
       {entitlements.hasAccess ? (
         <section className="app-settings-card p-5 sm:p-6">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/15">
-              <CreditCard className="h-6 w-6 text-sky-400" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
+              <CreditCard className="h-6 w-6 text-emerald-400" />
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="scan-glass-strong font-display text-2xl font-bold">
@@ -273,7 +273,7 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
 
           <section className="app-settings-card mx-auto max-w-md space-y-5 p-5 sm:p-6">
             <div className="text-center">
-              <p className="type-eyebrow text-sky-400">Pris</p>
+              <p className="type-eyebrow text-emerald-400">Pris</p>
               <h2 className="scan-glass-strong mt-2 font-display text-xl font-bold">
                 Én pakke — alt inkludert
               </h2>
@@ -286,7 +286,7 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
               <p className="scan-glass-strong font-display text-lg font-bold uppercase">
                 {NYLEAD_PLAN.name}
               </p>
-              <p className="mt-1 text-3xl font-black text-sky-400">
+              <p className="mt-1 text-3xl font-black text-emerald-400">
                 {NYLEAD_PLAN.priceNok} kr/mnd
               </p>
               <p className="scan-glass-muted mt-2 text-xs">{NYLEAD_PLAN.tagline}</p>
@@ -298,7 +298,7 @@ export function AbonnementClient({ profile, entitlements, fakeBilling = true }: 
                   key={feature}
                   className="scan-glass-muted flex items-start gap-2.5 text-sm"
                 >
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                   {feature}
                 </li>
               ))}

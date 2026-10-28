@@ -96,7 +96,7 @@ function RecipientRow({
       </div>
       <Link
         href="/app/pipeline"
-        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-300 hover:text-sky-200"
+        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 hover:text-emerald-200"
       >
         <ExternalLink className="h-3 w-3" />
         Åpne i Pipeline

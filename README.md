@@ -77,6 +77,11 @@ Se [`docs/SALGSVERKTOY.md`](docs/SALGSVERKTOY.md) for research og funksjoner.
 | POST | `/api/sync/brreg` | Sync fra Brreg (admin eller cron) |
 | POST | `/api/campaigns/send` | Send kampanje til valgte orgnr |
 | POST | `/api/unsubscribe` | Avmeld e-post |
+| POST | `/api/ai-call/start` | Start Vapi outbound mot orgnr |
+| POST | `/api/ai-call/webhook` | Vapi end-of-call webhook |
+| GET | `/api/ai-call/active` | Aktiv/siste AI-samtale |
+
+AI-ring setup: [`docs/AI_CALL_SETUP.md`](docs/AI_CALL_SETUP.md).
 
 Cron-sync (valgfritt):
 ```bash

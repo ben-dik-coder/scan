@@ -130,20 +130,92 @@ export function useSmartList(initialListId?: string | null) {
   const patchItems = useCallback(
     async (patches: SmartListItemPatch[]) => {
       if (!listId || patches.length === 0) return;
-      setSyncing(true);
+
+      // Optimistic: flytt kort lokalt med én gang — ikke vent på nettverket
+      const patchById = new Map(patches.map((p) => [p.id, p]));
+      const laneOnly = patches.every(
+        (p) =>
+          p.lane_id !== undefined &&
+          p.note === undefined &&
+          p.pinned === undefined &&
+          p.ai_score === undefined &&
+          p.ai_score_reason === undefined &&
+          p.label_ids === undefined &&
+          p.custom_fields === undefined
+      );
+
+      setBoard((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) => {
+            const patch = patchById.get(item.id);
+            if (!patch) return item;
+            return {
+              ...item,
+              ...(patch.lane_id !== undefined ? { lane_id: patch.lane_id } : {}),
+              ...(patch.sort_order !== undefined
+                ? { sort_order: patch.sort_order }
+                : {}),
+              ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
+              ...(patch.note !== undefined ? { note: patch.note } : {}),
+              ...(patch.ai_score !== undefined ? { ai_score: patch.ai_score } : {}),
+              ...(patch.ai_score_reason !== undefined
+                ? { ai_score_reason: patch.ai_score_reason }
+                : {}),
+              ...(patch.label_ids !== undefined
+                ? {
+                    labels: prev.labels.filter((l) =>
+                      (patch.label_ids ?? []).includes(l.id)
+                    ),
+                  }
+                : {}),
+              ...(patch.custom_fields !== undefined
+                ? { custom_fields: patch.custom_fields }
+                : {}),
+            };
+          }),
+        };
+      });
+
+      // Unngå "Lagrer…"-re-render midt i drag for enkle flytt
+      if (!laneOnly) setSyncing(true);
       try {
         const res = await fetch(`/api/smartliste/${listId}/items`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patches }),
+          body: JSON.stringify({ patches, light: laneOnly }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Kunne ikke lagre");
-        setBoard(data as SmartListBoard);
+        // Lane-flytt: behold optimistic UI — ikke bytt hele boardet
+        if (laneOnly || data?.ok === true) return;
+        setBoard((prev) => {
+          if (!prev) return data as SmartListBoard;
+          const server = data as SmartListBoard;
+          if (!server?.items) return prev;
+          if (prev.items.length === server.items.length) {
+            const serverById = new Map(server.items.map((i) => [i.id, i]));
+            return {
+              ...server,
+              items: prev.items.map((item) => serverById.get(item.id) ?? item),
+            };
+          }
+          return server;
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Kunne ikke lagre endringer");
+        try {
+          const res = await fetch(`/api/smartliste/${listId}`);
+          if (res.ok) {
+            const data = await res.json();
+            setBoard(data as SmartListBoard);
+          }
+        } catch {
+          /* ignore */
+        }
       } finally {
-        setSyncing(false);
+        if (!laneOnly) setSyncing(false);
       }
     },
     [listId]

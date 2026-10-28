@@ -63,15 +63,19 @@ import type { CompanyWithLead, EmailTemplate } from "@/types/database";
 import { useDemo } from "@/lib/demo/store";
 import type { LeadStatus } from "@/types/database";
 import {
+  Bookmark,
   Building2,
   Globe,
   Globe2,
   List,
+  Mail,
   PhoneCall,
   Radar,
   RefreshCw,
   Search,
+  SlidersHorizontal,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type SequenceOption = {
   id: string;
@@ -132,7 +136,9 @@ export function AppPageClient(props: Props) {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [localCompanies, setLocalCompanies] = useState(props.companies);
   const [listFilter, setListFilter] = useState<AgentListTab>(() =>
-    websitePresenceToListFilter(searchParams.get("web"))
+    searchParams.get("tlf") === "1"
+      ? "with_phone"
+      : websitePresenceToListFilter(searchParams.get("web"))
   );
   const [socialOptions, setSocialOptions] = useState<ScanSocialOptions>(() =>
     loadScanSocialOptions()
@@ -143,7 +149,10 @@ export function AppPageClient(props: Props) {
   const [noWebsiteBanner, setNoWebsiteBanner] = useState(false);
   const [queueAfterScan, setQueueAfterScan] = useState(false);
   const [addingToQueue, setAddingToQueue] = useState(false);
-  const emailSectionRef = useRef<HTMLDetailsElement>(null);
+  const emailSectionRef = useRef<HTMLDivElement>(null);
+  const [sidebarView, setSidebarView] = useState<
+    "filters" | "email" | "lists" | "audiences"
+  >("filters");
   const wasScanningRef = useRef(false);
   const loadedSavedListIdRef = useRef<string | null>(null);
   const [pinnedOrgnrs, setPinnedOrgnrs] = useState<Set<string> | null>(null);
@@ -187,7 +196,11 @@ export function AppPageClient(props: Props) {
   }, [selected.size]);
 
   useEffect(() => {
-    setListFilter(websitePresenceToListFilter(searchParams.get("web")));
+    if (searchParams.get("tlf") === "1") {
+      setListFilter("with_phone");
+    } else {
+      setListFilter(websitePresenceToListFilter(searchParams.get("web")));
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -559,6 +572,8 @@ export function AppPageClient(props: Props) {
     else params.delete("kommune");
     params.set("dager", String(next.days));
     params.set("epost", next.hasEmail ? "1" : "0");
+    if (next.hasPhone) params.set("tlf", "1");
+    else params.delete("tlf");
     params.set("generisk", next.genericEmailOnly ? "1" : "0");
     if (next.industryGroup) params.set("bransje", next.industryGroup);
     else params.delete("bransje");
@@ -862,11 +877,10 @@ export function AppPageClient(props: Props) {
 
   function quickEmailCompany(c: CompanyWithLead) {
     setSelected(new Set([c.orgnr]));
-    const section = emailSectionRef.current;
-    if (section) {
-      section.open = true;
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    setSidebarView("email");
+    window.requestAnimationFrame(() => {
+      emailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function quickCheckWebsiteCompany(c: CompanyWithLead) {
@@ -998,6 +1012,7 @@ export function AppPageClient(props: Props) {
       municipalityCode: filters.municipalityCode,
       days: filters.days,
       hasEmail: filters.hasEmail,
+      hasPhone: filters.hasPhone,
       genericEmailOnly: filters.genericEmailOnly,
       industryGroup: filters.industryGroup,
       professionId: filters.professionId,
@@ -1168,7 +1183,12 @@ export function AppPageClient(props: Props) {
         ? filters.websitePresence
         : listFilterToWebsitePresence(tabId);
     applyFilters(
-      { ...filters, websitePresence },
+      {
+        ...filters,
+        websitePresence,
+        // Server-paginer kun firma med nr — ellers blir «Med telefon»-fanen glissen per side
+        hasPhone: tabId === "with_phone",
+      },
       { preserveListFilter: true, listFilter: tabId }
     );
   }
@@ -1208,7 +1228,10 @@ export function AppPageClient(props: Props) {
       id: "with_phone" as const,
       label: "Med telefon",
       shortLabel: "Tlf",
-      count: companiesByListTab.with_phone.length,
+      count:
+        listFilter === "with_phone" && filters.hasPhone && props.pagination
+          ? props.pagination.total
+          : companiesByListTab.with_phone.length,
       icon: PhoneCall,
     },
   ];
@@ -1274,263 +1297,417 @@ export function AppPageClient(props: Props) {
     : `Viser ${rankedDisplayCompanies.length} av ${companies.length} · sortert etter score`;
 
   return (
-    <div className="scan-glass-kommand w-full max-w-none space-y-3 pb-8 lg:space-y-4">
-      <section className="scan-surface-full overflow-hidden">
-        <TrialNudgeBanner
-          noWebsiteCount={noWebsiteCount}
-          withEmailCount={withEmailCount}
-        />
-        <header className="scan-glass-header scan-page-header px-4 py-2.5 lg:px-5">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-              <h1 className="scan-glass-title">Skann</h1>
-              <span className="scan-stat-inline">
-                <Building2 className="mr-0.5 inline h-3 w-3 opacity-60" aria-hidden />
-                <strong>{firmCount}</strong> firma
-                <span className="mx-1.5 opacity-40" aria-hidden>
-                  ·
-                </span>
-                <PhoneCall className="mr-0.5 inline h-3 w-3 opacity-60" aria-hidden />
-                <strong>{withContactCount}</strong> med kontakt
-              </span>
-            </div>
-            {props.onRefreshList && (
-              <button
-                type="button"
-                onClick={props.onRefreshList}
-                disabled={props.refreshingList}
-                className="scan-glass-toolbar-btn inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium transition disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${props.refreshingList ? "animate-spin" : ""}`}
-                  aria-hidden
-                />
-                <span className="hidden sm:inline">Oppdater</span>
-              </button>
-            )}
-          </div>
-
-          {sourceMetaParts.length > 0 && (
-            <p
-              className={`scan-page-meta mt-0.5 text-[11px] leading-snug ${
-                props.contactUsage?.limitReached ? "text-amber-300/90" : "scan-glass-muted"
-              }`}
-            >
-              <span
-                className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${
-                  props.companiesSource === "db" ? "bg-sky-400" : "bg-emerald-400"
-                }`}
-                aria-hidden
-              />
-              {sourceMetaParts.join(" · ")}
-              {props.contactUsage?.limitReached && (
-                <>
-                  {" "}
-                  —{" "}
-                  <a href="/app/abonnement" className="font-semibold underline">
-                    Se abonnement
-                  </a>
-                </>
-              )}
-            </p>
-          )}
-
-          <div className="scan-page-controls-row mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    <div className="scan-glass-kommand flex h-[calc(100dvh-3.5rem)] w-full max-w-none flex-col overflow-hidden bg-[#0a0a0a] text-zinc-100">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#0f0f0f] px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Search className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+          <span className="truncate text-sm font-medium text-white">Skann</span>
+          <span className="hidden text-zinc-600 sm:inline">·</span>
+          <span className="hidden truncate text-xs text-zinc-500 sm:inline">
+            <Building2 className="mr-0.5 inline h-3 w-3 opacity-70" aria-hidden />
+            {firmCount} firma
+            <span className="mx-1.5 text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <PhoneCall className="mr-0.5 inline h-3 w-3 opacity-70" aria-hidden />
+            {withContactCount} med kontakt
+          </span>
+          {props.companiesSource === "db" ? (
+            <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 sm:inline">
+              DB
+            </span>
+          ) : null}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="hidden min-w-0 max-w-md md:block">
             <ScanLeadModes
               activeMode={activeLeadMode}
               onSelect={applyLeadMode}
               disabled={geoLocationLoading}
             />
+          </div>
+          {props.onRefreshList && (
+            <button
+              type="button"
+              onClick={props.onRefreshList}
+              disabled={props.refreshingList}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
+              title="Oppdater"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${props.refreshingList ? "animate-spin" : ""}`}
+                aria-hidden
+              />
+            </button>
+          )}
+        </div>
+      </header>
+
+      <TrialNudgeBanner
+        noWebsiteCount={noWebsiteCount}
+        withEmailCount={withEmailCount}
+      />
+
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-1",
+          sidebarView === "filters"
+            ? "lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[17.5rem_minmax(0,1fr)]"
+            : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]"
+        )}
+      >
+        <aside className="scan-filter-sidebar flex max-h-[42vh] min-h-0 shrink-0 flex-col border-b border-white/[0.06] bg-[#0c0c0c] lg:max-h-none lg:border-b-0 lg:border-r">
+          <nav className="shrink-0 border-b border-white/[0.06] py-1" aria-label="Skann-valg">
+            {(
+              [
+                {
+                  id: "filters" as const,
+                  label: "Finn marked",
+                  icon: SlidersHorizontal,
+                  hint:
+                    activeFilterCount > 0
+                      ? `${activeFilterCount} filter`
+                      : undefined,
+                },
+                {
+                  id: "email" as const,
+                  label: "Send e-post",
+                  icon: Mail,
+                  hint:
+                    selected.size > 0 ? `${selected.size} valgt` : undefined,
+                },
+                {
+                  id: "lists" as const,
+                  label: "Firmalister",
+                  icon: List,
+                },
+                {
+                  id: "audiences" as const,
+                  label: "Målgrupper",
+                  icon: Bookmark,
+                },
+              ] as const
+            ).map((item) => {
+              const Icon = item.icon;
+              const active = sidebarView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSidebarView(item.id)}
+                  className={cn(
+                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition",
+                    active
+                      ? "bg-emerald-500/10 text-white"
+                      : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      active ? "text-emerald-400" : "text-zinc-600"
+                    )}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {"hint" in item && item.hint ? (
+                    <span
+                      className={cn(
+                        "tabular-nums text-[10px]",
+                        active ? "text-emerald-400/80" : "text-zinc-600"
+                      )}
+                    >
+                      {item.hint}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+            {sidebarView === "filters" && (
+              <CompanyFilters
+                layout="sidebar"
+                filters={filters}
+                municipalities={props.municipalities}
+                onChange={applyFilters}
+              />
+            )}
+            {sidebarView === "email" && (
+              <div ref={emailSectionRef} className="space-y-2">
+                <p className="px-0.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Send e-post
+                </p>
+                <SendCampaignForm
+                  selectedCompanies={selectedCompanies}
+                  templates={props.templates}
+                  sequences={props.sequences}
+                  websiteScans={websiteScans}
+                  onSent={() => setSelected(new Set())}
+                  light
+                />
+              </div>
+            )}
+            {sidebarView === "lists" && (
+              <div className="space-y-2">
+                <p className="px-0.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Mine firmalister
+                </p>
+                <ScanCompanyLists
+                  selectedOrgnrs={Array.from(selected)}
+                  onApply={applySavedAudience}
+                  onAdded={setListMessage}
+                />
+              </div>
+            )}
+            {sidebarView === "audiences" && (
+              <div className="space-y-2">
+                <p className="px-0.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Lagrede målgrupper
+                </p>
+                <ScanSavedAudiences
+                  currentFilters={filters}
+                  onApply={applySavedAudience}
+                  onSaveCurrent={saveAudience}
+                  saveMessage={saveMessage}
+                />
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <main className="scan-main-panel flex min-h-0 min-w-0 flex-col overflow-y-auto bg-[#0a0a0a]">
+          <div className="shrink-0 border-b border-white/[0.06] bg-[#0f0f0f] px-3 py-2.5 sm:px-4">
+            <div className="mb-2 md:hidden">
+              <ScanLeadModes
+                activeMode={activeLeadMode}
+                onSelect={applyLeadMode}
+                disabled={geoLocationLoading}
+              />
+            </div>
             <ScanActiveFilterChips
               filters={filters}
               municipalities={props.municipalities}
               onChange={applyFilters}
               variant="inline"
             />
-          </div>
-
-          {geoLocationMessage && (
-            <p
-              className="scan-glass-muted mt-1.5 text-[11px] leading-snug"
-              role="status"
-              aria-live="polite"
-            >
-              {geoLocationMessage}
-            </p>
-          )}
-
-          <ScanQueueHint />
-        </header>
-
-        <div className="scan-glass-divider flex flex-col border-t lg:flex-row lg:gap-0">
-          <aside className="scan-filter-sidebar hidden shrink-0 border-r border-white/[0.06] p-4 lg:block lg:w-[17.5rem] xl:w-[19rem]">
-            <p className="scan-filter-section-title mb-2 px-0.5">
-              Finn marked
-            </p>
-            <CompanyFilters
-              layout="sidebar"
-              filters={filters}
-              municipalities={props.municipalities}
-              onChange={applyFilters}
-            />
-          </aside>
-
-          <div className="scan-main-panel min-w-0 flex-1">
-            <ScanQuickBar
-              withContactCount={withContactCount}
-              withWebsiteCount={withWebsiteCount}
-              noWebsiteCount={noWebsiteCount}
-              selectedCount={selected.size}
-              withEmailCount={withEmailCount}
-              scanning={scanning}
-              addingToQueue={addingToQueue}
-              onSelectWithEmail={selectAllWithEmail}
-              onCheckAndQueue={checkAndAddToQueue}
-              onOpenFilters={() => setFilterSheetOpen(true)}
-              activeFilterCount={activeFilterCount}
-              nameQuery={filters.nameQuery ?? ""}
-              onNameQueryChange={(nameQuery) => applyFilters({ ...filters, nameQuery })}
-            />
-
-            <ScanFilterSheet
-              open={filterSheetOpen}
-              onOpen={() => setFilterSheetOpen(true)}
-              onClose={() => setFilterSheetOpen(false)}
-              filters={filters}
-              municipalities={props.municipalities}
-              onChange={applyFilters}
-              activeFilterCount={activeFilterCount}
-              hideTrigger
-              listTabs={listTabs.map((tab) => ({
-                id: tab.id,
-                label: tab.label,
-                count: tab.count,
-              }))}
-              activeListTab={listFilter}
-              onListTabChange={handleListTabChange}
-            />
-
-            {props.dataSource === "brreg" &&
-          ((props.companiesSource === "db" &&
-            props.dbCompanyCount != null &&
-            props.dbCompanyCount > props.total + 2 &&
-            filters.days !== 0) ||
-            (props.brregTotal != null &&
-              props.brregTotal > props.total + 2 &&
-              props.companiesSource !== "db")) && (
-            <div className="scan-glass-notice mx-2.5 my-2 flex gap-2 lg:mx-3">
-              <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-              <p>
-                {props.companiesSource === "db" ? (
+            {sourceMetaParts.length > 0 && (
+              <p
+                className={`mt-1.5 text-[11px] leading-snug ${
+                  props.contactUsage?.limitReached ? "text-amber-300/90" : "text-zinc-500"
+                }`}
+              >
+                <span
+                  className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${
+                    props.companiesSource === "db" ? "bg-emerald-400" : "bg-zinc-500"
+                  }`}
+                  aria-hidden
+                />
+                {sourceMetaParts.join(" · ")}
+                {props.contactUsage?.limitReached && (
                   <>
-                    Du ser <strong>{props.total}</strong> firma med valgte filter
-                    {filters.industryGroup
-                      ? ` (${industryGroupLabel(filters.industryGroup).toLowerCase()})`
-                      : ""}
-                    . Registeret har{" "}
-                    <strong>{props.dbCompanyCount!.toLocaleString("nb-NO")}</strong> firma totalt.
-                    For mange flere: velg <strong>Alle firma</strong> under periode (ikke bare
-                    siste 30 dager).
-                  </>
-                ) : (
-                  <>
-                    Du ser <strong>{props.total}</strong> av <strong>{props.brregTotal}</strong> i
-                    Brønnøysund
-                    {filters.industryGroup
-                      ? ` (${industryGroupLabel(filters.industryGroup).toLowerCase()})`
-                      : ""}
-                    . For flere treff: velg <strong>Alle firma</strong> under periode, og slå av{" "}
-                    <strong>Kun post@ / info@</strong> hvis den er på.
+                    {" "}
+                    —{" "}
+                    <a href="/app/abonnement" className="font-semibold text-emerald-300 underline">
+                      Se abonnement
+                    </a>
                   </>
                 )}
               </p>
-            </div>
-          )}
-
-            <ScanListToolbar
-              tabs={listTabs}
-              activeTab={listFilter}
-              onTabChange={handleListTabChange}
-              listViewMode={listViewMode}
-              onViewModeChange={setListViewMode}
-              summary={listSummary}
-              selectedCount={selected.size}
-              addingToQueue={addingToQueue}
-              exporting={exporting}
-              onAddToQueue={addSelectedToQueue}
-              onExportCsv={exportSelectedCsv}
-              exportMessage={exportMessage}
-            />
-
-            <div className="flex items-center px-3 pb-2 lg:px-4">
-              <label className="scan-glass-muted inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
-                <input
-                  type="checkbox"
-                  checked={hideHolding}
-                  onChange={(e) => setHideHolding(e.target.checked)}
-                  className="cv-checkbox h-3.5 w-3.5 rounded accent-sky-600"
-                />
-                Skjul holdingselskap
-                {holdingCount > 0 && (
-                  <span className="opacity-70">({holdingCount})</span>
-                )}
-              </label>
-            </div>
-
-            {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
-              <div className="scan-banner scan-banner-accent" role="status">
-                <strong>
-                  {activeListSource === "agent" ? "AI-liste" : "Firma-liste"}: {activeListName}
-                </strong>{" "}
-                — viser {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
-                {activeListSource === "agent" ? "firma fra agenten" : "lagrede firma"}
-                {visibleCompanies.length < pinnedOrgnrs.size ? (
-                  <span>
-                    {" "}
-                    ({pinnedOrgnrs.size - visibleCompanies.length} finnes ikke i registeret)
-                  </span>
-                ) : null}
-              </div>
             )}
+            {geoLocationMessage && (
+              <p
+                className="mt-1.5 text-[11px] leading-snug text-zinc-500"
+                role="status"
+                aria-live="polite"
+              >
+                {geoLocationMessage}
+              </p>
+            )}
+            <ScanQueueHint />
+          </div>
 
-            {isAgentListActive && filters.days !== AGENT_LIST_PERIOD_DAYS && (
-              <div className="scan-glass-notice mx-2.5 mb-2 flex gap-2 lg:mx-3">
-                <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+          <ScanQuickBar
+            withContactCount={withContactCount}
+            withWebsiteCount={withWebsiteCount}
+            noWebsiteCount={noWebsiteCount}
+            selectedCount={selected.size}
+            withEmailCount={withEmailCount}
+            scanning={scanning}
+            addingToQueue={addingToQueue}
+            onSelectWithEmail={selectAllWithEmail}
+            onCheckAndQueue={checkAndAddToQueue}
+            onOpenFilters={() => setFilterSheetOpen(true)}
+            activeFilterCount={activeFilterCount}
+            nameQuery={filters.nameQuery ?? ""}
+            onNameQueryChange={(nameQuery) => applyFilters({ ...filters, nameQuery })}
+          />
+
+          <ScanFilterSheet
+            open={filterSheetOpen}
+            onOpen={() => setFilterSheetOpen(true)}
+            onClose={() => setFilterSheetOpen(false)}
+            filters={filters}
+            municipalities={props.municipalities}
+            onChange={applyFilters}
+            activeFilterCount={activeFilterCount}
+            hideTrigger
+            listTabs={listTabs.map((tab) => ({
+              id: tab.id,
+              label: tab.label,
+              count: tab.count,
+            }))}
+            activeListTab={listFilter}
+            onListTabChange={handleListTabChange}
+          />
+
+          {props.dataSource === "brreg" &&
+            ((props.companiesSource === "db" &&
+              props.dbCompanyCount != null &&
+              props.dbCompanyCount > props.total + 2 &&
+              filters.days !== 0) ||
+              (props.brregTotal != null &&
+                props.brregTotal > props.total + 2 &&
+                props.companiesSource !== "db")) && (
+              <div className="mx-3 my-2 flex gap-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2.5 text-xs text-zinc-400 lg:mx-4">
+                <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                 <p>
-                  AI-listen viser valgte firma uavhengig av når de ble registrert.{" "}
-                  <strong>Siste 30 dager</strong> gjelder bare bakgrunnslisten — ikke disse{" "}
-                  {pinnedOrgnrs?.size ?? 0} firmaene.
+                  {props.companiesSource === "db" ? (
+                    <>
+                      Du ser <strong className="text-zinc-200">{props.total}</strong> firma med
+                      valgte filter
+                      {filters.industryGroup
+                        ? ` (${industryGroupLabel(filters.industryGroup).toLowerCase()})`
+                        : ""}
+                      . Registeret har{" "}
+                      <strong className="text-zinc-200">
+                        {props.dbCompanyCount!.toLocaleString("nb-NO")}
+                      </strong>{" "}
+                      firma totalt. For mange flere: velg <strong className="text-zinc-200">Alle firma</strong>{" "}
+                      under periode (ikke bare siste 30 dager).
+                    </>
+                  ) : (
+                    <>
+                      Du ser <strong className="text-zinc-200">{props.total}</strong> av{" "}
+                      <strong className="text-zinc-200">{props.brregTotal}</strong> i Brønnøysund
+                      {filters.industryGroup
+                        ? ` (${industryGroupLabel(filters.industryGroup).toLowerCase()})`
+                        : ""}
+                      . For flere treff: velg <strong className="text-zinc-200">Alle firma</strong> under
+                      periode, og slå av <strong className="text-zinc-200">Kun post@ / info@</strong> hvis
+                      den er på.
+                    </>
+                  )}
                 </p>
               </div>
             )}
 
-            {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
-              <div className="scan-banner scan-banner-success" role="status">
-                <strong>{noWebsiteCount} firma uten nettside</strong> — gode leads for nettside-salg.
-              </div>
-            )}
+          <ScanListToolbar
+            tabs={listTabs}
+            activeTab={listFilter}
+            onTabChange={handleListTabChange}
+            listViewMode={listViewMode}
+            onViewModeChange={setListViewMode}
+            summary={listSummary}
+            selectedCount={selected.size}
+            addingToQueue={addingToQueue}
+            exporting={exporting}
+            onAddToQueue={addSelectedToQueue}
+            onExportCsv={exportSelectedCsv}
+            exportMessage={exportMessage}
+          />
 
-            {listFilter === "with_website" && withWebsiteCount > 0 && (
-              <div className="scan-banner scan-banner-accent" role="status">
-                <strong>{withWebsiteCount} firma med nettside</strong> — har allerede egen side på nett.
-              </div>
-            )}
+          <div className="flex items-center px-3 pb-2 lg:px-4">
+            <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px] text-zinc-500">
+              <input
+                type="checkbox"
+                checked={hideHolding}
+                onChange={(e) => setHideHolding(e.target.checked)}
+                className="cv-checkbox h-3.5 w-3.5 rounded accent-emerald-500"
+              />
+              Skjul holdingselskap
+              {holdingCount > 0 && <span className="opacity-70">({holdingCount})</span>}
+            </label>
+          </div>
 
-            {listFilter === "with_phone" && companiesByListTab.with_phone.length > 0 && (
-              <div className="scan-banner scan-banner-accent" role="status">
-                <strong>{companiesByListTab.with_phone.length} firma med telefon</strong> — klare
-                for oppfølging på telefon.
-              </div>
-            )}
+          {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
+            <div
+              className="mx-3 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              role="status"
+            >
+              <strong className="text-emerald-300">
+                {activeListSource === "agent" ? "AI-liste" : "Firma-liste"}: {activeListName}
+              </strong>{" "}
+              — viser {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
+              {activeListSource === "agent" ? "firma fra agenten" : "lagrede firma"}
+              {visibleCompanies.length < pinnedOrgnrs.size ? (
+                <span>
+                  {" "}
+                  ({pinnedOrgnrs.size - visibleCompanies.length} finnes ikke i registeret)
+                </span>
+              ) : null}
+            </div>
+          )}
 
-            {selected.size > MAX_WEBSITE_SCAN_BATCH && (
-              <p className="scan-glass-muted px-2.5 text-[11px] lg:px-3">
-                Google sjekker maks {MAX_WEBSITE_SCAN_BATCH} om gangen — {scanQueueCount} valgt til
-                neste sjekk.
+          {isAgentListActive && filters.days !== AGENT_LIST_PERIOD_DAYS && (
+            <div className="mx-3 mb-2 flex gap-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2.5 text-xs text-zinc-400 lg:mx-4">
+              <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <p>
+                AI-listen viser valgte firma uavhengig av når de ble registrert.{" "}
+                <strong className="text-zinc-200">Siste 30 dager</strong> gjelder bare
+                bakgrunnslisten — ikke disse {pinnedOrgnrs?.size ?? 0} firmaene.
               </p>
-            )}
+            </div>
+          )}
 
-            <div className="scan-glass-divider border-t px-3 py-3 lg:px-4">
+          {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
+            <div
+              className="mx-3 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              role="status"
+            >
+              <strong className="text-emerald-300">{noWebsiteCount} firma uten nettside</strong> —
+              gode leads for nettside-salg.
+            </div>
+          )}
+
+          {listFilter === "with_website" && withWebsiteCount > 0 && (
+            <div
+              className="mx-3 mb-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              role="status"
+            >
+              <strong className="text-zinc-200">{withWebsiteCount} firma med nettside</strong> — har
+              allerede egen side på nett.
+            </div>
+          )}
+
+          {listFilter === "with_phone" &&
+            (filters.hasPhone
+              ? (props.pagination?.total ?? 0) > 0
+              : companiesByListTab.with_phone.length > 0) && (
+            <div
+              className="mx-3 mb-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              role="status"
+            >
+              <strong className="text-zinc-200">
+                {filters.hasPhone && props.pagination
+                  ? props.pagination.total
+                  : companiesByListTab.with_phone.length}{" "}
+                firma med telefon
+              </strong>{" "}
+              — hver side viser bare firma med nummer.
+            </div>
+          )}
+
+          {selected.size > MAX_WEBSITE_SCAN_BATCH && (
+            <p className="px-3 text-[11px] text-zinc-500 lg:px-4">
+              Google sjekker maks {MAX_WEBSITE_SCAN_BATCH} om gangen — {scanQueueCount} valgt til
+              neste sjekk.
+            </p>
+          )}
+
+          <div className="border-t border-white/[0.06] px-3 py-3 lg:px-4">
+            <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#111]">
               <CompanyTable
                 companies={rankedDisplayCompanies}
                 selected={selected}
@@ -1547,148 +1724,122 @@ export function AppPageClient(props: Props) {
                 onQuickEmail={quickEmailCompany}
                 onQuickCheckWebsite={quickCheckWebsiteCompany}
               />
-
-          {pagination && props.onPageChange && (
-            <div className="scan-glass-divider mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-              <p className="scan-glass-muted">
-                Side <strong className="scan-glass-strong">{pagination.page}</strong>
-                {showExactTotal ? (
-                  <>
-                    {" "}
-                    / <strong className="scan-glass-strong">{pagination.totalPages}</strong>
-                  </>
-                ) : null}
-              </p>
-              <div className="flex flex-wrap gap-1">
-                <button
-                  type="button"
-                  onClick={() => props.onPageChange?.(pagination.page - 1)}
-                  disabled={!pagination.hasPrev}
-                  className="scan-btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Forrige
-                </button>
-                <button
-                  type="button"
-                  onClick={() => props.onPageChange?.(pagination.page + 1)}
-                  disabled={!pagination.hasNext}
-                  className="scan-btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Neste
-                </button>
-              </div>
             </div>
-              )}
 
-            <ScanGoogleSection
-              selectedCount={selected.size}
-              scanQueueCount={scanQueueCount}
-              scanning={scanning}
-              onScanSelected={scanSelectedWithGoogle}
-              socialOptions={socialOptions}
-              onSocialOptionsChange={handleSocialOptionsChange}
-              scanSelectionMessage={scanSelectionMessage}
-              googleSearchQuery={googleSearchQuery}
-              scanComplete={scanComplete}
-              scanPending={scanPending}
-              scanTargetCount={scanTargetCount}
-              scanningName={scanningName}
-              progress={progress}
-              scanError={scanError}
-              providers={providers}
-              serperUsage={serperUsage}
-              truncated={truncated}
-              noWebsiteCount={noWebsiteCount}
-              withWebsiteCount={withWebsiteCount}
-              withFacebookCount={withFacebookCount}
-              withGulesiderCount={withGulesiderCount}
-              withInstagramCount={withInstagramCount}
-              withLinkedInCount={withLinkedInCount}
-              listFilter={listFilter}
-              notScannedCount={notScannedCount}
-              onRescan={rescanSelectedOrVisible}
-              websiteScans={websiteScans}
-            />
+            {pagination && props.onPageChange && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-zinc-500">
+                  Side <strong className="font-semibold text-zinc-200">{pagination.page}</strong>
+                  {showExactTotal ? (
+                    <>
+                      {" "}
+                      /{" "}
+                      <strong className="font-semibold text-zinc-200">
+                        {pagination.totalPages}
+                      </strong>
+                    </>
+                  ) : null}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => props.onPageChange?.(pagination.page - 1)}
+                    disabled={!pagination.hasPrev}
+                    className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Forrige
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => props.onPageChange?.(pagination.page + 1)}
+                    disabled={!pagination.hasNext}
+                    className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Neste
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 pb-24">
+              <ScanGoogleSection
+                selectedCount={selected.size}
+                scanQueueCount={scanQueueCount}
+                scanning={scanning}
+                onScanSelected={scanSelectedWithGoogle}
+                socialOptions={socialOptions}
+                onSocialOptionsChange={handleSocialOptionsChange}
+                scanSelectionMessage={scanSelectionMessage}
+                googleSearchQuery={googleSearchQuery}
+                scanComplete={scanComplete}
+                scanPending={scanPending}
+                scanTargetCount={scanTargetCount}
+                scanningName={scanningName}
+                progress={progress}
+                scanError={scanError}
+                providers={providers}
+                serperUsage={serperUsage}
+                truncated={truncated}
+                noWebsiteCount={noWebsiteCount}
+                withWebsiteCount={withWebsiteCount}
+                withFacebookCount={withFacebookCount}
+                withGulesiderCount={withGulesiderCount}
+                withInstagramCount={withInstagramCount}
+                withLinkedInCount={withLinkedInCount}
+                listFilter={listFilter}
+                notScannedCount={notScannedCount}
+                onRescan={rescanSelectedOrVisible}
+                websiteScans={websiteScans}
+              />
             </div>
           </div>
-        </div>
-      </section>
+        </main>
+      </div>
 
       {selected.size > 0 && (
-        <div className="scan-glass-floating-bar fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between gap-2 border px-3 py-2 sm:inset-x-auto sm:right-6 sm:max-w-lg">
-          <span className="text-xs font-semibold text-white">
-            {selected.size} valgt
-            {scanQueueCount < selected.size && (
-              <span className="scan-glass-muted font-normal">
-                {" "}
-                · {scanQueueCount} i neste sjekk
-              </span>
-            )}
-          </span>
-          <AddToListMenu
-            selectedOrgnrs={Array.from(selected)}
-            onApply={applySavedAudience}
-            onAdded={setListMessage}
-          />
-          <button
-            type="button"
-            onClick={addSelectedToQueue}
-            disabled={addingToQueue}
-            className="scan-btn-primary min-h-[36px] px-4 text-xs font-semibold"
-          >
-            {addingToQueue ? "Legger i kø…" : `Legg i kø (${selected.size})`}
-          </button>
+        <div className="fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex flex-col gap-1.5 sm:inset-x-auto sm:right-6 sm:max-w-lg">
+          {listMessage ? (
+            <p
+              className="rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-center text-xs text-emerald-200"
+              role="status"
+            >
+              {listMessage}
+            </p>
+          ) : null}
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-[#111]/95 px-3 py-2 backdrop-blur-md">
+            <span className="text-xs font-semibold text-white">
+              {selected.size} valgt
+              {scanQueueCount < selected.size && (
+                <span className="font-normal text-zinc-500">
+                  {" "}
+                  · {scanQueueCount} i neste sjekk
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              <AddToListMenu
+                selectedOrgnrs={Array.from(selected)}
+                onApply={applySavedAudience}
+                onAdded={setListMessage}
+              />
+              <button
+                type="button"
+                onClick={addSelectedToQueue}
+                disabled={addingToQueue}
+                className="inline-flex min-h-[36px] items-center rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {addingToQueue ? "Legger i kø…" : `Legg i kø (${selected.size})`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {listMessage && selected.size === 0 && (
-        <p className="fixed inset-x-3 bottom-20 z-20 text-center text-xs text-emerald-300 sm:inset-x-auto sm:right-6">
+        <p className="fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-center text-xs text-emerald-200 sm:inset-x-auto sm:right-6 sm:max-w-lg">
           {listMessage}
         </p>
       )}
-
-      <details ref={emailSectionRef} className="scan-surface-pad mx-2 w-auto scroll-mt-4 sm:mx-3">
-        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
-          Send e-post til valgte firma
-        </summary>
-        <div className="mt-3">
-          <SendCampaignForm
-            selectedCompanies={selectedCompanies}
-            templates={props.templates}
-            sequences={props.sequences}
-            websiteScans={websiteScans}
-            onSent={() => setSelected(new Set())}
-            light
-          />
-        </div>
-      </details>
-
-      <details className="scan-surface-pad mx-2 w-auto sm:mx-3">
-        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
-          Mine firmalister
-        </summary>
-        <div className="mt-3">
-          <ScanCompanyLists
-            selectedOrgnrs={Array.from(selected)}
-            onApply={applySavedAudience}
-            onAdded={setListMessage}
-          />
-        </div>
-      </details>
-
-      <details className="scan-surface-pad mx-2 w-auto sm:mx-3">
-        <summary className="scan-glass-muted cursor-pointer select-none text-sm font-medium hover:text-white">
-          Lagrede målgrupper
-        </summary>
-        <div className="mt-3">
-          <ScanSavedAudiences
-            currentFilters={filters}
-            onApply={applySavedAudience}
-            onSaveCurrent={saveAudience}
-            saveMessage={saveMessage}
-          />
-        </div>
-      </details>
     </div>
   );
 }

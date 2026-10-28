@@ -25,7 +25,7 @@ export function TutorialMenuButton({ className, onOpen }: Props) {
       <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
         <span>Veiledning</span>
         {status !== "completed" ? (
-          <span className="rounded-full bg-sky-400/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-100">
+          <span className="rounded-full bg-emerald-400/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-100">
             Ny
           </span>
         ) : null}

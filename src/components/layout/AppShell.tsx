@@ -6,7 +6,6 @@ import { AgentChatFab, AgentChatPanel } from "@/components/agent/AgentChatPanel"
 import { OnboardingProvider } from "@/components/onboarding/OnboardingProvider";
 import { TutorialMenuButton } from "@/components/onboarding/TutorialMenuButton";
 import { SiteLogo } from "@/components/layout/SiteLogo";
-import { ThemeSelector } from "@/components/theme/ThemeSelector";
 import { isAppRoute } from "@/lib/theme/app-theme";
 import { cn } from "@/lib/utils";
 import { isAgentEnabled } from "@/lib/agent/constants";
@@ -150,7 +149,7 @@ export function AppShell({
 
   const groupLabelClass = cn(
     "app-nav-group-label px-3 pb-0.5 pt-2 text-[0.65rem] font-semibold uppercase tracking-wider first:pt-0",
-    isGlassShell ? "text-slate-400" : "text-slate-500"
+    isGlassShell ? "text-zinc-500" : "text-slate-500"
   );
 
   function NavLink({ href, label, icon: Icon }: NavItem) {
@@ -173,7 +172,7 @@ export function AppShell({
           <p
             className={cn(
               "flex items-center gap-1 text-xs font-semibold",
-              isGlassShell ? "text-sky-400" : "text-brand-gold"
+              isGlassShell ? "text-emerald-400" : "text-brand-gold"
             )}
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -233,16 +232,10 @@ export function AppShell({
         )}
       </nav>
 
-      {isGlassShell && (
-        <div className="border-t border-white/10 px-3 py-3">
-          <ThemeSelector compact />
-        </div>
-      )}
-
       <div
         className={cn(
           "border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
-          isGlassShell ? "scan-glass-shell-footer" : "border-brand-border"
+          isGlassShell ? "scan-glass-shell-footer border-white/[0.06]" : "border-brand-border"
         )}
       >
         <button type="button" onClick={logout} className="glass-nav-link w-full">

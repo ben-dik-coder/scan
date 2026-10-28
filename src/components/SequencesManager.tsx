@@ -43,7 +43,7 @@ function SequenceStepCard({ step }: { step: Step }) {
         className="flex w-full items-start justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <p className="font-semibold text-sky-300">
+          <p className="font-semibold text-emerald-300">
             Steg {step.step_order + 1} — dag {step.delay_days}
           </p>
           <p className="mt-1 font-medium text-white/90">{step.subject}</p>
@@ -111,7 +111,7 @@ export function SequencesManager({
       <section className="scan-surface-full overflow-hidden">
         <div className="scan-glass-header border-b border-white/10 p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/20 text-sky-300">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
               <Workflow className="h-5 w-5" />
             </div>
             <div>
@@ -131,7 +131,7 @@ export function SequencesManager({
               key={step.n}
               className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500/25 text-xs font-bold text-sky-200">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/25 text-xs font-bold text-emerald-200">
                 {step.n}
               </span>
               <div>
@@ -162,17 +162,17 @@ export function SequencesManager({
 
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">
         <p className="flex items-start gap-2">
-          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
           <span>
             <strong className="text-white/80">«Send forfalte steg nå»</strong> trenger du bare hvis
             du vil sende manuelt. Ellers går oppfølgingen automatisk på riktig dag.
           </span>
         </p>
         <p className="mt-3 flex items-start gap-2">
-          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
           <span>
-            <code className="text-sky-200">{"{firmanavn}"}</code> = fylles inn automatisk.{" "}
-            <code className="text-sky-200">[ditt navn]</code> osv. = tekst du må bytte ut selv.
+            <code className="text-emerald-200">{"{firmanavn}"}</code> = fylles inn automatisk.{" "}
+            <code className="text-emerald-200">[ditt navn]</code> osv. = tekst du må bytte ut selv.
           </span>
         </p>
       </div>
@@ -190,7 +190,7 @@ export function SequencesManager({
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
-      {result && <p className="text-sm text-sky-300">{result}</p>}
+      {result && <p className="text-sm text-emerald-300">{result}</p>}
 
       {sequences.length === 0 && !loading && (
         <p className="scan-glass-muted text-sm">

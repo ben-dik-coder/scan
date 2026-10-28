@@ -63,7 +63,7 @@ export function KoListView({
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="text-xs font-semibold text-sky-300 underline hover:text-sky-200"
+          className="text-xs font-semibold text-emerald-300 underline hover:text-emerald-200"
         >
           Vis alle {nyItems.length} i køen
         </button>

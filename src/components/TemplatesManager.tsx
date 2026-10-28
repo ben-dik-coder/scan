@@ -56,7 +56,7 @@ export function TemplatesManager({
 
       <section className="scan-surface-full overflow-hidden">
         <div className="scan-glass-header flex items-start gap-3 border-b border-white/10 p-4 sm:p-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/20 text-sky-300">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
             <FileText className="h-5 w-5" />
           </div>
           <div>
@@ -64,8 +64,8 @@ export function TemplatesManager({
             <p className="scan-glass-muted mt-1 text-sm">
               Ferdige tekster du bruker når du sender fra Skann eller arbeidskøen. Velg en mal der —
               eller lag din egen her. Bytt ut{" "}
-              <code className="text-sky-200">[ditt navn]</code> og lignende.{" "}
-              <code className="text-sky-200">{"{firmanavn}"}</code> fylles inn automatisk.
+              <code className="text-emerald-200">[ditt navn]</code> og lignende.{" "}
+              <code className="text-emerald-200">{"{firmanavn}"}</code> fylles inn automatisk.
             </p>
             <Link
               href="/app"

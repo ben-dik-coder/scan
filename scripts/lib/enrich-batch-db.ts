@@ -53,12 +53,24 @@ export class CompanyPatchBuffer {
     const rows = [...this.patches.values()];
     this.patches.clear();
     const supabase = createServiceClient();
+    // update (ikke upsert) — unngår å null'e has_email og andre NOT NULL-kolonner
     for (let i = 0; i < rows.length; i += this.batchSize) {
       const chunk = rows.slice(i, i + this.batchSize);
-      const { error } = await supabase
-        .from("companies")
-        .upsert(chunk, { onConflict: "orgnr" });
-      if (error) throw new Error(`Company batch upsert: ${error.message}`);
+      const results = await Promise.all(
+        chunk.map(async (row) => {
+          const { orgnr, ...patch } = row;
+          if (!orgnr || Object.keys(patch).length === 0) return null;
+          const { error } = await supabase
+            .from("companies")
+            .update(patch)
+            .eq("orgnr", orgnr);
+          return error ? `${orgnr}: ${error.message}` : null;
+        })
+      );
+      const failed = results.filter(Boolean);
+      if (failed.length > 0) {
+        throw new Error(`Company batch update: ${failed.slice(0, 3).join("; ")}`);
+      }
     }
   }
 

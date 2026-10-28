@@ -164,12 +164,12 @@ export function LeadDetailDrawer({
           </h3>
           {company.email ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sky-300">{company.email}</span>
+              <span className="text-emerald-300">{company.email}</span>
               {onSendEmail && (
                 <button
                   type="button"
                   onClick={onSendEmail}
-                  className="inline-flex items-center gap-1 rounded-lg border border-sky-400/40 bg-sky-500/15 px-2.5 py-1 text-xs font-semibold text-sky-100 hover:bg-sky-500/25"
+                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/25"
                 >
                   <Mail className="h-3.5 w-3.5" />
                   Send e-post
@@ -183,7 +183,7 @@ export function LeadDetailDrawer({
             <p className="flex flex-wrap items-center gap-1.5">
               <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
               <span className="text-slate-400">Tlf</span>
-              <a href={`tel:${phoneRaw.replace(/\s/g, "")}`} className="text-sky-300 hover:underline">
+              <a href={`tel:${phoneRaw.replace(/\s/g, "")}`} className="text-emerald-300 hover:underline">
                 {phoneDisplay}
               </a>
             </p>
@@ -196,7 +196,7 @@ export function LeadDetailDrawer({
               href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="block truncate text-slate-400 hover:text-sky-300"
+              className="block truncate text-slate-400 hover:text-emerald-300"
             >
               {company.website}
             </a>

@@ -57,17 +57,17 @@ export function RingTranscriptPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+      <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Transkript
+          <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            Live listen
           </p>
           <p className="truncate text-sm font-semibold text-white">
             {companyName ?? "Samtale"}
           </p>
-          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500">
+          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-zinc-500">
             {engine === "whisper" ? (
-              <Sparkles className="h-3 w-3 text-sky-400" />
+              <Sparkles className="h-3 w-3 text-emerald-400" />
             ) : null}
             {engineLabel}
             {whisperAvailable === false ? " · AI utilgjengelig" : null}
@@ -143,13 +143,13 @@ export function RingTranscriptPanel({
                     : "Lytter… Tekst dukker opp underveis. Rett gjerne feil her."
                   : "Trykk Lytt for å starte. Teksten kan redigeres manuelt etterpå."
               }
-              className="min-h-[12rem] w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400/40"
+              className="min-h-[12rem] w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-400/40"
             />
             {interim ? (
               <p className="mt-2 text-xs italic text-slate-400">Hører: {interim}</p>
             ) : null}
             {isProcessing ? (
-              <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-sky-300">
+              <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-300">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 AI transkriberer siste lydbit…
               </p>

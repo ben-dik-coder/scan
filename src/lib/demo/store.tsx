@@ -304,6 +304,7 @@ export function filterDemoCompanies(
     municipalityCode?: string;
     days?: number;
     hasEmail?: boolean;
+    hasPhone?: boolean;
     genericEmailOnly?: boolean;
     industryGroup?: string;
     professionId?: string;
@@ -331,6 +332,13 @@ export function filterDemoCompanies(
     )
       return false;
     if (filters.hasEmail && !c.has_email) return false;
+    if (
+      filters.hasPhone &&
+      !(c.mobile ?? "").trim() &&
+      !(c.phone ?? "").trim()
+    ) {
+      return false;
+    }
     if (filters.genericEmailOnly && !c.email_is_generic) return false;
     if (
       !matchesIndustryGroup(c.industry_code, filters.industryGroup ?? "", {

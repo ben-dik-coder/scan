@@ -3,7 +3,7 @@
 import {
   applyAppThemeToDocument,
   DEFAULT_APP_THEME,
-  isAppRoute,
+  isAppLookRoute,
   readStoredAppTheme,
   storeAppTheme,
   type AppThemeId,
@@ -28,7 +28,7 @@ const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const onAppRoute = isAppRoute(pathname);
+  const onAppLook = isAppLookRoute(pathname);
   const [theme, setThemeState] = useState<AppThemeId>(DEFAULT_APP_THEME);
   const [ready, setReady] = useState(false);
 
@@ -39,11 +39,11 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    applyAppThemeToDocument(theme, onAppRoute);
-  }, [theme, onAppRoute, ready]);
+    applyAppThemeToDocument(theme, onAppLook);
+  }, [theme, onAppLook, ready]);
 
   const setTheme = useCallback((next: AppThemeId) => {
-    setThemeState(next);
+    setThemeState(DEFAULT_APP_THEME);
     storeAppTheme(next);
   }, []);
 

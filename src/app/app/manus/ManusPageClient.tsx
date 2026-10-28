@@ -161,8 +161,8 @@ export function ManusPageClient() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#141416] text-slate-100">
-      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-white/10 bg-[#1c1c1e]/95 px-3 py-2 backdrop-blur-md sm:px-4">
+    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#0a0a0a] text-slate-100">
+      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-white/10 bg-[#0f0f0f]/95 px-3 py-2 backdrop-blur-md sm:px-4">
         <Link
           href="/app/oversikt"
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white"
@@ -210,7 +210,7 @@ export function ManusPageClient() {
                   aria-label="Lukk meny"
                   onClick={() => setExportOpen(false)}
                 />
-                <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-xl border border-white/10 bg-[#2c2c2e] p-1 shadow-xl">
+                <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-xl border border-white/10 bg-[#111111] p-1 shadow-xl">
                   <ExportItem icon={Copy} label="Kopiér tekst" onClick={() => { void copyPlain(); setExportOpen(false); }} />
                   <ExportItem icon={Copy} label="Kopiér HTML" onClick={() => { void copyHtml(); setExportOpen(false); }} />
                   <ExportItem icon={Download} label="Last ned .txt" onClick={() => { downloadTxt(); setExportOpen(false); }} />
@@ -278,14 +278,14 @@ export function ManusPageClient() {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {showLeft ? (
-          <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-white/10 bg-[#18181a] p-3 lg:block xl:w-72">
+          <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0c0c0c] p-3 lg:block xl:w-72">
             <SidebarSection title="Maler">
               {MANUS_TEMPLATES.map((template) => (
                 <button
                   key={template.id}
                   type="button"
                   onClick={() => applyTemplate(template.id)}
-                  className="mb-2 w-full rounded-lg border border-white/10 bg-white/5 p-3 text-left transition hover:border-sky-400/30 hover:bg-white/10"
+                  className="mb-2 w-full rounded-lg border border-white/10 bg-white/5 p-3 text-left transition hover:border-emerald-400/30 hover:bg-white/10"
                 >
                   <p className="text-sm font-semibold text-white">{template.name}</p>
                   <p className="mt-0.5 text-xs text-slate-400">{template.description}</p>
@@ -300,7 +300,7 @@ export function ManusPageClient() {
                     key={token}
                     type="button"
                     onClick={() => insertPlaceholder(token)}
-                    className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
+                    className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 transition hover:border-emerald-400/40 hover:text-white"
                     title={label}
                   >
                     {token}
@@ -391,7 +391,7 @@ export function ManusPageClient() {
         </main>
 
         {showRight ? (
-          <aside className="hidden w-64 shrink-0 overflow-y-auto border-l border-white/10 bg-[#18181a] p-3 lg:block xl:w-72">
+          <aside className="hidden w-64 shrink-0 overflow-y-auto border-l border-white/10 bg-[#0c0c0c] p-3 lg:block xl:w-72">
             <SidebarSection title="Statistikk">
               <dl className="grid grid-cols-2 gap-2 text-xs">
                 <Stat label="Ord" value={String(words)} />
@@ -409,7 +409,7 @@ export function ManusPageClient() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && runSearch()}
                   placeholder="Søk…"
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs outline-none focus:border-sky-400/40"
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs outline-none focus:border-emerald-400/40"
                 />
                 <button
                   type="button"
@@ -428,7 +428,7 @@ export function ManusPageClient() {
                 onChange={(e) => handleNotesChange(e.target.value)}
                 rows={8}
                 placeholder="Egne notater, tips, innvendinger du hører ofte…"
-                className="w-full resize-y rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs leading-relaxed text-slate-200 outline-none focus:border-sky-400/40"
+                className="w-full resize-y rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs leading-relaxed text-slate-200 outline-none focus:border-emerald-400/40"
               />
             </SidebarSection>
 
@@ -444,7 +444,7 @@ export function ManusPageClient() {
         ) : null}
       </div>
 
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#1c1c1e]/90 px-3 py-2 text-[11px] text-slate-400 sm:px-4">
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#0f0f0f]/90 px-3 py-2 text-[11px] text-slate-400 sm:px-4">
         <div className="flex flex-wrap items-center gap-3">
           <span
             className={cn(
@@ -458,7 +458,7 @@ export function ManusPageClient() {
           </span>
           <span>{words} ord</span>
           <span>~{readingMinutes} min å lese høyt</span>
-          {message ? <span className="text-sky-300">{message}</span> : null}
+          {message ? <span className="text-emerald-300">{message}</span> : null}
           {error ? <span className="text-amber-300">{error}</span> : null}
         </div>
         <span className="inline-flex items-center gap-1 text-slate-500">
@@ -515,7 +515,7 @@ function ToolbarButton({
       onClick={onClick}
       className={cn(
         "inline-flex h-9 items-center gap-1 rounded-lg border border-white/10 px-2 text-slate-300 transition hover:bg-white/10 hover:text-white",
-        active && "border-sky-400/40 bg-sky-500/15 text-sky-100"
+        active && "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
       )}
     >
       {children}
@@ -603,7 +603,7 @@ function TeleprompterView({
           <button
             type="button"
             onClick={onPlayToggle}
-            className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400"
           >
             {playing ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {playing ? "Pause" : "Spill av"}

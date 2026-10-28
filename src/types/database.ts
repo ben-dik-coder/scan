@@ -299,3 +299,34 @@ export type AgentScheduledMessage = {
 export type CompanyWithLead = Company & {
   user_lead?: UserLead | null;
 };
+
+export type AiCallStatus =
+  | "queued"
+  | "ringing"
+  | "in_progress"
+  | "ended"
+  | "failed";
+
+export type AiCallOutcome =
+  | "meeting"
+  | "not_interested"
+  | "no_answer"
+  | "voicemail"
+  | "other";
+
+export type AiCall = {
+  id: string;
+  user_id: string;
+  orgnr: string;
+  phone: string;
+  vapi_call_id: string | null;
+  status: AiCallStatus;
+  outcome: AiCallOutcome | null;
+  transcript: string | null;
+  summary: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  raw_payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};

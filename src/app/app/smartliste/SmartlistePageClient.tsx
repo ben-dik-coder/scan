@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { DndContext } from "@dnd-kit/core";
 import { SmartlisteBatchBar } from "@/components/smartliste/SmartlisteBatchBar";
 import { SmartlisteCard } from "@/components/smartliste/SmartlisteCard";
 import { SmartlisteDetailPanel } from "@/components/smartliste/SmartlisteDetailPanel";
@@ -180,15 +179,15 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
           <span>Tilbake</span>
         </Link>
 
-        <LayoutGrid className="h-5 w-5" style={{ color: "#fbbf24" }} />
+        <LayoutGrid className="h-5 w-5 text-emerald-400" />
         <h1>Smartliste</h1>
 
-        {board && <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{board.list.name}</span>}
+        {board && <span style={{ color: "#a1a1aa", fontSize: "0.875rem" }}>{board.list.name}</span>}
 
         <div style={{ marginLeft: "auto", flex: 1, maxWidth: "20rem", position: "relative" }}>
           <Search
             className="h-4 w-4"
-            style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)", color: "#64748b" }}
+            style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)", color: "#71717a" }}
           />
           <input
             value={searchQuery}
@@ -238,13 +237,13 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
         <button type="button" onClick={() => updateBoardConfig({ zoom: Math.max(75, zoom - 10) })} className="smartliste-btn smartliste-btn-icon">
           <ZoomOut className="h-4 w-4" />
         </button>
-        <span style={{ fontSize: "0.75rem", color: "#64748b" }}>{zoom}%</span>
+        <span style={{ fontSize: "0.75rem", color: "#71717a" }}>{zoom}%</span>
         <button type="button" onClick={() => updateBoardConfig({ zoom: Math.min(125, zoom + 10) })} className="smartliste-btn smartliste-btn-icon">
           <ZoomIn className="h-4 w-4" />
         </button>
 
         {syncing && (
-          <span style={{ fontSize: "0.75rem", color: "#94a3b8", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+          <span style={{ fontSize: "0.75rem", color: "#a1a1aa", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
             <Loader2 className="h-3 w-3 animate-spin" />
             Lagrer…
           </span>
@@ -295,10 +294,10 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
             <div style={{ flex: 1, overflow: "auto", padding: "0.5rem" }}>
               {loadingLists ? (
                 <div style={{ display: "flex", justifyContent: "center", padding: "2rem 0" }}>
-                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: "#64748b" }} />
+                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: "#71717a" }} />
                 </div>
               ) : lists.length === 0 ? (
-                <p style={{ padding: "1rem 0.5rem", fontSize: "0.75rem", color: "#64748b" }}>
+                <p style={{ padding: "1rem 0.5rem", fontSize: "0.75rem", color: "#71717a" }}>
                   Opprett din første smartliste over.
                 </p>
               ) : (
@@ -320,7 +319,7 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
                         if (window.confirm(`Slette «${list.name}»?`)) void deleteList(list.id);
                       }}
                       className="smartliste-btn smartliste-btn-icon"
-                      style={{ border: "none", background: "transparent", color: "#64748b" }}
+                      style={{ border: "none", background: "transparent", color: "#71717a" }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -336,12 +335,12 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
         <main className="smartliste-main">
           {loadingBoard ? (
             <div className="smartliste-empty">
-              <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#64748b" }} />
+              <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#71717a" }} />
             </div>
           ) : !board ? (
             <div className="smartliste-empty">
-              <LayoutGrid className="h-12 w-12" style={{ color: "#475569" }} />
-              <p style={{ fontSize: "1.125rem", fontWeight: 600, color: "#e2e8f0" }}>Smartliste</p>
+              <LayoutGrid className="h-12 w-12" style={{ color: "#52525b" }} />
+              <p style={{ fontSize: "1.125rem", fontWeight: 600, color: "#e4e4e7" }}>Smartliste</p>
               <p style={{ maxWidth: "28rem", fontSize: "0.875rem" }}>
                 Her strukturerer du leads med soner, merkelapper og AI-rangering.
                 Opprett en liste til venstre, eller lagre firma fra Skann.
@@ -359,7 +358,6 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
               onOpen={setDetailCard}
             />
           ) : viewMode === "grid" ? (
-            <DndContext>
               <div className="smartliste-dot-grid overflow-auto p-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {board.items
@@ -384,7 +382,6 @@ export function SmartlistePageClient({ initialListId }: { initialListId?: string
                     ))}
                 </div>
               </div>
-            </DndContext>
           ) : (
             <SmartlisteDotBoard
               board={board}

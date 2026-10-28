@@ -45,7 +45,7 @@ export function ScanListToolbar({
   exportMessage,
 }: Props) {
   return (
-    <div className="scan-glass-divider space-y-3 border-t px-3 py-3 lg:px-4">
+    <div className="space-y-3 border-t border-white/[0.06] px-3 py-3 lg:px-4">
       <div className="flex items-center justify-between gap-2">
         <div className="scan-segmented min-w-0 max-w-full flex-1 overflow-x-auto">
           {tabs.map((tab) => {

@@ -53,12 +53,12 @@ export function TrialNudgeBanner({ noWebsiteCount, withEmailCount }: Props) {
     <div
       className={cn(
         "scan-glass-notice mx-2.5 flex flex-wrap items-start justify-between gap-2 sm:mx-3",
-        "border-sky-400/30 bg-sky-500/10"
+        "border-emerald-400/30 bg-emerald-500/10"
       )}
       role="status"
     >
       <div className="flex min-w-0 flex-1 gap-2">
-        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" aria-hidden />
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" aria-hidden />
         <div className="min-w-0">
           <p className="scan-glass-strong text-sm font-semibold">
             Prøveperiode · dag {day}
@@ -68,10 +68,10 @@ export function TrialNudgeBanner({ noWebsiteCount, withEmailCount }: Props) {
           </p>
           <p className="scan-glass-muted mt-0.5 text-xs">{message}</p>
           <p className="mt-1.5 flex flex-wrap gap-2 text-xs font-semibold">
-            <Link href="/app?modus=websites&web=without" className="text-sky-300 hover:text-sky-200">
+            <Link href="/app?modus=websites&web=without" className="text-emerald-300 hover:text-emerald-200">
               Åpne Skann
             </Link>
-            <Link href="/app/ko" className="text-sky-300 hover:text-sky-200">
+            <Link href="/app/ko" className="text-emerald-300 hover:text-emerald-200">
               Arbeidskø
             </Link>
           </p>

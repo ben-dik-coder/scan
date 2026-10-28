@@ -73,7 +73,7 @@ export function CampaignDetailDrawer({
             </span>
           )}
           {campaign.subject_b && (
-            <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 font-semibold text-sky-200">
+            <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-200">
               A/B-test
             </span>
           )}

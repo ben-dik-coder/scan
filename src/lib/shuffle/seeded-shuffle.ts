@@ -5,6 +5,7 @@ export type MarketShuffleFilters = {
   municipalityCode?: string;
   days?: number;
   hasEmail?: boolean;
+  hasPhone?: boolean;
   genericEmailOnly?: boolean;
   industryGroup?: string;
   professionId?: string;
@@ -23,6 +24,7 @@ export function buildMarketFilterKey(filters: MarketShuffleFilters): string {
     filters.municipalityCode ?? "",
     String(filters.days ?? ""),
     filters.hasEmail ? "1" : "0",
+    filters.hasPhone ? "1" : "0",
     filters.genericEmailOnly ? "1" : "0",
     filters.industryGroup ?? "",
     filters.professionId ?? "",

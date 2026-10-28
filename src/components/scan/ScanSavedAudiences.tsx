@@ -105,6 +105,7 @@ function mergeFilters(
     municipalityCode: partial.municipalityCode ?? "",
     days: partial.days ?? DEFAULT_MARKET_FILTERS.days,
     hasEmail: partial.hasEmail ?? false,
+    hasPhone: partial.hasPhone ?? false,
     genericEmailOnly: partial.genericEmailOnly ?? false,
     industryGroup: partial.industryGroup ?? "",
     professionId: resolveProfessionId(partial),
@@ -201,7 +202,7 @@ export function ScanSavedAudiences({
             key={p.id}
             type="button"
             onClick={() => onApply({ filters: p.filters })}
-            className="scan-chip cursor-pointer hover:border-sky-400/40"
+            className="scan-chip cursor-pointer hover:border-emerald-400/40"
           >
             {p.name}
           </button>
@@ -230,8 +231,8 @@ export function ScanSavedAudiences({
                   })
                 }
                 className={cn(
-                  "scan-chip cursor-pointer hover:border-sky-400/40",
-                  highlightId === l.id && "border-sky-400/60 bg-sky-400/15",
+                  "scan-chip cursor-pointer hover:border-emerald-400/40",
+                  highlightId === l.id && "border-emerald-400/60 bg-emerald-400/15",
                   isAgent && "border-violet-400/30"
                 )}
                 title={

@@ -328,7 +328,7 @@ export function KoClient() {
       )}
 
       {contactedHint && (
-        <p className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-2 text-sm text-sky-100">
+        <p className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100">
           {contactedHint}
         </p>
       )}
@@ -418,7 +418,7 @@ export function KoClient() {
                 setHasPhone(false);
                 setSkippedOrgnrs(new Set());
               }}
-              className="font-semibold text-sky-300 underline"
+              className="font-semibold text-emerald-300 underline"
             >
               Nullstill filter
             </button>

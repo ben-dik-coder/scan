@@ -12,14 +12,12 @@ import {
   WeeklyAlertFilters,
 } from "@/components/settings/WeeklyAlertFilters";
 import { loadScanAudienceFilters } from "@/lib/scan/lead-modes";
-import { ThemeSelector } from "@/components/theme/ThemeSelector";
 import {
   Bell,
   BookOpen,
   CreditCard,
   Headphones,
   Mail,
-  Palette,
   Phone,
   Sparkles,
   User,
@@ -47,7 +45,7 @@ function SettingsCard({
   return (
     <section className="app-settings-card scan-surface space-y-3 p-4 sm:p-5">
       <h2 className="scan-glass-strong flex items-center gap-2 text-sm font-semibold">
-        <Icon className="h-4 w-4 text-sky-400" aria-hidden />
+        <Icon className="h-4 w-4 text-emerald-400" aria-hidden />
         {title}
       </h2>
       {children}
@@ -149,7 +147,7 @@ export default function InnstillingerClient({
 
       {userEmail && (
         <p className="scan-glass-muted flex items-center gap-2 text-xs">
-          <User className="h-3.5 w-3.5 shrink-0 text-sky-400" aria-hidden />
+          <User className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden />
           Innlogget som <span className="scan-glass-strong font-medium">{userEmail}</span>
         </p>
       )}
@@ -187,13 +185,6 @@ export default function InnstillingerClient({
         </Link>
       </div>
 
-      <SettingsCard title="Utseende" icon={Palette}>
-        <p className="scan-glass-muted text-xs leading-relaxed">
-          Velg mellom klassisk blå glass-stil og ny Apple-stil. Valget lagres i nettleseren din.
-        </p>
-        <ThemeSelector />
-      </SettingsCard>
-
       <SettingsCard title="E-post" icon={Mail}>
         <p className="scan-glass-muted text-xs leading-relaxed">
           Kampanjer sendes fra din egen konto — ikke fra NyLead.
@@ -211,7 +202,7 @@ export default function InnstillingerClient({
             type="checkbox"
             checked={weeklyAlertEnabled}
             onChange={(e) => setWeeklyAlertEnabled(e.target.checked)}
-            className="h-4 w-4 rounded accent-sky-500"
+            className="h-4 w-4 rounded accent-emerald-500"
           />
           <span className="scan-glass-strong">Slå på e-postvarsel</span>
         </label>
@@ -260,7 +251,7 @@ export default function InnstillingerClient({
           autoComplete="off"
         />
         <details className="scan-glass-muted text-[11px] leading-snug">
-          <summary className="cursor-pointer font-semibold text-sky-300 hover:text-sky-200">
+          <summary className="cursor-pointer font-semibold text-emerald-300 hover:text-emerald-200">
             Slik kobler du Zapier
           </summary>
           <ol className="mt-2 list-decimal space-y-1 pl-4">
@@ -270,10 +261,10 @@ export default function InnstillingerClient({
             <li>Zapier → action (HubSpot, Pipedrive, Google Sheets…)</li>
           </ol>
           <p className="mt-2">
-            JSON-felt: <code className="text-sky-200">event</code> ={" "}
-            <code className="text-sky-200">lead.queued</code>, pluss{" "}
-            <code className="text-sky-200">lead.name</code>,{" "}
-            <code className="text-sky-200">lead.email</code> osv.
+            JSON-felt: <code className="text-emerald-200">event</code> ={" "}
+            <code className="text-emerald-200">lead.queued</code>, pluss{" "}
+            <code className="text-emerald-200">lead.name</code>,{" "}
+            <code className="text-emerald-200">lead.email</code> osv.
           </p>
         </details>
       </SettingsCard>
@@ -300,7 +291,7 @@ export default function InnstillingerClient({
         </div>
         <Link
           href="/hjelp"
-          className="inline-flex text-sm font-semibold text-sky-300 underline hover:text-sky-200"
+          className="inline-flex text-sm font-semibold text-emerald-300 underline hover:text-emerald-200"
         >
           Se hjelpesiden
         </Link>
@@ -311,7 +302,7 @@ export default function InnstillingerClient({
           Tips om SPF, sendinggrenser og søppelpost.{" "}
           <Link
             href="/app/leveringsguide"
-            className="font-semibold text-sky-300 underline hover:text-sky-200"
+            className="font-semibold text-emerald-300 underline hover:text-emerald-200"
           >
             Les leveringsguiden
           </Link>

@@ -119,7 +119,7 @@ export function ScanGoogleSection({
                     includeFacebook: e.target.checked,
                   })
                 }
-                className="h-3 w-3 rounded accent-sky-600"
+                className="h-3 w-3 rounded accent-emerald-600"
               />
               + Facebook
             </label>
@@ -133,7 +133,7 @@ export function ScanGoogleSection({
                     includeInstagram: e.target.checked,
                   })
                 }
-                className="h-3 w-3 rounded accent-sky-600"
+                className="h-3 w-3 rounded accent-emerald-600"
               />
               + Instagram
             </label>
@@ -145,7 +145,7 @@ export function ScanGoogleSection({
             className={cn(
               "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-semibold transition",
               selectedCount > 0 && !scanning
-                ? "bg-sky-400 text-slate-900 hover:bg-sky-300"
+                ? "bg-emerald-400 text-slate-900 hover:bg-emerald-300"
                 : "cursor-not-allowed border border-white/10 bg-white/5 text-slate-400"
             )}
           >

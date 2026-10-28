@@ -27,6 +27,8 @@ export type FilterState = {
   municipalityCode: string;
   days: number;
   hasEmail: boolean;
+  /** Kun firma med lagret mobil/telefon (server-paginert) */
+  hasPhone: boolean;
   genericEmailOnly: boolean;
   industryGroup: string;
   /** Konkret yrke-id fra dropdown (tom = alle yrker) */
@@ -286,6 +288,7 @@ export function CompanyFilters({
                 <option value={7}>Siste 7 dager</option>
                 <option value={30}>Siste 30 dager</option>
                 <option value={90}>Siste 90 dager</option>
+                <option value={180}>Siste 6 måneder</option>
                 <option value={0}>Alle firma</option>
               </select>
             </label>
@@ -462,6 +465,7 @@ export function CompanyFilters({
             <option value={7}>Siste 7 dager</option>
             <option value={30}>Siste 30 dager</option>
             <option value={90}>Siste 90 dager</option>
+            <option value={180}>Siste 6 måneder</option>
             <option value={0}>Alle firma</option>
           </select>
         </label>
@@ -559,7 +563,7 @@ export function CompanyFilters({
           />
           Avansert etter Google-sjekk
           {hasAdvancedSocial && (
-            <span className="rounded-full bg-sky-400/20 px-1.5 text-[9px] font-bold normal-case text-sky-200">
+            <span className="rounded-full bg-emerald-400/20 px-1.5 text-[9px] font-bold normal-case text-emerald-200">
               aktiv
             </span>
           )}

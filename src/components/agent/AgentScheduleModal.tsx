@@ -53,7 +53,7 @@ function statusLabel(status: AgentScheduledMessage["status"]): string {
 function statusColor(status: AgentScheduledMessage["status"]): string {
   switch (status) {
     case "pending":
-      return "text-sky-300 bg-sky-500/15 border-sky-400/25";
+      return "text-emerald-300 bg-emerald-500/15 border-emerald-400/25";
     case "running":
       return "text-amber-200 bg-amber-500/15 border-amber-400/25";
     case "done":
@@ -192,7 +192,7 @@ export function AgentScheduleModal({
         aria-label="Planlegg AI-spørsmål"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "relative z-[1] flex w-full max-w-md flex-col overflow-hidden border border-white/[0.08] bg-[#1c1c1e] text-[#f5f5f7] shadow-2xl",
+          "relative z-[1] flex w-full max-w-md flex-col overflow-hidden border border-white/[0.08] bg-[#0f0f0f] text-[#f5f5f7] shadow-2xl",
           "max-h-[min(92dvh,640px)] rounded-t-[20px] sm:max-h-[min(90dvh,640px)] sm:rounded-2xl"
         )}
         style={{
