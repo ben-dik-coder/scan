@@ -2,7 +2,7 @@
 
 /**
  * NyLead-logo som loading: søyler vokser → strek snor seg gjennom → pil.
- * Ren SVG + CSS (ingen ekstra libs).
+ * Geometri: sirkel midt (60,64) r=46 — samme bue for blå/hvit, gap for pilen.
  */
 export function ScanLogoLoader() {
   return (
@@ -15,15 +15,15 @@ export function ScanLogoLoader() {
       >
         <defs>
           <linearGradient id="scanBarGrad1" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#16a34a" />
+            <stop offset="0%" stopColor="#15803d" />
             <stop offset="100%" stopColor="#4ade80" />
           </linearGradient>
           <linearGradient id="scanBarGrad2" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#15803d" />
+            <stop offset="0%" stopColor="#166534" />
             <stop offset="100%" stopColor="#22c55e" />
           </linearGradient>
           <linearGradient id="scanBarGrad3" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#1d4ed8" />
+            <stop offset="0%" stopColor="#1e3a8a" />
             <stop offset="100%" stopColor="#3b82f6" />
           </linearGradient>
           <linearGradient id="scanBarGrad4" x1="0" y1="1" x2="0" y2="0">
@@ -31,80 +31,82 @@ export function ScanLogoLoader() {
             <stop offset="100%" stopColor="#2563eb" />
           </linearGradient>
           <linearGradient id="scanArrowGrad" x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0%" stopColor="#22c55e" />
+            <stop offset="0%" stopColor="#16a34a" />
+            <stop offset="55%" stopColor="#22c55e" />
             <stop offset="100%" stopColor="#4ade80" />
           </linearGradient>
         </defs>
 
-        {/* Ytre swooshes */}
+        {/* Blå bue: venstre → topp (gap øverst til høyre) */}
         <path
           className="app-scan-logo-swoosh app-scan-logo-swoosh--blue"
-          d="M28 78 C18 62 22 38 42 26 C52 20 64 18 76 22"
+          d="M24.8 93.6 A46 46 0 0 1 86.4 26.3"
           stroke="#2563eb"
-          strokeWidth="5"
+          strokeWidth="5.5"
           strokeLinecap="round"
         />
+        {/* Hvit bue: høyre → bunn → møter blå */}
         <path
           className="app-scan-logo-swoosh app-scan-logo-swoosh--white"
-          d="M92 42 C104 56 102 78 84 92 C72 100 56 102 42 96"
+          d="M103.2 48.3 A46 46 0 0 1 22.3 90.4"
           stroke="#f8fafc"
-          strokeWidth="5"
+          strokeWidth="5.5"
           strokeLinecap="round"
         />
 
-        {/* Søyler — vokser fra bunn (transform-origin bottom) */}
+        {/* Søyler midt i sirkelen, fot over hvit bue */}
         <g className="app-scan-logo-bars">
           <rect
             className="app-scan-logo-bar app-scan-logo-bar--1"
-            x="34"
-            y="62"
-            width="11"
+            x="37"
+            y="68"
+            width="10"
             height="28"
-            rx="2"
+            rx="1.5"
             fill="url(#scanBarGrad1)"
           />
           <rect
             className="app-scan-logo-bar app-scan-logo-bar--2"
-            x="48"
-            y="50"
-            width="11"
-            height="40"
-            rx="2"
+            x="50"
+            y="54"
+            width="10"
+            height="42"
+            rx="1.5"
             fill="url(#scanBarGrad2)"
           />
           <rect
             className="app-scan-logo-bar app-scan-logo-bar--3"
-            x="62"
-            y="38"
-            width="11"
-            height="52"
-            rx="2"
+            x="63"
+            y="40"
+            width="10"
+            height="56"
+            rx="1.5"
             fill="url(#scanBarGrad3)"
           />
           <rect
             className="app-scan-logo-bar app-scan-logo-bar--4"
             x="76"
             y="28"
-            width="11"
-            height="62"
-            rx="2"
+            width="10"
+            height="68"
+            rx="1.5"
             fill="url(#scanBarGrad4)"
           />
         </g>
 
-        {/* Strek som snor seg gjennom søylene → pil (uten blur-filter = jevnere) */}
+        {/* Strek ut gjennom gapet mellom blå og hvit */}
         <g className="app-scan-logo-arrow">
           <path
             className="app-scan-logo-thread"
-            d="M30 86 C38 78 42 70 46 64 C52 54 56 48 60 44 C66 38 72 34 80 30 L88 26"
+            d="M35 93 C48 78 56 64 66 50 C76 36 86 28 96 22"
             stroke="url(#scanArrowGrad)"
-            strokeWidth="4.5"
+            strokeWidth="4.25"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
           <path
             className="app-scan-logo-head"
-            d="M82 18 L98 22 L86 34 Z"
+            d="M90 12 L108 18 L96 30 Z"
             fill="#4ade80"
           />
         </g>

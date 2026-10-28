@@ -3212,8 +3212,8 @@ html.app-glass-theme body {
 
   html.app-glass-theme .app-scan-logo-swoosh {
     fill: none;
-    stroke-dasharray: 120;
-    stroke-dashoffset: 120;
+    stroke-dasharray: 140;
+    stroke-dashoffset: 140;
     animation: app-scan-swoosh-loop 3.6s ease-in-out infinite;
   }
 
@@ -3247,8 +3247,8 @@ html.app-glass-theme body {
 
   html.app-glass-theme .app-scan-logo-thread {
     fill: none;
-    stroke-dasharray: 160;
-    stroke-dashoffset: 160;
+    stroke-dasharray: 140;
+    stroke-dashoffset: 140;
     animation: app-scan-thread-loop 3.6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
   }
 
@@ -3276,7 +3276,7 @@ html.app-glass-theme body {
   @keyframes app-scan-swoosh-loop {
     0%,
     3% {
-      stroke-dashoffset: 120;
+      stroke-dashoffset: 140;
     }
     16%,
     84% {
@@ -3284,7 +3284,7 @@ html.app-glass-theme body {
     }
     93%,
     100% {
-      stroke-dashoffset: 120;
+      stroke-dashoffset: 140;
     }
   }
 
@@ -3309,7 +3309,7 @@ html.app-glass-theme body {
   @keyframes app-scan-thread-loop {
     0%,
     22% {
-      stroke-dashoffset: 160;
+      stroke-dashoffset: 140;
     }
     48%,
     84% {
@@ -3317,7 +3317,7 @@ html.app-glass-theme body {
     }
     92%,
     100% {
-      stroke-dashoffset: 160;
+      stroke-dashoffset: 140;
     }
   }
 
