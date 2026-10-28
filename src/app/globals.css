@@ -3249,15 +3249,16 @@ html.app-glass-theme body {
     fill: none;
     stroke-dasharray: 160;
     stroke-dashoffset: 160;
-    animation: app-scan-thread-loop 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    animation: app-scan-thread-loop 3.6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
   }
 
   html.app-glass-theme .app-scan-logo-head {
     opacity: 0;
     transform-box: fill-box;
-    transform-origin: 25% 75%;
-    transform: scale(0.35) translate(-3px, 5px);
-    animation: app-scan-head-loop 3.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    transform-origin: 20% 80%;
+    transform: scale(0.55);
+    /* Kun opacity + mild scale — unngår laggy translate+filter */
+    animation: app-scan-head-loop 3.6s linear infinite;
   }
 
   html.app-glass-theme .app-scan-loading-title {
@@ -3310,11 +3311,11 @@ html.app-glass-theme body {
     22% {
       stroke-dashoffset: 160;
     }
-    46%,
+    48%,
     84% {
       stroke-dashoffset: 0;
     }
-    93%,
+    92%,
     100% {
       stroke-dashoffset: 160;
     }
@@ -3322,19 +3323,28 @@ html.app-glass-theme body {
 
   @keyframes app-scan-head-loop {
     0%,
-    44% {
+    40% {
       opacity: 0;
-      transform: scale(0.35) translate(-3px, 5px);
+      transform: scale(0.55);
     }
-    54%,
+    /* Fades inn mens streken når toppen — myk, ikke «pop» */
+    46% {
+      opacity: 0.35;
+      transform: scale(0.78);
+    }
+    52%,
     84% {
       opacity: 1;
-      transform: scale(1) translate(0, 0);
+      transform: scale(1);
     }
-    93%,
+    90% {
+      opacity: 0.4;
+      transform: scale(0.85);
+    }
+    94%,
     100% {
       opacity: 0;
-      transform: scale(0.35) translate(-3px, 5px);
+      transform: scale(0.55);
     }
   }
 

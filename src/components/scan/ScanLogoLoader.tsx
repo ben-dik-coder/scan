@@ -34,13 +34,6 @@ export function ScanLogoLoader() {
             <stop offset="0%" stopColor="#22c55e" />
             <stop offset="100%" stopColor="#4ade80" />
           </linearGradient>
-          <filter id="scanSoftGlow" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="1.2" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         {/* Ytre swooshes */}
@@ -99,8 +92,8 @@ export function ScanLogoLoader() {
           />
         </g>
 
-        {/* Strek som snor seg gjennom søylene → pil */}
-        <g className="app-scan-logo-arrow" filter="url(#scanSoftGlow)">
+        {/* Strek som snor seg gjennom søylene → pil (uten blur-filter = jevnere) */}
+        <g className="app-scan-logo-arrow">
           <path
             className="app-scan-logo-thread"
             d="M30 86 C38 78 42 70 46 64 C52 54 56 48 60 44 C66 38 72 34 80 30 L88 26"
