@@ -47,12 +47,48 @@ export async function startAiOutboundCall(
   };
 }
 
+function normalizeE164(value: string): string {
+  return value.replace(/[^\d+]/g, "");
+}
+
+/** Twilio/ElevenLabs-nummeret vi ringer FRA (valgfri env, ellers hentes via API). */
+async function resolveElevenLabsFromNumber(
+  apiKey: string,
+  phoneNumberId: string
+): Promise<string | null> {
+  const fromEnv = process.env.ELEVENLABS_FROM_NUMBER?.trim();
+  if (fromEnv) return normalizeE164(fromEnv);
+
+  const res = await fetch("https://api.elevenlabs.io/v1/convai/phone-numbers", {
+    headers: { "xi-api-key": apiKey },
+  });
+  if (!res.ok) return null;
+  const list = (await res.json().catch(() => null)) as
+    | Array<{ phone_number?: string; phone_number_id?: string }>
+    | null;
+  if (!Array.isArray(list)) return null;
+  const match = list.find((p) => p.phone_number_id === phoneNumberId);
+  const num = match?.phone_number?.trim();
+  return num ? normalizeE164(num) : null;
+}
+
 export async function startElevenLabsOutboundCall(
   input: StartAiCallInput
 ): Promise<StartAiCallResult> {
   const config = getAiCallConfig();
   if (config.provider !== "elevenlabs") {
     throw new Error("ElevenLabs er ikke konfigurert");
+  }
+
+  const toNumber = normalizeE164(input.customerNumberE164);
+  const fromNumber = await resolveElevenLabsFromNumber(
+    config.apiKey,
+    config.phoneNumberId
+  );
+  if (fromNumber && toNumber && fromNumber === toNumber) {
+    throw new Error(
+      "Kan ikke AI-ringe dette nummeret — det er samme som Twilio-nummeret vi ringer fra. Velg et annet firma."
+    );
   }
 
   const variableValues = buildAiCallVariableValues(input.promptVars);
