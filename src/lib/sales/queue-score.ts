@@ -112,6 +112,11 @@ export function explainQueueScore(
   return reasons.join(", ");
 }
 
+function isDialableLeadStatus(status: string | null | undefined): boolean {
+  // «svarte» blir satt etter AI-samtale — må fortsatt kunne ringes
+  return status === "ny" || status === "kontaktet" || status === "svarte";
+}
+
 export function buildQueueCandidates(
   companies: Company[],
   leadsByOrgnr: Map<string, UserLead>,
@@ -131,13 +136,41 @@ export function buildQueueCandidates(
     })
     .filter((c) => {
       if (!c.lead?.queued_at) return false;
-      const status = c.lead.status;
-      // «svarte» blir satt etter AI-samtale — må fortsatt kunne ringes fra køen
-      return (
-        status === "ny" || status === "kontaktet" || status === "svarte"
-      );
+      return isDialableLeadStatus(c.lead.status);
     })
     .sort((a, b) => b.queueScore - a.queueScore);
+}
+
+/**
+ * Ring direkte fra lagret liste — krever ikke queued_at.
+ * Bevarer rekkefølgen fra lista (f.eks. etter shuffle).
+ */
+export function buildListRingCandidates(
+  orgnrsInOrder: string[],
+  companies: Company[],
+  leadsByOrgnr: Map<string, UserLead>,
+  scansByOrgnr: Map<string, WebsiteScanResult>
+): QueueCandidate[] {
+  const byOrgnr = new Map(companies.map((c) => [c.orgnr, c]));
+  const out: QueueCandidate[] = [];
+
+  for (const orgnr of orgnrsInOrder) {
+    const company = byOrgnr.get(orgnr);
+    if (!company) continue;
+    const lead = leadsByOrgnr.get(orgnr) ?? null;
+    const status = lead?.status ?? "ny";
+    if (!isDialableLeadStatus(status)) continue;
+    const scan = scansByOrgnr.get(orgnr) ?? null;
+    out.push({
+      company,
+      lead,
+      scan,
+      queueScore: computeQueueScore(company, lead, scan),
+      daysSinceRegistration: daysSince(company.registered_at),
+    });
+  }
+
+  return out;
 }
 
 export function mapQueueCandidatesToItems(

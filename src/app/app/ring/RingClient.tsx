@@ -19,6 +19,7 @@ import { isDemoMode } from "@/lib/demo/config";
 import { useDemo } from "@/lib/demo/store";
 import { resolveListOrgnrs } from "@/lib/saved-lists/resolve-list-orgnrs";
 import {
+  buildListRingCandidates,
   buildQueueCandidates,
   mapQueueCandidatesToItems,
   type QueueItemResponse,
@@ -29,17 +30,47 @@ import {
   Bot,
   CalendarCheck,
   Captions,
+  ChevronRight,
   Loader2,
+  Minus,
   Phone,
   PhoneCall,
   PhoneOff,
+  Play,
+  Plus,
   RefreshCw,
   ScrollText,
+  Square,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
 
+const BATCH_PRESETS = [10, 20, 30, 50] as const;
+
 type RightPanelTab = "manus" | "transcript" | "ai";
+
+/** Norsk 24-timers klokke (HH:MM). Unngår browser type="time" med AM/PM. */
+function normalizeNbTime(raw: string): string {
+  const t = raw.trim().replace(/\./g, ":").replace(/[^\d:]/g, "");
+  if (!t) return "";
+  const withColon = t.includes(":")
+    ? t
+    : t.length >= 3
+      ? `${t.slice(0, t.length - 2)}:${t.slice(-2)}`
+      : t;
+  const m = withColon.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!m) return "";
+  const hh = Number.parseInt(m[1], 10);
+  const mm = Number.parseInt(m[2], 10);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh > 23 || mm > 59) {
+    return "";
+  }
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function draftNbTime(raw: string): string {
+  return raw.replace(/\./g, ":").replace(/[^\d:]/g, "").slice(0, 5);
+}
 
 function aiCallStatusLabel(call: AiCall): string {
   if (call.status === "queued") return "I kø…";
@@ -72,6 +103,8 @@ export function RingClient() {
   const loadedListIdRef = useRef<string | null>(null);
   /** Unngår at URL-effekt tømmer filter mens router.replace pågår. */
   const pendingListeRef = useRef<string | null | undefined>(undefined);
+  const loadSeqRef = useRef(0);
+  const autoRingRef = useRef(false);
   const [items, setItems] = useState<QueueItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +123,14 @@ export function RingClient() {
   const [sessionStats, setSessionStats] = useState(getRingSessionStats);
   const [aiCall, setAiCall] = useState<AiCall | null>(null);
   const [aiStarting, setAiStarting] = useState(false);
+  const [aiHangingUp, setAiHangingUp] = useState(false);
+  /** null = hele køen. Ellers låst batch med N første firma. */
+  const [batchLimit, setBatchLimit] = useState<number | null>(null);
+  const [batchOrgnrs, setBatchOrgnrs] = useState<string[] | null>(null);
+  const [batchDraft, setBatchDraft] = useState("20");
+  /** HH:MM — stopp nye auto-ring-kall etter dette klokkeslettet (i dag). */
+  const [stopAtTime, setStopAtTime] = useState("");
+  const [autoRing, setAutoRing] = useState(false);
 
   const { companies, setLeadStatus } = demo;
 
@@ -98,48 +139,107 @@ export function RingClient() {
     aiCall?.status === "ringing" ||
     aiCall?.status === "in_progress";
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (isDemoMode()) {
-        const recent = recentCompaniesLast30Days(companies);
-        const leadsByOrgnr = new Map(
-          recent
-            .filter((c) => c.user_lead?.queued_at)
-            .map((c) => [c.orgnr, c.user_lead!])
-        );
-        const queuedCompanies = recent.filter((c) => leadsByOrgnr.has(c.orgnr));
-        const candidates = buildQueueCandidates(queuedCompanies, leadsByOrgnr, new Map());
-        setItems(mapQueueCandidatesToItems(candidates));
-        return;
-      }
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      let res: Response;
+  const load = useCallback(
+    async (scopeOrgnrs?: string[] | null) => {
+      const seq = ++loadSeqRef.current;
+      setLoading(true);
+      setError(null);
       try {
-        res = await fetch("/api/ko", { signal: controller.signal });
+        if (isDemoMode()) {
+          if (scopeOrgnrs && scopeOrgnrs.length > 0) {
+            const scope = new Set(scopeOrgnrs);
+            const pool = companies.filter((c) => scope.has(c.orgnr));
+            const leadsByOrgnr = new Map(
+              pool.flatMap((c) =>
+                c.user_lead ? ([[c.orgnr, c.user_lead]] as const) : []
+              )
+            );
+            if (seq !== loadSeqRef.current) return;
+            setItems(
+              mapQueueCandidatesToItems(
+                buildListRingCandidates(
+                  scopeOrgnrs,
+                  pool,
+                  leadsByOrgnr,
+                  new Map()
+                )
+              )
+            );
+            return;
+          }
+
+          const recent = recentCompaniesLast30Days(companies);
+          const leadsByOrgnr = new Map(
+            recent
+              .filter((c) => c.user_lead?.queued_at)
+              .map((c) => [c.orgnr, c.user_lead!])
+          );
+          const queuedCompanies = recent.filter((c) =>
+            leadsByOrgnr.has(c.orgnr)
+          );
+          if (seq !== loadSeqRef.current) return;
+          setItems(
+            mapQueueCandidatesToItems(
+              buildQueueCandidates(queuedCompanies, leadsByOrgnr, new Map())
+            )
+          );
+          return;
+        }
+
+        if (scopeOrgnrs && scopeOrgnrs.length === 0) {
+          if (seq !== loadSeqRef.current) return;
+          setItems([]);
+          return;
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        let res: Response;
+        try {
+          res =
+            scopeOrgnrs && scopeOrgnrs.length > 0
+              ? await fetch("/api/ko", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orgnrs: scopeOrgnrs }),
+                  signal: controller.signal,
+                })
+              : await fetch("/api/ko", { signal: controller.signal });
+        } finally {
+          clearTimeout(timeout);
+        }
+        const data = (await res.json()) as {
+          items?: QueueItemResponse[];
+          error?: string;
+          mode?: string;
+        };
+        if (!res.ok) throw new Error(data.error ?? "Kunne ikke laste kø");
+        if (seq !== loadSeqRef.current) return;
+        setItems(data.items ?? []);
+      } catch (err) {
+        if (seq !== loadSeqRef.current) return;
+        if (err instanceof Error && err.name === "AbortError") {
+          setError("Forespørselen tok for lang tid.");
+        } else {
+          setError(err instanceof Error ? err.message : "Ukjent feil");
+        }
       } finally {
-        clearTimeout(timeout);
+        if (seq === loadSeqRef.current) setLoading(false);
       }
-      const data = (await res.json()) as { items?: QueueItemResponse[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Kunne ikke laste kø");
-      setItems(data.items ?? []);
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        setError("Forespørselen tok for lang tid.");
-      } else {
-        setError(err instanceof Error ? err.message : "Ukjent feil");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [companies]);
+    },
+    [companies]
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    // Vent litt hvis URL allerede har liste — så slipper arbeidskø (2 stk) å vinne racet
+    const listeInUrl = searchParams.get("liste");
+    if (listOrgnrs === null) {
+      if (listeInUrl) return;
+      void load(null);
+      return;
+    }
+    void load([...listOrgnrs]);
+  }, [listOrgnrs, load, searchParams]);
 
   useEffect(() => {
     const listId = searchParams.get("liste");
@@ -252,17 +352,53 @@ export function RingClient() {
   const dialableStatus = (status: string) =>
     status === "ny" || status === "kontaktet" || status === "svarte";
 
-  const dialQueue = useMemo(
+  const availablePool = useMemo(
     () =>
       listScopedItems.filter(
         (item) =>
-          // AI-start → kontaktet, ferdig samtale → svarte — begge må kunne ringes igjen
-          dialableStatus(item.status) &&
-          Boolean(item.phone?.trim()) &&
-          !skippedOrgnrs.has(item.orgnr)
+          dialableStatus(item.status) && Boolean(item.phone?.trim())
       ),
-    [listScopedItems, skippedOrgnrs]
+    [listScopedItems]
   );
+
+  const dialQueue = useMemo(() => {
+    const pool = availablePool.filter(
+      (item) => !skippedOrgnrs.has(item.orgnr)
+    );
+    if (!batchOrgnrs) return pool;
+    const allowed = new Set(batchOrgnrs);
+    return pool.filter((item) => allowed.has(item.orgnr));
+  }, [availablePool, skippedOrgnrs, batchOrgnrs]);
+
+  const applyBatchLimit = useCallback(
+    (limit: number | null) => {
+      const pool = availablePool.filter(
+        (item) => !skippedOrgnrs.has(item.orgnr)
+      );
+      if (limit == null || limit >= pool.length) {
+        setBatchLimit(null);
+        setBatchOrgnrs(null);
+        setBatchDraft(String(pool.length || 20));
+        setSelectedOrgnr(null);
+        return;
+      }
+      const n = Math.max(1, Math.min(limit, pool.length));
+      setBatchLimit(n);
+      setBatchOrgnrs(pool.slice(0, n).map((i) => i.orgnr));
+      setBatchDraft(String(n));
+      setSelectedOrgnr(null);
+    },
+    [availablePool, skippedOrgnrs]
+  );
+
+  // Ny liste → nullstill batch
+  useEffect(() => {
+    setBatchLimit(null);
+    setBatchOrgnrs(null);
+    setBatchDraft("20");
+    setSkippedOrgnrs(new Set());
+    setSelectedOrgnr(null);
+  }, [selectedListId]);
 
   const current = useMemo(() => {
     if (selectedOrgnr) {
@@ -278,6 +414,50 @@ export function RingClient() {
   }, [dialQueue, current]);
 
   const transcriptState = useRingTranscript(current?.orgnr ?? null);
+
+  function goToNextFirm() {
+    if (!current || aiActive) return;
+    transcriptState.stop();
+    const orgnr = current.orgnr;
+    const idx = dialQueue.findIndex((i) => i.orgnr === orgnr);
+    const nextOrgnr = dialQueue[idx + 1]?.orgnr ?? null;
+    setSkippedOrgnrs((prev) => new Set(prev).add(orgnr));
+    setSelectedOrgnr(nextOrgnr);
+    setAiCall((prev) => (prev?.orgnr === orgnr ? null : prev));
+    return nextOrgnr;
+  }
+
+  const hasNextFirm =
+    Boolean(current) &&
+    !aiActive &&
+    currentIndex >= 0 &&
+    currentIndex < dialQueue.length - 1;
+
+  const batchRemaining = dialQueue.length;
+  const batchTotal = batchOrgnrs?.length ?? availablePool.length;
+
+  useEffect(() => {
+    autoRingRef.current = autoRing;
+  }, [autoRing]);
+
+  const pastStopAt = useCallback(() => {
+    const raw = normalizeNbTime(stopAtTime);
+    if (!raw) return false;
+    const [hh, mm] = raw.split(":").map((x) => Number.parseInt(x, 10));
+    const now = new Date();
+    const limit = new Date(now);
+    limit.setHours(hh, mm, 0, 0);
+    return now.getTime() >= limit.getTime();
+  }, [stopAtTime]);
+
+  // Stopp auto-ring når køen er tom eller klokkeslett er passert
+  useEffect(() => {
+    if (!autoRing) return;
+    if (dialQueue.length === 0 || pastStopAt()) {
+      setAutoRing(false);
+    }
+  }, [autoRing, dialQueue.length, pastStopAt]);
+
   const totalWithPhone = useMemo(
     () =>
       listScopedItems.filter(
@@ -317,26 +497,42 @@ export function RingClient() {
   }
 
   useEffect(() => {
-    if (!aiActive || !aiCall?.id) return;
+    if (!aiCall?.id) return;
+
     let cancelled = false;
+    let recordedOutcome = false;
+    const callId = aiCall.id;
+    const startedAt = Date.now();
+    const maxMs = 30 * 60_000;
+    let timer = 0;
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/ai-call/active?id=${encodeURIComponent(aiCall.id)}`);
+        if (Date.now() - startedAt > maxMs) {
+          if (timer) window.clearInterval(timer);
+          return;
+        }
+        const res = await fetch(
+          `/api/ai-call/active?id=${encodeURIComponent(callId)}`
+        );
         if (!res.ok) return;
         const data = (await res.json()) as { call?: AiCall | null };
         if (cancelled || !data.call) return;
         setAiCall(data.call);
 
-        if (
-          data.call.status === "ended" ||
-          data.call.status === "failed"
-        ) {
+        const finished =
+          data.call.status === "ended" || data.call.status === "failed";
+        if (!recordedOutcome && finished) {
+          recordedOutcome = true;
           if (data.call.outcome === "meeting") {
             setSessionStats(recordRingOutcome("meeting"));
-            setItems((list) => list.filter((i) => i.orgnr !== data.call!.orgnr));
+            setItems((list) =>
+              list.filter((i) => i.orgnr !== data.call!.orgnr)
+            );
           } else if (data.call.outcome === "not_interested") {
-            setItems((list) => list.filter((i) => i.orgnr !== data.call!.orgnr));
+            setItems((list) =>
+              list.filter((i) => i.orgnr !== data.call!.orgnr)
+            );
           } else if (
             data.call.outcome === "no_answer" ||
             data.call.outcome === "voicemail"
@@ -347,28 +543,39 @@ export function RingClient() {
           }
           setRightTab("ai");
         }
+
+        // Stopp når transcript er på plass (eller feilet uten transcript)
+        if (
+          finished &&
+          (data.call.transcript ||
+            data.call.status === "failed" ||
+            Date.now() - startedAt > 90_000)
+        ) {
+          if (timer) window.clearInterval(timer);
+        }
       } catch {
         // ignore poll errors
       }
     };
 
     void poll();
-    const timer = window.setInterval(() => void poll(), 2500);
+    timer = window.setInterval(() => void poll(), 2500);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (timer) window.clearInterval(timer);
     };
-  }, [aiActive, aiCall?.id]);
+  }, [aiCall?.id]);
 
-  async function handleAiRing() {
-    if (!current || aiStarting || aiActive) return;
+  async function handleAiRing(orgnrOverride?: string) {
+    const targetOrgnr = orgnrOverride ?? current?.orgnr;
+    if (!targetOrgnr || aiStarting || aiActive) return;
     setAiStarting(true);
     setError(null);
     try {
       const res = await fetch("/api/ai-call/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgnr: current.orgnr }),
+        body: JSON.stringify({ orgnr: targetOrgnr }),
       });
       const data = (await res.json()) as {
         error?: string;
@@ -379,14 +586,127 @@ export function RingClient() {
       }
       if (data.call) {
         setAiCall(data.call);
+        setSelectedOrgnr(targetOrgnr);
         setRightTab("ai");
         setShowManus(true);
         setSessionStats(recordRingOutcome("dialed"));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke starte AI-ring");
+      if (autoRingRef.current) setAutoRing(false);
     } finally {
       setAiStarting(false);
+    }
+  }
+
+  function startAutoRing() {
+    if (isDemoMode() || dialQueue.length === 0) return;
+    // Hvis ingen batch er valgt: bruk hele synlige køen (eller foreslå 20)
+    if (!batchOrgnrs && availablePool.length > 20) {
+      applyBatchLimit(20);
+    }
+    setAutoRing(true);
+    setError(null);
+    setRightTab("ai");
+  }
+
+  function stopAutoRing() {
+    setAutoRing(false);
+  }
+
+  // Auto-ring: start neste kall når forrige er ferdig / klar
+  useEffect(() => {
+    if (!autoRing) return;
+    if (aiActive || aiStarting || aiHangingUp) return;
+    if (pastStopAt()) {
+      setAutoRing(false);
+      return;
+    }
+    if (!current) {
+      setAutoRing(false);
+      return;
+    }
+
+    const finishedCurrent =
+      aiCall &&
+      aiCall.orgnr === current.orgnr &&
+      (aiCall.status === "ended" || aiCall.status === "failed");
+
+    if (finishedCurrent) {
+      const timer = window.setTimeout(() => {
+        if (!autoRingRef.current) return;
+        if (pastStopAt()) {
+          setAutoRing(false);
+          return;
+        }
+        const next = goToNextFirm();
+        if (!next) {
+          setAutoRing(false);
+          return;
+        }
+        window.setTimeout(() => {
+          if (!autoRingRef.current) return;
+          if (pastStopAt()) {
+            setAutoRing(false);
+            return;
+          }
+          void handleAiRing(next);
+        }, 700);
+      }, 1600);
+      return () => window.clearTimeout(timer);
+    }
+
+    // Klar til å ringe denne leaden
+    if (!aiCall || aiCall.orgnr !== current.orgnr) {
+      const timer = window.setTimeout(() => {
+        if (!autoRingRef.current) return;
+        if (pastStopAt()) {
+          setAutoRing(false);
+          return;
+        }
+        void handleAiRing(current.orgnr);
+      }, 600);
+      return () => window.clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- styrt av auto-ring tilstand
+  }, [
+    autoRing,
+    aiActive,
+    aiStarting,
+    aiHangingUp,
+    current?.orgnr,
+    aiCall?.id,
+    aiCall?.orgnr,
+    aiCall?.status,
+    pastStopAt,
+  ]);
+
+  async function handleAiHangUp() {
+    if (!aiCall?.id || aiHangingUp || !aiActive) return;
+    setAiHangingUp(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ai-call/hangup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: aiCall.id }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        call?: AiCall;
+        warnings?: string[];
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Kunne ikke legge på");
+      }
+      if (data.call) setAiCall(data.call);
+      if (data.warnings?.length) {
+        setError(data.warnings.join(" · "));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke legge på");
+    } finally {
+      setAiHangingUp(false);
     }
   }
 
@@ -468,12 +788,24 @@ export function RingClient() {
           <span className="truncate text-sm font-medium text-white">Ring</span>
           <span className="hidden text-zinc-600 sm:inline">·</span>
           <span className="hidden truncate text-xs text-zinc-500 sm:inline">
-            {dialQueue.length} i kø
+            {batchOrgnrs
+              ? `${batchRemaining} igjen av ${batchTotal}`
+              : `${dialQueue.length} i kø`}
             {selectedListName ? ` · ${selectedListName}` : ""}
           </span>
+          {autoRing ? (
+            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+              Auto
+            </span>
+          ) : null}
           {aiActive ? (
             <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
               Live
+            </span>
+          ) : null}
+          {listOrgnrs && listOrgnrs.size > 0 ? (
+            <span className="hidden tabular-nums text-[10px] text-zinc-600 lg:inline">
+              {availablePool.length}/{listOrgnrs.size} lastet
             </span>
           ) : null}
         </div>
@@ -484,9 +816,50 @@ export function RingClient() {
             onSelect={handleListSelect}
             resolving={resolvingList}
           />
+          <label className="hidden items-center gap-1.5 sm:inline-flex" title="Stopp nye auto-ring-anrop etter dette klokkeslettet (24-timers)">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Stopp kl.
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="14:30"
+              lang="nb-NO"
+              autoComplete="off"
+              value={stopAtTime}
+              onChange={(e) => setStopAtTime(draftNbTime(e.target.value))}
+              onBlur={() => setStopAtTime((v) => normalizeNbTime(v))}
+              className="h-8 w-[4.5rem] rounded-md border border-white/[0.08] bg-[#0a0a0a] px-2 text-xs tabular-nums text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-500/40"
+            />
+          </label>
+          {autoRing ? (
+            <button
+              type="button"
+              onClick={stopAutoRing}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-amber-500/20 px-2.5 text-xs font-semibold text-amber-200 ring-1 ring-amber-500/30 transition hover:bg-amber-500/30"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              Stopp
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={startAutoRing}
+              disabled={
+                dialQueue.length === 0 || isDemoMode() || aiStarting || loading
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-emerald-500 px-2.5 text-xs font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-40"
+              title="AI ringer automatisk gjennom batchen"
+            >
+              <Play className="h-3 w-3 fill-current" />
+              Auto-ring
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() =>
+              void load(listOrgnrs ? [...listOrgnrs] : null)
+            }
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
             title="Oppdater"
           >
@@ -500,6 +873,83 @@ export function RingClient() {
           </Link>
         </div>
       </header>
+
+      {/* Mobil: batch-styring (kø-sidebar er skjult under md) */}
+      {current ? (
+        <div className="flex shrink-0 flex-col gap-2 border-b border-white/[0.06] bg-[#0f0f0f] px-3 py-2 md:hidden">
+          <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+            Batch
+          </span>
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            {BATCH_PRESETS.filter((n) => n <= availablePool.length).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => applyBatchLimit(n)}
+                className={cn(
+                  "rounded-md px-2 py-1 text-[11px] font-medium tabular-nums",
+                  batchLimit === n
+                    ? "bg-emerald-500/20 text-emerald-300"
+                    : "text-zinc-500 hover:bg-white/[0.05]"
+                )}
+              >
+                {n}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => applyBatchLimit(null)}
+              className={cn(
+                "rounded-md px-2 py-1 text-[11px] font-medium",
+                batchOrgnrs == null
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "text-zinc-500 hover:bg-white/[0.05]"
+              )}
+            >
+              Alle
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={goToNextFirm}
+            disabled={!hasNextFirm}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded-md border border-white/[0.1] px-2.5 py-1.5 text-[11px] font-medium text-zinc-200",
+              !hasNextFirm && "opacity-35"
+            )}
+          >
+            Neste
+            <ChevronRight className="h-3 w-3" />
+          </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+              Stopp kl.
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="14:30"
+              lang="nb-NO"
+              autoComplete="off"
+              value={stopAtTime}
+              onChange={(e) => setStopAtTime(draftNbTime(e.target.value))}
+              onBlur={() => setStopAtTime((v) => normalizeNbTime(v))}
+              className="h-7 min-w-0 flex-1 rounded-md border border-white/[0.08] bg-[#0a0a0a] px-2 text-[11px] tabular-nums text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-500/40"
+            />
+            {stopAtTime ? (
+              <button
+                type="button"
+                onClick={() => setStopAtTime("")}
+                className="shrink-0 text-[10px] text-zinc-500"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {!current ? (
         <EmptyRingState
@@ -526,6 +976,142 @@ export function RingClient() {
                 {currentIndex >= 0 ? currentIndex + 1 : "–"}/{dialQueue.length || "–"}
               </span>
             </div>
+
+            <div className="border-b border-white/[0.06] px-3 py-2.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+                  Batch
+                </p>
+                <p className="tabular-nums text-[10px] text-zinc-500">
+                  {availablePool.length} totalt
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Færre"
+                  disabled={availablePool.length === 0}
+                  onClick={() => {
+                    const cur = batchLimit ?? availablePool.length;
+                    applyBatchLimit(Math.max(1, cur - 5));
+                  }}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-30"
+                >
+                  <Minus className="h-3 w-3" />
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, availablePool.length)}
+                  value={batchDraft}
+                  onChange={(e) => setBatchDraft(e.target.value.replace(/[^\d]/g, ""))}
+                  onBlur={() => {
+                    const n = Number.parseInt(batchDraft, 10);
+                    if (!Number.isFinite(n) || n <= 0) {
+                      applyBatchLimit(null);
+                      return;
+                    }
+                    applyBatchLimit(n);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className="h-7 w-full min-w-0 rounded-md border border-white/[0.08] bg-[#0a0a0a] px-2 text-center text-xs font-medium tabular-nums text-zinc-100 outline-none focus:border-emerald-500/40"
+                />
+                <button
+                  type="button"
+                  aria-label="Flere"
+                  disabled={availablePool.length === 0}
+                  onClick={() => {
+                    const cur = batchLimit ?? Math.min(20, availablePool.length);
+                    applyBatchLimit(Math.min(availablePool.length, cur + 5));
+                  }}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-30"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {BATCH_PRESETS.filter((n) => n <= availablePool.length || n === 10).map(
+                  (n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={n > availablePool.length}
+                      onClick={() => applyBatchLimit(n)}
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition",
+                        batchLimit === n
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300",
+                        n > availablePool.length && "opacity-30"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  )
+                )}
+                <button
+                  type="button"
+                  onClick={() => applyBatchLimit(null)}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] font-medium transition",
+                    batchOrgnrs == null
+                      ? "bg-emerald-500/20 text-emerald-300"
+                      : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300"
+                  )}
+                >
+                  Alle
+                </button>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <label
+                  htmlFor="ring-stop-at"
+                  className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-zinc-600"
+                >
+                  Stopp kl.
+                </label>
+                <input
+                  id="ring-stop-at"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="14:30"
+                  lang="nb-NO"
+                  autoComplete="off"
+                  value={stopAtTime}
+                  onChange={(e) => setStopAtTime(draftNbTime(e.target.value))}
+                  onBlur={() => setStopAtTime((v) => normalizeNbTime(v))}
+                  className="h-7 min-w-0 flex-1 rounded-md border border-white/[0.08] bg-[#0a0a0a] px-2 text-xs tabular-nums text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-500/40"
+                />
+                {stopAtTime ? (
+                  <button
+                    type="button"
+                    onClick={() => setStopAtTime("")}
+                    className="shrink-0 text-[10px] text-zinc-500 hover:text-zinc-300"
+                  >
+                    Nullstill
+                  </button>
+                ) : null}
+              </div>
+              {stopAtTime ? (
+                <p className="mt-1 text-[10px] leading-snug text-amber-500/80">
+                  Ingen nye anrop etter kl. {stopAtTime}
+                </p>
+              ) : null}
+              {batchOrgnrs ? (
+                <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+                  Ringer {batchOrgnrs.length} av {availablePool.length} ·{" "}
+                  {batchRemaining} igjen
+                </p>
+              ) : (
+                <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">
+                  Velg antall for denne økta
+                </p>
+              )}
+            </div>
+
             <div className="min-h-0 flex-1 overflow-y-auto">
               {dialQueue.map((item, i) => {
                 const active = item.orgnr === current?.orgnr;
@@ -625,29 +1211,111 @@ export function RingClient() {
                 </dl>
 
                 <div className="border-t border-white/[0.06] p-3">
-                  <button
-                    type="button"
-                    onClick={() => void handleAiRing()}
-                    disabled={aiStarting || aiActive || isDemoMode()}
-                    className={cn(
-                      "inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 text-sm font-semibold text-black transition hover:bg-emerald-400",
-                      (aiStarting || isDemoMode()) && "opacity-50"
-                    )}
-                  >
-                    {aiStarting || aiActive ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Bot className="h-4 w-4" />
-                    )}
-                    {aiActive
-                      ? aiCallStatusLabel(aiCall!)
-                      : aiStarting
-                        ? "Starter AI…"
-                        : "AI ringer"}
-                  </button>
+                  {aiActive ? (
+                    <div className="space-y-2">
+                      <p className="text-center text-xs font-medium text-emerald-400/90">
+                        {autoRing ? "Auto-ring · " : ""}
+                        {aiCall ? aiCallStatusLabel(aiCall) : "Aktiv…"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleAiHangUp()}
+                        disabled={aiHangingUp}
+                        className={cn(
+                          "inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-500",
+                          aiHangingUp && "opacity-50"
+                        )}
+                      >
+                        {aiHangingUp ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PhoneOff className="h-4 w-4" />
+                        )}
+                        {aiHangingUp ? "Legger på…" : "Legg på"}
+                      </button>
+                      {autoRing ? (
+                        <button
+                          type="button"
+                          onClick={stopAutoRing}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 py-2.5 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20"
+                        >
+                          <Square className="h-3.5 w-3.5 fill-current" />
+                          Stopp auto-ring
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleAiRing()}
+                        disabled={aiStarting || isDemoMode() || autoRing}
+                        className={cn(
+                          "inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 text-sm font-semibold text-black transition hover:bg-emerald-400",
+                          (aiStarting || isDemoMode() || autoRing) && "opacity-50"
+                        )}
+                      >
+                        {aiStarting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Bot className="h-4 w-4" />
+                        )}
+                        {aiStarting ? "Starter AI…" : "AI ringer"}
+                      </button>
+                      {autoRing ? (
+                        <button
+                          type="button"
+                          onClick={stopAutoRing}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 py-2.5 text-sm font-medium text-amber-200"
+                        >
+                          <Square className="h-3.5 w-3.5 fill-current" />
+                          Stopp auto-ring
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startAutoRing}
+                          disabled={
+                            dialQueue.length === 0 ||
+                            isDemoMode() ||
+                            aiStarting
+                          }
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/15 disabled:opacity-40"
+                        >
+                          <Play className="h-3.5 w-3.5 fill-current" />
+                          Start auto-ring
+                          {batchOrgnrs
+                            ? ` (${batchRemaining})`
+                            : dialQueue.length > 0
+                              ? ` (${Math.min(20, dialQueue.length)})`
+                              : ""}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <p className="mt-2 text-center text-[10px] leading-snug text-zinc-600">
-                    AI-samtale logges som tekst hos oss (ikke lydopptak).
+                    {autoRing
+                      ? stopAtTime
+                        ? `Auto-ring · stopper nye anrop etter kl. ${stopAtTime}.`
+                        : "Auto-ring kjører. Den går videre til neste når samtalen er ferdig."
+                      : aiActive
+                        ? "Trykk Legg på for å avslutte samtalen med en gang."
+                        : "Velg batch → Start auto-ring, eller ring én og én."}
                   </p>
+                  {!aiActive ? (
+                    <button
+                      type="button"
+                      onClick={goToNextFirm}
+                      disabled={!hasNextFirm}
+                      className={cn(
+                        "mt-2.5 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.1] bg-white/[0.03] py-2.5 text-sm font-medium text-zinc-100 transition hover:bg-white/[0.07]",
+                        !hasNextFirm && "opacity-35"
+                      )}
+                    >
+                      Neste firma
+                      <ChevronRight className="h-4 w-4 text-zinc-400" />
+                    </button>
+                  ) : null}
                   <div className="mt-2.5 grid grid-cols-3 gap-2">
                     <a
                       href={phoneTelHref(current.phone!)}
@@ -986,25 +1654,26 @@ function EmptyRingState({
     title = "Listen er tom";
     description = `${listLabel} har ingen firma ennå. Legg til firma fra Skann eller Smartliste.`;
   } else if (listHasNoQueueOverlap) {
-    title = "Ingen fra listen er i køen";
-    description = `Firma i ${listLabel} er ikke lagt i arbeidskøen ennå. Legg dem i kø fra Skann, Smartliste eller arbeidskøen.`;
+    title = "Ingen ringbare firma i listen";
+    description = `Fant ingen firma i ${listLabel} som kan ringes nå (mangler data, eller alle er markert ferdig).`;
   } else if (allSkipped) {
     title = "Du har hoppet over alle i listen";
     description =
       "Start på nytt med de du hoppet over, eller velg en annen liste.";
   } else if (hasQueue && !hasPhoneInQueue) {
     title = listFilterActive
-      ? "Ingen i listen har telefon i køen"
+      ? "Ingen i listen har telefon"
       : "Ingen i køen har telefon";
     description = listFilterActive
-      ? `Firma fra ${listLabel} i arbeidskøen mangler telefonnummer.`
+      ? `Firma i ${listLabel} mangler telefonnummer.`
       : "Legg firma med telefonnummer i arbeidskøen fra Skann — bruk fanen «Med telefon».";
   } else if (listFilterActive && !hasQueue) {
-    title = "Ingen fra listen er i køen";
-    description = `Legg firma fra ${listLabel} i arbeidskøen, så dukker de opp her.`;
+    title = "Ingen ringbare firma i listen";
+    description = `Ingen firma i ${listLabel} kan ringes akkurat nå.`;
   } else {
     title = "Køen er tom";
-    description = "Legg leads i arbeidskøen fra Skann, så dukker de opp her automatisk.";
+    description =
+      "Velg en lagret liste øverst, eller legg leads i arbeidskøen fra Skann.";
   }
 
   return (

@@ -60,7 +60,7 @@ export function RingTranscriptPanel({
       <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-            Live listen
+            Notat / transkript
           </p>
           <p className="truncate text-sm font-semibold text-white">
             {companyName ?? "Samtale"}
@@ -71,6 +71,9 @@ export function RingTranscriptPanel({
             ) : null}
             {engineLabel}
             {whisperAvailable === false ? " · AI utilgjengelig" : null}
+          </p>
+          <p className="mt-1 text-[10px] leading-snug text-zinc-600">
+            Ikke lytting på linjen — bruker mikrofonen din (f.eks. høyttaler).
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -141,7 +144,7 @@ export function RingTranscriptPanel({
                   ? engine === "whisper"
                     ? "AI transkriberer norsk hvert ~8. sekund… Du kan også skrive eller rette her."
                     : "Lytter… Tekst dukker opp underveis. Rett gjerne feil her."
-                  : "Trykk Lytt for å starte. Teksten kan redigeres manuelt etterpå."
+                  : "Trykk for å transkribere via mikrofon (hvis du hører samtalen). Eller skriv notat her."
               }
               className="min-h-[12rem] w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-400/40"
             />
