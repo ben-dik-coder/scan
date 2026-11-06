@@ -47,6 +47,10 @@ import {
 
 const BATCH_PRESETS = [10, 20, 30, 50] as const;
 
+function isActiveAiStatus(status: string | null | undefined): boolean {
+  return status === "queued" || status === "ringing" || status === "in_progress";
+}
+
 type RightPanelTab = "manus" | "transcript" | "ai";
 
 /** Norsk 24-timers klokke (HH:MM). Unngår browser type="time" med AM/PM. */
@@ -105,6 +109,17 @@ export function RingClient() {
   const pendingListeRef = useRef<string | null | undefined>(undefined);
   const loadSeqRef = useRef(0);
   const autoRingRef = useRef(false);
+  // Ferske verdier til auto-ring-timeren (unngår gammel state i closures)
+  const dialQueueRef = useRef<QueueItemResponse[]>([]);
+  const currentRef = useRef<QueueItemResponse | null>(null);
+  const aiCallRef = useRef<AiCall | null>(null);
+  const aiHangingUpRef = useRef(false);
+  const startingRef = useRef(false);
+  const lastStartAtRef = useRef(0);
+  const finishedSeenRef = useRef<{ id: string; at: number } | null>(null);
+  const conflictCountRef = useRef(0);
+  const transcriptStopRef = useRef<() => void>(() => {});
+  const autoRingTickRef = useRef<() => void>(() => {});
   const [items, setItems] = useState<QueueItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -440,6 +455,14 @@ export function RingClient() {
     autoRingRef.current = autoRing;
   }, [autoRing]);
 
+  useEffect(() => {
+    dialQueueRef.current = dialQueue;
+    currentRef.current = current;
+    aiCallRef.current = aiCall;
+    aiHangingUpRef.current = aiHangingUp;
+    transcriptStopRef.current = transcriptState.stop;
+  });
+
   const pastStopAt = useCallback(() => {
     const raw = normalizeNbTime(stopAtTime);
     if (!raw) return false;
@@ -566,9 +589,14 @@ export function RingClient() {
     };
   }, [aiCall?.id]);
 
-  async function handleAiRing(orgnrOverride?: string) {
+  async function handleAiRing(
+    orgnrOverride?: string
+  ): Promise<{ ok: boolean; status?: number; error?: string }> {
     const targetOrgnr = orgnrOverride ?? current?.orgnr;
-    if (!targetOrgnr || aiStarting || aiActive) return;
+    const activeNow = isActiveAiStatus(aiCallRef.current?.status);
+    if (!targetOrgnr || startingRef.current || activeNow) return { ok: false };
+    startingRef.current = true;
+    lastStartAtRef.current = Date.now();
     setAiStarting(true);
     setError(null);
     try {
@@ -582,19 +610,26 @@ export function RingClient() {
         call?: AiCall;
       };
       if (!res.ok) {
-        throw new Error(data.error ?? "Kunne ikke starte AI-ring");
+        const msg = data.error ?? "Kunne ikke starte AI-ring";
+        setError(msg);
+        return { ok: false, status: res.status, error: msg };
       }
       if (data.call) {
+        aiCallRef.current = data.call;
         setAiCall(data.call);
         setSelectedOrgnr(targetOrgnr);
         setRightTab("ai");
         setShowManus(true);
         setSessionStats(recordRingOutcome("dialed"));
       }
+      return { ok: true };
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke starte AI-ring");
-      if (autoRingRef.current) setAutoRing(false);
+      const msg = err instanceof Error ? err.message : "Kunne ikke starte AI-ring";
+      setError(msg);
+      return { ok: false, error: msg };
     } finally {
+      startingRef.current = false;
+      lastStartAtRef.current = Date.now();
       setAiStarting(false);
     }
   }
@@ -605,6 +640,14 @@ export function RingClient() {
     if (!batchOrgnrs && availablePool.length > 20) {
       applyBatchLimit(20);
     }
+    // Et gammelt, ferdig anrop på første firma skal ikke blokkere start
+    if (aiCallRef.current && !isActiveAiStatus(aiCallRef.current.status)) {
+      aiCallRef.current = null;
+      setAiCall(null);
+    }
+    finishedSeenRef.current = null;
+    conflictCountRef.current = 0;
+    lastStartAtRef.current = 0;
     setAutoRing(true);
     setError(null);
     setRightTab("ai");
@@ -614,72 +657,94 @@ export function RingClient() {
     setAutoRing(false);
   }
 
-  // Auto-ring: start neste kall når forrige er ferdig / klar
-  useEffect(() => {
-    if (!autoRing) return;
-    if (aiActive || aiStarting || aiHangingUp) return;
+  /** Hopp videre til neste firma uten å bruke gammel state (trygt fra timer). */
+  function advanceAutoRing(): string | null {
+    const cur = currentRef.current;
+    if (!cur) {
+      setAutoRing(false);
+      return null;
+    }
+    const queue = dialQueueRef.current;
+    const idx = queue.findIndex((i) => i.orgnr === cur.orgnr);
+    const next = queue[idx + 1]?.orgnr ?? null;
+    try {
+      transcriptStopRef.current();
+    } catch {
+      /* ignore */
+    }
+    setSkippedOrgnrs((prev) => new Set(prev).add(cur.orgnr));
+    setSelectedOrgnr(next);
+    if (aiCallRef.current?.orgnr === cur.orgnr) aiCallRef.current = null;
+    setAiCall((prev) => (prev?.orgnr === cur.orgnr ? null : prev));
+    finishedSeenRef.current = null;
+    // Neste kall starter ca. 1 sekund etter dette
+    lastStartAtRef.current = Date.now() - 2200;
+    if (!next) setAutoRing(false);
+    return next;
+  }
+
+  async function autoRingStartCurrent(orgnr: string) {
+    const result = await handleAiRing(orgnr);
+    if (result.ok || !autoRingRef.current) return;
+    if (result.status === 409) {
+      // Et annet kall er fortsatt aktivt — vent litt, men ikke for evig
+      conflictCountRef.current += 1;
+      if (conflictCountRef.current >= 6) setAutoRing(false);
+      return;
+    }
+    if (result.status === 400 || result.status === 404) {
+      // Dårlig nummer / firma finnes ikke → hopp over og fortsett
+      advanceAutoRing();
+      return;
+    }
+    // Konfigurasjon, kreditt, innlogging osv. → stopp helt
+    setAutoRing(false);
+  }
+
+  // Auto-ring «hjerte»: sjekker status hvert sekund og går alltid videre.
+  function autoRingTick() {
+    if (!autoRingRef.current) return;
     if (pastStopAt()) {
       setAutoRing(false);
       return;
     }
-    if (!current) {
+    if (startingRef.current || aiHangingUpRef.current) return;
+    if (Date.now() - lastStartAtRef.current < 3000) return;
+
+    const cur = currentRef.current;
+    if (!cur) {
       setAutoRing(false);
       return;
     }
 
-    const finishedCurrent =
-      aiCall &&
-      aiCall.orgnr === current.orgnr &&
-      (aiCall.status === "ended" || aiCall.status === "failed");
+    const ac = aiCallRef.current;
+    if (ac && isActiveAiStatus(ac.status)) return; // venter på pågående samtale
 
-    if (finishedCurrent) {
-      const timer = window.setTimeout(() => {
-        if (!autoRingRef.current) return;
-        if (pastStopAt()) {
-          setAutoRing(false);
-          return;
-        }
-        const next = goToNextFirm();
-        if (!next) {
-          setAutoRing(false);
-          return;
-        }
-        window.setTimeout(() => {
-          if (!autoRingRef.current) return;
-          if (pastStopAt()) {
-            setAutoRing(false);
-            return;
-          }
-          void handleAiRing(next);
-        }, 700);
-      }, 1600);
-      return () => window.clearTimeout(timer);
+    if (ac && ac.orgnr === cur.orgnr) {
+      // Ferdig samtale (svar, ingen svar, feilet …) → gå videre etter kort pause
+      const seen = finishedSeenRef.current;
+      if (!seen || seen.id !== ac.id) {
+        finishedSeenRef.current = { id: ac.id, at: Date.now() };
+        return;
+      }
+      if (Date.now() - seen.at < 1600) return;
+      conflictCountRef.current = 0;
+      advanceAutoRing();
+      return;
     }
 
-    // Klar til å ringe denne leaden
-    if (!aiCall || aiCall.orgnr !== current.orgnr) {
-      const timer = window.setTimeout(() => {
-        if (!autoRingRef.current) return;
-        if (pastStopAt()) {
-          setAutoRing(false);
-          return;
-        }
-        void handleAiRing(current.orgnr);
-      }, 600);
-      return () => window.clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- styrt av auto-ring tilstand
-  }, [
-    autoRing,
-    aiActive,
-    aiStarting,
-    aiHangingUp,
-    current?.orgnr,
-    aiCall?.id,
-    aiCall?.orgnr,
-    aiCall?.status,
-    pastStopAt,
-  ]);
+    void autoRingStartCurrent(cur.orgnr);
+  }
+
+  useEffect(() => {
+    autoRingTickRef.current = autoRingTick;
+  });
+
+  useEffect(() => {
+    if (!autoRing) return;
+    const timer = window.setInterval(() => autoRingTickRef.current(), 800);
+    return () => window.clearInterval(timer);
+  }, [autoRing]);
 
   async function handleAiHangUp() {
     if (!aiCall?.id || aiHangingUp || !aiActive) return;
