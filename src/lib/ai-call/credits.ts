@@ -14,6 +14,13 @@ export function looksLikeQuotaError(message: string): boolean {
   );
 }
 
+/** Telefonen ble ringt, men ingen kom på linja (ingen svar, opptatt, avvist …). */
+export function looksLikeDialFailure(message: string): boolean {
+  return /dial failed|SIP\s?[3-6]\d\d|ringing timeout|temporarily unavailable|declined|busy here|no_answer|no answer/i.test(
+    message
+  );
+}
+
 export async function assertElevenLabsCanStartCall(
   apiKey: string
 ): Promise<void> {

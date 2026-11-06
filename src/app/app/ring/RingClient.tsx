@@ -612,6 +612,8 @@ export function RingClient() {
         error?: string;
         call?: AiCall;
         movedToCalled?: boolean;
+        dialFailed?: boolean;
+        message?: string;
       };
       if (!res.ok) {
         const msg = data.error ?? "Kunne ikke starte AI-ring";
@@ -626,6 +628,8 @@ export function RingClient() {
         setShowManus(true);
         setSessionStats(recordRingOutcome("dialed"));
       }
+      // Ingen svar / opptatt / avvist: vis grunnen, men det er ikke en feil
+      if (data.dialFailed && data.message) setError(data.message);
       return { ok: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Kunne ikke starte AI-ring";

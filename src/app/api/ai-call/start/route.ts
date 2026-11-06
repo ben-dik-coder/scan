@@ -4,7 +4,10 @@ import {
   aiCallConfigErrorMessage,
   isAiCallConfigured,
 } from "@/lib/ai-call/config";
-import { humanizeAiCallStartError } from "@/lib/ai-call/credits";
+import {
+  humanizeAiCallStartError,
+  looksLikeDialFailure,
+} from "@/lib/ai-call/credits";
 import { moveToCalledList } from "@/lib/ai-call/move-to-called-list";
 import { resolveAiCallTarget } from "@/lib/ai-call/resolve-phone";
 import { startAiOutboundCall } from "@/lib/ai-call/start-call";
@@ -193,15 +196,44 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     const message = humanizeAiCallStartError(err);
-    await service
+    const dialFailed = looksLikeDialFailure(message);
+    const { data: failedRow } = await service
       .from("ai_calls")
       .update({
         status: "failed",
-        outcome: "other",
+        outcome: dialFailed ? "no_answer" : "other",
         ended_at: new Date().toISOString(),
         summary: message,
       })
-      .eq("id", inserted.id);
+      .eq("id", inserted.id)
+      .select("*")
+      .single();
+
+    if (dialFailed && failedRow) {
+      // Nummeret ble forsøkt ringt (ingen svar / opptatt / avvist) — ikke en systemfeil.
+      // Da skal auto-ring gå videre, og firmaet skal ut av ringelisten.
+      await upsertUserLead(user.id, orgnr, {
+        status: "kontaktet",
+        last_contacted_at: new Date().toISOString(),
+      });
+      await logActivity(user.id, orgnr, "call", `AI-ring uten kontakt: ${message}`, {
+        ai_call_id: inserted.id,
+        phone: target.phoneE164,
+      });
+      const listId = typeof body.listId === "string" ? body.listId.trim() : "";
+      let movedToCalled = false;
+      if (listId) {
+        movedToCalled = (await moveToCalledList(user.id, listId, orgnr)).moved;
+      }
+      return NextResponse.json({
+        ok: true,
+        dialFailed: true,
+        movedToCalled,
+        message,
+        call: failedRow,
+        phone: target.phoneE164,
+      });
+    }
 
     return NextResponse.json({ error: message }, { status: 502 });
   }
