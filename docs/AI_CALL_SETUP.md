@@ -2,7 +2,7 @@
 
 NyLead kan starte automatiske utgående samtaler fra `/app/ring`.
 
-**Anbefalt:** ElevenLabs Agents + Twilio (samme agent du har laget i ElevenLabs).
+**Anbefalt:** ElevenLabs Agents + ice-nummer via SIP-trunk (samme agent du har laget i ElevenLabs).
 **Fallback:** Vapi (hvis ElevenLabs-nøklene ikke er satt).
 
 ## 1. ElevenLabs-agent
@@ -13,11 +13,14 @@ NyLead kan starte automatiske utgående samtaler fra `/app/ring`.
    - `{{sellerCompanyName}}`, `{{phone}}`, `{{email}}`, `{{hasWebsite}}`
    - `{{ai_call_id}}`, `{{orgnr}}` (brukes internt til webhook-matching)
 
-## 2. Twilio-nummer i ElevenLabs
+## 2. ice-nummer (SIP-trunk) i ElevenLabs
 
-1. Ha et Twilio-nummer (kjøpt i Twilio, eller verified caller ID for kun outbound)
-2. I ElevenLabs: **Phone numbers** → importer Twilio-nummeret (Account SID + Auth Token)
-3. Knytt nummeret til agenten (inbound) — outbound bruker `agent_phone_number_id`
+Vi bruker ikke Twilio. Nummeret er et ice Bedriftsnett-nummer koblet til ElevenLabs som SIP-trunk:
+
+1. I ElevenLabs: **Phone numbers** → SIP trunk (adresse `sip.bedriftsnett.ice.no`, TCP, brukernavn = nummeret)
+2. Nummeret brukes kun til utgående samtaler (`supports_outbound`)
+3. Outbound bruker `agent_phone_number_id` (ID fra ElevenLabs, ikke selve +47…)
+4. Lydformat står på `pcm_16000` (ElevenLabs konverterer til telefonlinjen selv)
 
 ## 3. Env
 
@@ -30,8 +33,10 @@ ELEVENLABS_AGENT_PHONE_NUMBER_ID=...   # ID fra ElevenLabs phone numbers, ikke s
 ELEVENLABS_WEBHOOK_SECRET=...          # fra post-call webhook i ElevenLabs
 NEXT_PUBLIC_APP_URL=https://dittdomene.no
 
-# Valgfritt: overstyr agent-prompt med NyLead-script (default: av — behold din agent)
-# ELEVENLABS_OVERRIDE_PROMPT=0
+# Valgfritt: overstyr TTS-modell per kall (default: styres i ElevenLabs-agenten, eleven_v4_turbo)
+# ELEVENLABS_TTS_MODEL_OVERRIDE=
+# Stemmen låses per kall:
+# ELEVENLABS_VOICE_ID=
 ```
 
 Finn `ELEVENLABS_AGENT_PHONE_NUMBER_ID` i ElevenLabs under Phone numbers (UUID/id for importert nummer).
@@ -74,4 +79,8 @@ AI_CALL_WEBHOOK_SECRET=...
 
 - MVP: én aktiv AI-samtale om gangen per bruker
 - Demo-modus støtter ikke AI-ring
-- Prompten i ElevenLabs brukes som den er, med mindre `ELEVENLABS_OVERRIDE_PROMPT=1`
+- Prompt: `src/lib/ai-call/prompt.ts` (Frida, «frida-free-v2.x») sendes med hvert kall. Samme tekst ligger som mal i ElevenLabs-agenten.
+- Modell, stabilitet og ekspressiv modus styres i ElevenLabs-agenten, ikke i koden.
+- Test uten ekte samtaler: `node scripts/ai-call-simulate.mjs` (8 testpersoner, **koster ElevenLabs-credits**: ca. 600–800 per kjøring).
+- Ukesrapport på ekte samtaler: `node scripts/ai-call-report.mjs` (gratis).
+- «Ikke ring igjen» fra kunden gir `not_interested` og fjernes fra køen.

@@ -4,6 +4,7 @@ import {
   aiCallConfigErrorMessage,
   isAiCallConfigured,
 } from "@/lib/ai-call/config";
+import { humanizeAiCallStartError } from "@/lib/ai-call/credits";
 import { resolveAiCallTarget } from "@/lib/ai-call/resolve-phone";
 import { startAiOutboundCall } from "@/lib/ai-call/start-call";
 import { isDemoMode } from "@/lib/demo/config";
@@ -181,7 +182,7 @@ export async function POST(request: Request) {
       contactName: target.contactName,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Kunne ikke starte AI-ring";
+    const message = humanizeAiCallStartError(err);
     await service
       .from("ai_calls")
       .update({

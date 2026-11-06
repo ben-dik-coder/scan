@@ -114,5 +114,5 @@ export function getElevenLabsWebhookSecret(): string | null {
 }
 
 export function aiCallConfigErrorMessage(): string {
-  return "AI-ring er ikke konfigurert. Sett ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID og ELEVENLABS_AGENT_PHONE_NUMBER_ID (Twilio-nummer i ElevenLabs), eller Vapi-nøklene.";
+  return "AI-ring er ikke konfigurert. Sett ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID og ELEVENLABS_AGENT_PHONE_NUMBER_ID (ice SIP-nummer i ElevenLabs).";
 }

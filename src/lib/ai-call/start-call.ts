@@ -1,5 +1,10 @@
 import { getAiCallConfig } from "./config";
 import {
+  assertElevenLabsCanStartCall,
+  looksLikeQuotaError,
+  ELEVENLABS_QUOTA_MESSAGE,
+} from "./credits";
+import {
   buildAiCallAnalysisPlan,
   buildAiCallFirstMessage,
   buildAiCallSystemPrompt,
@@ -51,25 +56,61 @@ function normalizeE164(value: string): string {
   return value.replace(/[^\d+]/g, "");
 }
 
-/** Twilio/ElevenLabs-nummeret vi ringer FRA (valgfri env, ellers hentes via API). */
-async function resolveElevenLabsFromNumber(
+type ElevenLabsPhoneMeta = {
+  phoneNumber: string | null;
+  provider: "twilio" | "sip_trunk" | "exotel" | string | null;
+};
+
+/** Fra-nummer + provider (Twilio vs SIP) for valgt ElevenLabs-nummer. */
+async function resolveElevenLabsPhoneMeta(
   apiKey: string,
   phoneNumberId: string
-): Promise<string | null> {
+): Promise<ElevenLabsPhoneMeta> {
   const fromEnv = process.env.ELEVENLABS_FROM_NUMBER?.trim();
-  if (fromEnv) return normalizeE164(fromEnv);
-
   const res = await fetch("https://api.elevenlabs.io/v1/convai/phone-numbers", {
     headers: { "xi-api-key": apiKey },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    return {
+      phoneNumber: fromEnv ? normalizeE164(fromEnv) : null,
+      provider: null,
+    };
+  }
   const list = (await res.json().catch(() => null)) as
-    | Array<{ phone_number?: string; phone_number_id?: string }>
+    | Array<{
+        phone_number?: string;
+        phone_number_id?: string;
+        provider?: string;
+      }>
     | null;
-  if (!Array.isArray(list)) return null;
+  if (!Array.isArray(list)) {
+    return {
+      phoneNumber: fromEnv ? normalizeE164(fromEnv) : null,
+      provider: null,
+    };
+  }
   const match = list.find((p) => p.phone_number_id === phoneNumberId);
-  const num = match?.phone_number?.trim();
-  return num ? normalizeE164(num) : null;
+  const num = match?.phone_number?.trim() || fromEnv || null;
+  return {
+    phoneNumber: num ? normalizeE164(num) : null,
+    provider: match?.provider ?? null,
+  };
+}
+
+function humanizeElevenLabsError(
+  raw: Record<string, unknown>,
+  status: number
+): string {
+  const detail = raw.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const d = detail as Record<string, unknown>;
+    if (typeof d.message === "string") return d.message;
+  }
+  if (Array.isArray(detail)) return JSON.stringify(detail);
+  if (typeof raw.message === "string") return raw.message;
+  if (typeof raw.error === "string") return raw.error;
+  return `ElevenLabs-feil (${status})`;
 }
 
 export async function startElevenLabsOutboundCall(
@@ -80,84 +121,102 @@ export async function startElevenLabsOutboundCall(
     throw new Error("ElevenLabs er ikke konfigurert");
   }
 
+  await assertElevenLabsCanStartCall(config.apiKey);
+
   const toNumber = normalizeE164(input.customerNumberE164);
-  const fromNumber = await resolveElevenLabsFromNumber(
+  const phoneMeta = await resolveElevenLabsPhoneMeta(
     config.apiKey,
     config.phoneNumberId
   );
+  const fromNumber = phoneMeta.phoneNumber;
   if (fromNumber && toNumber && fromNumber === toNumber) {
     throw new Error(
-      "Kan ikke AI-ringe dette nummeret — det er samme som Twilio-nummeret vi ringer fra. Velg et annet firma."
+      "Kan ikke AI-ringe dette nummeret — det er samme som nummeret vi ringer fra. Velg et annet firma."
     );
   }
 
   const variableValues = buildAiCallVariableValues(input.promptVars);
-  const overridePrompt =
-    process.env.ELEVENLABS_OVERRIDE_PROMPT?.trim() === "1" ||
-    process.env.ELEVENLABS_OVERRIDE_PROMPT?.trim()?.toLowerCase() === "true";
 
+  // Alltid Main-branch (Frida). Eldre branch «lk» hadde fortsatt Adrian.
+  const mainBranchId =
+    process.env.ELEVENLABS_AGENT_BRANCH_ID?.trim() ||
+    "agtbrch_0301m5x9879aeh5v9w6d2s697r7r";
+
+  // Vilde — kvinnelig norsk. Lås per-kall så vi ikke får Magnar/mann igjen.
+  const fridaVoiceId =
+    process.env.ELEVENLABS_VOICE_ID?.trim() || "SUVXSJC7hh41K4FtAVuH";
+  // Modell, stabilitet og tempo styres i ElevenLabs-agenten (én sannhetskilde).
+  // Sett ELEVENLABS_TTS_MODEL_OVERRIDE kun hvis du bevisst vil overstyre per kall.
+  const ttsModelOverride = process.env.ELEVENLABS_TTS_MODEL_OVERRIDE?.trim();
+
+  // Per kall: lås stemmen (Frida) og send prompt + åpning med faktiske verdier.
   const conversationInitiationClientData: Record<string, unknown> = {
+    branch_id: mainBranchId,
     dynamic_variables: {
       ...variableValues,
       ai_call_id: input.metadata.aiCallId,
       orgnr: input.metadata.orgnr,
       user_id: input.metadata.userId,
     },
-  };
-
-  if (overridePrompt) {
-    conversationInitiationClientData.conversation_config_override = {
+    conversation_config_override: {
+      tts: {
+        voice_id: fridaVoiceId,
+        ...(ttsModelOverride ? { model_id: ttsModelOverride } : {}),
+      },
       agent: {
+        language: "no",
         first_message: buildAiCallFirstMessage(input.promptVars),
         prompt: {
           prompt: buildAiCallSystemPrompt(input.promptVars),
         },
       },
-    };
-  }
+    },
+  };
 
   const body = {
     agent_id: config.agentId,
     agent_phone_number_id: config.phoneNumberId,
     to_number: input.customerNumberE164,
     conversation_initiation_client_data: conversationInitiationClientData,
+    /** Legg på hvis ingen tar telefonen innen 30 sekunder. */
+    telephony_call_config: {
+      ringing_timeout_secs: 30,
+    },
   };
 
-  const res = await fetch(
-    "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": config.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    }
-  );
+  // Kun ice SIP — ingen Twilio.
+  if (phoneMeta.provider && phoneMeta.provider !== "sip_trunk") {
+    throw new Error(
+      `Telefonnummeret er satt som «${phoneMeta.provider}». NyLead ringer bare via ice SIP — bytt til SIP-nummeret i ElevenLabs.`
+    );
+  }
+  const outboundUrl =
+    "https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call";
+
+  const res = await fetch(outboundUrl, {
+    method: "POST",
+    headers: {
+      "xi-api-key": config.apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const detail =
-      typeof raw.detail === "string"
-        ? raw.detail
-        : Array.isArray(raw.detail)
-          ? JSON.stringify(raw.detail)
-          : null;
-    const message =
-      detail ??
-      (typeof raw.message === "string"
-        ? raw.message
-        : typeof raw.error === "string"
-          ? raw.error
-          : `ElevenLabs-feil (${res.status})`);
-    throw new Error(message);
+    const message = humanizeElevenLabsError(raw, res.status);
+    throw new Error(
+      looksLikeQuotaError(message) ? ELEVENLABS_QUOTA_MESSAGE : message
+    );
   }
 
   if (raw.success === false) {
-    throw new Error(
+    const message =
       typeof raw.message === "string"
         ? raw.message
-        : "ElevenLabs kunne ikke starte samtalen"
+        : "ElevenLabs kunne ikke starte samtalen";
+    throw new Error(
+      looksLikeQuotaError(message) ? ELEVENLABS_QUOTA_MESSAGE : message
     );
   }
 
@@ -170,7 +229,13 @@ export async function startElevenLabsOutboundCall(
   return {
     provider: "elevenlabs",
     externalCallId: conversationId,
-    raw: { ...raw, provider: "elevenlabs", callSid: raw.callSid ?? null },
+    raw: {
+      ...raw,
+      provider: "elevenlabs",
+      telephony: "sip_trunk",
+      sip_call_id: raw.sip_call_id ?? null,
+      callSid: raw.sip_call_id ?? null,
+    },
   };
 }
 

@@ -82,7 +82,11 @@ export function extractElevenLabsTranscript(
         : rawRole === "agent" || rawRole === "assistant" || rawRole === "ai"
           ? "AI"
           : rawRole || "?";
-    const message = typeof row.message === "string" ? row.message.trim() : "";
+    // Fjern uttrykks-tagger fra expressive mode ([Warm], [laugh] …) — de leses ikke opp.
+    const message =
+      typeof row.message === "string"
+        ? row.message.replace(/\[[A-Za-zæøåÆØÅ ]{2,24}\]\s*/g, "").trim()
+        : "";
     if (!message) continue;
     lines.push(`${label}: ${message}`);
   }
@@ -101,8 +105,87 @@ export function extractElevenLabsSummary(
   return null;
 }
 
+/** Hent avtalt tid fra data collection hvis ElevenLabs sendte den. */
+export function extractElevenLabsMeetingTime(
+  payload: Record<string, unknown>
+): string | null {
+  const analysis = asRecord(asRecord(payload.data)?.analysis);
+  if (!analysis) return null;
+
+  const results = asRecord(analysis.data_collection_results);
+  if (results) {
+    for (const key of ["meeting_time", "meetingBookedTime", "meeting_booked_time"]) {
+      const row = asRecord(results[key]);
+      const value =
+        (typeof row?.value === "string" && row.value) ||
+        (typeof row?.result === "string" && row.result) ||
+        (typeof results[key] === "string" ? String(results[key]) : "");
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+
+  const list = analysis.data_collection_results_list;
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      const row = asRecord(item);
+      const id = String(row?.data_collection_id ?? row?.id ?? row?.name ?? "");
+      if (!/meeting.?time|meetingBookedTime/i.test(id)) continue;
+      const value =
+        (typeof row?.value === "string" && row.value) ||
+        (typeof row?.result === "string" && row.result) ||
+        "";
+      if (value.trim()) return value.trim();
+    }
+  }
+
+  return null;
+}
+
+const CHANNEL_NO: Record<string, string> = {
+  phone: "telefon",
+  email: "e-post",
+  sms: "SMS",
+};
+
+/** Hent avtalt kanal (telefon/e-post/SMS) og kontaktinfo, f.eks. «e-post: ola@firma.no». */
+export function extractElevenLabsMeetingContact(
+  payload: Record<string, unknown>
+): string | null {
+  const analysis = asRecord(asRecord(payload.data)?.analysis);
+  if (!analysis) return null;
+
+  const read = (key: string): string => {
+    const results = asRecord(analysis.data_collection_results);
+    const row = asRecord(results?.[key]);
+    if (typeof row?.value === "string" && row.value.trim()) return row.value.trim();
+    const list = analysis.data_collection_results_list;
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        const r = asRecord(item);
+        const id = String(r?.data_collection_id ?? r?.id ?? r?.name ?? "");
+        if (id === key && typeof r?.value === "string" && r.value.trim()) {
+          return r.value.trim();
+        }
+      }
+    }
+    return "";
+  };
+
+  const channelRaw = read("meeting_channel").toLowerCase();
+  const detail = read("contact_detail");
+  const channel = CHANNEL_NO[channelRaw];
+  if (!channel && !detail) return null;
+  return [channel, detail].filter(Boolean).join(": ");
+}
+
 function outcomeFromText(blob: string): MappedAiCallResult | null {
-  if (/meeting|møte|moete|booket|booked/i.test(blob)) {
+  // «scheduled / follow-up / callback / noterer jeg …» = møte/oppfølging avtalt
+  if (
+    /meeting|møte|moete|booket|booked|scheduled|schedul|follow[-\s]?up|callback|tilbake.?ring|oppfølg|oppfolg|noterer jeg|vi ringer (deg )?tilbake|avtalt (møte|samtale|oppfølging)/i.test(
+      blob
+    )
+  ) {
     return {
       outcome: "meeting",
       leadStatus: "moete_booket",
@@ -137,20 +220,55 @@ function outcomeFromText(blob: string): MappedAiCallResult | null {
   return null;
 }
 
+function collectDataCollectionValues(
+  analysis: Record<string, unknown> | null
+): string[] {
+  if (!analysis) return [];
+  const values: string[] = [];
+
+  const results = asRecord(analysis.data_collection_results);
+  if (results) {
+    for (const [key, value] of Object.entries(results)) {
+      const row = asRecord(value);
+      const raw =
+        (typeof row?.value === "string" && row.value) ||
+        (typeof row?.result === "string" && row.result) ||
+        (typeof value === "string" ? value : "");
+      if (raw.trim()) values.push(`${key}:${raw.trim()}`);
+      else if (raw.trim() === "" && key.toLowerCase() === "outcome") {
+        /* skip empty */
+      }
+    }
+  }
+
+  const list = analysis.data_collection_results_list;
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      const row = asRecord(item);
+      const id = String(row?.data_collection_id ?? row?.id ?? row?.name ?? "field");
+      const raw =
+        (typeof row?.value === "string" && row.value) ||
+        (typeof row?.result === "string" && row.result) ||
+        "";
+      if (raw.trim()) values.push(`${id}:${raw.trim()}`);
+    }
+  }
+
+  return values;
+}
+
 function fromDataCollection(
   analysis: Record<string, unknown> | null
 ): MappedAiCallResult | null {
-  if (!analysis) return null;
-  const results = asRecord(analysis.data_collection_results);
-  if (!results) return null;
-
-  for (const value of Object.values(results)) {
-    const row = asRecord(value);
-    const raw =
-      (typeof row?.value === "string" && row.value) ||
-      (typeof row?.result === "string" && row.result) ||
-      (typeof value === "string" ? value : "");
-    const normalized = raw.toLowerCase().trim();
+  // Kun «outcome»-feltet styrer utfallet. Andre felt (innvending, interesse …)
+  // er kun statistikk og skal ikke kunne trigge feil lead-status.
+  const values = collectDataCollectionValues(analysis).filter((v) =>
+    v.toLowerCase().startsWith("outcome:")
+  );
+  for (const raw of values) {
+    const normalized = raw.includes(":")
+      ? raw.slice(raw.indexOf(":") + 1).toLowerCase().trim()
+      : raw.toLowerCase().trim();
     if (
       normalized === "meeting" ||
       normalized === "not_interested" ||
@@ -207,6 +325,21 @@ function mapExactOutcome(outcome: AiCallOutcome): MappedAiCallResult {
   };
 }
 
+function wantsDoNotCall(analysis: Record<string, unknown> | null): boolean {
+  const isTrue = (v: unknown) => v === true || String(v).toLowerCase() === "true";
+  const results = asRecord(analysis?.data_collection_results);
+  if (results && isTrue(asRecord(results.do_not_call)?.value)) return true;
+  const list = analysis?.data_collection_results_list;
+  if (Array.isArray(list)) {
+    return list.some((item) => {
+      const row = asRecord(item);
+      const id = String(row?.data_collection_id ?? row?.id ?? row?.name ?? "");
+      return id === "do_not_call" && isTrue(row?.value);
+    });
+  }
+  return false;
+}
+
 export function mapElevenLabsPayloadToOutcome(
   payload: Record<string, unknown>
 ): MappedAiCallResult {
@@ -215,6 +348,20 @@ export function mapElevenLabsPayloadToOutcome(
 
   if (type === "call_initiation_failure") {
     const reason = String(data?.failure_reason ?? "").toLowerCase();
+    const blob = JSON.stringify(data ?? {}).toLowerCase();
+    if (
+      /quota_exceeded|out of credits|run out of credits|insufficient.?credit/.test(
+        blob
+      )
+    ) {
+      return {
+        outcome: "other",
+        leadStatus: "kontaktet",
+        unqueue: false,
+        description:
+          "ElevenLabs tom for credits — samtalen ble avbrutt ved opptak",
+      };
+    }
     if (reason === "busy" || reason === "no-answer") {
       return {
         outcome: "no_answer",
@@ -232,12 +379,29 @@ export function mapElevenLabsPayloadToOutcome(
   }
 
   const analysis = asRecord(data?.analysis);
+
+  // Kunden ba om å ikke bli ringt igjen → aldri tilbake i køen.
+  if (wantsDoNotCall(analysis)) {
+    return {
+      outcome: "not_interested",
+      leadStatus: "ikke_interessert",
+      unqueue: true,
+      description: "AI-samtale: ba om å ikke bli ringt igjen",
+    };
+  }
+
   const fromCollection = fromDataCollection(analysis);
-  if (fromCollection) return fromCollection;
+  if (fromCollection && fromCollection.outcome !== "other") {
+    return fromCollection;
+  }
 
   const summary =
     (typeof analysis?.transcript_summary === "string"
       ? analysis.transcript_summary
+      : "") || "";
+  const title =
+    (typeof analysis?.call_summary_title === "string"
+      ? analysis.call_summary_title
       : "") || "";
   const successful =
     typeof analysis?.call_successful === "string"
@@ -247,10 +411,13 @@ export function mapElevenLabsPayloadToOutcome(
     typeof asRecord(data?.metadata)?.termination_reason === "string"
       ? String(asRecord(data?.metadata)?.termination_reason)
       : "";
+  const transcriptText = extractElevenLabsTranscript(payload) ?? "";
 
-  const blob = `${summary} ${successful} ${termination}`.toLowerCase();
+  const blob = `${summary}\n${title}\n${successful}\n${termination}\n${transcriptText}`.toLowerCase();
   const fromBlob = outcomeFromText(blob);
   if (fromBlob) return fromBlob;
+
+  if (fromCollection) return fromCollection;
 
   if (successful === "success") {
     return {

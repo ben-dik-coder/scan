@@ -6,6 +6,8 @@ import {
 import {
   extractElevenLabsAiCallId,
   extractElevenLabsConversationId,
+  extractElevenLabsMeetingContact,
+  extractElevenLabsMeetingTime,
   extractElevenLabsSummary,
   extractElevenLabsTranscript,
   mapElevenLabsPayloadToOutcome,
@@ -113,30 +115,50 @@ async function applyEndOfCall(
   mapped: ReturnType<typeof mapVapiPayloadToOutcome>,
   transcript: string | null,
   summary: string | null,
-  raw: WebhookBody
+  raw: WebhookBody,
+  extras?: { meetingTime?: string | null; contact?: string | null }
 ) {
+  const meetingTime = extras?.meetingTime?.trim() || null;
+  const contact = extras?.contact?.trim() || null;
+  const summaryWithTime =
+    mapped.outcome === "meeting" && (meetingTime || contact)
+      ? `${summary ?? "Møte booket"}${meetingTime ? `\n\nAvtalt tid: ${meetingTime}` : ""}${contact ? `\nKontakt: ${contact}` : ""}`
+      : summary;
+
   await service
     .from("ai_calls")
     .update({
       status: "ended",
       outcome: mapped.outcome,
       transcript,
-      summary,
+      summary: summaryWithTime,
       ended_at: new Date().toISOString(),
       raw_payload: raw,
     })
     .eq("id", aiCall.id);
 
+  const leadNotes =
+    mapped.outcome === "meeting"
+      ? meetingTime || contact
+        ? `AI booket møte: ${[meetingTime, contact].filter(Boolean).join(" · ")}`
+        : summaryWithTime
+          ? `AI booket møte. ${summaryWithTime.slice(0, 280)}`
+          : "AI booket møte"
+      : undefined;
+
   await upsertUserLead(aiCall.user_id, aiCall.orgnr, {
     status: mapped.leadStatus,
     last_contacted_at: new Date().toISOString(),
     ...(mapped.unqueue ? { queued_at: null } : {}),
+    ...(leadNotes ? { notes: leadNotes } : {}),
   });
 
   await logActivity(aiCall.user_id, aiCall.orgnr, "call", mapped.description, {
     ai_call_id: aiCall.id,
     outcome: mapped.outcome,
     lead_status: mapped.leadStatus,
+    ...(meetingTime ? { meeting_time: meetingTime } : {}),
+    ...(contact ? { contact } : {}),
   });
 }
 
@@ -182,19 +204,23 @@ async function handleElevenLabs(
 
   if (type === "post_call_transcription") {
     const mapped = mapElevenLabsPayloadToOutcome(body);
+    const meetingTime = extractElevenLabsMeetingTime(body);
+    const contact = extractElevenLabsMeetingContact(body);
     await applyEndOfCall(
       service,
       aiCall,
       mapped,
       extractElevenLabsTranscript(body),
       extractElevenLabsSummary(body),
-      body
+      body,
+      { meetingTime, contact }
     );
     return NextResponse.json({
       ok: true,
       provider: "elevenlabs",
       outcome: mapped.outcome,
       leadStatus: mapped.leadStatus,
+      meetingTime: meetingTime ?? undefined,
     });
   }
 
