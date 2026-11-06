@@ -477,7 +477,7 @@ export function RingClient() {
   useEffect(() => {
     if (!autoRing) return;
     if (dialQueue.length === 0 || pastStopAt()) {
-      setAutoRing(false);
+      stopAutoRingWith("Auto-ring ferdig: ingen flere firma i køen, eller stopp-tiden er nådd.");
     }
   }, [autoRing, dialQueue.length, pastStopAt]);
 
@@ -657,11 +657,17 @@ export function RingClient() {
     setAutoRing(false);
   }
 
+  /** Stopp auto-ring og vis hvorfor, så det aldri stopper i det stille. */
+  function stopAutoRingWith(reason: string) {
+    setAutoRing(false);
+    setError((prev) => prev ?? reason);
+  }
+
   /** Hopp videre til neste firma uten å bruke gammel state (trygt fra timer). */
   function advanceAutoRing(): string | null {
     const cur = currentRef.current;
     if (!cur) {
-      setAutoRing(false);
+      stopAutoRingWith("Auto-ring stoppet: ingen firma å ringe.");
       return null;
     }
     const queue = dialQueueRef.current;
@@ -679,7 +685,7 @@ export function RingClient() {
     finishedSeenRef.current = null;
     // Neste kall starter ca. 1 sekund etter dette
     lastStartAtRef.current = Date.now() - 2200;
-    if (!next) setAutoRing(false);
+    if (!next) stopAutoRingWith("Auto-ring ferdig: alle firma i batchen er ringt.");
     return next;
   }
 
@@ -689,7 +695,7 @@ export function RingClient() {
     if (result.status === 409) {
       // Et annet kall er fortsatt aktivt — vent litt, men ikke for evig
       conflictCountRef.current += 1;
-      if (conflictCountRef.current >= 6) setAutoRing(false);
+      if (conflictCountRef.current >= 6) stopAutoRingWith("Auto-ring stoppet: et annet AI-kall ser ut til å henge.");
       return;
     }
     if (result.status === 400 || result.status === 404) {
@@ -698,14 +704,14 @@ export function RingClient() {
       return;
     }
     // Konfigurasjon, kreditt, innlogging osv. → stopp helt
-    setAutoRing(false);
+    stopAutoRingWith(result.error ?? "Auto-ring stoppet: kunne ikke starte kall.");
   }
 
   // Auto-ring «hjerte»: sjekker status hvert sekund og går alltid videre.
   function autoRingTick() {
     if (!autoRingRef.current) return;
     if (pastStopAt()) {
-      setAutoRing(false);
+      stopAutoRingWith(`Auto-ring ferdig: stopp-tiden kl. ${stopAtTime} er nådd.`);
       return;
     }
     if (startingRef.current || aiHangingUpRef.current) return;
@@ -713,7 +719,7 @@ export function RingClient() {
 
     const cur = currentRef.current;
     if (!cur) {
-      setAutoRing(false);
+      stopAutoRingWith("Auto-ring stoppet: ingen firma å ringe.");
       return;
     }
 
