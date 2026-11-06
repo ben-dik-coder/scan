@@ -5,6 +5,7 @@ import {
   isAiCallConfigured,
 } from "@/lib/ai-call/config";
 import { humanizeAiCallStartError } from "@/lib/ai-call/credits";
+import { moveToCalledList } from "@/lib/ai-call/move-to-called-list";
 import { resolveAiCallTarget } from "@/lib/ai-call/resolve-phone";
 import { startAiOutboundCall } from "@/lib/ai-call/start-call";
 import { isDemoMode } from "@/lib/demo/config";
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { orgnr?: string };
+  let body: { orgnr?: string; listId?: string };
   try {
     body = await request.json();
   } catch {
@@ -174,8 +175,17 @@ export async function POST(request: Request) {
       phone: target.phoneE164,
     });
 
+    // Ringt → ut av ringelisten, inn i «Ringt — <liste>»
+    const listId = typeof body.listId === "string" ? body.listId.trim() : "";
+    let movedToCalled = false;
+    if (listId) {
+      const moved = await moveToCalledList(user.id, listId, orgnr);
+      movedToCalled = moved.moved;
+    }
+
     return NextResponse.json({
       ok: true,
+      movedToCalled,
       provider: started.provider,
       call: updated,
       phone: target.phoneE164,

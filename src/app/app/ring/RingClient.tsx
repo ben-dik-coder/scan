@@ -603,11 +603,15 @@ export function RingClient() {
       const res = await fetch("/api/ai-call/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgnr: targetOrgnr }),
+        body: JSON.stringify({
+          orgnr: targetOrgnr,
+          ...(selectedListId ? { listId: selectedListId } : {}),
+        }),
       });
       const data = (await res.json()) as {
         error?: string;
         call?: AiCall;
+        movedToCalled?: boolean;
       };
       if (!res.ok) {
         const msg = data.error ?? "Kunne ikke starte AI-ring";
