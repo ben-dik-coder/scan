@@ -42,7 +42,10 @@ import {
   isSimpleSearchIntent,
   quickGreetingReply,
 } from "@/lib/agent/prompt";
-import { streamResponsesTurn } from "@/lib/agent/responses-stream";
+import {
+  streamChatCompletionsTurn,
+  streamResponsesTurn,
+} from "@/lib/agent/responses-stream";
 import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import { compactToolResultForModel } from "@/lib/agent/tool-payload";
 import { isBadLeadCompany } from "@/lib/brreg/lead-quality";
@@ -445,11 +448,45 @@ export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
   if (summary.hitMaxLoops) {
     parts.unshift("Jobben tok mange steg og stoppet ved grensen.");
   } else if (parts.length === 0) {
-    return "Ferdig — men jeg fikk ikke skrevet et godt sammendrag. Se statusmeldingene over, eller spør meg «hva fant du?»";
+    return "Jeg fikk ikke kjørt søket ferdig. Prøv på nytt med f.eks. «finn 10 serveringsfirma i Nordland uten nettside».";
   }
 
   return parts.join("\n\n");
 }
+
+const TOOL_STEP_LABELS: Record<string, string> = {
+  search_companies: "Søker firma",
+  scan_websites: "Sjekker nettsider",
+  filter_no_website: "Går gjennom listen",
+  filter_leads: "Går gjennom listen",
+  enrich_contacts: "Henter kontaktinfo",
+  save_list: "Lagrer liste",
+  get_usage: "Sjekker kvote",
+  get_entitlements: "Sjekker tilgang",
+  list_saved_lists: "Henter lagrede lister",
+  load_saved_list: "Laster liste",
+  remember_preference: "Lagrer preferanse",
+  update_saved_list: "Oppdaterer liste",
+  request_delete_confirm: "Forbereder trygg sletting",
+  delete_saved_list: "Sletter liste",
+  list_smartlists: "Henter Smartlister",
+  create_smartlist: "Oppretter Smartliste",
+  update_smartlist: "Oppdaterer Smartliste",
+  delete_smartlist: "Sletter Smartliste",
+  smartlist_add_items: "Legger til firmakort",
+  smartlist_update_items: "Oppdaterer firmakort",
+  smartlist_remove_items: "Fjerner firmakort",
+  set_lead_status: "Oppdaterer pipeline",
+  update_lead: "Oppdaterer lead",
+  delete_lead: "Sletter lead",
+  set_company_phone: "Oppdaterer telefon",
+  start_ai_call: "Starter AI-samtale",
+  hangup_ai_call: "Avslutter AI-samtale",
+  send_sms: "Sender SMS",
+  get_settings: "Henter innstillinger",
+  update_settings: "Oppdaterer innstillinger",
+  web_search: "Søker på nettet",
+};
 
 export async function runAgentChat(
   history: AgentChatMessage[],
@@ -940,49 +977,127 @@ export async function runAgentChat(
     return { assistantText };
   }
 
+  let useChatCompletionsFallback = false;
+  const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    ...history
+      .filter((message) => message.role !== "system")
+      .map((message) => ({
+        role: message.role as "user" | "assistant",
+        content: message.content,
+      })),
+  ];
+
+  await onEvent({
+    type: "step",
+    id: "plan",
+    label: "Planlegger neste steg",
+    status: "active",
+  });
+
   while (loops < maxToolLoops) {
     throwIfAborted(signal);
 
     let streamedContent = "";
     let thinkingContent = "";
-    const turn = await streamResponsesTurn({
-      client,
-      model,
-      instructions: loops === 0 ? systemPrompt : undefined,
-      input: responsesInput,
-      previousResponseId,
-      reasoningEffort: getReasoningEffort(),
-      onTextDelta: async (delta) => {
-        streamedContent += delta;
-        await onEvent({ type: "text_delta", content: delta });
-      },
-      onThinkingDelta: async (delta) => {
-        thinkingContent += delta;
-        await onEvent({ type: "thinking_delta", content: delta });
-      },
-      onWebSearch: async (status) => {
+    let functionCalls: Array<{
+      call_id: string;
+      name: string;
+      arguments: string;
+    }> = [];
+
+    if (!useChatCompletionsFallback) {
+      try {
+        const turn = await streamResponsesTurn({
+          client,
+          model,
+          instructions: loops === 0 ? systemPrompt : undefined,
+          input: responsesInput,
+          previousResponseId,
+          reasoningEffort: getReasoningEffort(),
+          onTextDelta: async (delta) => {
+            streamedContent += delta;
+            await onEvent({ type: "text_delta", content: delta });
+          },
+          onThinkingDelta: async (delta) => {
+            thinkingContent += delta;
+            await onEvent({ type: "thinking_delta", content: delta });
+          },
+          onWebSearch: async (status) => {
+            await onEvent({
+              type: "step",
+              id: "hosted-web-search",
+              label: "Søker på nettet",
+              status: status === "completed" ? "done" : "active",
+            });
+          },
+          signal,
+        });
+        previousResponseId = turn.responseId;
+        functionCalls = turn.functionCalls;
+        if (turn.content.trim()) {
+          assistantText = turn.content.trim();
+        } else if (streamedContent.trim()) {
+          assistantText = streamedContent.trim();
+        }
+      } catch (err) {
+        console.error("[agent] Responses API failed, falling back", err);
+        useChatCompletionsFallback = true;
         await onEvent({
           type: "step",
-          id: "hosted-web-search",
-          label: "Søker på nettet",
-          status: status === "completed" ? "done" : "active",
+          id: "plan",
+          label: "Bytter til sikker chat-modus",
+          status: "active",
         });
-      },
-      signal,
-    });
-    previousResponseId = turn.responseId;
+      }
+    }
+
+    if (useChatCompletionsFallback) {
+      streamedContent = "";
+      const choice = await streamChatCompletionsTurn({
+        client,
+        model,
+        messages: chatMessages,
+        onTextDelta: async (delta) => {
+          streamedContent += delta;
+          await onEvent({ type: "text_delta", content: delta });
+        },
+        signal,
+      });
+      if (choice.content.trim()) {
+        assistantText = choice.content.trim();
+      } else if (streamedContent.trim()) {
+        assistantText = streamedContent.trim();
+      }
+      functionCalls = (choice.tool_calls ?? [])
+        .filter((tc) => tc.type === "function")
+        .map((tc) => ({
+          call_id: tc.id,
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        }));
+      if (functionCalls.length > 0) {
+        chatMessages.push({
+          role: "assistant",
+          content: choice.content ?? "",
+          tool_calls: choice.tool_calls,
+        });
+      }
+    }
 
     if (thinkingContent.trim()) {
       await onEvent({ type: "thinking", content: thinkingContent.trim() });
     }
 
-    if (turn.content.trim()) {
-      assistantText = turn.content.trim();
-    } else if (streamedContent.trim()) {
-      assistantText = streamedContent.trim();
-    }
+    await onEvent({
+      type: "step",
+      id: "plan",
+      label: functionCalls.length
+        ? "Kjører verktøy"
+        : "Skriver svar",
+      status: functionCalls.length ? "active" : "done",
+    });
 
-    const functionCalls = turn.functionCalls;
     if (!functionCalls.length) break;
 
     const executedTools = await Promise.all(
@@ -999,47 +1114,12 @@ export async function runAgentChat(
           parsedArgs = {};
         }
 
-        const stepLabel =
-          (
-            {
-              search_companies: "Søker firma",
-              scan_websites: "Sjekker nettsider",
-              filter_no_website: "Går gjennom listen",
-              filter_leads: "Går gjennom listen",
-              enrich_contacts: "Henter kontaktinfo",
-              save_list: "Lagrer liste",
-              get_usage: "Sjekker kvote",
-              get_entitlements: "Sjekker tilgang",
-              list_saved_lists: "Henter lagrede lister",
-              load_saved_list: "Laster liste",
-              remember_preference: "Lagrer preferanse",
-              update_saved_list: "Oppdaterer liste",
-              request_delete_confirm: "Forbereder trygg sletting",
-              delete_saved_list: "Sletter liste",
-              list_smartlists: "Henter Smartlister",
-              create_smartlist: "Oppretter Smartliste",
-              update_smartlist: "Oppdaterer Smartliste",
-              delete_smartlist: "Sletter Smartliste",
-              smartlist_add_items: "Legger til firmakort",
-              smartlist_update_items: "Oppdaterer firmakort",
-              smartlist_remove_items: "Fjerner firmakort",
-              set_lead_status: "Oppdaterer pipeline",
-              update_lead: "Oppdaterer lead",
-              delete_lead: "Sletter lead",
-              set_company_phone: "Oppdaterer telefon",
-              start_ai_call: "Starter AI-samtale",
-              hangup_ai_call: "Avslutter AI-samtale",
-              send_sms: "Sender SMS",
-              get_settings: "Henter innstillinger",
-              update_settings: "Oppdaterer innstillinger",
-              web_search: "Søker på nettet",
-            } as Record<string, string>
-          )[toolName] ?? toolName;
+        const stepLabel = TOOL_STEP_LABELS[toolName] ?? toolName;
 
         await onEvent({
           type: "step",
           id: functionCall.call_id,
-          label: toolName,
+          label: stepLabel,
           status: "active",
         });
         await onEvent({ type: "tool_start", tool: toolName, label: stepLabel });
@@ -1100,7 +1180,7 @@ export async function runAgentChat(
       await onEvent({
         type: "step",
         id: functionCall.call_id,
-        label: toolName,
+        label: TOOL_STEP_LABELS[toolName] ?? toolName,
         status: "done",
       });
 
@@ -1207,8 +1287,26 @@ export async function runAgentChat(
       call_id: functionCall.call_id,
       output: JSON.stringify(compactToolResultForModel(result)),
     }));
+
+    if (useChatCompletionsFallback) {
+      for (const { functionCall, result } of executedTools) {
+        chatMessages.push({
+          role: "tool",
+          tool_call_id: functionCall.call_id,
+          content: JSON.stringify(compactToolResultForModel(result)),
+        });
+      }
+    }
+
     loops++;
   }
+
+  await onEvent({
+    type: "step",
+    id: "plan",
+    label: "Ferdig",
+    status: "done",
+  });
 
   const hitMaxLoops = loops >= maxToolLoops;
   const hadTools = toolSummaries.length > 0;

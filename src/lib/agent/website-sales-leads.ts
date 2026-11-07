@@ -69,6 +69,15 @@ export function isWebsiteSalesLeadIntent(message: string): boolean {
     return true;
   }
 
+  // «serveringsfirma i Nordland som trenger nettside» / «uten nettside»
+  if (
+    /\b(trenger|mangler|uten|uten egen)\s+(nettside|hjemmeside|webside)\b/.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
   return false;
 }
 

@@ -345,23 +345,28 @@ export async function POST(request: NextRequest) {
         }
         const errMsg = err instanceof Error ? err.message : "Ukjent feil";
         if (!doneSent) {
-          const built = buildAgentCompletionSummary({
-            toolSummaries,
-            hitMaxLoops: false,
-          });
-          const fallbackText = lastAssistantText.trim() || built.trim();
-          if (fallbackText) {
-            send({ type: "text", content: fallbackText });
-            send({ type: "done", content: fallbackText });
-            doneSent = true;
-            if (persist && conversationId) {
-              await saveMessage(conversationId, "assistant", fallbackText);
-            }
-            await completeRun("done", { assistantText: fallbackText, link: null });
-          } else {
-            send({ type: "error", message: errMsg });
-            await completeRun("failed", null, errMsg);
+          const built =
+            toolSummaries.length > 0
+              ? buildAgentCompletionSummary({
+                  toolSummaries,
+                  hitMaxLoops: false,
+                })
+              : "";
+          const fallbackText =
+            lastAssistantText.trim() ||
+            built.trim() ||
+            `Noe gikk galt i AI-assistenten: ${errMsg}`;
+          send({ type: "text", content: fallbackText });
+          send({ type: "done", content: fallbackText });
+          doneSent = true;
+          if (persist && conversationId) {
+            await saveMessage(conversationId, "assistant", fallbackText);
           }
+          await completeRun(
+            toolSummaries.length > 0 ? "done" : "failed",
+            { assistantText: fallbackText, link: null },
+            toolSummaries.length > 0 ? undefined : errMsg
+          );
         } else {
           send({ type: "error", message: errMsg });
           await completeRun("failed", null, errMsg);

@@ -27,6 +27,12 @@ import {
 } from "@/lib/agent/response-complete";
 import { ArrowUp, Clock, Square } from "lucide-react";
 
+type AgentStep = {
+  id: string;
+  label: string;
+  status: "pending" | "active" | "done";
+};
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "status";
@@ -35,12 +41,8 @@ type ChatMessage = {
   listId?: string;
   listName?: string;
   planConfirm?: PlanConfirmState;
-};
-
-type AgentStep = {
-  id: string;
-  label: string;
-  status: "pending" | "active" | "done";
+  steps?: AgentStep[];
+  thinking?: string;
 };
 
 const SUGGESTIONS = [
@@ -393,6 +395,8 @@ export function AgentChatPanel({
         let savedOrgnrCount: number | undefined;
         let receivedDone = false;
         let hadToolActivity = false;
+        let liveSteps: AgentStep[] = [];
+        let liveThinking = "";
 
         const ensureStreamingMessage = () => {
           if (streamingMessageId) return streamingMessageId;
@@ -439,13 +443,27 @@ export function AgentChatPanel({
             event.type === "thinking_delta" &&
             typeof event.content === "string"
           ) {
-            setThinkingText((prev) => prev + event.content);
+            liveThinking += event.content;
+            setThinkingText(liveThinking);
+            const id = ensureStreamingMessage();
+            setMessages((msgs) =>
+              msgs.map((m) =>
+                m.id === id ? { ...m, thinking: liveThinking } : m
+              )
+            );
             scrollToBottom();
           } else if (
             event.type === "thinking" &&
             typeof event.content === "string"
           ) {
-            setThinkingText(event.content);
+            liveThinking = event.content;
+            setThinkingText(liveThinking);
+            const id = ensureStreamingMessage();
+            setMessages((msgs) =>
+              msgs.map((m) =>
+                m.id === id ? { ...m, thinking: liveThinking } : m
+              )
+            );
           } else if (
             event.type === "step" &&
             typeof event.id === "string" &&
@@ -459,21 +477,46 @@ export function AgentChatPanel({
               label: event.label,
               status: event.status,
             };
-            setSteps((prev) => {
-              const index = prev.findIndex((item) => item.id === step.id);
-              if (index < 0) return [...prev, step];
-              return prev.map((item, itemIndex) =>
-                itemIndex === index ? step : item
-              );
-            });
+            const index = liveSteps.findIndex((item) => item.id === step.id);
+            liveSteps =
+              index < 0
+                ? [...liveSteps, step]
+                : liveSteps.map((item, itemIndex) =>
+                    itemIndex === index ? step : item
+                  );
+            setSteps(liveSteps);
+            const id = ensureStreamingMessage();
+            setMessages((msgs) =>
+              msgs.map((m) => (m.id === id ? { ...m, steps: liveSteps } : m))
+            );
             scrollToBottom();
           } else if (event.type === "tool_start" && typeof event.tool === "string") {
             hadToolActivity = true;
+            const label =
+              typeof event.label === "string"
+                ? event.label
+                : TOOL_STATUS_LABELS[event.tool] ?? event.tool;
             setActiveTool(event.tool);
-            setActiveToolLabel(
-              typeof event.label === "string" ? event.label : null
-            );
+            setActiveToolLabel(label);
             setToolProgress(null);
+            const step: AgentStep = {
+              id: `tool:${event.tool}:${Date.now()}`,
+              label,
+              status: "active",
+            };
+            liveSteps = [
+              ...liveSteps.map((item) =>
+                item.status === "active"
+                  ? { ...item, status: "done" as const }
+                  : item
+              ),
+              step,
+            ];
+            setSteps(liveSteps);
+            const id = ensureStreamingMessage();
+            setMessages((msgs) =>
+              msgs.map((m) => (m.id === id ? { ...m, steps: liveSteps } : m))
+            );
           } else if (
             event.type === "tool_progress" &&
             typeof event.scanned === "number" &&
@@ -490,6 +533,20 @@ export function AgentChatPanel({
             setActiveTool(null);
             setActiveToolLabel(null);
             setToolProgress(null);
+            liveSteps = liveSteps.map((item, index) =>
+              index === liveSteps.length - 1 && item.status === "active"
+                ? {
+                    ...item,
+                    status: "done" as const,
+                    label: event.summary as string,
+                  }
+                : item
+            );
+            setSteps(liveSteps);
+            const id = ensureStreamingMessage();
+            setMessages((msgs) =>
+              msgs.map((m) => (m.id === id ? { ...m, steps: liveSteps } : m))
+            );
           } else if (event.type === "confirm_save") {
             const id = ensureStreamingMessage();
             setMessages((prev) =>
@@ -640,6 +697,8 @@ export function AgentChatPanel({
                     listId: savedListId,
                     listName: savedListName,
                     planConfirm: m.planConfirm ?? planConfirm,
+                    steps: liveSteps.length > 0 ? liveSteps : m.steps,
+                    thinking: liveThinking || m.thinking,
                   }
                 : m
             );
@@ -849,6 +908,38 @@ export function AgentChatPanel({
                     "max-w-full px-2 py-0.5 text-center text-[11px] text-[#6b6b6b]"
                 )}
               >
+                {m.role === "assistant" &&
+                  ((m.steps && m.steps.length > 0) || m.thinking) && (
+                    <div className="mb-2.5 rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-[11px] text-[#b4b4b4]">
+                      {m.steps && m.steps.length > 0 && (
+                        <div className="space-y-1 border-l border-emerald-400/30 pl-2.5">
+                          {m.steps.map((step) => (
+                            <div
+                              key={step.id}
+                              className={cn(
+                                "flex items-start gap-2",
+                                step.status === "done" && "text-[#7f8a86]"
+                              )}
+                            >
+                              <span aria-hidden="true" className="mt-0.5">
+                                {step.status === "done"
+                                  ? "✓"
+                                  : step.status === "active"
+                                    ? "●"
+                                    : "○"}
+                              </span>
+                              <span>{TOOL_STATUS_LABELS[step.label] ?? step.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {m.thinking?.trim() && (
+                        <p className="mt-2 whitespace-pre-wrap border-t border-white/[0.06] pt-2 leading-relaxed text-[#8e8e93]">
+                          {m.thinking.trim()}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 <AgentMessageContent
                   content={m.content}
                   variant={m.role === "user" ? "user" : "assistant"}
