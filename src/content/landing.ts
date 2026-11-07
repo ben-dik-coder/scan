@@ -19,14 +19,14 @@ import {
 
 /** Forside — hero */
 export const HERO = {
-  eyebrow: "For deg som vil selge til nye firma i Norge",
+  eyebrow: "B2B-prospektering for Norge",
   titleLine1: "Finn nye kunder",
   titleLine2: "før konkurrentene",
   tagline:
-    "NyLead finner nye firma, kontaktinfo og tydelige kjøpssignaler på ett sted. Du ser hvem du bør kontakte, hvorfor akkurat nå, og kan ringe eller sende fra din egen innboks.",
+    "NyLead finner nye firma, kontaktinfo og signaler — og kan AI-ringe dem med skreddersydd manus. Skann, filtrer, ring, send og følg opp fra ett sted.",
   ctaPrimary: "Finn kunder i mitt område",
   ctaSecondary: "Opprett gratis konto",
-  trustLine: "499 kr/mnd · Ingen kredittkort for å se innsiden",
+  trustLine: "499 kr/mnd · Skann + AI-ring · Ingen kort for å se innsiden",
 };
 
 export type HeroStep = {

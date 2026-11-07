@@ -995,9 +995,11 @@ html[data-app-theme="apple"].app-glass-theme::before {
   border-color: rgba(255, 255, 255, 0.06);
 }
 
-[data-app-theme="apple"] .scan-glass-shell .app-overview-stat-card {
+[data-app-theme="apple"] .scan-glass-shell .app-overview-stat-card,
+[data-app-theme="apple"] .scan-glass-shell .app-overview-panel {
   border-color: rgba(255, 255, 255, 0.08);
   background: #2c2c2e;
+  box-shadow: none;
 }
 
 [data-app-theme="apple"] .scan-glass-shell .app-overview-pipeline-card {

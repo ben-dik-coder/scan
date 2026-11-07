@@ -9,6 +9,7 @@ import { SubscriberCapBanner } from "@/components/marketing/SubscriberCapBanner"
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
+  { href: "#ai-ring", label: "AI-ring" },
   { href: "#plattform", label: "Hva du får" },
   { href: "#slik-funker-det", label: "Slik funker det" },
   { href: "#pris", label: "Pris" },
