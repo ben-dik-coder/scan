@@ -38,6 +38,7 @@ import {
 import {
   buildAgentSystemPrompt,
   AGENT_FINAL_SUMMARY_NUDGE,
+  isConversationalOnlyIntent,
   isQuickGreetingIntent,
   isSimpleSearchIntent,
   quickGreetingReply,
@@ -120,19 +121,22 @@ function normalizeAgentModel(raw: string): string {
     .replace(/\s+/g, " ")
     .trim();
 
+  // Sol aliases first — must not fall through to "gpt-5-mini" heuristics
+  if (
+    key === "sol" ||
+    key === "chatgpt-sol" ||
+    key === "gpt-5.6" ||
+    key === "gpt-5.6-sol" ||
+    key === "gpt5.6-sol" ||
+    key === "gpt-5-6-sol"
+  ) {
+    return "gpt-5.6-sol";
+  }
   if (/gpt[\s-]?5[\s-]?mini/.test(key) || /gtp[\s-]?5[\s-]?mini/.test(key)) {
     return "gpt-5-mini";
   }
   if (/gpt[\s-]?4o[\s-]?mini/.test(key)) return "gpt-4o-mini";
   if (key === "gpt-4o") return "gpt-4o";
-  if (
-    key === "sol" ||
-    key === "chatgpt-sol" ||
-    key === "gpt-5.6" ||
-    key === "gpt-5.6-sol"
-  ) {
-    return "gpt-5.6-sol";
-  }
 
   return raw.trim();
 }
@@ -141,6 +145,62 @@ function getAgentModel(): string {
   const raw = process.env.OPENAI_AGENT_MODEL?.trim();
   if (!raw) return "gpt-5.6-sol";
   return normalizeAgentModel(raw);
+}
+
+/** Primary model first, then cheaper fallbacks if billing/quota flakes. */
+function getAgentModelCandidates(): string[] {
+  const primary = getAgentModel();
+  const extras = (process.env.OPENAI_AGENT_FALLBACK_MODELS ?? "gpt-5.5,gpt-4o-mini")
+    .split(",")
+    .map((value) => normalizeAgentModel(value.trim()))
+    .filter(Boolean);
+  return [...new Set([primary, ...extras])];
+}
+
+function isOpenAIBillingError(err: unknown): boolean {
+  const record =
+    err && typeof err === "object" ? (err as Record<string, unknown>) : null;
+  const nested =
+    record && typeof record.error === "object" && record.error
+      ? (record.error as Record<string, unknown>)
+      : null;
+  const code = String(record?.code ?? nested?.code ?? "");
+  const type = String(record?.type ?? nested?.type ?? "");
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    code === "credit_balance_exhausted" ||
+    code === "insufficient_quota" ||
+    code === "project_spend_limit_exceeded" ||
+    code === "organization_spend_limit_exceeded" ||
+    type === "insufficient_quota" ||
+    /credit_balance_exhausted|insufficient_quota|no credits remaining|spend limit/i.test(
+      `${code} ${type} ${message}`
+    )
+  );
+}
+
+async function withAgentModelFallback<T>(
+  label: string,
+  run: (model: string) => Promise<T>
+): Promise<T> {
+  const models = getAgentModelCandidates();
+  let lastError: unknown;
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i]!;
+    try {
+      return await run(model);
+    } catch (err) {
+      lastError = err;
+      const canFallback =
+        i < models.length - 1 && isOpenAIBillingError(err);
+      console.error(
+        `[agent] ${label} failed on ${model}${canFallback ? ` — prøver ${models[i + 1]}` : ""}`,
+        err
+      );
+      if (!canFallback) throw err;
+    }
+  }
+  throw lastError;
 }
 
 function getReasoningEffort():
@@ -381,6 +441,30 @@ function shouldSkipSynthesis(
   return searchSummary.length > 0;
 }
 
+async function synthesizeConversationalReply(
+  client: OpenAI,
+  model: string,
+  history: AgentChatMessage[],
+  systemPrompt: string,
+  signal?: AbortSignal
+): Promise<string> {
+  throwIfAborted(signal);
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...history
+        .filter((message) => message.role !== "system")
+        .map((message) => ({
+          role: message.role as "user" | "assistant",
+          content: message.content,
+        })),
+    ],
+    max_completion_tokens: 800,
+  });
+  return response.choices[0]?.message?.content?.trim() ?? "";
+}
+
 async function synthesizeAgentReply(
   client: OpenAI,
   toolSummaries: string[],
@@ -447,11 +531,45 @@ export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
 
   if (summary.hitMaxLoops) {
     parts.unshift("Jobben tok mange steg og stoppet ved grensen.");
-  } else if (parts.length === 0) {
-    return "Jeg fikk ikke kjørt søket ferdig. Prøv på nytt med f.eks. «finn 10 serveringsfirma i Nordland uten nettside».";
   }
 
-  return parts.join("\n\n");
+  return parts.join("\n\n").trim();
+}
+
+function friendlyOpenAIError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const record =
+    err && typeof err === "object" ? (err as Record<string, unknown>) : null;
+  const nested =
+    record && typeof record.error === "object" && record.error
+      ? (record.error as Record<string, unknown>)
+      : null;
+  const code = String(record?.code ?? nested?.code ?? "");
+  const type = String(record?.type ?? nested?.type ?? "");
+  const status = Number(record?.status ?? 0);
+  const blob = `${code} ${type} ${message}`;
+
+  if (
+    code === "project_spend_limit_exceeded" ||
+    /project_spend_limit/i.test(blob)
+  ) {
+    return "OpenAI-prosjektet har nådd spend-grensen. Øk project spend limit i OpenAI, eller vent til grensen nullstilles.";
+  }
+  if (
+    code === "credit_balance_exhausted" ||
+    code === "insufficient_quota" ||
+    code === "organization_spend_limit_exceeded" ||
+    type === "insufficient_quota" ||
+    /credit_balance_exhausted|insufficient_quota|no credits remaining|billing/i.test(
+      blob
+    )
+  ) {
+    return "OpenAI sier fortsatt at API-saldoen er tom for denne nøkkelen. Sjekk at du fylte på riktig organisasjon/prosjekt (samme som API-nøkkelen), vent et par minutter, og prøv igjen.";
+  }
+  if (status === 429 || /429|rate limit/i.test(message)) {
+    return "OpenAI er midlertidig overbelastet (rate limit). Prøv igjen om litt.";
+  }
+  return "Beklager — jeg klarte ikke å svare akkurat nå. Prøv igjen om litt.";
 }
 
 const TOOL_STEP_LABELS: Record<string, string> = {
@@ -509,7 +627,7 @@ export async function runAgentChat(
     return { assistantText: msg };
   }
 
-  const model = getAgentModel();
+  let model = getAgentModel();
   const basePrompt = buildAgentSystemPrompt(model);
   const systemPrompt = options?.systemPromptExtra
     ? `${basePrompt}\n\n${options.systemPromptExtra}`
@@ -560,7 +678,64 @@ export async function runAgentChat(
   );
 
   if (isQuickGreetingIntent(lastUserMessage)) {
-    assistantText = quickGreetingReply(lastUserMessage);
+    assistantText = quickGreetingReply(lastUserMessage, model);
+    await onEvent({ type: "text", content: assistantText });
+    await onEvent({ type: "done", content: assistantText });
+    return { assistantText };
+  }
+
+  // Vanlige spørsmål uten verktøy — hopp over Responses/tool-loop (mer stabilt)
+  if (isConversationalOnlyIntent(lastUserMessage)) {
+    try {
+      assistantText = await withAgentModelFallback(
+        "conversational chat",
+        async (activeModel) => {
+          const choice = await streamChatCompletionsTurn({
+            client,
+            model: activeModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...history
+                .filter((message) => message.role !== "system")
+                .map((message) => ({
+                  role: message.role as "user" | "assistant",
+                  content: message.content,
+                })),
+            ],
+            onTextDelta: async (delta) => {
+              await onEvent({ type: "text_delta", content: delta });
+            },
+            signal,
+            disableTools: true,
+          });
+          const text = choice.content.trim();
+          if (text) return text;
+          return synthesizeConversationalReply(
+            client,
+            activeModel,
+            history,
+            systemPrompt,
+            signal
+          );
+        }
+      );
+    } catch (err) {
+      console.error("[agent] conversational chat failed", err);
+      assistantText = friendlyOpenAIError(err);
+    }
+    if (!assistantText.trim()) {
+      assistantText =
+        "Beklager — jeg fikk ikke fram et svar. Kan du spørre på en annen måte?";
+    }
+    // Aldri la modellen late som den mangler database-tilgang
+    if (
+      /ikke tilgang til (databasen|firmaregister|brreg)|klarer ikke å søke|søket ble ikke faktisk startet/i.test(
+        assistantText
+      )
+    ) {
+      assistantText =
+        "Jeg har tilgang til firmadatabasen. Prøv søket én gang til — f.eks. «finn 10 frisører i Oslo» — så kjører jeg search med en gang.";
+    }
     await onEvent({ type: "text", content: assistantText });
     await onEvent({ type: "done", content: assistantText });
     return { assistantText };
@@ -1008,31 +1183,37 @@ export async function runAgentChat(
 
     if (!useChatCompletionsFallback) {
       try {
-        const turn = await streamResponsesTurn({
-          client,
-          model,
-          instructions: loops === 0 ? systemPrompt : undefined,
-          input: responsesInput,
-          previousResponseId,
-          reasoningEffort: getReasoningEffort(),
-          onTextDelta: async (delta) => {
-            streamedContent += delta;
-            await onEvent({ type: "text_delta", content: delta });
-          },
-          onThinkingDelta: async (delta) => {
-            thinkingContent += delta;
-            await onEvent({ type: "thinking_delta", content: delta });
-          },
-          onWebSearch: async (status) => {
-            await onEvent({
-              type: "step",
-              id: "hosted-web-search",
-              label: "Søker på nettet",
-              status: status === "completed" ? "done" : "active",
+        const turn = await withAgentModelFallback(
+          "responses turn",
+          async (activeModel) => {
+            model = activeModel;
+            return streamResponsesTurn({
+              client,
+              model: activeModel,
+              instructions: loops === 0 ? systemPrompt : undefined,
+              input: responsesInput,
+              previousResponseId,
+              reasoningEffort: getReasoningEffort(),
+              onTextDelta: async (delta) => {
+                streamedContent += delta;
+                await onEvent({ type: "text_delta", content: delta });
+              },
+              onThinkingDelta: async (delta) => {
+                thinkingContent += delta;
+                await onEvent({ type: "thinking_delta", content: delta });
+              },
+              onWebSearch: async (status) => {
+                await onEvent({
+                  type: "step",
+                  id: "hosted-web-search",
+                  label: "Søker på nettet",
+                  status: status === "completed" ? "done" : "active",
+                });
+              },
+              signal,
             });
-          },
-          signal,
-        });
+          }
+        );
         previousResponseId = turn.responseId;
         functionCalls = turn.functionCalls;
         if (turn.content.trim()) {
@@ -1046,7 +1227,7 @@ export async function runAgentChat(
         await onEvent({
           type: "step",
           id: "plan",
-          label: "Bytter til sikker chat-modus",
+          label: "Bytter til sikker modus",
           status: "active",
         });
       }
@@ -1054,16 +1235,22 @@ export async function runAgentChat(
 
     if (useChatCompletionsFallback) {
       streamedContent = "";
-      const choice = await streamChatCompletionsTurn({
-        client,
-        model,
-        messages: chatMessages,
-        onTextDelta: async (delta) => {
-          streamedContent += delta;
-          await onEvent({ type: "text_delta", content: delta });
-        },
-        signal,
-      });
+      const choice = await withAgentModelFallback(
+        "chat completions turn",
+        async (activeModel) => {
+          model = activeModel;
+          return streamChatCompletionsTurn({
+            client,
+            model: activeModel,
+            messages: chatMessages,
+            onTextDelta: async (delta) => {
+              streamedContent += delta;
+              await onEvent({ type: "text_delta", content: delta });
+            },
+            signal,
+          });
+        }
+      );
       if (choice.content.trim()) {
         assistantText = choice.content.trim();
       } else if (streamedContent.trim()) {
@@ -1301,12 +1488,14 @@ export async function runAgentChat(
     loops++;
   }
 
-  await onEvent({
-    type: "step",
-    id: "plan",
-    label: "Ferdig",
-    status: "done",
-  });
+  if (toolSummaries.length > 0) {
+    await onEvent({
+      type: "step",
+      id: "plan",
+      label: "Oppsummerer",
+      status: "done",
+    });
+  }
 
   const hitMaxLoops = loops >= maxToolLoops;
   const hadTools = toolSummaries.length > 0;
@@ -1362,7 +1551,38 @@ export async function runAgentChat(
   }
 
   if (!assistantText.trim()) {
-    assistantText = buildAgentCompletionSummary(runSummary);
+    const fromTools = buildAgentCompletionSummary(runSummary);
+    if (fromTools) {
+      assistantText = fromTools;
+    } else {
+      try {
+        assistantText = await synthesizeConversationalReply(
+          client,
+          model,
+          history,
+          systemPrompt,
+          signal
+        );
+      } catch {
+        assistantText = "";
+      }
+    }
+    if (!assistantText.trim()) {
+      assistantText =
+        "Beklager — jeg klarte ikke å fullføre akkurat nå. Prøv igjen, eller omformuler spørsmålet.";
+    }
+    await onEvent({ type: "text", content: assistantText });
+  }
+
+  if (
+    /ikke tilgang til (databasen|firmaregister|brreg)|klarer ikke å søke|søket ble ikke faktisk startet/i.test(
+      assistantText
+    )
+  ) {
+    assistantText = hadTools
+      ? buildAgentCompletionSummary(runSummary) ||
+        "Søket kjørte, men oppsummeringen feilet. Prøv igjen så får du lista direkte."
+      : "Jeg har tilgang til firmadatabasen. Send søket på nytt — f.eks. «finn 10 restauranter uten nettside» — så starter jeg med en gang.";
     await onEvent({ type: "text", content: assistantText });
   }
 

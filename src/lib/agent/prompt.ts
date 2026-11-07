@@ -58,7 +58,7 @@ export function isAgentResumeIntent(message: string): boolean {
   );
 }
 
-/** Kort hilsen — svar med en gang uten OpenAI. */
+/** Kort chat uten verktøy — svar med en gang uten OpenAI. */
 export function isQuickGreetingIntent(message: string): boolean {
   const normalized = message
     .trim()
@@ -68,22 +68,53 @@ export function isQuickGreetingIntent(message: string): boolean {
   if (!normalized) return false;
 
   return (
-    /^(hei|heia|hallo|god\s*(morgen|dag|kveld))$/.test(normalized) ||
+    /^(hei|heia|hallo|god\s*(morgen|dag|kveld))(\s+\S+)?$/.test(normalized) ||
     /^(takk|tusen\s+takk|thanks)$/.test(normalized) ||
-    /^hva\s+kan\s+du(\s+hjelpe(\s+med)?)?$/.test(normalized) ||
-    /^hva\s+(gjør|kan)\s+du$/.test(normalized)
+    /^hva\s+kan\s+du(\s+hjelpe(\s+med)?)?(\s+i\s+\S+)?$/.test(normalized) ||
+    /^hva\s+(gjør|kan)\s+du(\s+i\s+\S+)?$/.test(normalized) ||
+    /^hva\s+kan\s+du\s+gjøre(\s+i\s+\S+)?$/.test(normalized) ||
+    /^(hvilken|hvilke|what)\s+(ai[\s-]?)?(modell|model)\b/.test(normalized) ||
+    /\b(hvilken|hvilke)\s+(ai[\s-]?)?(modell|model)\s+(er|bruker)\s+du\b/.test(
+      normalized
+    ) ||
+    /^(hvem\s+er\s+du|what\s+model\s+are\s+you)$/.test(normalized)
   );
 }
 
-export function quickGreetingReply(message: string): string {
+export function quickGreetingReply(message: string, model?: string): string {
   const normalized = message.trim().toLowerCase();
   if (/^takk|thanks|tusen takk/.test(normalized)) {
     return "Bare hyggelig 😊 Hva vil du jobbe videre med?";
   }
-  if (/hva\s+(kan|gjør)\s+du/.test(normalized)) {
+  if (/hva\s+(kan|gjør)\s+du|hva\s+kan\s+du\s+gjøre/.test(normalized)) {
     return "Jeg kan finne og undersøke firma, lage lister, hjelpe med Smartliste og pipeline, og utføre oppgaver i NyLead. Hva vil du få gjort?";
   }
+  if (
+    /modell|model|hvem\s+er\s+du/.test(normalized)
+  ) {
+    const modelName = model?.trim() || "gpt-5.6-sol";
+    return `Jeg kjører på **${modelName}** fra OpenAI (ChatGPT Sol). Si ifra hvis du vil at jeg skal søke firma, lage lister eller gjøre noe i NyLead ✨`;
+  }
   return "Hei! 👋 Hva kan jeg hjelpe deg med i NyLead i dag?";
+}
+
+/** Småprat / spørsmål uten søk eller endringer — bruk vanlig chat uten tools. */
+export function isConversationalOnlyIntent(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  if (isQuickGreetingIntent(message)) return true;
+
+  const wantsTools =
+    /\b(finn|finne|søk|sok|list|vis|hent|skann|scan|lagre|slett|opprett|oppdater|berik|ring|sms|smartliste|pipeline|kø|eksporter|notat)\b/.test(
+      normalized
+    ) ||
+    /\b(uten|trenger|mangler)\s+(nettside|hjemmeside)\b/.test(normalized) ||
+    /\b(firma|frisør|frisor|bygg|restaurant|servering|fast\s*food|daglig\s+leder)\b/.test(
+      normalized
+    );
+
+  if (wantsTools) return false;
+  return normalized.length <= 220;
 }
 
 function formatOrgnrList(orgnrs: string[], maxShown = 12): string {
@@ -182,6 +213,20 @@ PERSONLIGHET OG SVARSTIL (A-tier ChatGPT-opplevelse):
 - Varier formuleringene — ikke gjenbruk samme mal fra forrige svar
 - Spør aldri om kommunekoder eller interne grenser. Brukeren sier «Bodø» — du finner koden selv
 - Mangler info? Still ett enkelt oppfølgingsspørsmål i en setning — ikke en sjekkliste
+
+TILGANG — HARD REGEL (aldri bryt):
+- Du HAR alltid tilgang til Brreg-databasen via search_companies og de andre verktøyene i denne chatten
+- Si ALDRI at du mangler tilgang til databasen, firmaregisteret, Brreg, eller at søk «ikke kan startes» i denne samtalen
+- Si ALDRI at forrige svar var misvisende fordi du «ikke har tilgang» — det er feil
+- Hvis et verktøy feiler teknisk: si kort «Noe gikk galt teknisk — prøv igjen», og prøv verktøyet på nytt. Finn aldri på at tilgangen mangler
+- Når brukeren ber om å finne firma: KJØR search_companies med en gang. Ikke forklar at du ikke kan
+
+KOMPLEKSE LEAD-SØK (f.eks. «20 uten nettside, restaurant, siste uke, med tlf og daglig leder, lag notat»):
+1. search_companies med riktig bransje (servering for restaurant/fast food), days: 7 for «siste uke», requirePhone: true, withoutWebsite: true når de ber om uten nettside
+2. scan_websites + filter_no_website når uten nettside er krav
+3. Behold bare firma med telefon og daglig leder (fra søkeresultat / beriking)
+4. For hvert firma: update_lead med et kort notat (bransje, sted, hva de driver med, hvorfor de passer)
+5. Presenter lista tydelig: navn, orgnr, tlf, daglig leder, notat — og tilby å lagre listen
 
 NYLEAD — PRODUKTKUNNSKAP:
 - Skann finner norske firma fra Brønnøysundregistrene, kan kontrollere nettsider og sosiale profiler, berike kontaktinfo og lagre målgrupper

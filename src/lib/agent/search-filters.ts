@@ -594,6 +594,10 @@ export function parseListDaysFromMessage(message: string): number | undefined {
 
   if (/\b(alle tider|hele perioden)\b/.test(normalized)) return 0;
 
+  // «siste uke» / «den siste uka» / «forrige uke»
+  if (/\b(siste|forrige|den\s+siste)\s+uk[ea]\b/.test(normalized)) return 7;
+  if (/\b(siste|forrige)\s+maned\b/.test(normalized)) return 30;
+
   const match = normalized.match(
     /\b(?:siste|nyeste|ikke eldre enn|max|maks)\s+(\d{1,3})\s+dager\b/
   );

@@ -140,6 +140,7 @@ export function AgentChatPanel({
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [composerFocused, setComposerFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
@@ -778,7 +779,7 @@ export function AgentChatPanel({
       panelClassName="flex flex-col overflow-hidden border-white/[0.05] bg-[#212121]"
       footer={
         <div
-          className="sticky bottom-0 z-10 bg-[#212121] px-3 pt-2 sm:px-4"
+          className="sticky bottom-0 z-10 overflow-visible bg-[#212121] px-3 pt-3 sm:px-4"
           style={{
             paddingBottom: `max(${keyboardInset}px, env(safe-area-inset-bottom, 0px), 0.75rem)`,
           }}
@@ -810,39 +811,52 @@ export function AgentChatPanel({
                 </span>
               )}
             </button>
-            <div className="flex min-w-0 flex-1 items-center gap-1 rounded-[26px] border border-white/[0.08] bg-[#2f2f2f] px-3 py-1.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)] focus-within:border-white/[0.14]">
-              <input
-                ref={inputRef}
-                type="text"
-                enterKeyHint="send"
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Spør om hva som helst…"
-                disabled={loading}
-                className="min-h-[40px] min-w-0 flex-1 bg-transparent py-2 text-[16px] text-[#ececec] placeholder:text-[#8e8e93] focus:outline-none disabled:opacity-60 sm:text-[15px]"
-              />
-              {loading ? (
-                <button
-                  type="button"
-                  onClick={stopRequest}
-                  className="flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95"
-                  aria-label="Stopp"
-                >
-                  <Square className="h-3 w-3 fill-current" />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  className="flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95 disabled:bg-[#424242] disabled:text-[#6b6b6b]"
-                  aria-label="Send"
-                >
-                  <ArrowUp className="h-[16px] w-[16px]" strokeWidth={2.5} />
-                </button>
+            <div
+              className={cn(
+                "agent-composer-shell min-w-0 flex-1",
+                (composerFocused || input.trim().length > 0) &&
+                  "agent-composer-shell--aura"
               )}
+            >
+              <span className="agent-composer-shell__glow" aria-hidden="true" />
+              <div className="agent-composer-shell__ring">
+                <div className="agent-composer-shell__inner flex items-center gap-1 rounded-[26px] border border-white/[0.08] bg-[#2f2f2f] px-3 py-1.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    enterKeyHint="send"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onFocus={() => setComposerFocused(true)}
+                    onBlur={() => setComposerFocused(false)}
+                    placeholder="Spør om hva som helst…"
+                    disabled={loading}
+                    className="min-h-[40px] min-w-0 flex-1 bg-transparent py-2 text-[16px] text-[#ececec] placeholder:text-[#8e8e93] focus:outline-none disabled:opacity-60 sm:text-[15px]"
+                  />
+                  {loading ? (
+                    <button
+                      type="button"
+                      onClick={stopRequest}
+                      className="flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95"
+                      aria-label="Stopp"
+                    >
+                      <Square className="h-3 w-3 fill-current" />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!input.trim()}
+                      className="flex h-8 w-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-full bg-[#ececec] text-[#212121] transition hover:bg-white active:scale-95 disabled:bg-[#424242] disabled:text-[#6b6b6b]"
+                      aria-label="Send"
+                    >
+                      <ArrowUp className="h-[16px] w-[16px]" strokeWidth={2.5} />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </form>
         </div>
@@ -910,31 +924,34 @@ export function AgentChatPanel({
               >
                 {m.role === "assistant" &&
                   ((m.steps && m.steps.length > 0) || m.thinking) && (
-                    <div className="mb-2.5 rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-[11px] text-[#b4b4b4]">
+                    <div className="agent-work-panel agent-work-panel--history">
                       {m.steps && m.steps.length > 0 && (
-                        <div className="space-y-1 border-l border-emerald-400/30 pl-2.5">
-                          {m.steps.map((step) => (
-                            <div
-                              key={step.id}
-                              className={cn(
-                                "flex items-start gap-2",
-                                step.status === "done" && "text-[#7f8a86]"
-                              )}
-                            >
-                              <span aria-hidden="true" className="mt-0.5">
-                                {step.status === "done"
-                                  ? "✓"
-                                  : step.status === "active"
-                                    ? "●"
-                                    : "○"}
-                              </span>
-                              <span>{TOOL_STATUS_LABELS[step.label] ?? step.label}</span>
-                            </div>
-                          ))}
+                        <div className="agent-work-panel__steps" style={{ marginTop: 0 }}>
+                          {m.steps
+                            .filter((step) => step.label !== "Ferdig")
+                            .map((step) => (
+                              <div
+                                key={step.id}
+                                className={cn(
+                                  "agent-work-panel__step",
+                                  step.status === "done" &&
+                                    "agent-work-panel__step--done",
+                                  step.status === "active" &&
+                                    "agent-work-panel__step--active"
+                                )}
+                              >
+                                <span className="agent-work-panel__icon" aria-hidden="true">
+                                  {step.status === "done" ? "✓" : "·"}
+                                </span>
+                                <span>
+                                  {TOOL_STATUS_LABELS[step.label] ?? step.label}
+                                </span>
+                              </div>
+                            ))}
                         </div>
                       )}
                       {m.thinking?.trim() && (
-                        <p className="mt-2 whitespace-pre-wrap border-t border-white/[0.06] pt-2 leading-relaxed text-[#8e8e93]">
+                        <p className="agent-work-panel__thinking">
                           {m.thinking.trim()}
                         </p>
                       )}
@@ -1029,49 +1046,73 @@ export function AgentChatPanel({
 
         {loading && (
           <div className="flex justify-start" role="status" aria-live="polite" aria-busy="true">
-            <div className="w-full max-w-[90%] rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-xs text-[#b4b4b4]">
-              <div className="flex items-center gap-2 text-[#d4d4d4]">
-                <span className="agent-thinking-bubble__dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
+            <div className="agent-work-panel">
+              <div className="agent-work-panel__header">
+                <span className="agent-work-panel__pulse" aria-hidden="true" />
+                <span>
+                  {activeToolLabel ||
+                    (steps.some((s) => s.status === "active")
+                      ? TOOL_STATUS_LABELS[
+                          steps.find((s) => s.status === "active")!.label
+                        ] ?? steps.find((s) => s.status === "active")!.label
+                      : "Tenker")}
                 </span>
-                <span>Jobber med saken</span>
               </div>
               {(steps.length > 0 || activeTool) && (
-                <div className="mt-2.5 space-y-1.5 border-l border-white/[0.1] pl-3">
-                  {steps.map((step) => (
-                    <div
-                      key={step.id}
-                      className={cn(
-                        "flex items-center gap-2",
-                        step.status === "done" && "text-[#7f8a86]"
-                      )}
-                    >
-                      <span aria-hidden="true">
-                        {step.status === "done" ? "✓" : step.status === "active" ? "●" : "○"}
-                      </span>
-                      <span>
-                        {TOOL_STATUS_LABELS[step.label] ?? step.label}
-                        {step.status === "active" && toolProgress && activeTool === step.label
-                          ? `… ${toolProgress.scanned}/${toolProgress.total}`
-                          : ""}
-                      </span>
-                    </div>
-                  ))}
+                <div className="agent-work-panel__steps">
+                  {steps
+                    .filter((step) => step.label !== "Ferdig")
+                    .map((step) => {
+                      const progressSuffix =
+                        step.status === "active" && toolProgress
+                          ? ` · ${toolProgress.scanned}/${toolProgress.total}`
+                          : "";
+                      return (
+                        <div
+                          key={step.id}
+                          className={cn(
+                            "agent-work-panel__step",
+                            step.status === "done" && "agent-work-panel__step--done",
+                            step.status === "active" &&
+                              "agent-work-panel__step--active"
+                          )}
+                        >
+                          {step.status === "active" ? (
+                            <span
+                              className="agent-work-panel__icon agent-work-panel__icon--active"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <span className="agent-work-panel__icon" aria-hidden="true">
+                              {step.status === "done" ? "✓" : "·"}
+                            </span>
+                          )}
+                          <span>
+                            {TOOL_STATUS_LABELS[step.label] ?? step.label}
+                            {progressSuffix}
+                          </span>
+                        </div>
+                      );
+                    })}
                   {steps.length === 0 && activeTool && (
-                    <div>
-                      {toolProgress
-                        ? `${activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber"}… ${toolProgress.scanned}/${toolProgress.total}`
-                        : activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber…"}
+                    <div className="agent-work-panel__step agent-work-panel__step--active">
+                      <span
+                        className="agent-work-panel__icon agent-work-panel__icon--active"
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {toolProgress
+                          ? `${activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber"} · ${toolProgress.scanned}/${toolProgress.total}`
+                          : activeToolLabel ??
+                            TOOL_STATUS_LABELS[activeTool] ??
+                            "Jobber…"}
+                      </span>
                     </div>
                   )}
                 </div>
               )}
               {thinkingText.trim() && (
-                <p className="mt-2.5 whitespace-pre-wrap border-t border-white/[0.06] pt-2.5 leading-relaxed text-[#8e8e93]">
-                  {thinkingText.trim()}
-                </p>
+                <p className="agent-work-panel__thinking">{thinkingText.trim()}</p>
               )}
             </div>
           </div>
