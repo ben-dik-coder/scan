@@ -187,16 +187,23 @@ html.app-glass-theme body {
 }
 
 .scan-glass-shell .app-overview-stat-card {
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: #f8fafc;
+  box-shadow: none;
+}
+
+.scan-glass-shell .app-overview-panel {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
   color: #f8fafc;
 }
 
 .scan-glass-shell .app-overview-pipeline-card {
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
   color: #f8fafc;
   text-decoration: none;
 }
