@@ -1,5 +1,27 @@
 import { getEntitlements } from "@/lib/billing/entitlements";
 import {
+  create_smartlist,
+  delete_lead,
+  delete_saved_list,
+  delete_smartlist,
+  get_settings,
+  hangup_ai_call,
+  list_smartlists,
+  request_delete_confirm,
+  send_sms,
+  set_company_phone,
+  set_lead_status,
+  smartlist_add_items,
+  smartlist_remove_items,
+  smartlist_update_items,
+  start_ai_call,
+  update_lead,
+  update_saved_list,
+  update_settings,
+  update_smartlist,
+  web_search,
+} from "@/lib/agent/execute-tool-edit";
+import {
   getSerperUsage,
   SerperLimitReachedError,
 } from "@/lib/billing/serper-usage";
@@ -87,6 +109,7 @@ import type { Company } from "@/types/database";
 export type AgentToolContext = {
   userId: string;
   runId: string;
+  deleteConfirmToken?: string | null;
   onProgress?: (progress: {
     tool: string;
     scanned: number;
@@ -231,6 +254,46 @@ export async function executeAgentTool(
       return executeFilterNoWebsite(ctx, args);
     case "save_list":
       return executeSaveList(ctx, args);
+    case "update_saved_list":
+      return update_saved_list(ctx, args);
+    case "delete_saved_list":
+      return delete_saved_list(ctx, args);
+    case "list_smartlists":
+      return list_smartlists(ctx, args);
+    case "create_smartlist":
+      return create_smartlist(ctx, args);
+    case "update_smartlist":
+      return update_smartlist(ctx, args);
+    case "delete_smartlist":
+      return delete_smartlist(ctx, args);
+    case "smartlist_add_items":
+      return smartlist_add_items(ctx, args);
+    case "smartlist_update_items":
+      return smartlist_update_items(ctx, args);
+    case "smartlist_remove_items":
+      return smartlist_remove_items(ctx, args);
+    case "set_lead_status":
+      return set_lead_status(ctx, args);
+    case "update_lead":
+      return update_lead(ctx, args);
+    case "delete_lead":
+      return delete_lead(ctx, args);
+    case "set_company_phone":
+      return set_company_phone(ctx, args);
+    case "start_ai_call":
+      return start_ai_call(ctx, args);
+    case "hangup_ai_call":
+      return hangup_ai_call(ctx, args);
+    case "send_sms":
+      return send_sms(ctx, args);
+    case "get_settings":
+      return get_settings(ctx, args);
+    case "update_settings":
+      return update_settings(ctx, args);
+    case "web_search":
+      return web_search(ctx, args);
+    case "request_delete_confirm":
+      return request_delete_confirm(ctx, args);
     default:
       return {
         summary: `Ukjent verktøy: ${name}`,

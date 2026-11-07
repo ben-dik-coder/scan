@@ -17,7 +17,7 @@ import { AgentScheduleModal } from "@/components/agent/AgentScheduleModal";
 import {
   detectPlanConfirmKind,
   planConfirmActions,
-  type PlanConfirmKind,
+  type PlanConfirmState,
 } from "@/lib/agent/plan-confirm";
 import { AGENT_CLIENT_TIMEOUT_MS } from "@/lib/agent/constants";
 import { isAgentResumeIntent } from "@/lib/agent/prompt";
@@ -34,7 +34,13 @@ type ChatMessage = {
   link?: string;
   listId?: string;
   listName?: string;
-  planConfirm?: PlanConfirmKind;
+  planConfirm?: PlanConfirmState;
+};
+
+type AgentStep = {
+  id: string;
+  label: string;
+  status: "pending" | "active" | "done";
 };
 
 const SUGGESTIONS = [
@@ -54,6 +60,27 @@ const TOOL_STATUS_LABELS: Record<string, string> = {
   list_saved_lists: "Henter lagrede lister",
   load_saved_list: "Laster liste",
   remember_preference: "Lagrer preferanse",
+  update_saved_list: "Oppdaterer liste",
+  request_delete_confirm: "Forbereder trygg sletting",
+  delete_saved_list: "Sletter liste",
+  list_smartlists: "Henter Smartlister",
+  create_smartlist: "Oppretter Smartliste",
+  update_smartlist: "Oppdaterer Smartliste",
+  delete_smartlist: "Sletter Smartliste",
+  smartlist_add_items: "Legger til firmakort",
+  smartlist_update_items: "Oppdaterer firmakort",
+  smartlist_remove_items: "Fjerner firmakort",
+  set_lead_status: "Oppdaterer pipeline",
+  update_lead: "Oppdaterer lead",
+  delete_lead: "Sletter lead",
+  set_company_phone: "Oppdaterer telefon",
+  start_ai_call: "Starter AI-samtale",
+  hangup_ai_call: "Avslutter AI-samtale",
+  send_sms: "Sender SMS",
+  get_settings: "Henter innstillinger",
+  update_settings: "Oppdaterer innstillinger",
+  web_search: "Søker på nettet",
+  get_entitlements: "Sjekker tilgang",
 };
 
 function newId() {
@@ -123,6 +150,8 @@ export function AgentChatPanel({
     scanned: number;
     total: number;
   } | null>(null);
+  const [thinkingText, setThinkingText] = useState("");
+  const [steps, setSteps] = useState<AgentStep[]>([]);
   const [serperUsage, setSerperUsage] = useState<SerperUsage | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -305,6 +334,8 @@ export function AgentChatPanel({
       setActiveTool(null);
       setActiveToolLabel(null);
       setToolProgress(null);
+      setThinkingText("");
+      setSteps([]);
 
       try {
         const res = await fetch("/api/agent/chat", {
@@ -404,6 +435,38 @@ export function AgentChatPanel({
             appendStreamingDelta(event.content);
           } else if (event.type === "text" && typeof event.content === "string") {
             setAssistantContent(event.content);
+          } else if (
+            event.type === "thinking_delta" &&
+            typeof event.content === "string"
+          ) {
+            setThinkingText((prev) => prev + event.content);
+            scrollToBottom();
+          } else if (
+            event.type === "thinking" &&
+            typeof event.content === "string"
+          ) {
+            setThinkingText(event.content);
+          } else if (
+            event.type === "step" &&
+            typeof event.id === "string" &&
+            typeof event.label === "string" &&
+            (event.status === "pending" ||
+              event.status === "active" ||
+              event.status === "done")
+          ) {
+            const step: AgentStep = {
+              id: event.id,
+              label: event.label,
+              status: event.status,
+            };
+            setSteps((prev) => {
+              const index = prev.findIndex((item) => item.id === step.id);
+              if (index < 0) return [...prev, step];
+              return prev.map((item, itemIndex) =>
+                itemIndex === index ? step : item
+              );
+            });
+            scrollToBottom();
           } else if (event.type === "tool_start" && typeof event.tool === "string") {
             hadToolActivity = true;
             setActiveTool(event.tool);
@@ -431,7 +494,44 @@ export function AgentChatPanel({
             const id = ensureStreamingMessage();
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === id ? { ...m, planConfirm: "save_only" } : m
+                m.id === id
+                  ? { ...m, planConfirm: { kind: "save_only" } }
+                  : m
+              )
+            );
+          } else if (
+            event.type === "confirm_delete" &&
+            typeof event.resourceType === "string" &&
+            typeof event.resourceId === "string" &&
+            typeof event.confirmToken === "string"
+          ) {
+            if (!assistantText && typeof event.message === "string") {
+              setAssistantContent(event.message);
+            }
+            const id = ensureStreamingMessage();
+            const planConfirm: PlanConfirmState = {
+              kind: "delete_confirm",
+              confirmToken: event.confirmToken,
+              resourceType: event.resourceType,
+              resourceId: event.resourceId,
+              resourceName:
+                typeof event.resourceName === "string"
+                  ? event.resourceName
+                  : undefined,
+            };
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === id
+                  ? {
+                      ...m,
+                      content:
+                        m.content ||
+                        (typeof event.message === "string"
+                          ? event.message
+                          : "Er du sikker på at du vil slette?"),
+                      planConfirm,
+                    }
+                  : m
               )
             );
           } else if (event.type === "error" && typeof event.message === "string") {
@@ -524,7 +624,11 @@ export function AgentChatPanel({
           setShowIncompleteRetry(true);
         }
 
-        const planConfirm = detectPlanConfirmKind(assistantText) ?? undefined;
+        const detectedPlanConfirm = detectPlanConfirmKind(assistantText);
+        const planConfirm =
+          detectedPlanConfirm && detectedPlanConfirm !== "delete_confirm"
+            ? ({ kind: detectedPlanConfirm } satisfies PlanConfirmState)
+            : undefined;
         if (streamingMessageId) {
           setMessages((prev) => {
             const updated = prev.map((m) =>
@@ -575,7 +679,7 @@ export function AgentChatPanel({
         }
       }
     },
-    [appendMessage, conversationId, loading]
+    [appendMessage, conversationId, loading, scrollToBottom]
   );
 
   const retryAfterCancel = useCallback(async () => {
@@ -834,20 +938,49 @@ export function AgentChatPanel({
 
         {loading && (
           <div className="flex justify-start" role="status" aria-live="polite" aria-busy="true">
-            <div className="agent-thinking-bubble">
-              <span className="agent-thinking-bubble__dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-              {activeTool ? (
-                <span className="agent-thinking-bubble__label">
-                  {toolProgress
-                    ? `${activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber"}… ${toolProgress.scanned}/${toolProgress.total}`
-                    : activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber…"}
+            <div className="w-full max-w-[90%] rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-xs text-[#b4b4b4]">
+              <div className="flex items-center gap-2 text-[#d4d4d4]">
+                <span className="agent-thinking-bubble__dots" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
                 </span>
-              ) : (
-                <span className="sr-only">Tenker…</span>
+                <span>Jobber med saken</span>
+              </div>
+              {(steps.length > 0 || activeTool) && (
+                <div className="mt-2.5 space-y-1.5 border-l border-white/[0.1] pl-3">
+                  {steps.map((step) => (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        "flex items-center gap-2",
+                        step.status === "done" && "text-[#7f8a86]"
+                      )}
+                    >
+                      <span aria-hidden="true">
+                        {step.status === "done" ? "✓" : step.status === "active" ? "●" : "○"}
+                      </span>
+                      <span>
+                        {TOOL_STATUS_LABELS[step.label] ?? step.label}
+                        {step.status === "active" && toolProgress && activeTool === step.label
+                          ? `… ${toolProgress.scanned}/${toolProgress.total}`
+                          : ""}
+                      </span>
+                    </div>
+                  ))}
+                  {steps.length === 0 && activeTool && (
+                    <div>
+                      {toolProgress
+                        ? `${activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber"}… ${toolProgress.scanned}/${toolProgress.total}`
+                        : activeToolLabel ?? TOOL_STATUS_LABELS[activeTool] ?? "Jobber…"}
+                    </div>
+                  )}
+                </div>
+              )}
+              {thinkingText.trim() && (
+                <p className="mt-2.5 whitespace-pre-wrap border-t border-white/[0.06] pt-2.5 leading-relaxed text-[#8e8e93]">
+                  {thinkingText.trim()}
+                </p>
               )}
             </div>
           </div>

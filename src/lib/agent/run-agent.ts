@@ -42,7 +42,7 @@ import {
   isSimpleSearchIntent,
   quickGreetingReply,
 } from "@/lib/agent/prompt";
-import { AGENT_OPENAI_TOOLS } from "@/lib/agent/tools";
+import { streamResponsesTurn } from "@/lib/agent/responses-stream";
 import { isLikelyTruncatedAgentResponse } from "@/lib/agent/response-complete";
 import { compactToolResultForModel } from "@/lib/agent/tool-payload";
 import { isBadLeadCompany } from "@/lib/brreg/lead-quality";
@@ -52,6 +52,14 @@ import { loadCachedWebsiteScans } from "@/lib/website-scan/saved-scans-server";
 export type AgentStreamEvent =
   | { type: "text"; content: string }
   | { type: "text_delta"; content: string }
+  | { type: "thinking_delta"; content: string }
+  | { type: "thinking"; content: string }
+  | {
+      type: "step";
+      id: string;
+      label: string;
+      status: "pending" | "active" | "done";
+    }
   | { type: "tool_start"; tool: string; label?: string }
   | {
       type: "tool_progress";
@@ -65,6 +73,14 @@ export type AgentStreamEvent =
       type: "confirm_save";
       count: number;
       orgnrs: string[];
+      message: string;
+    }
+  | {
+      type: "confirm_delete";
+      resourceType: string;
+      resourceId: string;
+      resourceName?: string;
+      confirmToken: string;
       message: string;
     }
   | {
@@ -106,14 +122,43 @@ function normalizeAgentModel(raw: string): string {
   }
   if (/gpt[\s-]?4o[\s-]?mini/.test(key)) return "gpt-4o-mini";
   if (key === "gpt-4o") return "gpt-4o";
+  if (
+    key === "sol" ||
+    key === "chatgpt-sol" ||
+    key === "gpt-5.6" ||
+    key === "gpt-5.6-sol"
+  ) {
+    return "gpt-5.6-sol";
+  }
 
   return raw.trim();
 }
 
 function getAgentModel(): string {
   const raw = process.env.OPENAI_AGENT_MODEL?.trim();
-  if (!raw) return "gpt-5-mini";
+  if (!raw) return "gpt-5.6-sol";
   return normalizeAgentModel(raw);
+}
+
+function getReasoningEffort():
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max" {
+  const value = process.env.OPENAI_AGENT_REASONING_EFFORT?.trim().toLowerCase();
+  if (
+    value === "none" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max"
+  ) {
+    return value;
+  }
+  return "medium";
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -363,82 +408,21 @@ async function synthesizeAgentReply(
     tool_choice: "none",
     // gpt-5-modeller godtar ikke `max_tokens`; resonneringstokens trekkes
     // fra samme budsjett, så vi gir litt ekstra rom over de ~450 synlige.
-    max_completion_tokens: 1200,
+    max_completion_tokens: 2200,
   });
 
   return response.choices[0]?.message?.content?.trim() ?? "";
 }
 
-type StreamedAssistantMessage = {
-  content: string;
-  tool_calls?: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[];
-};
-
-async function streamAssistantCompletion(
-  client: OpenAI,
-  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-  model: string,
-  onTextDelta: (delta: string) => Promise<void>,
-  signal?: AbortSignal
-): Promise<StreamedAssistantMessage> {
-  throwIfAborted(signal);
-
-  const stream = await client.chat.completions.create({
-    model,
-    messages,
-    tools: AGENT_OPENAI_TOOLS,
-    tool_choice: "auto",
-    stream: true,
-    max_completion_tokens: 1800,
-  });
-
-  let content = "";
-  const toolCallsByIndex = new Map<
-    number,
-    { id: string; name: string; arguments: string }
-  >();
-
-  for await (const chunk of stream) {
-    throwIfAborted(signal);
-    const delta = chunk.choices[0]?.delta;
-    if (!delta) continue;
-
-    if (delta.content) {
-      content += delta.content;
-      await onTextDelta(delta.content);
-    }
-
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        const idx = tc.index ?? 0;
-        let existing = toolCallsByIndex.get(idx);
-        if (!existing) {
-          existing = {
-            id: tc.id ?? "",
-            name: tc.function?.name ?? "",
-            arguments: "",
-          };
-          toolCallsByIndex.set(idx, existing);
-        }
-        if (tc.id) existing.id = tc.id;
-        if (tc.function?.name) existing.name = tc.function.name;
-        if (tc.function?.arguments) existing.arguments += tc.function.arguments;
-      }
-    }
-  }
-
-  const tool_calls =
-    toolCallsByIndex.size > 0
-      ? Array.from(toolCallsByIndex.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([, tc]) => ({
-            id: tc.id,
-            type: "function" as const,
-            function: { name: tc.name, arguments: tc.arguments },
-          }))
-      : undefined;
-
-  return { content, tool_calls };
+function convertHistoryToResponsesInput(
+  history: AgentChatMessage[]
+): OpenAI.Responses.ResponseInput {
+  return history
+    .filter((message) => message.role !== "system")
+    .map((message) => ({
+      role: message.role as "user" | "assistant",
+      content: message.content,
+    }));
 }
 
 export function buildAgentCompletionSummary(summary: AgentRunSummary): string {
@@ -494,13 +478,8 @@ export async function runAgentChat(
     ? `${basePrompt}\n\n${options.systemPromptExtra}`
     : basePrompt;
 
-  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: systemPrompt },
-    ...history.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    })),
-  ];
+  let responsesInput = convertHistoryToResponsesInput(history);
+  let previousResponseId: string | undefined;
 
   let assistantText = "";
   let link: string | undefined;
@@ -529,8 +508,11 @@ export async function runAgentChat(
   const maxToolLoops = isSimpleSearchIntent(lastUserMessage)
     ? AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH
     : AGENT_MAX_TOOL_LOOPS;
+  const deleteConfirmToken =
+    lastUserMessage.match(/\btoken=([\w-]+)\b/i)?.[1] ?? null;
   const toolCtx: AgentToolContext = {
     ...ctx,
+    deleteConfirmToken,
     onProgress: async (progress) => {
       await onEvent({ type: "tool_progress", ...progress });
     },
@@ -962,50 +944,54 @@ export async function runAgentChat(
     throwIfAborted(signal);
 
     let streamedContent = "";
-    const choice = await streamAssistantCompletion(
+    let thinkingContent = "";
+    const turn = await streamResponsesTurn({
       client,
-      messages,
       model,
-      async (delta) => {
+      instructions: loops === 0 ? systemPrompt : undefined,
+      input: responsesInput,
+      previousResponseId,
+      reasoningEffort: getReasoningEffort(),
+      onTextDelta: async (delta) => {
         streamedContent += delta;
         await onEvent({ type: "text_delta", content: delta });
       },
-      signal
-    );
+      onThinkingDelta: async (delta) => {
+        thinkingContent += delta;
+        await onEvent({ type: "thinking_delta", content: delta });
+      },
+      onWebSearch: async (status) => {
+        await onEvent({
+          type: "step",
+          id: "hosted-web-search",
+          label: "Søker på nettet",
+          status: status === "completed" ? "done" : "active",
+        });
+      },
+      signal,
+    });
+    previousResponseId = turn.responseId;
 
-    if (choice.content?.trim()) {
-      assistantText = choice.content.trim();
+    if (thinkingContent.trim()) {
+      await onEvent({ type: "thinking", content: thinkingContent.trim() });
+    }
+
+    if (turn.content.trim()) {
+      assistantText = turn.content.trim();
     } else if (streamedContent.trim()) {
       assistantText = streamedContent.trim();
     }
 
-    const toolCalls = choice.tool_calls;
-    if (!toolCalls?.length) break;
-
-    messages.push({
-      role: "assistant",
-      content: choice.content ?? "",
-      tool_calls: toolCalls,
-    });
+    const functionCalls = turn.functionCalls;
+    if (!functionCalls.length) break;
 
     const executedTools = await Promise.all(
-      toolCalls.map(async (tc) => {
+      functionCalls.map(async (functionCall) => {
         throwIfAborted(signal);
-        if (tc.type !== "function") {
-          return {
-            tc,
-            toolName: "unknown",
-            result: {
-              summary: "Ukjent verktøytype",
-              data: { error: "Ukjent verktøytype" },
-            } satisfies ToolExecutionResult,
-          };
-        }
-
-        const toolName = tc.function.name;
+        const toolName = functionCall.name;
         let parsedArgs: Record<string, unknown> = {};
         try {
-          parsedArgs = JSON.parse(tc.function.arguments || "{}") as Record<
+          parsedArgs = JSON.parse(functionCall.arguments || "{}") as Record<
             string,
             unknown
           >;
@@ -1013,7 +999,58 @@ export async function runAgentChat(
           parsedArgs = {};
         }
 
-        await onEvent({ type: "tool_start", tool: toolName });
+        const stepLabel =
+          (
+            {
+              search_companies: "Søker firma",
+              scan_websites: "Sjekker nettsider",
+              filter_no_website: "Går gjennom listen",
+              filter_leads: "Går gjennom listen",
+              enrich_contacts: "Henter kontaktinfo",
+              save_list: "Lagrer liste",
+              get_usage: "Sjekker kvote",
+              get_entitlements: "Sjekker tilgang",
+              list_saved_lists: "Henter lagrede lister",
+              load_saved_list: "Laster liste",
+              remember_preference: "Lagrer preferanse",
+              update_saved_list: "Oppdaterer liste",
+              request_delete_confirm: "Forbereder trygg sletting",
+              delete_saved_list: "Sletter liste",
+              list_smartlists: "Henter Smartlister",
+              create_smartlist: "Oppretter Smartliste",
+              update_smartlist: "Oppdaterer Smartliste",
+              delete_smartlist: "Sletter Smartliste",
+              smartlist_add_items: "Legger til firmakort",
+              smartlist_update_items: "Oppdaterer firmakort",
+              smartlist_remove_items: "Fjerner firmakort",
+              set_lead_status: "Oppdaterer pipeline",
+              update_lead: "Oppdaterer lead",
+              delete_lead: "Sletter lead",
+              set_company_phone: "Oppdaterer telefon",
+              start_ai_call: "Starter AI-samtale",
+              hangup_ai_call: "Avslutter AI-samtale",
+              send_sms: "Sender SMS",
+              get_settings: "Henter innstillinger",
+              update_settings: "Oppdaterer innstillinger",
+              web_search: "Søker på nettet",
+            } as Record<string, string>
+          )[toolName] ?? toolName;
+
+        await onEvent({
+          type: "step",
+          id: functionCall.call_id,
+          label: toolName,
+          status: "active",
+        });
+        await onEvent({ type: "tool_start", tool: toolName, label: stepLabel });
+
+        if (
+          toolCtx.deleteConfirmToken &&
+          /^delete_(saved_list|smartlist|lead)$/.test(toolName) &&
+          typeof parsedArgs.confirmToken !== "string"
+        ) {
+          parsedArgs.confirmToken = toolCtx.deleteConfirmToken;
+        }
 
         if (toolName === "search_companies") {
           parsedArgs = mergeAgentSearchFiltersFromMessage(lastUserMessage, parsedArgs);
@@ -1048,13 +1085,11 @@ export async function runAgentChat(
           result = { summary: `Feil: ${message}`, data: { error: message } };
         }
 
-        return { tc, toolName, result };
+        return { functionCall, toolName, result };
       })
     );
 
-    for (const { tc, toolName, result } of executedTools) {
-      if (toolName === "unknown") continue;
-
+    for (const { functionCall, toolName, result } of executedTools) {
       toolsUsed.add(toolName);
       toolSummaries.push(result.summary);
       await onEvent({
@@ -1062,9 +1097,34 @@ export async function runAgentChat(
         tool: toolName,
         summary: result.summary,
       });
+      await onEvent({
+        type: "step",
+        id: functionCall.call_id,
+        label: toolName,
+        status: "done",
+      });
 
       if (options?.onToolComplete) {
         await options.onToolComplete(toolName, result.summary, result.data);
+      }
+
+      if (
+        result.data.needsConfirm === true &&
+        typeof result.data.confirmToken === "string" &&
+        typeof result.data.resourceType === "string" &&
+        typeof result.data.resourceId === "string"
+      ) {
+        await onEvent({
+          type: "confirm_delete",
+          resourceType: result.data.resourceType,
+          resourceId: result.data.resourceId,
+          resourceName:
+            typeof result.data.resourceName === "string"
+              ? result.data.resourceName
+              : undefined,
+          confirmToken: result.data.confirmToken,
+          message: result.summary,
+        });
       }
 
       if (toolName === "filter_no_website") {
@@ -1140,13 +1200,13 @@ export async function runAgentChat(
         }
       }
 
-      messages.push({
-        role: "tool",
-        tool_call_id: tc.id,
-        content: JSON.stringify(compactToolResultForModel(result)),
-      });
     }
 
+    responsesInput = executedTools.map(({ functionCall, result }) => ({
+      type: "function_call_output" as const,
+      call_id: functionCall.call_id,
+      output: JSON.stringify(compactToolResultForModel(result)),
+    }));
     loops++;
   }
 

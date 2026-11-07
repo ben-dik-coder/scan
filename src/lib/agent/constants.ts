@@ -50,7 +50,7 @@ export const AGENT_TOOL_SCAN_TIMEOUT_MS = 120_000;
 export const AGENT_SCAN_ONE_TIMEOUT_MS = 45_000;
 
 /** Maks tool-loops mot OpenAI per melding */
-export const AGENT_MAX_TOOL_LOOPS = 8;
+export const AGENT_MAX_TOOL_LOOPS = 12;
 
 /** Færre tool-loops når brukeren bare ber om søk (ikke nettside-skann) */
 export const AGENT_MAX_TOOL_LOOPS_SIMPLE_SEARCH = 5;

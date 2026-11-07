@@ -1,4 +1,12 @@
-export type PlanConfirmKind = "scan_or_save" | "save_only";
+export type PlanConfirmKind = "scan_or_save" | "save_only" | "delete_confirm";
+
+export type PlanConfirmState = {
+  kind: PlanConfirmKind;
+  confirmToken?: string;
+  resourceType?: string;
+  resourceId?: string;
+  resourceName?: string;
+};
 
 export type PlanConfirmAction = {
   label: string;
@@ -48,9 +56,34 @@ export function detectPlanConfirmKind(content: string): PlanConfirmKind | null {
     return "save_only";
   }
 
+  if (/er du sikker|bekreft(?:e)? sletting|bekreft at du vil slette/i.test(text)) {
+    return "delete_confirm";
+  }
+
   return null;
 }
 
-export function planConfirmActions(kind: PlanConfirmKind): PlanConfirmAction[] {
-  return kind === "scan_or_save" ? SCAN_OR_SAVE_ACTIONS : SAVE_ONLY_ACTIONS;
+export function planConfirmActions(
+  state: PlanConfirmState | PlanConfirmKind
+): PlanConfirmAction[] {
+  const value: PlanConfirmState =
+    typeof state === "string" ? { kind: state } : state;
+  if (value.kind === "scan_or_save") return SCAN_OR_SAVE_ACTIONS;
+  if (value.kind === "save_only") return SAVE_ONLY_ACTIONS;
+
+  const resourceType = value.resourceType ?? "ressurs";
+  const resourceId = value.resourceId ?? "";
+  const confirmToken = value.confirmToken ?? "";
+  return [
+    {
+      label: "Ja, jeg er sikker — slett",
+      message: `Bekreft sletting: ${resourceType} ${resourceId} token=${confirmToken}`,
+      variant: "primary",
+    },
+    {
+      label: "Avbryt",
+      message: "Avbryt slettingen",
+      variant: "secondary",
+    },
+  ];
 }

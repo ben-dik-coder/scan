@@ -207,6 +207,17 @@ export async function POST(request: NextRequest) {
             } else if (event.type === "text_delta") {
               lastAssistantText += event.content;
               send({ type: "text_delta", content: event.content });
+            } else if (event.type === "thinking_delta") {
+              send({ type: "thinking_delta", content: event.content });
+            } else if (event.type === "thinking") {
+              send({ type: "thinking", content: event.content });
+            } else if (event.type === "step") {
+              send({
+                type: "step",
+                id: event.id,
+                label: event.label,
+                status: event.status,
+              });
             } else if (event.type === "tool_start") {
               send({
                 type: "tool_start",
@@ -232,6 +243,15 @@ export async function POST(request: NextRequest) {
                 type: "confirm_save",
                 count: event.count,
                 orgnrs: event.orgnrs,
+                message: event.message,
+              });
+            } else if (event.type === "confirm_delete") {
+              send({
+                type: "confirm_delete",
+                resourceType: event.resourceType,
+                resourceId: event.resourceId,
+                resourceName: event.resourceName,
+                confirmToken: event.confirmToken,
                 message: event.message,
               });
             } else if (event.type === "error") {
