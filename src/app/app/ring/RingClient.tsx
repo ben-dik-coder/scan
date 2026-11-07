@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  CallWaveMini,
+  DynamicIslandCall,
+} from "@/components/ring/DynamicIslandCall";
 import { RingTranscriptPanel } from "@/components/ring/RingTranscriptPanel";
 import { SavedListPicker } from "@/components/saved-lists/SavedListPicker";
 import { useRingTranscript } from "@/hooks/useRingTranscript";
@@ -859,8 +863,21 @@ export function RingClient() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#0a0a0a] text-zinc-100">
-      {/* Slim top bar — Vapi-style */}
+    <div className="relative flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#0a0a0a] text-zinc-100">
+      {/* Dynamic Island — live call */}
+      {aiActive && current && aiCall ? (
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-50 flex justify-center px-3">
+          <DynamicIslandCall
+            phase={aiCall.status}
+            companyName={formatCompanyName(current.name)}
+            statusLabel={aiCallStatusLabel(aiCall)}
+            hangingUp={aiHangingUp}
+            onHangUp={() => void handleAiHangUp()}
+          />
+        </div>
+      ) : null}
+
+      {/* Slim top bar */}
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#0f0f0f] px-3">
         <div className="flex min-w-0 items-center gap-2">
           <PhoneCall className="h-4 w-4 shrink-0 text-emerald-400" />
@@ -878,7 +895,11 @@ export function RingClient() {
             </span>
           ) : null}
           {aiActive ? (
-            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+            <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+              <CallWaveMini
+                active
+                talking={aiCall?.status === "in_progress"}
+              />
               Live
             </span>
           ) : null}
@@ -1264,7 +1285,10 @@ export function RingClient() {
                       )}
                     >
                       {aiActive ? (
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                        <CallWaveMini
+                          active
+                          talking={aiCall.status === "in_progress"}
+                        />
                       ) : null}
                       {aiCallStatusLabel(aiCall)}
                     </span>
@@ -1292,7 +1316,11 @@ export function RingClient() {
                 <div className="border-t border-white/[0.06] p-3">
                   {aiActive ? (
                     <div className="space-y-2">
-                      <p className="text-center text-xs font-medium text-emerald-400/90">
+                      <p className="flex items-center justify-center gap-2 text-xs font-medium text-emerald-400/90">
+                        <CallWaveMini
+                          active
+                          talking={aiCall?.status === "in_progress"}
+                        />
                         {autoRing ? "Auto-ring · " : ""}
                         {aiCall ? aiCallStatusLabel(aiCall) : "Aktiv…"}
                       </p>
@@ -1647,9 +1675,20 @@ function AiCallPanel({
   const bubbles = call.transcript ? parseTranscriptBubbles(call.transcript) : [];
   const ended =
     call.status === "ended" || call.status === "failed" || Boolean(call.outcome);
+  const live = isActiveAiStatus(call.status);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {live ? (
+        <div className="border-b border-white/[0.06] px-4 py-3">
+          <DynamicIslandCall
+            phase={call.status}
+            companyName={companyName}
+            statusLabel={aiCallStatusLabel(call)}
+            className="w-full"
+          />
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {bubbles.length > 0 ? (
           bubbles.map((b, i) => (
