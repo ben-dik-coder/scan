@@ -1297,49 +1297,56 @@ export function AppPageClient(props: Props) {
     : `Viser ${rankedDisplayCompanies.length} av ${companies.length} · sortert etter score`;
 
   return (
-    <div className="scan-glass-kommand flex h-[calc(100dvh-3.5rem)] w-full max-w-none flex-col overflow-hidden bg-[#0a0a0a] text-zinc-100">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#0f0f0f] px-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Search className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
-          <span className="truncate text-sm font-medium text-white">Skann</span>
-          <span className="hidden text-zinc-600 sm:inline">·</span>
-          <span className="hidden truncate text-xs text-zinc-500 sm:inline">
-            <Building2 className="mr-0.5 inline h-3 w-3 opacity-70" aria-hidden />
-            {firmCount} firma
-            <span className="mx-1.5 text-zinc-700" aria-hidden>
-              ·
-            </span>
-            <PhoneCall className="mr-0.5 inline h-3 w-3 opacity-70" aria-hidden />
-            {withContactCount} med kontakt
-          </span>
-          {props.companiesSource === "db" ? (
-            <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 sm:inline">
-              DB
-            </span>
-          ) : null}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="hidden min-w-0 max-w-md md:block">
-            <ScanLeadModes
-              activeMode={activeLeadMode}
-              onSelect={applyLeadMode}
-              disabled={geoLocationLoading}
-            />
+    <div className="scan-glass-kommand scan-enterprise flex h-[calc(100dvh-3.5rem)] w-full max-w-none flex-col overflow-hidden bg-[#0a0a0a] text-zinc-100">
+      <header className="shrink-0 border-b border-white/[0.08] px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">
+                Skann
+              </h1>
+              <span className="text-xs tabular-nums text-zinc-500">
+                <Building2 className="mr-1 inline h-3 w-3 opacity-70" aria-hidden />
+                {firmCount.toLocaleString("nb-NO")} firma
+                <span className="mx-1.5 text-zinc-700" aria-hidden>
+                  ·
+                </span>
+                <PhoneCall className="mr-1 inline h-3 w-3 opacity-70" aria-hidden />
+                {withContactCount.toLocaleString("nb-NO")} med kontakt
+              </span>
+              {props.companiesSource === "db" ? (
+                <span className="rounded border border-white/[0.1] bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  Register
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Finn firma, filtrer markedet og legg leads i kø
+            </p>
           </div>
-          {props.onRefreshList && (
-            <button
-              type="button"
-              onClick={props.onRefreshList}
-              disabled={props.refreshingList}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
-              title="Oppdater"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${props.refreshingList ? "animate-spin" : ""}`}
-                aria-hidden
+          <div className="flex items-center gap-2">
+            <div className="hidden min-w-0 max-w-md md:block">
+              <ScanLeadModes
+                activeMode={activeLeadMode}
+                onSelect={applyLeadMode}
+                disabled={geoLocationLoading}
               />
-            </button>
-          )}
+            </div>
+            {props.onRefreshList && (
+              <button
+                type="button"
+                onClick={props.onRefreshList}
+                disabled={props.refreshingList}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/[0.1] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300 disabled:opacity-50"
+                title="Oppdater"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${props.refreshingList ? "animate-spin" : ""}`}
+                  aria-hidden
+                />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1356,8 +1363,8 @@ export function AppPageClient(props: Props) {
             : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]"
         )}
       >
-        <aside className="scan-filter-sidebar flex max-h-[42vh] min-h-0 shrink-0 flex-col border-b border-white/[0.06] bg-[#0c0c0c] lg:max-h-none lg:border-b-0 lg:border-r">
-          <nav className="shrink-0 border-b border-white/[0.06] py-1" aria-label="Skann-valg">
+        <aside className="scan-filter-sidebar flex max-h-[42vh] min-h-0 shrink-0 flex-col border-b border-white/[0.08] bg-[#0c0c0c] lg:max-h-none lg:border-b-0 lg:border-r">
+          <nav className="shrink-0 border-b border-white/[0.08] p-1.5" aria-label="Skann-valg">
             {(
               [
                 {
@@ -1396,27 +1403,22 @@ export function AppPageClient(props: Props) {
                   type="button"
                   onClick={() => setSidebarView(item.id)}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition",
+                    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition",
                     active
-                      ? "bg-emerald-500/10 text-white"
+                      ? "bg-white/[0.08] text-white"
                       : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
                   )}
                 >
                   <Icon
                     className={cn(
                       "h-3.5 w-3.5 shrink-0",
-                      active ? "text-emerald-400" : "text-zinc-600"
+                      active ? "text-zinc-300" : "text-zinc-600"
                     )}
                     aria-hidden
                   />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {"hint" in item && item.hint ? (
-                    <span
-                      className={cn(
-                        "tabular-nums text-[10px]",
-                        active ? "text-emerald-400/80" : "text-zinc-600"
-                      )}
-                    >
+                    <span className="tabular-nums text-[10px] text-zinc-500">
                       {item.hint}
                     </span>
                   ) : null}
@@ -1478,7 +1480,7 @@ export function AppPageClient(props: Props) {
         </aside>
 
         <main className="scan-main-panel flex min-h-0 min-w-0 flex-col overflow-y-auto bg-[#0a0a0a]">
-          <div className="shrink-0 border-b border-white/[0.06] bg-[#0f0f0f] px-3 py-2.5 sm:px-4">
+          <div className="shrink-0 border-b border-white/[0.08] px-3 py-2.5 sm:px-4">
             <div className="mb-2 md:hidden">
               <ScanLeadModes
                 activeMode={activeLeadMode}
@@ -1495,12 +1497,12 @@ export function AppPageClient(props: Props) {
             {sourceMetaParts.length > 0 && (
               <p
                 className={`mt-1.5 text-[11px] leading-snug ${
-                  props.contactUsage?.limitReached ? "text-amber-300/90" : "text-zinc-500"
+                  props.contactUsage?.limitReached ? "text-amber-200/90" : "text-zinc-500"
                 }`}
               >
                 <span
                   className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${
-                    props.companiesSource === "db" ? "bg-emerald-400" : "bg-zinc-500"
+                    props.companiesSource === "db" ? "bg-zinc-300" : "bg-zinc-600"
                   }`}
                   aria-hidden
                 />
@@ -1509,7 +1511,7 @@ export function AppPageClient(props: Props) {
                   <>
                     {" "}
                     —{" "}
-                    <a href="/app/abonnement" className="font-semibold text-emerald-300 underline">
+                    <a href="/app/abonnement" className="font-semibold text-zinc-200 underline">
                       Se abonnement
                     </a>
                   </>
@@ -1570,8 +1572,8 @@ export function AppPageClient(props: Props) {
               (props.brregTotal != null &&
                 props.brregTotal > props.total + 2 &&
                 props.companiesSource !== "db")) && (
-              <div className="mx-3 my-2 flex gap-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2.5 text-xs text-zinc-400 lg:mx-4">
-                <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <div className="scan-enterprise-notice mx-3 my-2 flex gap-2 rounded-md border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 lg:mx-4">
+                <Search className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
                 <p>
                   {props.companiesSource === "db" ? (
                     <>
@@ -1618,13 +1620,13 @@ export function AppPageClient(props: Props) {
             exportMessage={exportMessage}
           />
 
-          <div className="flex items-center px-3 pb-2 lg:px-4">
+          <div className="flex items-center px-3 py-2 lg:px-4">
             <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px] text-zinc-500">
               <input
                 type="checkbox"
                 checked={hideHolding}
                 onChange={(e) => setHideHolding(e.target.checked)}
-                className="cv-checkbox h-3.5 w-3.5 rounded accent-emerald-500"
+                className="cv-checkbox h-3.5 w-3.5 rounded accent-zinc-400"
               />
               Skjul holdingselskap
               {holdingCount > 0 && <span className="opacity-70">({holdingCount})</span>}
@@ -1633,10 +1635,10 @@ export function AppPageClient(props: Props) {
 
           {activeListName && pinnedOrgnrs && pinnedOrgnrs.size > 0 && (
             <div
-              className="mx-3 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              className="scan-enterprise-notice mx-3 mb-2 rounded-md border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
               role="status"
             >
-              <strong className="text-emerald-300">
+              <strong className="text-zinc-200">
                 {activeListSource === "agent" ? "AI-liste" : "Firma-liste"}: {activeListName}
               </strong>{" "}
               — viser {agentListLoading ? "…" : visibleCompanies.length} av {pinnedOrgnrs.size}{" "}
@@ -1651,8 +1653,8 @@ export function AppPageClient(props: Props) {
           )}
 
           {isAgentListActive && filters.days !== AGENT_LIST_PERIOD_DAYS && (
-            <div className="mx-3 mb-2 flex gap-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2.5 text-xs text-zinc-400 lg:mx-4">
-              <Search className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+            <div className="scan-enterprise-notice mx-3 mb-2 flex gap-2 rounded-md border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 lg:mx-4">
+              <Search className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
               <p>
                 AI-listen viser valgte firma uavhengig av når de ble registrert.{" "}
                 <strong className="text-zinc-200">Siste 30 dager</strong> gjelder bare
@@ -1663,17 +1665,17 @@ export function AppPageClient(props: Props) {
 
           {noWebsiteBanner && listFilter === "no_website" && noWebsiteCount > 0 && (
             <div
-              className="mx-3 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              className="scan-enterprise-notice mx-3 mb-2 rounded-md border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
               role="status"
             >
-              <strong className="text-emerald-300">{noWebsiteCount} firma uten nettside</strong> —
+              <strong className="text-zinc-200">{noWebsiteCount} firma uten nettside</strong> —
               gode leads for nettside-salg.
             </div>
           )}
 
           {listFilter === "with_website" && withWebsiteCount > 0 && (
             <div
-              className="mx-3 mb-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              className="scan-enterprise-notice mx-3 mb-2 rounded-md border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
               role="status"
             >
               <strong className="text-zinc-200">{withWebsiteCount} firma med nettside</strong> — har
@@ -1686,7 +1688,7 @@ export function AppPageClient(props: Props) {
               ? (props.pagination?.total ?? 0) > 0
               : companiesByListTab.with_phone.length > 0) && (
             <div
-              className="mx-3 mb-2 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
+              className="scan-enterprise-notice mx-3 mb-2 rounded-md border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 lg:mx-4"
               role="status"
             >
               <strong className="text-zinc-200">
@@ -1706,8 +1708,8 @@ export function AppPageClient(props: Props) {
             </p>
           )}
 
-          <div className="border-t border-white/[0.06] px-3 py-3 lg:px-4">
-            <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#111]">
+          <div className="border-t border-white/[0.08] px-3 py-3 lg:px-4">
+            <div className="overflow-hidden rounded-md border border-white/[0.1] bg-[#0f0f0f]">
               <CompanyTable
                 companies={rankedDisplayCompanies}
                 selected={selected}

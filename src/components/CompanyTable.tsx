@@ -13,6 +13,10 @@ import { resolveCompanyPhone } from "@/lib/website-scan/resolve-company-contact"
 import { hasUncertainWebsiteHits, displayNameDiffersFromLegal } from "@/lib/website-scan/parse-results";
 import { StatusPill, EmptyState } from "@/components/ui/primitives";
 import { ScanGoogleSearchPopup } from "@/components/scan/ScanGoogleSearchPopup";
+import {
+  CompanyBriefingCard,
+  CompanyBriefingOneLiner,
+} from "@/components/company/CompanyBriefingCard";
 import { cn, formatCompanyName, formatRegisteredDate } from "@/lib/utils";
 import { Globe, Globe2, HelpCircle, ListPlus, Mail, Radar, X } from "lucide-react";
 
@@ -467,6 +471,7 @@ function CompanyDetailBody({
           onGoogleSearch={onGoogleSearch}
           id="company-detail-title"
         />
+        <CompanyBriefingOneLiner company={c} className="mt-1" />
         {(c.municipality_name || c.registered_at) && (
           <p className="cv-meta mt-0.5 text-[12px]">
             {c.municipality_name ?? "—"}
@@ -474,6 +479,9 @@ function CompanyDetailBody({
           </p>
         )}
       </DetailRow>
+      <div className="px-0 pb-3 pt-1">
+        <CompanyBriefingCard company={c} scan={scan} compact />
+      </div>
       <DetailRow label="Org.nr">
         <span className="cv-mono">{c.orgnr}</span>
       </DetailRow>
@@ -723,6 +731,7 @@ function CompanyMobileCard({
             </button>
           </div>
         </div>
+        <CompanyBriefingOneLiner company={c} className="mt-0.5" />
         <p className="cv-meta mt-0.5 truncate text-[11px]">
           {[
             c.municipality_name,

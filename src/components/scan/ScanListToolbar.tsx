@@ -45,7 +45,7 @@ export function ScanListToolbar({
   exportMessage,
 }: Props) {
   return (
-    <div className="space-y-3 border-t border-white/[0.06] px-3 py-3 lg:px-4">
+    <div className="space-y-2 border-b border-white/[0.08] px-3 py-2.5 lg:px-4">
       <div className="flex items-center justify-between gap-2">
         <div className="scan-segmented min-w-0 max-w-full flex-1 overflow-x-auto">
           {tabs.map((tab) => {
@@ -60,7 +60,7 @@ export function ScanListToolbar({
                   "scan-segmented-item shrink-0 flex-none",
                   activeTab === tab.id && "scan-segmented-item-active",
                   tab.pinned && "shrink-0",
-                  isWebsiteTab && tab.count === 0 && activeTab !== tab.id && "opacity-60"
+                  isWebsiteTab && tab.count === 0 && activeTab !== tab.id && "opacity-50"
                 )}
               >
                 <TabIcon className="h-3 w-3" />
@@ -101,33 +101,34 @@ export function ScanListToolbar({
         </div>
       </div>
 
-      <p className="scan-glass-muted text-xs">{summary}</p>
-
-      {selectedCount > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onAddToQueue}
-            disabled={addingToQueue}
-            className="scan-btn-primary inline-flex items-center gap-1 text-xs font-semibold"
-          >
-            <ListTodo className="h-3.5 w-3.5" />
-            {addingToQueue ? "Legger i kø…" : `Legg ${selectedCount} i kø`}
-          </button>
-          <button
-            type="button"
-            onClick={onExportCsv}
-            disabled={exporting}
-            className="scan-btn-ghost inline-flex items-center gap-1 text-xs"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {exporting ? "Eksporterer…" : "CSV"}
-          </button>
-          {exportMessage && (
-            <span className="text-xs text-emerald-300">{exportMessage}</span>
-          )}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-zinc-500">{summary}</p>
+        {selectedCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onAddToQueue}
+              disabled={addingToQueue}
+              className="scan-btn-primary inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs font-semibold"
+            >
+              <ListTodo className="h-3.5 w-3.5" />
+              {addingToQueue ? "Legger i kø…" : `Legg ${selectedCount} i kø`}
+            </button>
+            <button
+              type="button"
+              onClick={onExportCsv}
+              disabled={exporting}
+              className="scan-btn-ghost inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exporting ? "Eksporterer…" : "CSV"}
+            </button>
+            {exportMessage ? (
+              <span className="text-xs text-zinc-400">{exportMessage}</span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

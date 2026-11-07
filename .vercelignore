@@ -1,0 +1,11 @@
+tmp
+.tmp
+.next
+node_modules
+dist
+coverage
+ios
+android
+*.mp3
+*.backup.js
+tsconfig.tsbuildinfo

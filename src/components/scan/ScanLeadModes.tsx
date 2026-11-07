@@ -32,12 +32,12 @@ export function ScanLeadModes({ activeMode, onSelect, disabled = false }: Props)
             disabled={disabled}
             title={meta.description}
             className={cn(
-              "scan-segmented-item shrink-0 touch-manipulation",
+              "scan-segmented-item shrink-0 touch-manipulation !rounded-none",
               isActive && "scan-segmented-item-active",
               disabled && "pointer-events-none opacity-60"
             )}
           >
-            <Icon className="h-3 w-3" aria-hidden />
+            <Icon className="h-3 w-3 opacity-70" aria-hidden />
             {meta.title}
           </button>
         );

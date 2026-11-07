@@ -13,9 +13,12 @@ import {
   AGENT_CHAT_OPEN_EVENT,
   type AgentChatOpenDetail,
 } from "@/lib/agent/agent-chat-bus";
+import { ANALYSE_NAV, isAnalysePath } from "@/lib/analyse/nav";
 import { isDemoMode } from "@/lib/demo/config";
 import {
+  BarChart3,
   Building2,
+  ChevronDown,
   CreditCard,
   FileText,
   GitBranch,
@@ -28,23 +31,52 @@ import {
   Menu,
   MessageSquare,
   PhoneCall,
+  Route,
   Send,
   Shield,
   Sparkles,
   ScrollText,
+  UsersRound,
   Workflow,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type NavItem = { href: string; label: string; icon: LucideIcon };
-
-const NAV_OVERVIEW: NavItem = {
-  href: "/app/oversikt",
-  label: "Oversikt",
-  icon: LayoutDashboard,
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  children?: Array<{ href: string; label: string; icon: LucideIcon }>;
 };
+
+const NAV_TOP: NavItem[] = [
+  {
+    href: "/app/oversikt",
+    label: "Oversikt",
+    icon: LayoutDashboard,
+  },
+  {
+    href: "/app/analyse",
+    label: "Analyse",
+    icon: BarChart3,
+    children: ANALYSE_NAV.map((item) => ({
+      href: item.href,
+      label: item.label,
+      icon: item.icon,
+    })),
+  },
+  {
+    href: "/app/workflow",
+    label: "Workflow",
+    icon: Route,
+  },
+  {
+    href: "/app/team-modus",
+    label: "Team modus",
+    icon: UsersRound,
+  },
+];
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -92,6 +124,7 @@ export function AppShell({
   const router = useRouter();
   const demo = isDemoMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [analyseOpen, setAnalyseOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentConversationId, setAgentConversationId] = useState<string | null>(
     null
@@ -114,6 +147,10 @@ export function AppShell({
       document.body.style.overflow = prevOverflow;
     };
   }, [drawerOpen]);
+
+  useEffect(() => {
+    if (isAnalysePath(pathname)) setAnalyseOpen(true);
+  }, [pathname]);
 
   useEffect(() => {
     function onOpenAgent(event: Event) {
@@ -152,7 +189,15 @@ export function AppShell({
     isGlassShell ? "text-zinc-500" : "text-slate-500"
   );
 
-  function NavLink({ href, label, icon: Icon }: NavItem) {
+  function NavLink({
+    href,
+    label,
+    icon: Icon,
+  }: {
+    href: string;
+    label: string;
+    icon: LucideIcon;
+  }) {
     return (
       <Link
         href={href}
@@ -162,6 +207,79 @@ export function AppShell({
         <Icon className="h-4 w-4 shrink-0" />
         {label}
       </Link>
+    );
+  }
+
+  function NavBranch({ item }: { item: NavItem }) {
+    if (!item.children?.length) {
+      return <NavLink href={item.href} label={item.label} icon={item.icon} />;
+    }
+
+    const open = analyseOpen || isAnalysePath(pathname);
+    const Icon = item.icon;
+
+    return (
+      <div className="space-y-1">
+        <div
+          className={cn(
+            navLinkClass(item.href),
+            "w-full gap-1 pr-1.5"
+          )}
+        >
+          <Link
+            href={item.href}
+            onClick={() => {
+              setAnalyseOpen(true);
+              setDrawerOpen(false);
+            }}
+            className="inline-flex min-w-0 flex-1 items-center gap-2"
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{item.label}</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setAnalyseOpen((v) => !v)}
+            className="rounded-md p-1 text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200"
+            aria-label={open ? "Skjul analyse-meny" : "Vis analyse-meny"}
+            aria-expanded={open}
+          >
+            <ChevronDown
+              className={cn(
+                "h-3.5 w-3.5 transition",
+                open && "rotate-180"
+              )}
+              aria-hidden
+            />
+          </button>
+        </div>
+        {open ? (
+          <div className="ml-3 space-y-0.5 border-l border-white/10 pl-2">
+            {item.children.map((child) => {
+              const ChildIcon = child.icon;
+              const childActive =
+                child.href === "/app/analyse"
+                  ? pathname === "/app/analyse"
+                  : pathname === child.href ||
+                    pathname.startsWith(child.href + "/");
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  onClick={() => setDrawerOpen(false)}
+                  className={cn(
+                    "glass-nav-link !py-1.5 text-[13px]",
+                    childActive && "glass-nav-link-active"
+                  )}
+                >
+                  <ChildIcon className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -188,7 +306,9 @@ export function AppShell({
         )}
       >
         <div className="space-y-1">
-          <NavLink {...NAV_OVERVIEW} />
+          {NAV_TOP.map((item) => (
+            <NavBranch key={item.href} item={item} />
+          ))}
         </div>
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="space-y-1">

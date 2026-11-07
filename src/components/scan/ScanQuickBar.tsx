@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
-import { ListTodo, Search, SlidersHorizontal, Users } from "lucide-react";
+import { ListTodo, Search, SlidersHorizontal } from "lucide-react";
 
 type Props = {
   withContactCount: number;
@@ -43,14 +42,14 @@ function MobileNameSearch({
   }, [local, value, onDebouncedChange]);
 
   return (
-    <label className="relative block lg:hidden">
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-400" />
+    <label className="relative mb-2 block lg:hidden">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
       <input
         type="search"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder="Søk i firmanavn…"
-        className="scan-input min-h-[36px] w-full pl-9 text-sm"
+        className="scan-input min-h-[36px] w-full rounded-md pl-8 text-sm"
         autoComplete="off"
         spellCheck={false}
       />
@@ -73,70 +72,39 @@ export function ScanQuickBar({
   nameQuery = "",
   onNameQueryChange,
 }: Props) {
-  const activeStep = selectedCount > 0 ? 2 : 1;
-
   return (
-    <div className="scan-quick-bar border-b border-white/[0.06] bg-[#0f0f0f]/40 px-3 py-3 lg:px-4">
+    <div className="scan-quick-bar border-b border-white/[0.08] px-3 py-2.5 lg:px-4">
       {onNameQueryChange && (
         <MobileNameSearch value={nameQuery} onDebouncedChange={onNameQueryChange} />
       )}
 
-      <div className="mt-3 flex flex-col gap-3 lg:mt-0 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <nav
-            className="scan-steps flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
-            aria-label="Steg"
-          >
-            <span
-              className={cn(
-                "scan-step",
-                activeStep === 1 && "scan-step-active",
-                activeStep >= 1 && "text-slate-300",
-                activeStep > 1 && "scan-step-done"
-              )}
-            >
-              <Users className="mr-0.5 inline h-3 w-3" aria-hidden />
-              Velg
-            </span>
-            <span aria-hidden className="scan-step-sep text-slate-600">›</span>
-            <span
-              className={cn(
-                "scan-step",
-                activeStep === 2 && "scan-step-active text-white"
-              )}
-            >
-              <Search className="mr-0.5 inline h-3 w-3" aria-hidden />
-              Sjekk
-            </span>
-            <span aria-hidden className="scan-step-sep text-slate-600">›</span>
-            <span className="scan-step text-slate-500">
-              <ListTodo className="mr-0.5 inline h-3 w-3" aria-hidden />
-              Kø
-            </span>
-          </nav>
-          <p className="scan-stat-inline">
-            {withContactCount} kontakt · {withWebsiteCount} med nett · {noWebsiteCount} uten nett
-            {selectedCount > 0 && (
-              <>
-                {" "}
-                · <strong>{selectedCount}</strong> valgt
-              </>
-            )}
-          </p>
-        </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="min-w-0 text-xs tabular-nums text-zinc-500">
+          <span className="text-zinc-400">{withContactCount}</span> kontakt
+          <span className="mx-1.5 text-zinc-700">·</span>
+          <span className="text-zinc-400">{withWebsiteCount}</span> med nett
+          <span className="mx-1.5 text-zinc-700">·</span>
+          <span className="text-zinc-400">{noWebsiteCount}</span> uten nett
+          {selectedCount > 0 ? (
+            <>
+              <span className="mx-1.5 text-zinc-700">·</span>
+              <span className="font-semibold text-zinc-200">{selectedCount}</span> valgt
+            </>
+          ) : null}
+        </p>
 
-        <div className="flex w-full flex-col gap-2 lg:w-auto lg:flex-row lg:flex-wrap">
+        <div className="flex flex-wrap items-center gap-1.5">
           {onOpenFilters && (
             <button
               type="button"
               onClick={onOpenFilters}
               aria-haspopup="dialog"
-              className="scan-btn-ghost lg:hidden inline-flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-1.5 px-4 py-2 text-xs lg:w-auto"
+              className="scan-btn-ghost inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs lg:hidden"
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
               Filter
               {activeFilterCount > 0 && (
-                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold">
+                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
                   {activeFilterCount}
                 </span>
               )}
@@ -146,7 +114,7 @@ export function ScanQuickBar({
             type="button"
             onClick={onSelectWithEmail}
             disabled={withEmailCount === 0}
-            className="scan-btn-ghost inline-flex min-h-[44px] w-full items-center justify-center px-4 py-2 text-xs disabled:opacity-40 lg:w-auto"
+            className="scan-btn-ghost inline-flex h-8 items-center rounded-md px-2.5 text-xs disabled:opacity-40"
           >
             Velg med e-post
           </button>
@@ -154,9 +122,10 @@ export function ScanQuickBar({
             type="button"
             onClick={onCheckAndQueue}
             disabled={scanning || addingToQueue || withEmailCount === 0}
-            className="scan-btn-primary inline-flex min-h-[44px] w-full items-center justify-center px-4 py-2 text-xs disabled:opacity-40 lg:w-auto"
+            className="scan-btn-primary inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs disabled:opacity-40"
           >
-            {addingToQueue ? "Legger i kø…" : "Rask start: topp 10 → kø"}
+            <ListTodo className="h-3.5 w-3.5" aria-hidden />
+            {addingToQueue ? "Legger i kø…" : "Topp 10 → kø"}
           </button>
         </div>
       </div>

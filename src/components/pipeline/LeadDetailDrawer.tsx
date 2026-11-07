@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, Mail, Phone } from "lucide-react";
 import { AppSideDrawer } from "@/components/ui/AppSideDrawer";
+import { CompanyBriefingCard } from "@/components/company/CompanyBriefingCard";
 import { normalizeDisplayPhone } from "@/lib/website-scan/resolve-company-contact";
 import { ScoreRing, StatusPill } from "@/components/ui/primitives";
 import { statusLabel } from "@/lib/sales/constants";
@@ -158,6 +159,8 @@ export function LeadDetailDrawer({
       maxWidth="md"
     >
       <div className="space-y-5 p-4">
+        <CompanyBriefingCard company={company} />
+
         <section className="space-y-2 text-sm">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Kontakt
